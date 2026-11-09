@@ -939,21 +939,6 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
           >
             <PaperClipIcon className="w-5 h-5" />
           </button>
-          {/* Starts a call only. While one is live, the voice bar's ✕ is the
-              single way to end it; a second "stop" here sat next to the
-              agent's stop button and the two were easy to confuse. */}
-          {!voice.active && (
-            <button
-              type="button"
-              onClick={() => voice.start(currentChatId ?? null)}
-              className="w-9 h-9 flex items-center justify-center bg-transparent text-brutal-black dark:text-white hover:bg-neutral-200 dark:hover:bg-zinc-700 hover:text-brutal-blue transition-colors disabled:opacity-40 shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-brutal-blue"
-              title={voice.supported ? t('voice.micButton') : t('voice.errors.micUnavailable')}
-              aria-label={voice.supported ? t('voice.micButton') : t('voice.errors.micUnavailable')}
-              disabled={!configReady || !voice.supported}
-            >
-              <MicrophoneIcon className="w-5 h-5" />
-            </button>
-          )}
 
           {/* Spacer */}
           <div className="flex-1" />
@@ -979,7 +964,9 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
             </div>
           )}
 
-          {/* Redirect button (shown when streaming and user has typed) */}
+          {/* Action button: redirect (streaming + text) → stop (streaming) →
+              send (has text or active voice call) → voice (empty input).
+              While a call is live, the voice bar's ✕ is the single way to end it. */}
           {stopStreaming && streamingForCurrentChat && input.trim() ? (
             <button
               type="submit"
@@ -1005,15 +992,26 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
             >
               <StopIcon className="w-5 h-5 fill-current" aria-hidden="true" />
             </button>
-          ) : (
+          ) : input.trim() || voice.active ? (
             <button
               type="submit"
               className="w-9 h-9 inline-flex items-center justify-center border-2 border-brutal-black duration-100 p-0 text-sm font-bold disabled:opacity-50 disabled:cursor-not-allowed text-white uppercase shrink-0 bg-brutal-blue hover:bg-blue-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-brutal-blue"
-              disabled={streamingForCurrentChat || !configReady}
+              disabled={streamingForCurrentChat || !configReady || !input.trim()}
               title={t('chatInput.sendMessage')}
               aria-label={t('chatInput.sendMessage')}
             >
               <ArrowUpIcon className="w-5 h-5 stroke-[2.5]" aria-hidden="true" />
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => voice.start(currentChatId ?? null)}
+              className="w-9 h-9 inline-flex items-center justify-center border-2 border-brutal-black duration-100 p-0 text-sm font-bold disabled:opacity-50 disabled:cursor-not-allowed text-white uppercase shrink-0 bg-brutal-blue hover:bg-blue-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-brutal-blue"
+              disabled={streamingForCurrentChat || !configReady || !voice.supported}
+              title={voice.supported ? t('voice.micButton') : t('voice.errors.micUnavailable')}
+              aria-label={voice.supported ? t('voice.micButton') : t('voice.errors.micUnavailable')}
+            >
+              <MicrophoneIcon className="w-5 h-5 stroke-2" aria-hidden="true" />
             </button>
           )}
         </div>
