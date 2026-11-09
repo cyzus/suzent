@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Release notes
 - Tool approvals are clearer: one pending badge instead of two, the waiting call scrolls into view, the approval card names the tool and shows its reason at full size tinted by risk, and the call you just approved or denied stays visible afterwards.
 - Optional code mode lets the agent batch read-only look-ups in one Python snippet, with each call shown live in the chat.
+- Improve permission approval card readability, action hierarchy, and keyboard focus visibility.
 - On macOS, the yellow window button now minimizes Suzent; the window uses the native red, yellow and green buttons.
 - Package a universal macOS installer disk image for both Apple Silicon and Intel Macs.
 - With reduced motion turned on, the thinking animation now shows finished robots stepping along the line instead of a frozen frame.

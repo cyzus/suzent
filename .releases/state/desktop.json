@@ -68,6 +68,7 @@
     ".releases/changes/desktop-composer-height.json",
     ".releases/changes/desktop-computer-use.json",
     ".releases/changes/desktop-notification-click.json",
+    ".releases/changes/desktop-permission-card-visuals.json",
     ".releases/changes/desktop-shorter-results.json",
     ".releases/changes/desktop-system-notifications.json",
     ".releases/changes/desktop-tray-menu.json",
