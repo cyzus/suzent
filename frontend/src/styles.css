@@ -2286,9 +2286,22 @@ button.activity-turn-duration:focus-visible {
 
 @media (prefers-reduced-motion: reduce) {
   .activity-turn-tool,
-  .activity-turn-history .activity-rail-dot-active,
   .activity-turn-history .activity-rail-header-active {
     animation: none;
+  }
+  /* The active dot is the only cue that a tool is still running, so it keeps an opacity-only pulse. */
+  .activity-turn-history .activity-rail-dot-active {
+    animation: activity-rail-dot-fade 1.2s ease-in-out infinite;
+  }
+}
+
+@keyframes activity-rail-dot-fade {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
   }
 }
 
@@ -2902,11 +2915,6 @@ button.activity-turn-duration:focus-visible {
   }
   30% {
     opacity: 1;
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  .regent-typing span {
-    animation: none;
   }
 }
 

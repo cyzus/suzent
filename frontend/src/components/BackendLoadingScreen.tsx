@@ -118,6 +118,10 @@ export function BackendLoadingScreen({
           45% { left: 38%; width: 34%; }
           100% { left: 106%; width: 22%; }
         }
+        @keyframes suzentProgressBreathe {
+          0%, 100% { opacity: .25; }
+          50% { opacity: .7; }
+        }
         .suzent-cube-scene {
           perspective: 520px;
           transform-style: preserve-3d;
@@ -136,13 +140,13 @@ export function BackendLoadingScreen({
         @media (prefers-reduced-motion: reduce) {
           .suzent-cube,
           .suzent-orbit,
-          .suzent-orbit-reverse,
-          .suzent-indeterminate-progress {
+          .suzent-orbit-reverse {
             animation: none !important;
           }
           .suzent-indeterminate-progress {
+            animation: suzentProgressBreathe 2s ease-in-out infinite !important;
             left: 0;
-            width: 32%;
+            width: 100%;
           }
         }
       `}</style>
