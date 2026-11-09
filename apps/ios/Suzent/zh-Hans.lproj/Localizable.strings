@@ -355,3 +355,7 @@
 "Choose" = "请选择";
 "Or type your own" = "或自行输入";
 "Chose %@" = "已选择 %@";
+
+"Finding a connection" = "正在寻找可用连接";
+"Verifying connection" = "正在验证连接";
+"Syncing desktop" = "正在同步桌面";

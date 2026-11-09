@@ -1126,7 +1126,7 @@ struct ReconnectIndicator: View {
         let surface = Color.suzentSurface
         let subtle = Color.suzentMuted.opacity(0.22)
         let yellow = Color.suzentYellow
-        TimelineView(.animation(minimumInterval: 1.0 / 60, paused: !animated)) { timeline in
+        TimelineView(.animation(minimumInterval: 1.0 / 30, paused: !animated)) { timeline in
             let t = animated ? timeline.date.timeIntervalSince(began) : 0
             let blinkPeriod = stage == 2 ? 1.2 : 2.7
             let bc = t.truncatingRemainder(dividingBy: blinkPeriod)
@@ -1192,28 +1192,28 @@ struct ReconnectIndicator: View {
                 drawNode(&context, cx: rightX, cy: cy, boxSize: 44, gaze: stage >= 2 ? -1.25 : 0, eyeY: 0,
                          blink: stage >= 2 ? blink : 1, tiltDeg: rTilt, liftPx: rLift, hollow: stage < 2, ink: ink, surface: surface)
 
-                // 4. Fluid 4-pill progress bar
+                // Direct and relay probes share the connection stage.
                 if active {
                     let pillY = size.height - 10.0
                     let gap = 5.0
                     let baseW = 8.0
                     let activeW = 24.0
                     let h = 4.5
-                    var widths = [Double](repeating: 0, count: 4)
-                    var factors = [Double](repeating: 0, count: 4)
-                    var totalW = gap * 3.0
-                    for i in 0..<4 {
-                        let dist = abs(stageFloat - Double(i))
+                    var widths = [Double](repeating: 0, count: 3)
+                    var factors = [Double](repeating: 0, count: 3)
+                    var totalW = gap * 2.0
+                    for i in 0..<3 {
+                        let dist = abs(max(0, stageFloat - 1) - Double(i))
                         let af = max(0, min(1, 1.0 - dist))
                         let s = af * af * (3.0 - 2.0 * af)
                         let w = baseW + (activeW - baseW) * s
                         widths[i] = w; factors[i] = s; totalW += w
                     }
                     var px = (size.width - totalW) / 2.0
-                    for i in 0..<4 {
+                    for i in 0..<3 {
                         let w = widths[i]
                         let s = factors[i]
-                        let done = Double(i) < stageFloat - 0.1
+                        let done = Double(i) < max(0, stageFloat - 1) - 0.1
                         let fill: Color = s > 0.5 ? yellow : (done ? ink : subtle)
                         let rect = CGRect(x: px, y: pillY - h / 2.0, width: w, height: h)
                         let pillPath = Path(roundedRect: rect, cornerRadius: h / 2.0)

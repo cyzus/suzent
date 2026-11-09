@@ -14,3 +14,34 @@ public func withConnectionTimeout<Value: Sendable>(
         return try await group.next()!
     }
 }
+
+public enum ConnectionRoute: Sendable, Equatable {
+    case direct(String)
+    case relay
+}
+
+public func resolveConnectionRoute(
+    origins: [String], hasRelay: Bool,
+    probe: @escaping @Sendable (ConnectionRoute) async throws -> Void
+) async throws -> ConnectionRoute {
+    try await withThrowingTaskGroup(of: ConnectionRoute?.self) { group in
+        var visited = Set<String>()
+        let routes = origins.filter { visited.insert($0).inserted }.map(ConnectionRoute.direct)
+            + (hasRelay ? [.relay] : [])
+        for route in routes {
+            group.addTask {
+                do {
+                    if route == .relay && !origins.isEmpty { try await Task.sleep(for: .milliseconds(300)) }
+                    try Task.checkCancellation()
+                    try await probe(route)
+                    return route
+                } catch { try Task.checkCancellation(); return nil }
+            }
+        }
+        defer { group.cancelAll() }
+        for try await route in group {
+            if let route { try Task.checkCancellation(); return route }
+        }
+        throw PairingError.unreachable
+    }
+}

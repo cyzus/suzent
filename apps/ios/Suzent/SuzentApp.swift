@@ -429,10 +429,10 @@ struct ContentView: View {
                                     Text(desktop.name).lineLimit(1)
                                 }.suzentFont(PresentationTokens.typeCaption, weight: .medium).foregroundStyle(Color.suzentMuted)
                             }
-                            if model.busy, let status = model.reconnectStatus, !status.isEmpty {
-                                Text(status).suzentFont(PresentationTokens.typeCaption, weight: .semibold, design: .monospaced)
+                            Group {
+                                Text(model.busy ? (model.reconnectStatus ?? "") : "").suzentFont(PresentationTokens.typeCaption, weight: .semibold, design: .monospaced)
                                     .tracking(0.8).foregroundStyle(Color.suzentMuted).lineLimit(1)
-                            }
+                            }.frame(height: 16)
                         }
                         Group {
                             if model.busy {

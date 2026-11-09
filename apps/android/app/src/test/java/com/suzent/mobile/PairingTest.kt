@@ -1,5 +1,6 @@
 package com.suzent.mobile
 
+import kotlinx.coroutines.launch
 import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.Assert.*
@@ -78,5 +79,43 @@ class PairingTest {
         }
         assertEquals("https://tailnet.example", selected.first.origin)
         assertEquals("https://tailnet.example", selected.second)
+    }
+
+    @Test fun reconnectRacesAddressesAndCancelsLosers() = kotlinx.coroutines.runBlocking {
+        val cancelled = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val route = kotlinx.coroutines.withTimeout(2000) {
+            resolveConnectionRoute(listOf("slow", "fast"), true) { route ->
+                if (route == ConnectionRoute.Direct("slow")) {
+                    try { kotlinx.coroutines.delay(30000) } finally { cancelled.complete(Unit) }
+                }
+            }
+        }
+        assertEquals(ConnectionRoute.Direct("fast"), route)
+        assertTrue(cancelled.isCompleted)
+    }
+
+    @Test fun reconnectRelayDoesNotWaitForDirectTimeout() = kotlinx.coroutines.runBlocking {
+        val route = kotlinx.coroutines.withTimeout(2000) {
+            resolveConnectionRoute(listOf("slow"), true) { route ->
+                if (route != ConnectionRoute.Relay) kotlinx.coroutines.delay(30000)
+            }
+        }
+        assertEquals(ConnectionRoute.Relay, route)
+    }
+
+    @Test fun reconnectFailsWhenAllRoutesFail() = kotlinx.coroutines.runBlocking {
+        val failure = runCatching {
+            resolveConnectionRoute(listOf("one", "two"), true) { throw java.io.IOException() }
+        }.exceptionOrNull() as PairingFailure
+        assertEquals(PairingFailure.Reason.UNREACHABLE, failure.reason)
+    }
+
+    @Test fun reconnectPreservesCancellation() = kotlinx.coroutines.runBlocking {
+        val attempt = launch {
+            resolveConnectionRoute(listOf("slow"), true) { kotlinx.coroutines.delay(30000) }
+        }
+        attempt.cancel()
+        attempt.join()
+        assertTrue(attempt.isCancelled)
     }
 }
