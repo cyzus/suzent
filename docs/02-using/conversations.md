@@ -90,8 +90,9 @@ same way, from its box in the chat.
 
 ## Talk instead of typing
 
-Click the microphone next to the paperclip in the message box to start voice
-mode, and just speak. A fast voice model answers you out loud and hands
+When the message box is empty, its send button shows a microphone. Click it to
+start voice mode, and just speak. As soon as you type, it turns back into the
+send button. A fast voice model answers you out loud and hands
 anything that needs real work to your agent, which does it in the chat as
 usual, with its tools, memory, and the chat's permission mode. While it works
 you can keep talking: add to the request, correct it, or say "stop". When it's
