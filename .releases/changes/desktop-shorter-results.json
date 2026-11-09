@@ -1,0 +1,1 @@
+{"products": {"desktop": "patch"}, "summary": "Desktop control results no longer repeat a sandbox notice or show unknown retry details on every call."}
