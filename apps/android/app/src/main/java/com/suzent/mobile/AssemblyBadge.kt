@@ -53,7 +53,7 @@ fun AssemblyBadge(thinking: Boolean, parts: List<MessagePart> = emptyList(), str
         expanded = thinking
     }
     LaunchedEffect(thinking, reduced, lifecycle) {
-        if (thinking && !reduced) lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+        if (thinking) lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
             var previous = 0L
             while (true) withFrameNanos { now ->
                 if (previous != 0L) seconds.doubleValue += min((now - previous) / 1_000_000_000.0, .05)

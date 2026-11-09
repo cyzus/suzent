@@ -86,7 +86,7 @@ const ThinkingAnimationComponent: React.FC<ThinkingAnimationProps> = ({ isThinki
       cancelAnimationFrame(frame);
       previous = undefined;
       draw();
-      if (!motion.matches && !document.hidden) frame = requestAnimationFrame(tick);
+      if (!document.hidden) frame = requestAnimationFrame(tick);
     };
     const observer = new ResizeObserver(draw);
     observer.observe(canvas);

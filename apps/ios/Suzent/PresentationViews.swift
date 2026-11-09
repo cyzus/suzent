@@ -1275,7 +1275,7 @@ struct AssemblyBadge: View {
     var body: some View {
         GeometryReader { geometry in
             ZStack {
-                TimelineView(.animation(minimumInterval: 1.0 / 30, paused: !expanded || reduceMotion || scenePhase != .active)) { timeline in
+                TimelineView(.animation(minimumInterval: 1.0 / 30, paused: !expanded || scenePhase != .active)) { timeline in
                     Canvas { context, size in
                         context.scaleBy(x: size.width / 320, y: size.height / 108)
                         for mark in AssemblyScene.frame(seconds: timeline.date.timeIntervalSince(started), reduced: reduceMotion) {
