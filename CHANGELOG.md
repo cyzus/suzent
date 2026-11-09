@@ -5,6 +5,52 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v0.24.0] - 2026-11-09
+
+<!-- highlights -->
+### Highlights
+
+- **Your agent can read your mail.** The new Email plugin connects QQ Mail, NetEase 163/126, Gmail, iCloud, Aliyun, Tencent Exmail or any IMAP/SMTP server. It searches, reads without marking anything as seen, and writes drafts. Sending is off until you switch it on for that mailbox, is approved one message at a time, and your password never reaches the model.
+- **It can drive your desktop.** The optional Desktop plugin lets the agent operate native apps through agent-desktop—installed from npm or npmmirror only after you agree, pinned by version and checksum. Every desktop action goes through the same approval policy as everything else.
+- **The phone can finally answer back.** Tables, cards, buttons and forms the agent shows now render in the iOS and Android chat, so you can answer a question or fill in a form from your phone instead of walking back to the computer. A new panel shows a conversation's plan and how much context it is using, and the app has its own appearance, text size, haptics and language settings.
+- **Pairing asks first.** Scanning the pairing QR code now asks you to approve the phone on the computer before it gets access, and the code disappears the moment it is scanned. Paired phones can be renamed so they are easy to tell apart.
+- **Long jobs keep going.** Sub-agent and memory-consolidation runs now compact their context when it fills up instead of failing, so a long task no longer dies near the end.
+- **It stays out of the way.** Closing the window keeps Suzent in the Windows notification area or the macOS menu bar, the tray shows which chats are waiting on you, and closing asks whether to minimize or quit.
+
+**Reach the keyboard.** Right-click a project to start a chat in it, upload into a folder, or run a scheduled task now.
+<!-- /highlights -->
+
+### Release notes
+- About now shows update status plus install identity: versions, commit, build source, distribution, runtime, and installation ID.
+- Desktop control now installs agent-desktop 1.2.0, which can open the macOS Dock and menu bar extras, and `suzent plugin install` works when Suzent isn't running.
+- Long-press menus open beside the finger and stay inside the screen, including in the Android app.
+- The chat no longer jumps while a reply streams or when it finishes, keeps your reading position, and no longer shows a blank area on macOS after you send a message.
+- Long sub-agent and memory-consolidation runs now compact their context instead of failing when it fills up.
+- Context menus can start a chat in a project, upload into a folder, save a sandbox file from the browser, and pause or run scheduled tasks and heartbeats.
+- Use a deeper yellow in dark mode, and give inline code the same black border on phones as on desktop.
+- Desktop thinking animation now uses the mobile robot assembly sequence and respects reduced motion preferences.
+- The desktop message box can grow to half the window while you edit a long message.
+- Optional Desktop plugin that lets the agent operate native apps through agent-desktop, downloaded from npm or npmmirror only after you agree.
+- Desktop control results no longer repeat a sandbox notice or show unknown retry details on every call.
+- Closing the window keeps Suzent in the Windows notification area or the macOS menu bar until you quit.
+- The tray shows which chats are waiting on you or running, and closing the window asks whether to minimize to the tray or quit, with a setting to remember the choice.
+- The memory dream can now tell Regent about things worth your attention, such as lessons that could become a skill or a pattern of recurring failures.
+- New Email plugin: connect QQ Mail, NetEase, Gmail, iCloud and other mailboxes so the agent can search, read and draft mail, and send each message only after you approve it.
+- The agent can search only past lessons, and lessons in the notebook's Experience pages now show up in memory search.
+- See a conversation's plan and context usage from the phone, and choose appearance, text size, haptics and language in the mobile app's settings.
+- Pairing a phone now asks you to allow it on the computer after it scans the QR code, and the QR code disappears as soon as it is scanned.
+- Tables, cards, buttons and forms the agent shows now appear in the mobile chat, and you can answer them from your phone.
+- Rename paired phones under Mobile access so each one is easy to recognize, even iPhones that only report "iPhone".
+- Fix "Message too long" errors on iPhone when opening long chats or images, especially through the relay.
+- Prompts from an ACP client such as Zed, and messages from chat apps such as Telegram, now appear in the desktop chat as soon as their turn starts, labelled with who sent them and from where.
+- Refine chat bubbles and inline code styling, with a clearer copy icon and compact message actions.
+- Simplify settings headers and appearance controls, with direct notification choices and sound previews.
+- /skill <name> now gives the agent the skill's full instructions with your message, so it no longer has to load the skill itself.
+- Type /skill to list your skills, or /skill <name> to have the agent use one, with skill names suggested as you type.
+- Show a peeking Suzent indicator above the chat composer when scrolled up during streaming so clicking it jumps back to the bottom.
+- Only show the streaming peek scroll-to-bottom indicator once the latest user prompt and active streaming reply have scrolled completely out of view.
+- Fixed settings and device files failing to load on Windows systems with a non-UTF-8 locale, such as Chinese (gbk).
+
 ## [v0.23.0] - 2026-11-06
 
 ### Release notes
