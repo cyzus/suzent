@@ -974,7 +974,7 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
                 variant="ghost"
                 className="h-9 text-sm max-w-[220px]"
                 buttonClassName="!h-9 !gap-1.5 !font-bold [&>svg]:!w-3.5 [&>svg]:!h-3.5 [&>svg]:shrink-0 [&>svg]:stroke-2 [&>svg]:text-neutral-400 dark:[&>svg]:text-neutral-500 !px-2 !py-1.5 hover:!bg-neutral-200 dark:hover:!bg-zinc-600 focus-visible:!ring-2 focus-visible:!ring-brutal-blue"
-                dropdownClassName="min-w-[240px] right-0"
+                dropdownClassName="min-w-[min(240px,calc(100vw-16px))]"
               />
             </div>
           )}
