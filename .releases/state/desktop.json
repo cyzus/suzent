@@ -1,5 +1,5 @@
 {
-  "version": "0.25.0",
+  "version": "0.25.1",
   "consumed": [
     ".releases/changes/about-install-identity.json",
     ".releases/changes/acp-auth-streaming.json",
@@ -255,6 +255,7 @@
     ".releases/changes/subagent-stall-recovery.json",
     ".releases/changes/task-progress-panel.json",
     ".releases/changes/tool-argument-conventions.json",
+    ".releases/changes/tool-block-running-shadow.json",
     ".releases/changes/tool-exceptions-fail-call.json",
     ".releases/changes/tool-failure-display.json",
     ".releases/changes/tool-package-layout.json",
