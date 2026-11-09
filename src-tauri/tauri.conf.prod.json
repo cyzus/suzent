@@ -12,6 +12,8 @@
   "app": {
     "windows": [
       {
+        "label": "main",
+        "create": false,
         "title": "SUZENT - Your Personal Agent",
         "width": 1040,
         "height": 760,
