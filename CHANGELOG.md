@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [v0.24.0] - 2026-11-09
 
+<!-- highlights -->
+### Highlights
+
+- **Your agent can read your mail.** The new Email plugin connects QQ Mail, NetEase 163/126, Gmail, iCloud, Aliyun, Tencent Exmail or any IMAP/SMTP server. It searches, reads without marking anything as seen, and writes drafts. Sending is off until you switch it on for that mailbox, is approved one message at a time, and your password never reaches the model.
+- **It can drive your desktop.** The optional Desktop plugin lets the agent operate native apps through agent-desktop—installed from npm or npmmirror only after you agree, pinned by version and checksum. Every desktop action goes through the same approval policy as everything else.
+- **The phone can finally answer back.** Tables, cards, buttons and forms the agent shows now render in the iOS and Android chat, so you can answer a question or fill in a form from your phone instead of walking back to the computer. A new panel shows a conversation's plan and how much context it is using, and the app has its own appearance, text size, haptics and language settings.
+- **Pairing asks first.** Scanning the pairing QR code now asks you to approve the phone on the computer before it gets access, and the code disappears the moment it is scanned. Paired phones can be renamed so they are easy to tell apart.
+- **Long jobs keep going.** Sub-agent and memory-consolidation runs now compact their context when it fills up instead of failing, so a long task no longer dies near the end.
+- **It stays out of the way.** Closing the window keeps Suzent in the Windows notification area or the macOS menu bar, the tray shows which chats are waiting on you, and closing asks whether to minimize or quit.
+
+**Reach the keyboard.** Right-click a project to start a chat in it, upload into a folder, or run a scheduled task now.
+<!-- /highlights -->
+
 ### Release notes
 - About now shows update status plus install identity: versions, commit, build source, distribution, runtime, and installation ID.
 - Long-press menus open beside the finger and stay inside the screen, including in the Android app.
