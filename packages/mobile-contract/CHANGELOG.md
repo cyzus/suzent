@@ -7,6 +7,7 @@
 - Mobile sessions connected through a relay now look for a direct route in the background and switch when idle without reloading the chat.
 - Mobile reconnects race available addresses and relay, with smoother connection progress.
 - With reduced motion turned on, the thinking animation now shows finished robots stepping along the line instead of a frozen frame.
+- Improve tool permission details and separate shell approval requirements from risk for read-only chained commands.
 
 ## [mobile-v0.8.0] - 2026-11-09
 
