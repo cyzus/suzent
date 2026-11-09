@@ -315,4 +315,7 @@
     <string name="surface_choose">Choose</string>
     <string name="surface_free_text">Or type your own</string>
     <string name="surface_chose">Chose %1$s</string>
+    <string name="reconnect_finding">Finding a connection</string>
+    <string name="reconnect_verifying">Verifying connection</string>
+    <string name="reconnect_syncing">Syncing desktop</string>
 </resources>

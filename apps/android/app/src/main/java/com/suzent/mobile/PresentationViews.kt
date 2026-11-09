@@ -1165,7 +1165,8 @@ fun ReconnectIndicator(active: Boolean, stage: Int = 0) {
     val spRightTilt = remember { DampedSpring(0f, 90f, 12f) }
     val spEyeY = remember { DampedSpring(0f, 140f, 16f) }
 
-    LaunchedEffect(stage) {
+    LaunchedEffect(stage, animated) {
+        if (!animated) return@LaunchedEffect
         when (stage) {
             1 -> { spLeftSX.impulse(-1.3f); spLeftSY.impulse(1.5f); spLeftLift.impulse(-40f) }
             2 -> {
@@ -1276,18 +1277,18 @@ fun ReconnectIndicator(active: Boolean, stage: Int = 0) {
             drawReconnectNode(rightX, cy, nodeSize, if (stage >= 2) -1.25f else 0f, 0f,
                 if (stage >= 2) blink else 1f, rTilt, rLift, rSX, rSY, stage < 2, ink, surface)
 
-            // 4. Fluid 4-pill progress bar
+            // Direct and relay probes share the connection stage.
             if (active) {
                 val pillY = size.height - 10.dp.toPx()
                 val gap = 5.dp.toPx()
                 val baseW = 8.dp.toPx()
                 val activeW = 24.dp.toPx()
                 val h = 4.5.dp.toPx()
-                val widths = FloatArray(4)
-                val factors = FloatArray(4)
-                var totalW = gap * 3f
-                for (i in 0..3) {
-                    val dist = kotlin.math.abs(stSmooth - i)
+                val widths = FloatArray(3)
+                val factors = FloatArray(3)
+                var totalW = gap * 2f
+                for (i in 0..2) {
+                    val dist = kotlin.math.abs((stSmooth - 1f).coerceAtLeast(0f) - i)
                     val af = (1f - dist).coerceIn(0f, 1f)
                     val s = af * af * (3f - 2f * af)
                     val w = baseW + (activeW - baseW) * s
@@ -1295,10 +1296,10 @@ fun ReconnectIndicator(active: Boolean, stage: Int = 0) {
                 }
                 var px = (size.width - totalW) / 2f
                 val cr = androidx.compose.ui.geometry.CornerRadius(h / 2f)
-                for (i in 0..3) {
+                for (i in 0..2) {
                     val w = widths[i]
                     val s = factors[i]
-                    val done = i < stSmooth - 0.1f
+                    val done = i < (stSmooth - 1f).coerceAtLeast(0f) - 0.1f
                     val fill = when {
                         s > 0.5f -> yellow
                         done -> ink

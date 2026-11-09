@@ -1,0 +1,1 @@
+{"products":{"mobile":"patch"},"summary":"Mobile sessions connected through a relay now look for a direct route in the background and switch when idle without reloading the chat."}
