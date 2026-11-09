@@ -3659,6 +3659,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                   inputSuggestion={inputSuggestion}
                   voice={voice}
                   showScrollToBottom={showScrollButton}
+                  scrollContainerRef={scrollContainerRef}
                   onScrollToBottom={scrollToBottom}
                   onFileMentionSelected={(mention) =>
                     setFileMentions((prev) => [
