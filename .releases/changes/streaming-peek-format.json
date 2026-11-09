@@ -1,0 +1,6 @@
+{
+  "products": {
+    "desktop": "none"
+  },
+  "reason": "Prettier reformats one conditional class expression in StreamingPeekButton; no user-visible change."
+}
