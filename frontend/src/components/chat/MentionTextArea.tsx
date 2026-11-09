@@ -48,6 +48,7 @@ interface MentionTextAreaProps {
   placeholder?: string;
   disabled?: boolean;
   className?: string;
+  style?: React.CSSProperties;
   /** How to display a mention path inside its chip (e.g. show full path). */
   renderChipLabel?: (path: string) => string;
 }
@@ -266,6 +267,7 @@ export const MentionTextArea = React.forwardRef<MentionTextAreaHandle, MentionTe
       placeholder,
       disabled,
       className,
+      style,
       renderChipLabel = defaultChipLabel,
     },
     ref
@@ -422,6 +424,7 @@ export const MentionTextArea = React.forwardRef<MentionTextAreaHandle, MentionTe
         contentEditable={!disabled}
         suppressContentEditableWarning
         data-placeholder={placeholder}
+        style={style}
         className={`${className ?? ''} ${isEmpty ? 'is-empty' : ''}`.trim()}
         onInput={emitChange}
         onScroll={onScroll}
