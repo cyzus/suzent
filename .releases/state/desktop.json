@@ -105,6 +105,7 @@
     ".releases/changes/live-trigger-on-wake.json",
     ".releases/changes/macos-arrow-key-garbage.json",
     ".releases/changes/macos-installer-dmg.json",
+    ".releases/changes/macos-native-traffic-lights.json",
     ".releases/changes/mcp-oauth-public-client.json",
     ".releases/changes/mcp-tool-approvals.json",
     ".releases/changes/memory-batch-extraction.json",
