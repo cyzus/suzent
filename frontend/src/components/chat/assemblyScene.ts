@@ -26,11 +26,14 @@ const random = (cycle: number, block: number, salt: number): number => {
 
 // Keep projection, timing, and draw order aligned with the native mobile scenes.
 export function assemblyFrame(seconds: number, reduced = false): AssemblyMark[] {
-  const t = reduced ? 3.2 : Math.max(0, seconds) * 1.45;
+  const t = reduced ? 0 : Math.max(0, seconds) * 1.45;
   const cycle = t % 5.5;
   const cycleId = Math.floor(t / 5.5);
   const marks: AssemblyMark[] = [];
-  const advance = ease((cycle - 4.3) / 1.2) * 76;
+  // Reduced motion skips the build but keeps the line moving: finished robots rest, then glide one slot.
+  const advance = reduced
+    ? ease(((Math.max(0, seconds) % 2.6) - 1.8) / 0.8) * 76
+    : ease((cycle - 4.3) / 1.2) * 76;
   const shell = ease((cycle - 1.5) / 0.28);
   const awake = ease((cycle - 2.7) / 0.3);
   const project = (v: Vector, center: number): Point => {
@@ -127,7 +130,7 @@ export function assemblyFrame(seconds: number, reduced = false): AssemblyMark[] 
       color: '#000',
       alpha: 0.09,
     });
-    if (slot > 0) {
+    if (slot > 0 || reduced) {
       cube(center, 14.65, [0, 0, 0], 1, 0.22);
       continue;
     }

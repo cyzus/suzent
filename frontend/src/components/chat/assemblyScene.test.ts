@@ -15,9 +15,19 @@ describe('assembly scene', () => {
     expect(scan(3.2 / 1.45)).toHaveLength(0);
   });
 
-  it('holds a fixed assembled scene for reduced motion', () => {
-    expect(assemblyFrame(0, true)).toEqual(assemblyFrame(100, true));
-    expect(assemblyFrame(0, true).some((mark) => mark.color === '#e8eceb')).toBe(true);
+  it('moves only finished robots one slot at a time for reduced motion', () => {
+    const shadows = (seconds: number) =>
+      assemblyFrame(seconds, true).filter((mark) => mark.color === '#000');
+    for (const seconds of [0, 1, 2.2, 2.5]) {
+      const marks = assemblyFrame(seconds, true);
+      expect(marks.filter((mark) => mark.color === '#e8eceb')).toHaveLength(
+        shadows(seconds).length * 2
+      );
+      expect(marks.some((mark) => mark.width !== undefined)).toBe(false);
+    }
+    expect(assemblyFrame(1.7, true)).toEqual(assemblyFrame(0, true));
+    expect(shadows(2.2).at(-1)!.points[0][0]).toBeGreaterThan(shadows(0).at(-1)!.points[0][0]);
+    expect(assemblyFrame(2.6, true)).toEqual(assemblyFrame(0, true));
   });
 
   it('keeps geometry and opacity valid throughout multiple cycles', () => {

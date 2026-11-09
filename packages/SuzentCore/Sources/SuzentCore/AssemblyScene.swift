@@ -29,11 +29,12 @@ public enum AssemblyScene {
         return v - floor(v)
     }
     public static func frame(seconds: Double, reduced: Bool = false) -> [AssemblyMark] {
-        let t = reduced ? 3.2 : max(0, seconds) * 1.45
+        let t = reduced ? 0 : max(0, seconds) * 1.45
         let cycle = t.truncatingRemainder(dividingBy: duration)
         let cycleID = Int(floor(t / duration))
         var marks: [AssemblyMark] = []
-        let advance = ease((cycle - 4.3) / 1.2) * 76
+        // Reduced motion skips the build but keeps the line moving: finished robots rest, then glide one slot.
+        let advance = reduced ? ease((max(0, seconds).truncatingRemainder(dividingBy: 2.6) - 1.8) / 0.8) * 76 : ease((cycle - 4.3) / 1.2) * 76
         let shell = ease((cycle - 1.5) / 0.28)
         let awake = ease((cycle - 2.7) / 0.3)
         func project(_ x: Double, _ y: Double, _ z: Double, _ center: Double) -> AssemblyPoint {
@@ -81,7 +82,7 @@ public enum AssemblyScene {
                 return AssemblyPoint(x: center + 18 * cos(angle), y: 81 + 2 * sin(angle))
             }
             marks.append(AssemblyMark(points: shadow, color: 0, alpha: 0.09))
-            if slot > 0 { cube(center,14.65,eyes:0.22); continue }
+            if slot > 0 || reduced { cube(center,14.65,eyes:0.22); continue }
             if slot == 0 { scan(back: true) }
             var parts: [(offset: (Double,Double,Double), alpha: Double)] = []
             for a in -1...1 { for b in -1...1 { for c in -1...1 {
