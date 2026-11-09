@@ -335,6 +335,7 @@ const AGUIPartsContent: React.FC<{
                       permissionDecision: tp.permissionDecision,
                       permissionResolution: tp.permissionResolution,
                       outcome: tp.outcome,
+                      parentToolCallId: tp.parentToolCallId,
                       onApprove:
                         isActionablyPending && tp.approvalId && onToolApproval
                           ? (
@@ -420,25 +421,28 @@ const AGUIPartsContent: React.FC<{
                         state={itemState}
                         toolName={t.toolName}
                       >
-                        <ToolCallBlock
-                          toolName={t.toolName}
-                          toolArgs={t.toolArgs}
-                          output={t.output}
-                          defaultCollapsed={t.approvalState !== 'pending'}
-                          approvalState={t.approvalState}
-                          isStreaming={isStreaming && t.state === 'running'}
-                          onApprove={t.onApprove}
-                          onDeny={t.onDeny}
-                          permission={t.permission}
-                          permissionDecision={t.permissionDecision}
-                          permissionResolution={t.permissionResolution}
-                          outcome={t.outcome}
-                          isAutoApproved={isAutoApproved}
-                          onRemovePolicy={onRemoveApprovalPolicy}
-                          onForceWebContext={onForceWebContext}
-                          toolCallId={t.toolCallId}
-                          inActivityRail
-                        />
+                        {/* A call a code mode snippet made sits under its run_code. */}
+                        <div className={t.parentToolCallId ? 'pl-4' : undefined}>
+                          <ToolCallBlock
+                            toolName={t.toolName}
+                            toolArgs={t.toolArgs}
+                            output={t.output}
+                            defaultCollapsed={t.approvalState !== 'pending'}
+                            approvalState={t.approvalState}
+                            isStreaming={isStreaming && t.state === 'running'}
+                            onApprove={t.onApprove}
+                            onDeny={t.onDeny}
+                            permission={t.permission}
+                            permissionDecision={t.permissionDecision}
+                            permissionResolution={t.permissionResolution}
+                            outcome={t.outcome}
+                            isAutoApproved={isAutoApproved}
+                            onRemovePolicy={onRemoveApprovalPolicy}
+                            onForceWebContext={onForceWebContext}
+                            toolCallId={t.toolCallId}
+                            inActivityRail
+                          />
+                        </div>
                       </ActivityRailItem>
                     );
                   });

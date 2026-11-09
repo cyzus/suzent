@@ -146,6 +146,7 @@ export function SettingsModal({
   const [useCustomTools, setUseCustomTools] = useState(false);
   const [useCustomMcp, setUseCustomMcp] = useState(false);
   const [memoryEnabled, setMemoryEnabled] = useState(false);
+  const [codeMode, setCodeMode] = useState(false);
   const [sandboxEnabled, setSandboxEnabled] = useState(false);
 
   // MCP Server Management State
@@ -271,6 +272,7 @@ export function SettingsModal({
       .catch(() => setMcpServers(null));
 
     setMemoryEnabled(!!backendConfig?.userPreferences?.memory_enabled);
+    setCodeMode(!!backendConfig?.userPreferences?.code_mode);
     setSandboxEnabled(
       !!(backendConfig?.userPreferences?.sandbox_enabled ?? backendConfig?.sandboxEnabled)
     );
@@ -336,6 +338,17 @@ export function SettingsModal({
     } catch (error) {
       console.error('Failed to save sandbox setting', error);
       setSandboxEnabled(!enabled);
+    }
+  }
+
+  async function handleCodeModeChange(enabled: boolean): Promise<void> {
+    setCodeMode(enabled);
+    try {
+      await saveUserPreferences({ code_mode: enabled });
+      await refreshBackendConfig();
+    } catch (error) {
+      console.error('Failed to save code mode setting', error);
+      setCodeMode(!enabled);
     }
   }
 
@@ -568,6 +581,8 @@ export function SettingsModal({
           unregisteredModels={roleSuggestions._unregistered || []}
           onChange={setRoleModels}
           onOpenVoiceSettings={() => selectCategory('audio')}
+          codeMode={codeMode}
+          onCodeModeChange={handleCodeModeChange}
         />
       )}
 

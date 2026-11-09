@@ -376,6 +376,37 @@ A tool that returns a list the caller may want to loop over (paths, matches, sea
 
 `glob_search`, `grep_search`, `read_file`, `web_search`, `webpage_fetch`, `memory_search`, `session_search`, `list_tasks`, `mail_search` and `mail_read` follow this pattern.
 
+## Code mode
+
+Code mode (`src/suzent/core/code_mode.py`, off unless `code_mode` is set in
+the user's preferences) adds pydantic-ai-harness's `CodeMode` capability.
+The model gets one `run_code` tool whose Python snippet calls tools as async
+functions inside the Monty sandbox (`pydantic-monty`, pinned exactly).
+
+- **Which tools.** `CODE_MODE_TOOLS` lists the tools a snippet may call. Only
+  read-only tools that never ask for approval belong there. Suzent approves a
+  call by ending the run with `DeferredToolRequests` and resuming it, which a
+  running snippet cannot do, and the shell would make the sandbox pointless.
+  Every other tool stays a direct call. Tools with typed results (see
+  [Structured results](#structured-results)) are what make snippets useful,
+  since the code reads fields instead of parsing text.
+- **Live display.** Nested calls go through `ToolManager.handle_call`, so
+  capability hooks fire, but they emit no events on the run stream.
+  `CodeModeEventsCapability.wrap_tool_execute` sees each one (its id is
+  `<run_code id>__<n>`) and puts a `code_mode_call` custom event and the usual
+  `TOOL_CALL_START`/`ARGS`/`END`/`RESULT` events on `deps.ui_event_queue`.
+  `streaming.py` drains that queue on every loop tick and right after each
+  stream event, so a snippet's calls reach the client before its `run_code`
+  result. The frontend indents parts that carry `parentToolCallId`.
+- **Reload.** The draft accumulator keeps `parentToolCallId` on streamed
+  parts. When a display is rebuilt from history, `_rebuild_display_messages`
+  expands each `run_code` return's `tool_calls`/`tool_returns` metadata into
+  the same nested parts.
+- **Timeout.** The stream waits `RUN_CODE_STREAM_TIMEOUT_SECONDS` for a
+  `run_code` result, since a snippet may call several slow tools in turn.
+- **Cost.** The harness puts the signatures of the sandboxed tools, including
+  their return types, in the instructions on every request.
+
 ## Tool Registry
 
 The tool registry (`src/suzent/tools/registry.py`) provides programmatic access:

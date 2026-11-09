@@ -252,6 +252,7 @@ export interface ConfigOptions {
     thinking?: ThinkingEffort;
     sandbox_enabled?: boolean;
     sandbox_volumes?: string[];
+    code_mode?: boolean;
     embedding_model?: string;
     extraction_model?: string;
   };

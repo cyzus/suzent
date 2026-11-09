@@ -2795,6 +2795,11 @@ def _rebuild_display_messages(messages: list, model_id: str | None = None) -> li
         ToolReturnPart,
     )
     import json
+    from suzent.core.code_mode import (
+        RUN_CODE_TOOL,
+        code_mode_display_part,
+        nested_calls,
+    )
     from suzent.streaming import tool_call_outcome
     from suzent.core.system_reminder import (
         has_authenticated_block,
@@ -2859,10 +2864,13 @@ def _rebuild_display_messages(messages: list, model_id: str | None = None) -> li
     denied_tool_calls = set()
     tool_returns_by_id: dict[str, str] = {}
     tool_outcomes_by_id: dict[str, str] = {}
+    code_mode_calls_by_id: dict[str, list[tuple[Any, Any]]] = {}
     for msg in messages:
         if isinstance(msg, ModelRequest):
             for part in msg.parts:
                 if isinstance(part, ToolReturnPart):
+                    if part.tool_name == RUN_CODE_TOOL:
+                        code_mode_calls_by_id[part.tool_call_id] = nested_calls(part)
                     executed_tool_calls.add(part.tool_call_id)
                     if _is_denied_tool_return(part.content):
                         denied_tool_calls.add(part.tool_call_id)
@@ -2996,6 +3004,24 @@ def _rebuild_display_messages(messages: list, model_id: str | None = None) -> li
                     if outcome := tool_outcomes_by_id.get(part.tool_call_id):
                         structured_tool_part["outcome"] = outcome
                     structured_parts.append(structured_tool_part)
+                    # A snippet's own calls are not in the history as parts;
+                    # its return recorded them, so show them after it.
+                    for nested_call, nested_return in code_mode_calls_by_id.get(
+                        part.tool_call_id, []
+                    ):
+                        structured_parts.append(
+                            code_mode_display_part(
+                                nested_call,
+                                nested_return,
+                                parent_id=part.tool_call_id,
+                                format_args=format_tool_args_for_display,
+                                format_output=lambda content: (
+                                    normalize_tool_output_for_part(
+                                        serialize_tool_return_content(content)
+                                    )
+                                ),
+                            )
+                        )
 
                     tc_dict = {
                         "id": part.tool_call_id,

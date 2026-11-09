@@ -448,6 +448,12 @@ def create_agent(config: Dict[str, Any]) -> Agent[AgentDeps, str]:
         PromptCacheRoutingCapability,
     )
 
+    if config.get("code_mode"):
+        from suzent.core.code_mode import CodeModeEventsCapability, build_code_mode
+
+        capabilities.append(build_code_mode())
+        capabilities.append(CodeModeEventsCapability())
+
     capabilities.append(ToolResultContextCapability())
     capabilities.append(ContextUsageCapability(model_id=model_id))
     capabilities.append(PromptCacheRoutingCapability())
@@ -512,6 +518,8 @@ def build_agent_config(
                 config["tools"] = prefs.tools
             if not config.get("thinking") and prefs.thinking:
                 config["thinking"] = prefs.thinking
+            if "code_mode" not in config and prefs.code_mode:
+                config["code_mode"] = True
     except Exception as e:
         logger.warning(f"Failed to load user preferences: {e}")
 

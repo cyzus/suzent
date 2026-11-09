@@ -19,6 +19,7 @@ import type {
 } from '../../types/agui';
 import { DisclosureChevron } from '../DisclosureChevron';
 import { MediaToolRenderer } from './MediaToolRenderer';
+import { CodeSnippetRenderer } from './CodeSnippetRenderer';
 
 export interface ToolRendererProps {
   toolName: string;
@@ -33,6 +34,7 @@ const ARGS_RENDERERS: Record<string, React.FC<ToolRendererProps> | undefined> = 
   start_command: BashCommandRenderer,
   edit_file: FileDiffViewer,
   write_file: FileDiffViewer,
+  run_code: CodeSnippetRenderer,
 };
 
 // Renders in the output section when output arrives.
