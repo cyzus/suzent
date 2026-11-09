@@ -15,6 +15,8 @@ interface Option {
 
 interface BrutalSelectProps {
   value: string;
+  ariaLabel?: string;
+  menuAlign?: 'start' | 'end';
   onChange: (value: string) => void;
   options: (string | Option)[];
   label?: string;
@@ -31,6 +33,8 @@ interface BrutalSelectProps {
 
 export const BrutalSelect: React.FC<BrutalSelectProps> = ({
   value,
+  ariaLabel,
+  menuAlign = 'start',
   onChange,
   options,
   label,
@@ -91,11 +95,17 @@ export const BrutalSelect: React.FC<BrutalSelectProps> = ({
       ...(shouldDropUp
         ? { bottom: Math.max(margin, window.innerHeight - rect.top + gap) }
         : { top: Math.max(margin, rect.bottom + gap) }),
-      left: Math.max(margin, Math.min(rect.left, window.innerWidth - dropdownWidth - margin)),
+      left: Math.max(
+        margin,
+        Math.min(
+          menuAlign === 'end' ? rect.right - dropdownWidth : rect.left,
+          window.innerWidth - dropdownWidth - margin
+        )
+      ),
       width: rect.width,
       maxHeight: Math.min(240, shouldDropUp ? spaceAbove : spaceBelow),
     });
-  }, [dropUp]);
+  }, [dropUp, menuAlign]);
 
   useLayoutEffect(() => {
     if (isOpen) {
@@ -197,6 +207,8 @@ export const BrutalSelect: React.FC<BrutalSelectProps> = ({
       <button
         ref={buttonRef}
         type="button"
+        aria-label={ariaLabel}
+        aria-expanded={isOpen}
         disabled={disabled}
         onClick={() => {
           if (!disabled) setIsOpen(!isOpen);

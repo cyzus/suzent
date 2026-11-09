@@ -3195,3 +3195,63 @@ button.activity-turn-duration:focus-visible {
 .dark .regent-user-message .regent-user-bubble {
   border-color: rgb(255 255 255 / 30%);
 }
+
+.permission-dock-controls {
+  height: 53px;
+}
+.permission-dock-transition {
+  animation: permission-dock-enter 160ms ease-out both;
+}
+@keyframes permission-dock-enter {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@media (max-width: 420px) {
+  .permission-dock-controls {
+    height: 97px;
+  }
+  .permission-dock-feedback {
+    flex-wrap: wrap;
+  }
+  .permission-dock-feedback input {
+    flex-basis: 100%;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .permission-dock-transition {
+    animation: none;
+  }
+}
+
+.permission-scope-menu {
+  border-width: 2px;
+  box-shadow: none;
+}
+.permission-scope-menu > button {
+  font-size: 12px;
+  font-weight: 500;
+  text-transform: none;
+  border-bottom-width: 1px;
+}
+
+.permission-dock-action-slot {
+  min-width: 220px;
+}
+@media (max-width: 640px) {
+  .permission-dock-controls {
+    height: 97px;
+  }
+  .permission-dock-persistent {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .permission-dock-persistent > input {
+    flex-basis: 100%;
+  }
+}
