@@ -1,0 +1,6 @@
+{
+  "products": {
+    "desktop": "patch"
+  },
+  "summary": "Only show the streaming peek scroll-to-bottom indicator once the latest user prompt and active streaming reply have scrolled completely out of view."
+}

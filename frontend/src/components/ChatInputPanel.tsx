@@ -75,6 +75,7 @@ interface ChatInputPanelProps {
   /** Realtime voice session, owned by ChatWindow so it outlives view swaps. */
   voice: VoiceSession;
   showScrollToBottom?: boolean;
+  scrollContainerRef?: React.RefObject<HTMLDivElement | null>;
   onScrollToBottom?: () => void;
 }
 
@@ -156,6 +157,7 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
   inputSuggestion = null,
   voice,
   showScrollToBottom = false,
+  scrollContainerRef,
   onScrollToBottom,
 }) => {
   const isFocal = currentChatId === FOCAL_CHAT_ID;
@@ -463,6 +465,7 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
             !mentionActive &&
             suggestions.length === 0
           }
+          scrollContainerRef={scrollContainerRef}
           onClick={onScrollToBottom}
         />
       )}
