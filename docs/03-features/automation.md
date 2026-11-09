@@ -221,9 +221,12 @@ Change the 20-turn limit with `goals_max_turns` in
 Scheduled tasks, heartbeats, chat apps, and paired devices only work while
 Suzent is running.
 
-On Windows and macOS, closing the window does not quit. Suzent stays in the
-notification area or the menu bar and keeps going until you choose **Quit**.
-On Linux, closing the window quits.
+On Windows and macOS, closing the window can leave Suzent in the notification
+area or the menu bar, where it keeps going until you choose **Quit**. Windows
+asks each time until you tick **Remember my choice**; macOS minimizes to the
+menu bar. Change it under **Settings → Background Service → When you close the
+window** (**Ask every time**, **Minimize to tray**, or **Quit Suzent**). On
+Linux, closing the window quits.
 
 To keep Suzent running after you quit, and to start it when you sign in, turn
 on **Settings → Background Service**. It needs no administrator access, and it

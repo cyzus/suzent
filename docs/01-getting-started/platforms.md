@@ -18,11 +18,16 @@ agent.
 | **Headless server** | Suzent running as a background service with no window. | [Headless server](#headless-server) |
 | **Chat apps** | Telegram, Slack, Discord, Feishu, or WeChat. | [Chat apps](../05-chat-apps/README.md) |
 
-On Windows, closing the desktop window leaves Suzent in the notification
-area. On macOS, it leaves Suzent in the menu bar. **Open** brings the window
-back, and so does clicking the dock icon or opening the app again. **Quit**
-exits. Until you quit, work Suzent already started keeps running. On Linux,
-closing the window quits. To keep Suzent running after you quit — on any
+On Windows, closing the desktop window asks whether to **Minimize to tray**
+or **Quit Suzent**; tick **Remember my choice** to stop being asked. On macOS,
+closing the window leaves Suzent in the menu bar. You can change what closing
+does under **Settings → Background Service → When you close the window**.
+
+While Suzent sits in the notification area or menu bar, its icon lists the
+chats that are working or waiting on you; click one to open it. **Open** brings
+the window back, and so does clicking the dock icon or opening the app again.
+**Quit** exits. Until you quit, work Suzent already started keeps running. On
+Linux, closing the window quits. To keep Suzent running after you quit — on any
 system — use the
 [background service](../03-features/automation.md#keep-suzent-running-in-the-background).
 
