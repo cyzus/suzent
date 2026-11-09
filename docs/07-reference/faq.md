@@ -99,8 +99,10 @@ next to the message box, or choose one of the
 ### Scheduled tasks don't run when I close the window.
 
 Tasks, heartbeats, and chat apps only work while Suzent is running. On Windows
-and macOS, closing the window leaves Suzent in the notification area or the
-menu bar, so tasks keep running until you choose **Quit**. After you quit, or
+and macOS, choose **Minimize to tray** when you close the window (or set it
+under **Settings → Background Service → When you close the window**) and
+Suzent stays in the notification area or the menu bar, so tasks keep running
+until you choose **Quit**. After you quit, or
 on Linux, turn on **Settings → Background Service**. See
 [Automation](../03-features/automation.md#keep-suzent-running-in-the-background).
 
@@ -147,6 +149,6 @@ background service that won't start, run `suzent service doctor`.
 
 ### How do I update?
 
-Open **Settings → About** and click **Check for updates**, or run
+Open **Settings → About** and click **Check now** under **Software updates**, or run
 `suzent update`. If an update was interrupted, run `suzent repair`. See
 [Updating Suzent](../01-getting-started/updating.md).

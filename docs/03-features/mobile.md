@@ -137,7 +137,7 @@ On your home Wi-Fi that just works. To use it elsewhere, put both devices on
 yourself](#through-your-own-relay), or give Suzent a public HTTPS address of
 your own. Your computer has to be on and running Suzent; the
 [background service](./automation.md#keep-suzent-running-in-the-background)
-keeps it running when the window is closed.
+keeps it running after you quit the desktop app.
 
 ### Through your own relay
 
