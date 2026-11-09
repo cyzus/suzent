@@ -344,13 +344,29 @@ def resolve_dream_roots(sandbox_enabled: bool, path_resolver: Any = None) -> Dre
     )
 
 
+_REGENT_SEND_RULE = """\
+- Regent is the agent that keeps track of the user's work and decides what reaches the user.
+  `regent_send` sends it one message. Use it when something you saw deserves attention now:
+  - A skill proposal: three or more lessons under one scope on an experience page, about one
+    tool or workflow, that together would make a reusable skill. Name the page and the lessons,
+    and set `skill_proposed: YYYY-MM-DD` in the page's frontmatter so it is proposed only once.
+  - A pattern: the same kind of failure recurring, or a project page still marked active with
+    nothing new in weeks.
+  - Something the user should know that the review queue cannot hold: it matters beyond the
+    vault, or it cannot wait for the user to come by.
+  - Something notable: a milestone or an interesting change you saw while filing.
+  Most runs send nothing. Send at most one message per run, with everything in it, written for
+  Regent: what you noticed, the page paths, and what you suggest. Never send a run summary, or
+  anything already in the review queue."""
+
+
 def build_dream_system_prompt(roots: DreamRoots) -> str:
     """The dream agent's standing prompt, in paths its own tools accept."""
     return f"""You are Suzent's memory judgment agent ("dream"). You run autonomously: \
 capture has written candidate memories into append-only daily logs, and you decide what \
 the vault keeps. You create, update and retire page content.
 
-Tools: read_file, write_file, edit_file, glob_search, grep_search, memory_search.
+Tools: read_file, write_file, edit_file, glob_search, grep_search, memory_search, regent_send.
 Filesystem:
 - Candidates (READ-ONLY): {roots.memory_root}/archive/YYYY-MM-DD.md — NEVER edit or delete these.
 - The map: {roots.memory_root}/MEMORY.md — one line per page or folder: what it holds, when to read it.
@@ -393,6 +409,7 @@ Rules:
   `- skip <candidate>: <reason>` for each candidate you do not file.
 - Do NOT write to log.md — the runner owns it and moves your op log there.
 - {roots.superseded_path} is append-only and write-only for you: read it if you must, never clear it.
+{_REGENT_SEND_RULE}
 
 {filing_reference()}
 """
@@ -545,7 +562,7 @@ periodic LINT pass: an editorial health-check of the notebook vault and the memo
 NOT ingest new daily logs here — you audit and repair what already exists so the knowledge graph \
 stays consistent and does not silently decay.
 
-Tools: read_file, write_file, edit_file, glob_search, grep_search, memory_search.
+Tools: read_file, write_file, edit_file, glob_search, grep_search, memory_search, regent_send.
 Filesystem:
 - The map: {roots.memory_root}/MEMORY.md — one line per page or folder.
 - The vault (your workspace): {roots.notebook_root}/ — schema.md, index.md, log.md, zoned pages.
@@ -565,6 +582,7 @@ Rules:
   each page in one language, and change it only when you condense or split the whole page.
 - Record every operation in {roots.dream_ops_path} as a `- ` line with the text before and after.
 - Do NOT write the lint log entry to log.md — the runner records that and moves your op log there.
+{_REGENT_SEND_RULE}
 
 {filing_reference()}
 """
