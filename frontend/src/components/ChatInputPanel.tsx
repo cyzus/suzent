@@ -40,6 +40,7 @@ import {
 import { isImeComposing } from '../lib/ime';
 import type { VoiceSession } from '../hooks/useVoiceSession';
 import { VoiceBar } from './chat/VoiceBar';
+import { StreamingPeekButton } from './chat/StreamingPeekButton';
 
 interface ChatInputPanelProps {
   input: string;
@@ -73,6 +74,8 @@ interface ChatInputPanelProps {
   inputSuggestion?: string | null;
   /** Realtime voice session, owned by ChatWindow so it outlives view swaps. */
   voice: VoiceSession;
+  showScrollToBottom?: boolean;
+  onScrollToBottom?: () => void;
 }
 
 export interface FileMentionSelection {
@@ -152,6 +155,8 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
   onFileMentionSelected,
   inputSuggestion = null,
   voice,
+  showScrollToBottom = false,
+  onScrollToBottom,
 }) => {
   const isFocal = currentChatId === FOCAL_CHAT_ID;
   // --- Volume Mounting Logic ---
@@ -449,7 +454,18 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
   };
 
   return (
-    <div className="chat-composer min-w-0 flex flex-col gap-1">
+    <div className="chat-composer min-w-0 flex flex-col gap-1 relative">
+      {onScrollToBottom && (
+        <StreamingPeekButton
+          visible={
+            showScrollToBottom &&
+            streamingForCurrentChat &&
+            !mentionActive &&
+            suggestions.length === 0
+          }
+          onClick={onScrollToBottom}
+        />
+      )}
       <form
         onSubmit={(e) => {
           e.preventDefault();

@@ -1,0 +1,6 @@
+{
+  "products": {
+    "desktop": "patch"
+  },
+  "summary": "Show a peeking Suzent indicator above the chat composer when scrolled up during streaming so clicking it jumps back to the bottom."
+}

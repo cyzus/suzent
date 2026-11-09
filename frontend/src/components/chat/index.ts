@@ -10,6 +10,7 @@ export { AssistantMessage } from './AssistantMessage';
 export { RightSidebar } from './RightSidebar';
 export { PermissionApprovalDock } from './PermissionApprovalDock';
 export { ChatMinimap } from './ChatMinimap';
+export { StreamingPeekButton } from './StreamingPeekButton';
 export { CompactionCube } from './CompactionCube';
 export { ThinkingSlider } from './ThinkingSlider';
 export {

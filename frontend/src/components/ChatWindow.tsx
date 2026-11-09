@@ -2179,6 +2179,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     scrollContainerRef,
     attachScrollContainer,
     bottomRef,
+    showScrollButton,
     scrollToBottom,
     isSelectionDragActive,
   } = useAutoScroll([safeMessages.length, isStreaming], {
@@ -3657,6 +3658,8 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                   currentChatId={currentChatId}
                   inputSuggestion={inputSuggestion}
                   voice={voice}
+                  showScrollToBottom={showScrollButton}
+                  onScrollToBottom={scrollToBottom}
                   onFileMentionSelected={(mention) =>
                     setFileMentions((prev) => [
                       ...prev.filter((item) => item.name !== mention.name),
