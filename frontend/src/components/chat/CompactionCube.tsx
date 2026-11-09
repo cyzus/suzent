@@ -57,8 +57,13 @@ const STYLE = `
   background: currentColor;
   animation: suzentCCSweep 1.8s cubic-bezier(.65, 0, .35, 1) infinite;
 }
+/* Reduced motion drops the travel but keeps a full-width fade so compaction still reads as in progress. */
+@keyframes suzentCCBreathe {
+  0%, 100% { opacity: .25; }
+  50%      { opacity: .7; }
+}
 @media (prefers-reduced-motion: reduce) {
-  .suzent-cc-sweep::after { animation: none; left: 0; right: 55%; }
+  .suzent-cc-sweep::after { animation: suzentCCBreathe 2s ease-in-out infinite; left: 0; right: 0; }
 }
 `;
 
