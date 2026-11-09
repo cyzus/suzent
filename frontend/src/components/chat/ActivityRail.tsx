@@ -262,6 +262,26 @@ export function hasAguiPendingApproval(
   );
 }
 
+/**
+ * Whether the user was asked to approve a call in these chunks. The rail stays
+ * open over that call for the rest of the live turn: folding it the moment the
+ * dock closed hid the call the user had just decided on.
+ */
+export function hasAguiUserResolution(
+  chunks: Array<{ chunk: { type: string; items?: AGUIPart[] } }>
+): boolean {
+  return chunks.some(
+    ({ chunk }) =>
+      chunk.type === 'tool' &&
+      (chunk.items ?? []).some(
+        // The prompt outlives the decision, so this holds from the click on,
+        // before the resumed run reports its resolution.
+        (part) =>
+          part.permissionResolution?.source === 'user' || part.permission?.behavior === 'ask'
+      )
+  );
+}
+
 export function getLegacyActivityLabel(
   chunks: Array<{ chunk: { type: string; blocks?: ContentBlock[] } }>,
   isStreaming: boolean

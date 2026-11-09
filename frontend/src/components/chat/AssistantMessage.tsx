@@ -52,6 +52,7 @@ import {
   getReasoningHeader,
   groupActivityChunks,
   hasAguiPendingApproval,
+  hasAguiUserResolution,
   hasLegacyPendingApproval,
 } from './ActivityRail';
 import { useTypewriter } from '../../hooks/useTypewriter';
@@ -281,7 +282,10 @@ const AGUIPartsContent: React.FC<{
                       }))
                     : []
                 )}
-                defaultExpanded={hasAguiPendingApproval(group.chunks)}
+                defaultExpanded={
+                  hasAguiPendingApproval(group.chunks) ||
+                  (isCurrentGroup && hasAguiUserResolution(group.chunks))
+                }
                 isActive={Boolean(isStreaming)}
                 isCurrent={isCurrentGroup}
                 isThinking={

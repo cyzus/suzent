@@ -2,7 +2,7 @@ import React from 'react';
 import { useI18n } from '../../i18n';
 import type { AGUIPart, ApprovalRememberScope, PermissionAction } from '../../types/agui';
 import { isImeComposing } from '../../lib/ime';
-import { hoverText } from '../../lib/hoverText';
+import { normalizeToolName } from './toolSummary';
 
 interface PermissionApprovalDockProps {
   parts: AGUIPart[];
@@ -98,6 +98,38 @@ function getActionDisplayOrder(actions: PermissionAction[]): PermissionAction[] 
   return [...once, ...persistent, ...deny];
 }
 
+/** A server enum value the locale table does not know yet reads as itself. */
+function labelOr(t: (key: string) => string, key: string, fallback: string): string {
+  const label = t(key);
+  return label === key ? fallback : label;
+}
+
+interface RiskTone {
+  panel: string;
+  chip: string;
+}
+
+function riskToneFor(risk: string | undefined): RiskTone {
+  switch (risk) {
+    case 'high':
+    case 'critical':
+      return {
+        panel: 'border-red-600 bg-red-50 dark:border-red-400 dark:bg-red-950/30',
+        chip: 'border-red-700 bg-red-600 text-white dark:border-red-400 dark:bg-red-500',
+      };
+    case 'medium':
+      return {
+        panel: 'border-amber-500 bg-amber-50 dark:border-amber-400 dark:bg-amber-950/25',
+        chip: 'border-brutal-black bg-brutal-yellow text-brutal-black dark:border-amber-300',
+      };
+    default:
+      return {
+        panel: 'border-neutral-400 bg-neutral-50 dark:border-zinc-500 dark:bg-zinc-800/60',
+        chip: 'border-neutral-500 bg-white text-neutral-700 dark:border-zinc-500 dark:bg-zinc-900 dark:text-neutral-200',
+      };
+  }
+}
+
 interface ActionCommand {
   command: string;
   isPrefix: boolean;
@@ -134,7 +166,7 @@ const ApprovalCard: React.FC<{
 }> = ({ approval, onDecision, keyboardActive }) => {
   const { t } = useI18n();
   const [feedback, setFeedback] = React.useState('');
-  const displayName = approval.toolName.replace(/_/g, ' ');
+  const displayName = normalizeToolName(approval.toolName).replace(/_/g, ' ');
   const description =
     typeof approval.args.description === 'string' ? approval.args.description.trim() : '';
   const promptAction = description
@@ -162,6 +194,18 @@ const ApprovalCard: React.FC<{
   const confidenceSummary = confidenceLabel
     ? t('toolCallBlock.permissionConfidenceSummary', { value: confidenceLabel })
     : null;
+  const riskTone = riskToneFor(approval.risk);
+  const riskText = approval.risk
+    ? t('permissionDock.riskLabel', {
+        risk: labelOr(t, `permissionDock.riskLevels.${approval.risk}`, approval.risk),
+      })
+    : null;
+  const sourceText = approval.source
+    ? labelOr(t, `permissionDock.sources.${approval.source}`, approval.source)
+    : null;
+  const metaSummary = [sourceText, confidenceSummary, approval.reviewerModel]
+    .filter(Boolean)
+    .join(' · ');
   const orderedActions = React.useMemo(
     () => getActionDisplayOrder(approval.actions),
     [approval.actions]
@@ -245,64 +289,87 @@ const ApprovalCard: React.FC<{
 
   return (
     <section className="mx-auto w-full max-w-5xl animate-brutal-drop overflow-hidden border-2 border-brutal-black bg-white font-mono text-brutal-black shadow-[3px_3px_0_0_#000] dark:border-neutral-500 dark:bg-zinc-900 dark:text-white dark:shadow-[3px_3px_0_0_rgba(255,255,255,0.14)]">
-      <div className="flex items-start gap-2 px-3 pt-3">
-        <span className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full border border-brutal-black bg-brutal-yellow dark:border-neutral-300" />
-        <div className="text-[12px] font-bold leading-5">
+      <div className="flex items-start gap-2.5 px-4 pt-3.5">
+        <span className="mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full border border-brutal-black bg-brutal-yellow dark:border-neutral-300" />
+        <div className="min-w-0 flex-1 text-[13px] font-bold leading-6">
           {t('permissionDock.title', {
             action: promptAction,
           })}
         </div>
+        {/* A described call reads as its description alone ("May I list the
+            files?"), so name the tool itself: that is what the user approves. */}
+        {description && (
+          <span
+            className="mt-0.5 shrink-0 border border-neutral-400 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-neutral-600 dark:border-zinc-500 dark:text-neutral-300"
+            title={approval.toolName}
+          >
+            {displayName}
+          </span>
+        )}
       </div>
 
       {detail && (
-        <pre className="mx-3 mt-2 max-h-20 overflow-auto whitespace-pre-wrap break-words border border-neutral-300 bg-neutral-100 px-2.5 py-1.5 font-mono text-[11px] leading-4 text-neutral-700 dark:border-zinc-700 dark:bg-zinc-800 dark:text-neutral-300">
+        <pre className="mx-4 mt-2.5 max-h-28 overflow-auto whitespace-pre-wrap break-words border border-neutral-300 bg-neutral-100 px-3 py-2 font-mono text-[12px] leading-5 text-neutral-800 dark:border-zinc-700 dark:bg-zinc-800 dark:text-neutral-200">
           {detail}
         </pre>
       )}
 
       {approval.reason && (
-        <div className="mx-3 mt-2 min-w-0 text-[9px] text-neutral-500 dark:text-neutral-400">
-          <div className="flex min-w-0 items-center gap-2">
-            {approval.risk && (
-              <span className="shrink-0 border border-brutal-black bg-brutal-yellow px-1.5 py-px text-[8px] font-bold uppercase tracking-wider text-brutal-black dark:border-neutral-500">
-                {approval.risk}
+        // The reason is why the user is being asked at all, so it reads at body
+        // size and wraps in full instead of an ellipsised footnote; the risk
+        // level tints it so a high-risk call does not look like a routine one.
+        <div className={`mx-4 mt-2.5 min-w-0 border-l-4 px-3 py-2 ${riskTone.panel}`}>
+          <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+            {riskText && (
+              <span
+                className={`shrink-0 border px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider ${riskTone.chip}`}
+              >
+                {riskText}
               </span>
             )}
-            <span className="truncate" title={hoverText(approval.reason)}>
-              {approval.reason}
-            </span>
+            {metaSummary && (
+              <span
+                className="min-w-0 truncate text-[10px] text-neutral-500 dark:text-neutral-400"
+                title={metaSummary}
+              >
+                {metaSummary}
+              </span>
+            )}
           </div>
-          {(approval.source || approval.confidence != null || approval.reviewerModel) && (
-            <div className="mt-1 truncate uppercase tracking-wide">
-              {[
-                approval.source,
-                confidenceSummary,
-                approval.reviewerModel,
-                ...approval.riskCategories,
-              ]
-                .filter(Boolean)
-                .join(' · ')}
+          <p className="mt-1.5 whitespace-pre-wrap break-words text-[12px] leading-5 text-neutral-800 dark:text-neutral-100">
+            {approval.reason}
+          </p>
+          {approval.riskCategories.length > 0 && (
+            <div className="mt-1.5 flex flex-wrap gap-1">
+              {approval.riskCategories.map((category) => (
+                <span
+                  key={category}
+                  className="border border-neutral-300 bg-white/70 px-1.5 py-px text-[10px] text-neutral-600 dark:border-zinc-600 dark:bg-zinc-900/60 dark:text-neutral-300"
+                >
+                  {category.replace(/_/g, ' ')}
+                </span>
+              ))}
             </div>
           )}
         </div>
       )}
 
-      <div className="mx-3 mt-2 overflow-hidden border border-neutral-300 dark:border-zinc-700">
+      <div className="mx-4 mt-3 overflow-hidden border border-neutral-300 dark:border-zinc-700">
         {orderedActions.map((action) => (
           <button
             key={action.id}
             type="button"
             onClick={() => selectAction(action)}
-            className="group flex min-h-9 w-full items-center gap-2 border-b border-neutral-200 px-2 text-left text-[10px] font-bold transition-colors last:border-b-0 hover:bg-brutal-yellow hover:text-brutal-black dark:border-zinc-700 dark:hover:bg-brutal-yellow dark:hover:text-brutal-black"
+            className="group flex min-h-10 w-full items-center gap-2.5 border-b border-neutral-200 px-2.5 text-left text-[12px] font-bold transition-colors last:border-b-0 hover:bg-brutal-yellow hover:text-brutal-black dark:border-zinc-700 dark:hover:bg-brutal-yellow dark:hover:text-brutal-black"
           >
-            <span className="flex h-5 w-5 shrink-0 items-center justify-center border border-neutral-300 bg-transparent text-[9px] font-medium text-neutral-500 dark:border-zinc-600 dark:text-neutral-400 group-hover:border-brutal-black group-hover:bg-white group-hover:text-brutal-black">
+            <span className="flex h-6 w-6 shrink-0 items-center justify-center border border-neutral-300 bg-transparent text-[10px] font-medium text-neutral-500 dark:border-zinc-600 dark:text-neutral-400 group-hover:border-brutal-black group-hover:bg-white group-hover:text-brutal-black">
               {shortcutFor(action)}
             </span>
             <span className="min-w-0 flex-1 truncate" title={actionLabel(action)}>
               {actionLabel(action)}
             </span>
             {action.behavior === 'allow' && action.scope === 'once' && (
-              <span className="shrink-0 text-[8px] font-normal uppercase tracking-wide text-neutral-400 group-hover:text-brutal-black/60 dark:text-neutral-500">
+              <span className="shrink-0 text-[9px] font-normal uppercase tracking-wide text-neutral-400 group-hover:text-brutal-black/60 dark:text-neutral-500">
                 {t('permissionDock.ctrlEnter')}
               </span>
             )}
@@ -311,8 +378,8 @@ const ApprovalCard: React.FC<{
       </div>
 
       {rejectAction && (
-        <div className="mt-3 flex min-w-0 items-center gap-1.5 border-t-2 border-brutal-black bg-neutral-50 px-3 py-2 dark:border-neutral-500 dark:bg-zinc-950/40">
-          <span className="flex h-7 w-7 shrink-0 items-center justify-center border border-brutal-black bg-white text-neutral-500 dark:border-neutral-500 dark:bg-zinc-800 dark:text-neutral-300">
+        <div className="mt-3.5 flex min-w-0 items-center gap-2 border-t-2 border-brutal-black bg-neutral-50 px-4 py-2.5 dark:border-neutral-500 dark:bg-zinc-950/40">
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center border border-brutal-black bg-white text-neutral-500 dark:border-neutral-500 dark:bg-zinc-800 dark:text-neutral-300">
             <svg
               viewBox="0 0 24 24"
               className="h-3.5 w-3.5"
@@ -341,13 +408,13 @@ const ApprovalCard: React.FC<{
               }
             }}
             placeholder={t('permissionDock.feedbackPlaceholder')}
-            className="h-7 min-w-0 flex-1 border border-brutal-black bg-white px-2 text-[10px] text-brutal-black outline-none placeholder:text-neutral-400 focus:bg-brutal-yellow/10 dark:border-neutral-500 dark:bg-zinc-800 dark:text-white dark:placeholder:text-neutral-500"
+            className="h-8 min-w-0 flex-1 border border-brutal-black bg-white px-2.5 text-[12px] text-brutal-black outline-none placeholder:text-neutral-400 focus:bg-brutal-yellow/10 dark:border-neutral-500 dark:bg-zinc-800 dark:text-white dark:placeholder:text-neutral-500"
           />
           <button
             type="button"
             disabled={!feedback.trim()}
             onClick={() => submitAction(rejectAction, feedback)}
-            className="flex h-7 shrink-0 items-center gap-1 border-2 border-brutal-black bg-brutal-black px-2.5 text-[9px] font-bold uppercase tracking-wide text-white shadow-[2px_2px_0_0_#000] transition-all hover:bg-neutral-800 active:translate-x-[1px] active:translate-y-[1px] active:shadow-none disabled:cursor-not-allowed disabled:opacity-35 dark:border-neutral-300 dark:bg-neutral-200 dark:text-brutal-black dark:shadow-[2px_2px_0_0_rgba(255,255,255,0.18)] dark:hover:bg-white"
+            className="flex h-8 shrink-0 items-center gap-1 border-2 border-brutal-black bg-brutal-black px-3 text-[10px] font-bold uppercase tracking-wide text-white shadow-[2px_2px_0_0_#000] transition-all hover:bg-neutral-800 active:translate-x-[1px] active:translate-y-[1px] active:shadow-none disabled:cursor-not-allowed disabled:opacity-35 dark:border-neutral-300 dark:bg-neutral-200 dark:text-brutal-black dark:shadow-[2px_2px_0_0_rgba(255,255,255,0.18)] dark:hover:bg-white"
           >
             {t('permissionDock.submit')}
             <span className="text-[13px] opacity-60">↵</span>

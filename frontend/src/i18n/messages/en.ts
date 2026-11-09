@@ -2753,6 +2753,20 @@ export const en = {
     viaEngine: 'via {engine}',
   },
   permissionDock: {
+    riskLabel: '{risk} risk',
+    riskLevels: {
+      safe: 'Safe',
+      low: 'Low',
+      medium: 'Medium',
+      high: 'High',
+      critical: 'Critical',
+    },
+    sources: {
+      policy: 'Policy',
+      rule: 'Rule',
+      auto_classifier: 'Auto review',
+      full_access: 'Full access',
+    },
     title: 'May I {action}?',
     useTool: 'use {tool}',
     localProject: 'Project (local)',

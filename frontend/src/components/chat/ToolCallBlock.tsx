@@ -251,7 +251,23 @@ const ToolCallBlockComponent: React.FC<ToolCallBlockProps> = ({
   const hasDetails = !!(toolArgs || output || visibleDecision || permissionResolution);
   const hasOutput = !!output;
   const isPending = approvalState === 'pending';
-  const isDenied = approvalState === 'denied';
+
+  // The approval dock takes the lower half of the chat, and the rail caps its
+  // own height, so a pending call after a few earlier steps sat below the
+  // rail's fold: the user was asked to approve a call they could not see.
+  // Bring it into view once its body has finished expanding.
+  const rootRef = React.useRef<HTMLDivElement>(null);
+  React.useEffect(() => {
+    if (!isPending || !inActivityRail) return;
+    const timer = window.setTimeout(() => {
+      rootRef.current?.scrollIntoView?.({ block: 'nearest' });
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [isPending, inActivityRail]);
+  // A denial the user made arrives as a resolution on an otherwise completed
+  // call (its output is the denial notice), so the approval state alone left a
+  // green tick beside the "user denied" badge once the turn was reloaded.
+  const isDenied = approvalState === 'denied' || permissionResolution?.behavior === 'deny';
   // The body can mount a Monaco editor -- read_file, write_file and edit_file
   // all render FileDiffViewer -- and grid-rows-[0fr] hides it without
   // unmounting it, so expanding a rail built a full code editor for every file
@@ -291,6 +307,10 @@ const ToolCallBlockComponent: React.FC<ToolCallBlockProps> = ({
           };
     }
     if (visibleDecision.behavior === 'ask') {
+      // While the call waits on the user, the rail header already carries the
+      // pending badge and the approval dock shows the risk; a third "review
+      // required" chip on the row only repeated them.
+      if (isPending) return null;
       return {
         label: `${t('toolCallBlock.permissionReviewRequired')} · ${visibleDecision.risk}`,
         className: 'border-amber-500 text-amber-700 dark:text-amber-300',
@@ -548,7 +568,10 @@ const ToolCallBlockComponent: React.FC<ToolCallBlockProps> = ({
     : 'inline-flex items-center gap-1 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide bg-red-50 text-red-700 border-2 border-red-600 rounded-sm hover:bg-red-100 transition-colors';
 
   return (
-    <div className={`${inActivityRail ? 'my-0' : 'my-1.5'} min-w-0 w-full overflow-x-hidden`}>
+    <div
+      ref={rootRef}
+      className={`${inActivityRail ? 'my-0' : 'my-1.5'} min-w-0 w-full overflow-x-hidden`}
+    >
       {/* Compact pill header */}
       {/* Header is a div (not button) so the inline auto-approve badge button
           below is valid HTML — a <button> cannot nest inside a <button>. */}
@@ -639,7 +662,9 @@ const ToolCallBlockComponent: React.FC<ToolCallBlockProps> = ({
             </svg>
           </span>
         )}
-        {isDenied && <span className="text-[10px] text-red-500 font-bold shrink-0">DENIED</span>}
+        {isDenied && !decisionBadge && (
+          <span className="text-[10px] text-red-500 font-bold shrink-0">DENIED</span>
+        )}
         {/* Stays in the header in both states. It used to be collapsed-only and
             re-rendered inside the permission panel below, so expanding read as
             the badge teleporting diagonally down the block while the body was
