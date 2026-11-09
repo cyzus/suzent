@@ -2,5 +2,6 @@
   "products": {
     "desktop": "none"
   },
-  "reason": "Prettier reformats one conditional class expression in StreamingPeekButton; no user-visible change."
+  "summary": "Prettier reformats one conditional class expression in StreamingPeekButton; no user-visible change.",
+  "reason": "Formatting only, so no release is needed."
 }
