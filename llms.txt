@@ -24,6 +24,7 @@ Full documentation: https://suzent.com/llms-full.txt
 - [Features](https://suzent.com/docs/features)
 - [Skills](https://suzent.com/docs/features/skills)
 - [Browser](https://suzent.com/docs/features/tools/browser)
+- [Code mode](https://suzent.com/docs/features/tools/code-mode)
 - [Desktop apps](https://suzent.com/docs/features/tools/desktop)
 - [Email](https://suzent.com/docs/features/tools/email)
 - [Files](https://suzent.com/docs/features/tools/files)

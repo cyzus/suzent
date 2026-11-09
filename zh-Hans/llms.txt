@@ -24,6 +24,7 @@ Full documentation: https://suzent.com/zh-Hans/llms-full.txt
 - [Features](https://suzent.com/zh-Hans/docs/features)
 - [Skills](https://suzent.com/zh-Hans/docs/features/skills)
 - [Browser](https://suzent.com/zh-Hans/docs/features/tools/browser)
+- [Code mode](https://suzent.com/zh-Hans/docs/features/tools/code-mode)
 - [Desktop apps](https://suzent.com/zh-Hans/docs/features/tools/desktop)
 - [Email](https://suzent.com/zh-Hans/docs/features/tools/email)
 - [Files](https://suzent.com/zh-Hans/docs/features/tools/files)
