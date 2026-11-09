@@ -731,3 +731,35 @@ async def test_an_invalid_tool_call_is_refused_without_a_prompt(
     assert decision.behavior == CommandDecision.DENY
     assert decision.reason_code == "invalid_tool_call"
     assert "smash" in decision.reason
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("command", "risk"),
+    [
+        (
+            'cd /tmp && git status && echo "recent commits" && git log -n 5 --oneline',
+            "low",
+        ),
+        ("git status", "low"),
+        ("echo hello && echo world", "low"),
+        ("echo hello && rm -rf ./data", "high"),
+        ("echo hello && ls\n/bin/rm -rf ./data", "high"),
+        ("echo hello && sudo reboot", "high"),
+        ("python script.py && git status", "medium"),
+        ("git status && git reset --hard", "high"),
+        ("echo hello > output.txt && git status", "medium"),
+        ('echo "$(rm -rf ./data)" && git status', "high"),
+        ("git diff --output=patch.txt", "medium"),
+    ],
+)
+async def test_shell_approval_is_independent_of_risk(
+    tmp_path: Path, command: str, risk: str
+) -> None:
+    decision = await PermissionEngine().evaluate(
+        ToolPermissionRequest("run_command", {"content": command}),
+        context(tmp_path),
+    )
+    assert decision.behavior == CommandDecision.ASK
+    assert decision.reason_code == "shell_policy_ask"
+    assert decision.risk.value == risk

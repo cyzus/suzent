@@ -2643,6 +2643,17 @@ export const zhCN = {
     permissionRejectPlaceholder: '可选：说明原因或建议更安全的做法',
     permissionContractUnavailable: '此审批缺少服务端权限契约，请重试该请求。',
     permissionDecisionTitle: '权限决策',
+    permissionSources: {
+      policy: '策略检查',
+      rule: '已保存的规则',
+      auto_classifier: '自动审核',
+      full_access: '完全访问',
+    },
+    permissionScopes: {
+      once: '仅本次调用',
+      session: '当前对话',
+      global: '所有对话',
+    },
     permissionOutcome: '结果',
     permissionEvaluator: '评估来源',
     permissionReviewer: '审核模型',

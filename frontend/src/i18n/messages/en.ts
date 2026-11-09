@@ -2716,6 +2716,17 @@ export const en = {
     permissionContractUnavailable:
       'This approval is missing its server permission contract. Retry the request.',
     permissionDecisionTitle: 'Permission decision',
+    permissionSources: {
+      policy: 'Policy check',
+      rule: 'Saved rule',
+      auto_classifier: 'Automatic review',
+      full_access: 'Full access',
+    },
+    permissionScopes: {
+      once: 'This call only',
+      session: 'This chat',
+      global: 'All chats',
+    },
     permissionOutcome: 'Outcome',
     permissionEvaluator: 'Evaluator',
     permissionReviewer: 'Reviewer',
