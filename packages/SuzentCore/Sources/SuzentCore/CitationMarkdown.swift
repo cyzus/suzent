@@ -1,24 +1,51 @@
 import Foundation
 
+private struct CitationPattern: Sendable {
+    let pattern: String
+    let ignoringCase: Bool
+    let needsKnownIDs: Bool
+
+    init(_ pattern: String, ignoringCase: Bool = true, needsKnownIDs: Bool = false) {
+        self.pattern = pattern
+        self.ignoringCase = ignoringCase
+        self.needsKnownIDs = needsKnownIDs
+    }
+
+    var regex: NSRegularExpression? {
+        try? NSRegularExpression(pattern: pattern, options: ignoringCase ? [.caseInsensitive] : [])
+    }
+}
+
+// Models that skip the marker write a joined `citet0_src_1` or copy the `[t0_src_1]`
+// label tools print, so those count only when every id resolves. They run first so
+// their links are never re-read as brackets. ASCII lookarounds stand in for \b, which
+// ICU treats as Unicode-aware and would reject `说明citet0_src_1`.
 private let citationPatterns = [
-    #"\[\[cite:\s*([^\]\n]+?)\s*\]\]"#,
-    "\u{e200}cite\u{e202}([^\u{e201}]+)\u{e201}",
-    "\u{fffc}cite\u{fffc}([A-Za-z0-9_,\\s\u{fffc}]+)\u{fffc}",
-    #"\bcite[-:]((?:t\d+_src_\d+)(?:\s*,\s*t\d+_src_\d+)*)\b"#,
+    CitationPattern(#"(?<![A-Za-z0-9_])cite((?:t\d+_src_\d+)(?:\s*,\s*t\d+_src_\d+)*)(?![A-Za-z0-9_])"#, ignoringCase: false, needsKnownIDs: true),
+    CitationPattern(#"\[((?:[A-Za-z0-9_]+_src_\d+)(?:\s*,\s*[A-Za-z0-9_]+_src_\d+)*)\]"#, ignoringCase: false, needsKnownIDs: true),
+    CitationPattern(#"\[\[cite:\s*([^\]\n]+?)\s*\]\]"#),
+    CitationPattern("\u{e200}cite\u{e202}([^\u{e201}]+)\u{e201}"),
+    CitationPattern("\u{fffc}cite\u{fffc}([A-Za-z0-9_,\\s\u{fffc}]+)\u{fffc}"),
+    CitationPattern(#"\bcite[-:]((?:t\d+_src_\d+)(?:\s*,\s*t\d+_src_\d+)*)\b"#),
 ]
+
+private func citationIDs(_ payload: Substring) -> [String] {
+    payload.split(whereSeparator: { $0 == "," || $0 == "\u{e202}" || $0 == "\u{fffc}" })
+        .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
+}
 
 public func markdownWithCitationLinks(_ text: String, sources: [CitationSource], badges: Bool = false) -> String {
     let byID = Dictionary(uniqueKeysWithValues: sources.map { ($0.id, $0) })
     var result = text
     var occurrence = 0
     for pattern in citationPatterns {
-        guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else { continue }
+        guard let regex = pattern.regex else { continue }
         let matches = regex.matches(in: result, range: NSRange(result.startIndex..., in: result))
         for match in matches.reversed() {
             guard let whole = Range(match.range, in: result),
                   let payload = Range(match.range(at: 1), in: result) else { continue }
-            let ids = result[payload].split(whereSeparator: { $0 == "," || $0 == "\u{e202}" || $0 == "\u{fffc}" })
-                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
+            let ids = citationIDs(result[payload])
+            if pattern.needsKnownIDs && !ids.allSatisfy({ byID[$0] != nil }) { continue }
             guard let primary = ids.compactMap({ byID[$0] }).first else {
                 result.replaceSubrange(whole, with: "")
                 continue
@@ -46,11 +73,10 @@ public func markdownWithCitationLinks(_ text: String, sources: [CitationSource],
 func citationSourceIDs(_ text: String) -> Set<String> {
     var ids: Set<String> = []
     for pattern in citationPatterns {
-        guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else { continue }
+        guard let regex = pattern.regex else { continue }
         for match in regex.matches(in: text, range: NSRange(text.startIndex..., in: text)) {
             guard let payload = Range(match.range(at: 1), in: text) else { continue }
-            ids.formUnion(text[payload].split(whereSeparator: { $0 == "," || $0 == "\u{e202}" || $0 == "\u{fffc}" })
-                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty })
+            ids.formUnion(citationIDs(text[payload]))
         }
     }
     return ids
