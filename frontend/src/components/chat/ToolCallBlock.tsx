@@ -345,6 +345,46 @@ const ToolCallBlockComponent: React.FC<ToolCallBlockProps> = ({
     return null;
   })();
 
+  const permissionMetadataLabel = (key: string, fallback: string): string => {
+    const label = t(key);
+    return label === key ? fallback.replace(/_/g, ' ') : label;
+  };
+
+  const permissionSummary = visibleDecision
+    ? [
+        ...(!decisionBadge ||
+        permissionResolution ||
+        ['ask', 'deny'].includes(visibleDecision.behavior)
+          ? [
+              permissionMetadataLabel(
+                `toolCallBlock.permissionSources.${visibleDecision.source}`,
+                visibleDecision.source
+              ),
+            ]
+          : []),
+        ...(!permissionResolution &&
+        ['ask', 'deny'].includes(visibleDecision.behavior) &&
+        decisionBadge
+          ? []
+          : [
+              `${t('toolCallBlock.permissionRisk')}: ${permissionMetadataLabel(`permissionDock.riskLevels.${visibleDecision.risk}`, visibleDecision.risk)}`,
+            ]),
+        ...(permissionResolution?.behavior === 'allow'
+          ? [
+              permissionMetadataLabel(
+                `toolCallBlock.permissionScopes.${permissionResolution.scope}`,
+                permissionResolution.scope
+              ),
+            ]
+          : []),
+        ...(visibleDecision.source !== 'full_access' && confidenceValueLabel
+          ? [t('toolCallBlock.permissionConfidenceSummary', { value: confidenceValueLabel })]
+          : []),
+        ...(visibleDecision.reviewerModel ? [visibleDecision.reviewerModel] : []),
+        ...visibleDecision.riskCategories,
+      ]
+    : [];
+
   const parsedOutput = React.useMemo<ToolResultEnvelope | null>(() => {
     return parseToolResultEnvelope(output);
   }, [output]);
@@ -541,10 +581,8 @@ const ToolCallBlockComponent: React.FC<ToolCallBlockProps> = ({
   });
 
   const headerClassName = [
-    // max-w-full is load-bearing: an inline-flex sizes to its content, so
-    // without it the row simply grew past the rail and was cut off by the
-    // shell's hidden overflow, with nothing inside ever being asked to shrink.
-    'group/tool-header hover-tint-text inline-flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-mono font-bold uppercase tracking-wide rounded-sm transition-colors select-none max-w-full min-w-0',
+    'group/tool-header hover-tint-text items-center gap-1.5 px-2.5 py-1 text-[11px] font-mono font-bold uppercase tracking-wide rounded-sm transition-colors select-none max-w-full min-w-0',
+    inActivityRail ? 'flex w-full' : 'inline-flex',
     hasDetails ? 'cursor-pointer hover:bg-neutral-100 dark:hover:bg-zinc-700' : 'cursor-default',
     expanded
       ? 'bg-neutral-100 dark:bg-zinc-700 text-brutal-black dark:text-white'
@@ -610,130 +648,137 @@ const ToolCallBlockComponent: React.FC<ToolCallBlockProps> = ({
             to be able to give ground — it used to be shrink-0 and by itself
             overflowed the rail. The detail yields first (shrink-[3]) so the
             action stays readable longest. */}
-        <span className="truncate min-w-0">{summary.verb}</span>
-        {summary.detail && (
-          <span className="truncate min-w-0 shrink-[3] max-w-[320px] font-normal normal-case tracking-normal opacity-80">
-            {summary.detail}
-          </span>
-        )}
+        <span className="flex min-w-0 items-center gap-1.5">
+          <span className="truncate min-w-0">{summary.verb}</span>
+          {summary.detail && (
+            <span className="truncate min-w-0 shrink-[3] max-w-[320px] font-normal normal-case tracking-normal opacity-80">
+              {summary.detail}
+            </span>
+          )}
 
-        {/* Diff lines if available */}
-        {(addedLines > 0 || removedLines > 0) && (
-          <span className="flex items-center gap-1.5 opacity-90 text-[10px] ml-1 shrink-0 font-bold">
-            {addedLines > 0 && (
-              <span className="text-green-600 dark:text-green-400">+{addedLines}</span>
-            )}
-            {removedLines > 0 && (
-              <span className="text-red-600 dark:text-red-400">-{removedLines}</span>
-            )}
-          </span>
-        )}
+          {/* Diff lines if available */}
+          {(addedLines > 0 || removedLines > 0) && (
+            <span className="flex items-center gap-1.5 opacity-90 text-[10px] ml-1 shrink-0 font-bold">
+              {addedLines > 0 && (
+                <span className="text-green-600 dark:text-green-400">+{addedLines}</span>
+              )}
+              {removedLines > 0 && (
+                <span className="text-red-600 dark:text-red-400">-{removedLines}</span>
+              )}
+            </span>
+          )}
+        </span>
 
-        {/* Status badges */}
-        {isPending && (
-          <span className="flex items-center gap-0.5 shrink-0">
-            <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
-          </span>
-        )}
-        {!isPending && !isDenied && isFailed && (
-          <span
-            className="flex items-center gap-0.5 shrink-0"
-            aria-label={t('toolCallBlock.failed')}
-          >
-            <svg
-              className="w-2.5 h-2.5 text-red-600"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-              strokeWidth={3}
+        <span className="contents">
+          {/* Status badges */}
+          {isPending && (
+            <span className="flex items-center gap-0.5 shrink-0">
+              <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+            </span>
+          )}
+          {!isPending && !isDenied && isFailed && (
+            <span
+              className="flex items-center gap-0.5 shrink-0"
+              aria-label={t('toolCallBlock.failed')}
             >
-              <path strokeLinecap="round" strokeLinejoin="round" d="M6 6l12 12M18 6L6 18" />
-            </svg>
-          </span>
-        )}
-        {hasOutput && !isStreaming && !isPending && !isDenied && !isFailed && (
-          <span className="flex items-center gap-0.5 shrink-0">
-            <svg
-              className="w-2.5 h-2.5 text-green-600"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-              strokeWidth={3}
-            >
-              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-            </svg>
-          </span>
-        )}
-        {isDenied && !decisionBadge && (
-          <span className="text-[10px] text-red-500 font-bold shrink-0">DENIED</span>
-        )}
-        {/* Stays in the header in both states. It used to be collapsed-only and
+              <svg
+                className="w-2.5 h-2.5 text-red-600"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={3}
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 6l12 12M18 6L6 18" />
+              </svg>
+            </span>
+          )}
+          {hasOutput && !isStreaming && !isPending && !isDenied && !isFailed && (
+            <span className="flex items-center gap-0.5 shrink-0">
+              <svg
+                className="w-2.5 h-2.5 text-green-600"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={3}
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+              </svg>
+            </span>
+          )}
+          {isDenied && !decisionBadge && (
+            <span className="text-[10px] text-red-500 font-bold shrink-0">DENIED</span>
+          )}
+        </span>
+        <span className="contents">
+          {/* Stays in the header in both states. It used to be collapsed-only and
             re-rendered inside the permission panel below, so expanding read as
             the badge teleporting diagonally down the block while the body was
             still animating open. One home, no motion. */}
-        {decisionBadge && (
-          <span
-            // Not shrink-0 like the icon badges: the needs-review and denied
-            // badges carry a sentence ("Review required · high"), so on a narrow
-            // row one went on pushing past the rail's hidden overflow and was
-            // cut off mid-word with no way to read it. Let it give ground and
-            // ellipsise instead.
-            title={decisionBadge.label}
-            className={`rounded-sm border px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide min-w-0 max-w-[40%] shrink-[2] truncate ${decisionBadge.className}`}
-          >
-            {decisionBadge.label}
-          </span>
-        )}
-
-        {/* Auto-approval badge */}
-        {isAutoApproved && !isPending && !isDenied && (
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onRemovePolicy?.(toolName);
-            }}
-            className="flex items-center gap-1 px-1.5 py-0.5 bg-blue-50 border border-blue-600 rounded-sm hover:bg-blue-100 transition-colors shrink-0"
-            title="This tool is auto-approved. Click to remove."
-          >
-            <svg
-              className="w-2.5 h-2.5 text-blue-700"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-              strokeWidth={3}
+          {decisionBadge && (
+            <span
+              // Not shrink-0 like the icon badges: the needs-review and denied
+              // badges carry a sentence ("Review required · high"), so on a narrow
+              // row one went on pushing past the rail's hidden overflow and was
+              // cut off mid-word with no way to read it. Let it give ground and
+              // ellipsise instead.
+              title={decisionBadge.label}
+              className={`rounded-sm border px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide min-w-0 max-w-[40%] shrink-[2] truncate ${decisionBadge.className}`}
             >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"
-              />
-            </svg>
-            <span className="text-[9px] font-bold text-blue-700 uppercase">Auto</span>
-            <svg
-              className="w-2 h-2 text-blue-600"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-              strokeWidth={3}
-            >
-              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-        )}
+              {decisionBadge.label}
+            </span>
+          )}
 
-        {/* Expand/collapse chevron */}
-        {hasDetails && !inActivityRail && (
-          <DisclosureChevron
-            expanded={expanded}
-            className="w-3 h-3 text-neutral-400 transition-transform duration-200"
-          />
-        )}
-        {hasDetails && inActivityRail && (
-          <DisclosureChevron
-            expanded={expanded}
-            className="w-3 h-3 text-neutral-400 opacity-0 transition-all duration-150 group-hover/tool-header:opacity-100"
-          />
-        )}
+          {/* Auto-approval badge */}
+          {isAutoApproved && !isPending && !isDenied && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onRemovePolicy?.(toolName);
+              }}
+              className="flex items-center gap-1 px-1.5 py-0.5 bg-blue-50 border border-blue-600 rounded-sm hover:bg-blue-100 transition-colors shrink-0"
+              title="This tool is auto-approved. Click to remove."
+            >
+              <svg
+                className="w-2.5 h-2.5 text-blue-700"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={3}
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"
+                />
+              </svg>
+              <span className="text-[9px] font-bold text-blue-700 uppercase">Auto</span>
+              <svg
+                className="w-2 h-2 text-blue-600"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={3}
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          )}
+        </span>
+        <span className="contents">
+          {/* Expand/collapse chevron */}
+          {hasDetails && !inActivityRail && (
+            <DisclosureChevron
+              expanded={expanded}
+              className="w-3 h-3 text-neutral-400 transition-transform duration-200"
+            />
+          )}
+          {hasDetails && inActivityRail && (
+            <DisclosureChevron
+              expanded={expanded}
+              className="w-3 h-3 text-neutral-400 opacity-0 transition-all duration-150 group-hover/tool-header:opacity-100"
+            />
+          )}
+        </span>
       </div>
 
       {/* Expandable content */}
@@ -749,70 +794,35 @@ const ToolCallBlockComponent: React.FC<ToolCallBlockProps> = ({
               className={`${inActivityRail ? 'ml-0 pl-0 pr-0 border-l-0' : 'ml-2 pl-3 pr-2 border-l-2 border-neutral-200 dark:border-zinc-700'} mt-1 mb-2 space-y-3 min-w-0 overflow-x-hidden`}
             >
               {visibleDecision && (
-                <details className="group/permission rounded-sm border border-neutral-200 bg-neutral-50/60 text-[11px] text-neutral-700 dark:border-zinc-700 dark:bg-zinc-900/60 dark:text-neutral-300">
-                  <summary className="flex cursor-pointer list-none items-center gap-2 px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-wide text-neutral-500 transition-colors hover:bg-neutral-100 dark:hover:bg-zinc-800 [&::-webkit-details-marker]:hidden">
-                    <DisclosureChevron className="h-2.5 w-2.5 transition-transform duration-150 group-open/permission:rotate-90" />
-                    {/* No decision badge here -- the header keeps it in both
-                        states, and the outcome and confidence are spelled out
-                        in the list below. */}
-                    <span>{t('toolCallBlock.permissionDecisionTitle')}</span>
-                  </summary>
-                  <dl className="grid grid-cols-[max-content_1fr] gap-x-3 gap-y-1 border-t border-neutral-200 px-2.5 py-2 dark:border-zinc-700">
-                    <dt className="text-neutral-500">{t('toolCallBlock.permissionOutcome')}</dt>
-                    <dd className="font-medium">{visibleDecision.behavior}</dd>
-                    <dt className="text-neutral-500">{t('toolCallBlock.permissionEvaluator')}</dt>
-                    <dd className="break-all">{visibleDecision.source}</dd>
-                    {visibleDecision.source === 'full_access' ? (
-                      <>
-                        <dt className="text-neutral-500">{t('toolCallBlock.permissionReview')}</dt>
-                        <dd className="font-medium text-violet-700 dark:text-violet-300">
-                          {t('toolCallBlock.permissionNotReviewed')}
-                        </dd>
-                      </>
-                    ) : (
-                      <>
-                        {visibleDecision.reviewerModel && (
-                          <>
-                            <dt className="text-neutral-500">
-                              {t('toolCallBlock.permissionReviewer')}
-                            </dt>
-                            <dd className="break-all">{visibleDecision.reviewerModel}</dd>
-                          </>
-                        )}
-                        {confidenceValueLabel && (
-                          <>
-                            <dt className="text-neutral-500">
-                              {t('toolCallBlock.permissionConfidence')}
-                            </dt>
-                            <dd>{confidenceValueLabel}</dd>
-                          </>
-                        )}
-                      </>
-                    )}
-                    <dt className="text-neutral-500">{t('toolCallBlock.permissionRisk')}</dt>
-                    <dd>{visibleDecision.risk}</dd>
-                    {visibleDecision.riskCategories.length > 0 && (
-                      <>
-                        <dt className="text-neutral-500">
-                          {t('toolCallBlock.permissionCategories')}
-                        </dt>
-                        <dd>{visibleDecision.riskCategories.join(', ')}</dd>
-                      </>
-                    )}
-                    <dt className="text-neutral-500">{t('toolCallBlock.permissionReason')}</dt>
-                    <dd className="break-words">{visibleDecision.reason}</dd>
-                    {permissionResolution && (
-                      <>
-                        <dt className="text-neutral-500">
-                          {t('toolCallBlock.permissionResolution')}
-                        </dt>
-                        <dd>
-                          {permissionResolution.behavior} · {permissionResolution.scope}
-                        </dd>
-                      </>
-                    )}
-                  </dl>
-                </details>
+                <div
+                  role="note"
+                  aria-label={t('toolCallBlock.permissionDecisionTitle')}
+                  className="min-w-0 space-y-2 text-[11px] leading-relaxed"
+                >
+                  <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+                    {permissionSummary.map((item, index) => (
+                      <span
+                        key={`${index}-${item}`}
+                        className={`inline-flex max-w-full items-center gap-1.5 rounded-sm border px-1.5 py-0.5 text-[10px] font-medium leading-4 ${
+                          item.startsWith(`${t('toolCallBlock.permissionRisk')}:`)
+                            ? visibleDecision.risk === 'high' || visibleDecision.risk === 'critical'
+                              ? 'border-red-200 bg-red-50 text-red-700 dark:border-red-400/20 dark:bg-red-400/10 dark:text-red-300'
+                              : visibleDecision.risk === 'medium'
+                                ? 'border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-400/20 dark:bg-amber-400/10 dark:text-amber-200'
+                                : 'border-neutral-200 bg-neutral-100 text-neutral-600 dark:border-zinc-700 dark:bg-zinc-800 dark:text-neutral-300'
+                            : 'border-neutral-200 bg-neutral-100 text-neutral-600 dark:border-zinc-700 dark:bg-zinc-800 dark:text-neutral-300'
+                        }`}
+                      >
+                        <span className="min-w-0 break-words [overflow-wrap:anywhere]">{item}</span>
+                      </span>
+                    ))}
+                  </div>
+                  {visibleDecision.reason && (
+                    <p className="m-0 break-words text-neutral-600 dark:text-neutral-400 [overflow-wrap:anywhere]">
+                      {visibleDecision.reason}
+                    </p>
+                  )}
+                </div>
               )}
               {/* Arguments or Running status */}
               {(toolArgs || (isStreaming && !output)) &&
