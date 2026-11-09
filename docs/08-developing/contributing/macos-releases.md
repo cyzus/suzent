@@ -2,8 +2,7 @@
 
 The desktop workflow publishes raw Mach-O executables for the main app and the
 installer, plus a universal disk image (`suzent-installer-macos.dmg`, mirrored to
-`suzent-installer-macos-<arch>.dmg` for compatibility) that the landing page
-offers for download. Everything must be signed with a
+`suzent-installer-macos-<arch>.dmg` for compatibility) for browser downloads. Everything must be signed with a
 **Developer ID Application** certificate, with hardened runtime and a secure
 timestamp, and accepted by Apple's notary service before upload. An iOS Apple
 Distribution certificate does not work here.
@@ -12,8 +11,8 @@ Distribution certificate does not work here.
 | --- | --- |
 | `suzent-macos-<arch>` | `setup.sh`, the installer, and `suzent update` |
 | `suzent-installer-macos-<arch>` | `setup.sh` and `suzent update` (standalone updater) |
-| `suzent-installer-macos.dmg` | Browser downloads from the landing page and `/downloads` |
-| `suzent-installer-macos-<arch>.dmg` | Legacy per-architecture download aliases |
+| `suzent-installer-macos.dmg` | Browser downloads (universal disk image) |
+| `suzent-installer-macos-<arch>.dmg` | Copies of the universal image for links that still name an architecture |
 
 Browsers drop the execute bit, so a downloaded raw executable appears as a
 "Document" in Finder. The disk image contains `Suzent Installer.app`, which

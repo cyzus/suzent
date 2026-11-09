@@ -259,6 +259,7 @@ function InstallerDownloads(): ReactNode {
   const locale = useLocale();
   const [os, setOS] = useState<InstallerOS | null>(null);
   const [detecting, setDetecting] = useState(true);
+  const [macArch, setMacArch] = useState("aarch64");
   const [terminalOS, setTerminalOS] = useState<"unix" | "windows" | null>(null);
   const { china, mirrorTag } = useDownloadSource();
   useEffect(() => {
@@ -293,12 +294,8 @@ function InstallerDownloads(): ReactNode {
   }, []);
   const name =
     os === "macos" ? "macOS" : os === "windows" ? "Windows" : "Linux";
-  const asset =
-    os === "macos"
-      ? "suzent-installer-macos.dmg"
-      : os === "windows"
-        ? "suzent-installer-windows-x86_64.exe"
-        : "suzent-installer-linux-x86_64";
+  const extension = os === "windows" ? ".exe" : os === "macos" ? ".dmg" : "";
+  const asset = `suzent-installer-${os}-${os === "macos" ? macArch : "x86_64"}${extension}`;
   const activeTerminal = terminalOS ?? (os === "windows" ? "windows" : "unix");
   const cmd =
     activeTerminal === "windows"
@@ -364,9 +361,13 @@ function InstallerDownloads(): ReactNode {
               id: "homepage.download.system",
               message: "Operating system",
             })}
-            value={os ?? ""}
+            value={os === "macos" ? `macos-${macArch}` : (os ?? "")}
             onChange={(e) => {
-              setOS(e.target.value as InstallerOS);
+              const value = e.target.value;
+              if (value.startsWith("macos-")) {
+                setOS("macos");
+                setMacArch(value.slice(6));
+              } else setOS(value as InstallerOS);
             }}
           >
             <option value="" disabled>
@@ -377,7 +378,8 @@ function InstallerDownloads(): ReactNode {
             </option>
             <option value="ios">iOS · App Store</option>
             <option value="android">Android · APK</option>
-            <option value="macos">macOS · Universal</option>
+            <option value="macos-aarch64">macOS · Apple Silicon</option>
+            <option value="macos-x86_64">macOS · Intel</option>
             <option value="windows">Windows · x86_64</option>
             <option value="linux">Linux · x86_64</option>
           </select>

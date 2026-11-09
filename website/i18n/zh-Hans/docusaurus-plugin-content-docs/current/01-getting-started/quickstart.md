@@ -30,7 +30,7 @@ Store 版与安装程序版的区别：
 
 ### 使用安装程序
 
-从[首页](/#download)下载适合你电脑的安装程序。macOS 安装包为 Universal 通用版，同时原生支持 Apple Silicon（M 系列）与 Intel Mac。Windows 和 Linux 下载适用于 x86_64。
+从[首页](/#download)下载适合你电脑的安装程序。M 系列 Mac 选择 Apple Silicon，Intel Mac 选择 Intel。Windows 和 Linux 下载适用于 x86_64。
 
 - **macOS：** 打开下载的 `.dmg`，然后双击 **Suzent Installer**。也可以先把它拖到“应用程序”文件夹，再从那里打开。
 - **Windows：** 打开下载的 `.exe`。

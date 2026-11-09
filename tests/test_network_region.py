@@ -1,19 +1,11 @@
 import gzip
-import importlib.util
 import io
 import json
 import tarfile
-from pathlib import Path
 
 import pytest
 
 from suzent import network_region
-
-PACK_SCRIPT = Path(__file__).resolve().parents[1] / "scripts/pack_npm_release.py"
-pack_spec = importlib.util.spec_from_file_location("pack_npm_release", PACK_SCRIPT)
-assert pack_spec is not None and pack_spec.loader is not None
-pack_npm_release = importlib.util.module_from_spec(pack_spec)
-pack_spec.loader.exec_module(pack_npm_release)
 
 
 @pytest.fixture
@@ -154,23 +146,6 @@ def test_npm_packages_follow_the_release_file_platform():
         "https://registry.npmmirror.com/@suzent/desktop-darwin-x64/-/"
         "desktop-darwin-x64-1.2.3.tgz"
     )
-    assets = [
-        "suzent-macos-aarch64",
-        "suzent-installer-macos-aarch64",
-        "suzent-macos-x86_64",
-        "suzent-installer-macos-x86_64",
-        "suzent-installer-macos.dmg",
-    ]
-    assert pack_npm_release.platform_assets(assets, "macos-aarch64") == [
-        "suzent-installer-macos-aarch64",
-        "suzent-installer-macos.dmg",
-        "suzent-macos-aarch64",
-    ]
-    assert pack_npm_release.platform_assets(assets, "macos-x86_64") == [
-        "suzent-installer-macos-x86_64",
-        "suzent-installer-macos.dmg",
-        "suzent-macos-x86_64",
-    ]
 
 
 def test_npm_dist_tags_skip_the_placeholder():

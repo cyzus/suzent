@@ -221,13 +221,16 @@ pub fn is_apple_silicon_macos() -> bool {
     if cfg!(target_arch = "aarch64") {
         return true;
     }
-    Command::new("sysctl")
-        .args(["-n", "hw.optional.arm64"])
-        .output()
-        .ok()
-        .is_some_and(|output| {
-            output.status.success() && String::from_utf8_lossy(&output.stdout).trim() == "1"
-        })
+    static ARM64_HARDWARE: OnceLock<bool> = OnceLock::new();
+    *ARM64_HARDWARE.get_or_init(|| {
+        Command::new("sysctl")
+            .args(["-n", "hw.optional.arm64"])
+            .output()
+            .ok()
+            .is_some_and(|output| {
+                output.status.success() && String::from_utf8_lossy(&output.stdout).trim() == "1"
+            })
+    })
 }
 
 /// npm platform name of the release files a file of this name belongs to.
@@ -246,7 +249,7 @@ pub fn npm_platform_for(name: &str) -> &'static str {
     }
     if cfg!(windows) {
         "win32-x64"
-    } else if cfg!(target_os = "macos") && is_apple_silicon_macos() {
+    } else if is_apple_silicon_macos() {
         "darwin-arm64"
     } else if cfg!(target_os = "macos") {
         "darwin-x64"
@@ -572,7 +575,7 @@ fn uv_wheel_platform() -> Option<&'static str> {
         Some("win_amd64")
     } else if cfg!(all(windows, target_arch = "aarch64")) {
         Some("win_arm64")
-    } else if cfg!(target_os = "macos") && is_apple_silicon_macos() {
+    } else if is_apple_silicon_macos() {
         Some("macosx_11_0_arm64")
     } else if cfg!(target_os = "macos") {
         Some("macosx_10_12_x86_64")

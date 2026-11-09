@@ -209,6 +209,9 @@ jobs:
         run: |
           if [[ -n "$INSTALLER_DMG" ]]; then
             npx tauri build --target universal-apple-darwin
+          elif [[ "$RUNNER_OS" == "macOS" ]]; then
+            # Only the raw executable ships from this runner.
+            npx tauri build --no-bundle
           else
             npm run build
           fi
@@ -465,7 +468,7 @@ jobs:
           if [[ -n "$INSTALLER_TARGET" ]]; then
             npx tauri build --target "$INSTALLER_TARGET" --bundles app
           else
-            npx tauri build --bundles app
+            npx tauri build --no-bundle
           fi
         env:
           INSTALLER_TARGET: ${{ matrix.installer_target }}

@@ -37,6 +37,7 @@ PLATFORMS = {
 # Platform-independent files every package carries.
 SHARED = ("SHA256SUMS", "suzent-webui.zip")
 BOOTSTRAP_VERSION = "0.0.0"
+UNIVERSAL_MACOS_DMG = "suzent-installer-macos.dmg"
 
 
 def package_name(platform: str) -> str:
@@ -48,9 +49,11 @@ def platform_assets(assets: list[str], suffix: str) -> list[str]:
     ``suzent-installer-macos-aarch64.dmg``."""
     pattern = re.compile(rf"^suzent-(installer-)?{re.escape(suffix)}(\.exe|\.dmg)?$")
     matched = [name for name in assets if pattern.match(name)]
-    if suffix.startswith("macos-") and "suzent-installer-macos.dmg" in assets:
-        matched.append("suzent-installer-macos.dmg")
-    return sorted(set(matched))
+    # The per-architecture disk images are copies of the universal one.
+    if suffix.startswith("macos-") and UNIVERSAL_MACOS_DMG in assets:
+        matched = [name for name in matched if not name.endswith(".dmg")]
+        matched.append(UNIVERSAL_MACOS_DMG)
+    return sorted(matched)
 
 
 def manifest(platform: str, version: str) -> dict:
