@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v0.25.0] - 2026-11-09
+
+### Release notes
+- Tool approvals are clearer: one pending badge instead of two, the waiting call scrolls into view, the approval card names the tool and shows its reason at full size tinted by risk, and the call you just approved or denied stays visible afterwards.
+- Citations inside bold or italic text, and citations written as plain [t0_src_1] labels, now render as source chips, and those paragraphs keep their formatting.
+- Optional code mode lets the agent batch read-only look-ups in one Python snippet, with each call shown live in the chat.
+- Improve permission approval card readability, action hierarchy, and keyboard focus visibility.
+- On macOS, the yellow window button now minimizes Suzent; the window uses the native red, yellow and green buttons.
+- Package a universal macOS installer disk image for both Apple Silicon and Intel Macs.
+- With reduced motion turned on, the thinking animation now shows finished robots stepping along the line instead of a frozen frame.
+- With reduced motion turned on, the startup bar, compaction bar, running-tool dot and typing dots now fade gently instead of freezing, so you can still tell work is in progress.
+- Improve tool permission details and separate shell approval requirements from risk for read-only chained commands.
+- File, web, memory, session, task and mail tools now return their results as structured data alongside the text, and that data no longer counts toward the context estimate.
+
 ## [v0.24.1] - 2026-11-09
 
 ### Release notes
