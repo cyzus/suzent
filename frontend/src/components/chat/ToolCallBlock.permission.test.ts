@@ -72,3 +72,39 @@ describe('auto-allowed permission badge', () => {
     expect(renderAutoAllowed({ expanded: true })).toMatch(confidenceWording);
   });
 });
+
+describe('pending approval badge', () => {
+  const askDecision = decision({
+    behavior: 'ask',
+    reason: 'Command requires approval',
+    reasonCode: 'shell_chaining',
+    risk: 'high',
+  });
+  const reviewRequired = tForLocale('en', 'toolCallBlock.permissionReviewRequired');
+
+  function render(approvalState?: 'pending'): string {
+    return renderToStaticMarkup(
+      React.createElement(
+        I18nProvider,
+        null,
+        React.createElement(ToolCallBlock, {
+          toolName: 'run_command',
+          toolArgs: JSON.stringify({ content: 'ls', description: 'List files' }),
+          inActivityRail: true,
+          approvalState,
+          permissionDecision: askDecision,
+        })
+      )
+    );
+  }
+
+  // The rail header and the approval dock already say a decision is pending,
+  // so the row repeating it was the second badge users saw.
+  it('leaves the review-required chip off a call still waiting on the user', () => {
+    expect(render('pending')).not.toContain(reviewRequired);
+  });
+
+  it('keeps the chip on a call that is no longer actionable', () => {
+    expect(render()).toContain(reviewRequired);
+  });
+});

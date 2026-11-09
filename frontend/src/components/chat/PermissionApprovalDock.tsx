@@ -3,6 +3,7 @@ import { useI18n } from '../../i18n';
 import type { AGUIPart, ApprovalRememberScope, PermissionAction } from '../../types/agui';
 import { isImeComposing } from '../../lib/ime';
 import { hoverText } from '../../lib/hoverText';
+import { normalizeToolName } from './toolSummary';
 
 interface PermissionApprovalDockProps {
   parts: AGUIPart[];
@@ -134,7 +135,7 @@ const ApprovalCard: React.FC<{
 }> = ({ approval, onDecision, keyboardActive }) => {
   const { t } = useI18n();
   const [feedback, setFeedback] = React.useState('');
-  const displayName = approval.toolName.replace(/_/g, ' ');
+  const displayName = normalizeToolName(approval.toolName).replace(/_/g, ' ');
   const description =
     typeof approval.args.description === 'string' ? approval.args.description.trim() : '';
   const promptAction = description
@@ -247,11 +248,21 @@ const ApprovalCard: React.FC<{
     <section className="mx-auto w-full max-w-5xl animate-brutal-drop overflow-hidden border-2 border-brutal-black bg-white font-mono text-brutal-black shadow-[3px_3px_0_0_#000] dark:border-neutral-500 dark:bg-zinc-900 dark:text-white dark:shadow-[3px_3px_0_0_rgba(255,255,255,0.14)]">
       <div className="flex items-start gap-2 px-3 pt-3">
         <span className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full border border-brutal-black bg-brutal-yellow dark:border-neutral-300" />
-        <div className="text-[12px] font-bold leading-5">
+        <div className="min-w-0 flex-1 text-[12px] font-bold leading-5">
           {t('permissionDock.title', {
             action: promptAction,
           })}
         </div>
+        {/* A described call reads as its description alone ("May I list the
+            files?"), so name the tool itself: that is what the user approves. */}
+        {description && (
+          <span
+            className="mt-0.5 shrink-0 border border-neutral-400 px-1.5 py-px text-[9px] font-bold uppercase tracking-wider text-neutral-600 dark:border-zinc-500 dark:text-neutral-300"
+            title={approval.toolName}
+          >
+            {displayName}
+          </span>
+        )}
       </div>
 
       {detail && (
