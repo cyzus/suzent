@@ -524,6 +524,9 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
                     client === relayed && connection?.hostToken == saved.hostToken
             },
             isIdle = { !busy && !streaming && !voice.active && !approvalBusy && !stopInFlight && checkingDesktop == null },
+            validate = { direct ->
+                withTimeout(5000) { check(direct.session().id == deviceId) }
+            },
             install = { direct ->
                 val latest = requireNotNull(desktops.desktop(id)).connection
                 val updated = latest.copy(origin = direct.backend.origin.toString())

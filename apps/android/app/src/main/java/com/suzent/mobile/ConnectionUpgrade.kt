@@ -20,6 +20,7 @@ class ConnectionUpgrade<Candidate>(private val scope: CoroutineScope) {
         prepare: suspend () -> Candidate,
         isCurrent: () -> Boolean,
         isIdle: () -> Boolean,
+        validate: suspend (Candidate) -> Unit,
         install: (Candidate) -> Unit,
         discard: (Candidate) -> Unit,
     ) {
@@ -32,9 +33,14 @@ class ConnectionUpgrade<Candidate>(private val scope: CoroutineScope) {
                     ensureActive()
                     while (isCurrent()) {
                         if (isIdle()) {
-                            install(candidate)
-                            installed = true
-                            return@launch
+                            validate(candidate)
+                            ensureActive()
+                            if (!isCurrent()) return@launch
+                            if (isIdle()) {
+                                install(candidate)
+                                installed = true
+                                return@launch
+                            }
                         }
                         delay(200)
                         ensureActive()

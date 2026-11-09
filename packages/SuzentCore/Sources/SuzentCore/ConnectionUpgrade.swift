@@ -15,6 +15,7 @@ import Foundation
         prepare: @escaping @Sendable () async throws -> Candidate,
         isCurrent: @escaping @MainActor () -> Bool,
         isIdle: @escaping @MainActor () -> Bool,
+        validate: @escaping @MainActor (Candidate) async throws -> Void,
         install: @escaping @MainActor (Candidate) throws -> Void,
         discard: @escaping @MainActor (Candidate) -> Void
     ) {
@@ -26,9 +27,14 @@ import Foundation
                 defer { if !installed { discard(candidate) } }
                 while !Task.isCancelled && isCurrent() {
                     if isIdle() {
-                        try install(candidate)
-                        installed = true
-                        return
+                        try await validate(candidate)
+                        try Task.checkCancellation()
+                        guard isCurrent() else { return }
+                        if isIdle() {
+                            try install(candidate)
+                            installed = true
+                            return
+                        }
                     }
                     try await Task.sleep(for: .milliseconds(200))
                 }

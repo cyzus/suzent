@@ -550,6 +550,12 @@ import SuzentCore
                 guard let self else { return false }
                 return !busy && !streaming && !voice.active && !approvalBusy && !stopInFlight && checkingDesktopId == nil
             },
+            validate: { direct in
+                try await withConnectionTimeout(.seconds(5)) {
+                    let session = try await direct.clientSession()
+                    guard session.device.deviceId == deviceID else { throw ClientError.invalidResponse }
+                }
+            },
             install: { [weak self] direct in
                 guard let self, var latest = store.desktop(id)?.connection else { throw CancellationError() }
                 latest.origin = direct.backend.url.absoluteString
