@@ -1,6 +1,6 @@
-"""Map a desktop tool call onto an agent-desktop 1.0.x argv list.
+"""Map a desktop tool call onto an agent-desktop 1.x argv list.
 
-Flag names and required arguments follow the CLI reference (JSON envelope 2.5).
+Flag names and required arguments follow the CLI reference (JSON envelope 2.6).
 Nothing here starts a process.
 """
 
@@ -141,6 +141,8 @@ _SHELL_SURFACES = frozenset(
         "system-tray",
         "system-tray-overflow",
         "action-center",
+        "dock",
+        "menu-bar-extras",
     }
 )
 _MODIFIERS = frozenset({"shift", "meta", "ctrl", "alt"})

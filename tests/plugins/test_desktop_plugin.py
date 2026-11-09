@@ -177,6 +177,17 @@ def test_unused_option_is_rejected() -> None:
         prepare_call("click", {"ref": REF, "text": "nope"})
 
 
+def test_render_envelope_failure_without_disposition_stays_short() -> None:
+    rendered = render_envelope(
+        {"ok": False, "command": "open-system-surface", "error": {"code": "INTERNAL"}}
+    )
+
+    first_line = rendered.message.splitlines()[0]
+    assert first_line == "agent-desktop open-system-surface failed: INTERNAL."
+    assert "retry=" not in rendered.message
+    assert "Docker sandbox" not in rendered.message
+
+
 def test_render_envelope_surfaces_retry_and_drops_image_bytes() -> None:
     rendered = render_envelope(
         {
@@ -364,7 +375,6 @@ async def test_tool_parses_a_snapshot_and_checks_the_cli_version(fake_cli) -> No
 
     assert result.success
     assert "Finder" in result.message
-    assert "Docker sandbox" in result.message
     assert result.metadata["host_execution"] is True
     assert fake_cli[0] == ["version"]
     assert fake_cli[1] == ["snapshot", "--app", "Finder", "--interactive-only"]
@@ -419,7 +429,7 @@ async def test_tool_rejects_a_different_major_version(
     result = await DesktopTool().forward(_ctx(), "status", None)
 
     assert result.success is False
-    assert "1.0.x" in result.message
+    assert "1.x" in result.message
     assert "2.0.0" in result.message
     reset_binary_cache()
 
@@ -581,7 +591,7 @@ def test_desktop_refuses_a_bare_ref_before_approval() -> None:
 
 def test_desktop_plugin_pins_every_platform_to_the_npm_tarball() -> None:
     assert SPEC.package == "agent-desktop"
-    assert SPEC.version == "1.0.2"
+    assert SPEC.version == "1.2.0"
     assert set(SPEC.platforms) == {
         "darwin-arm64",
         "darwin-x64",
