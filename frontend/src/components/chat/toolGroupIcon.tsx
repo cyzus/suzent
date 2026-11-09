@@ -6,6 +6,7 @@ import {
   CalendarDaysIcon,
   ChatBubbleLeftRightIcon,
   CircleStackIcon,
+  CodeBracketIcon,
   ClipboardDocumentCheckIcon,
   ClipboardDocumentListIcon,
   ClockIcon,
@@ -71,6 +72,7 @@ const EXACT_TOOL_ICONS = {
   start_command: PlayIcon,
   check_command: SignalIcon,
   stop_command: StopIcon,
+  run_code: CodeBracketIcon,
 
   // Web & Browser
   web_search: GlobeAltIcon,
@@ -176,6 +178,7 @@ export function pickToolAnimationKind(
     case 'run_command':
     case 'start_command':
     case 'stop_command':
+    case 'run_code':
       return 'terminal';
     case 'check_command':
     case 'speak':
@@ -280,6 +283,7 @@ export function pickToolRunningSurfaceClass(toolName: string): ToolRunningSurfac
     case 'start_command':
     case 'check_command':
     case 'stop_command':
+    case 'run_code':
     case 'skill_execute':
     case 'schedule_cron':
     case 'agent':

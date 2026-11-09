@@ -19,6 +19,8 @@ interface ModelRolesTabProps {
   unregisteredModels: string[];
   onOpenVoiceSettings?: () => void;
   onChange: (roles: Record<string, string[]>) => void;
+  codeMode?: boolean;
+  onCodeModeChange?: (enabled: boolean) => void;
 }
 
 type FallbackBehavior = 'none' | 'primary' | 'cheap' | 'decision' | 'vision-primary';
@@ -472,6 +474,8 @@ export function ModelRolesTab({
   unregisteredModels,
   onChange,
   onOpenVoiceSettings,
+  codeMode = false,
+  onCodeModeChange,
 }: ModelRolesTabProps): React.ReactElement {
   const { t } = useI18n();
   const [suggestionsEnabled, setSuggestionsEnabled] = useState(isInputSuggestionEnabled);
@@ -593,6 +597,29 @@ export function ModelRolesTab({
           </div>
         </section>
       ))}
+      {onCodeModeChange && (
+        <section aria-labelledby="roles-code-mode">
+          <h3
+            id="roles-code-mode"
+            className="mb-2 text-sm font-black uppercase tracking-wide dark:text-white"
+          >
+            {t('settings.roles.behaviorGroup')}
+          </h3>
+          <label className="flex cursor-pointer items-center justify-between gap-4 border-2 border-brutal-black bg-white px-4 py-3 shadow-brutal-sm dark:bg-zinc-800 dark:text-white">
+            <span className="min-w-0">
+              <span className="block text-sm font-bold">{t('settings.roles.codeMode')}</span>
+              <span className="mt-1 block text-xs text-neutral-500 dark:text-neutral-400">
+                {t('settings.roles.codeModeDesc')}
+              </span>
+            </span>
+            <BrutalOnOff
+              checked={codeMode}
+              onChange={onCodeModeChange}
+              aria-label={t('settings.roles.codeMode')}
+            />
+          </label>
+        </section>
+      )}
     </SettingsPage>
   );
 }
