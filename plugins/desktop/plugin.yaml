@@ -1,15 +1,15 @@
 id: desktop
 name: Desktop
-version: 1.1.0
+version: 1.2.0
 description: Drive native desktop apps through the agent-desktop CLI. Off until you install this plugin.
 api_version: 3
 default_enabled: false
 binaries:
   - name: agent-desktop
-    version: 1.0.2
+    version: 1.2.0
     package: agent-desktop
-    # sha256 of agent-desktop-1.0.2.tgz as published on npm (14,622,669 bytes).
-    sha256: 6a2bbcc1bda2cf92a23e52675ad7ca3f36fd8cb2ac649cd01361bfc8b3820b28
+    # sha256 of the agent-desktop tarball as published on npm.
+    sha256: 9e4b1a69d9d6be487873a1df8db61234a8b7a9c79aeced4e403a8126c0e0bcc0
     max_bytes: 31457280
     env: SUZENT_AGENT_DESKTOP_BIN
     platforms:

@@ -292,7 +292,7 @@ def test_cli_hands_changes_to_a_running_server(tmp_path, monkeypatch):
         async def aclose(self):
             pass
 
-    monkeypatch.setattr("suzent.client.get_client", lambda: FakeClient())
+    monkeypatch.setattr("suzent.client.api.SuzentAsyncClient", FakeClient)
     runner = CliRunner()
 
     installed = runner.invoke(plugin_app, ["install", "cli-demo"])

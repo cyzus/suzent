@@ -21,8 +21,8 @@ from suzent.plugins.binaries import PluginBinary
 logger = get_logger(__name__)
 
 INSTALL_HINT = (
-    "agent-desktop 1.0.x is not available. Suzent can download the pinned "
-    "1.0.2 release after you agree. In Settings → Plugins, choose Install "
+    "agent-desktop 1.x is not available. Suzent can download the release "
+    "pinned in the Desktop plugin after you agree. In Settings → Plugins, choose Install "
     "agent-desktop on the Desktop plugin, or run `suzent plugin install desktop`.\n"
     "You can also install it yourself (`npm install -g agent-desktop`) or set "
     "SUZENT_AGENT_DESKTOP_BIN to an executable you already have.\n"
@@ -32,7 +32,7 @@ INSTALL_HINT = (
     "Smart App Control may block it."
 )
 
-_RELEASE = re.compile(r"^1\.0\.\d+(?:[-+].+)?$")
+_RELEASE = re.compile(r"^1\.\d+\.\d+(?:[-+].+)?$")
 _STDOUT_LIMIT = 16 * 1024 * 1024
 _support_lock = asyncio.Lock()
 _supported: set[str] = set()
@@ -56,7 +56,7 @@ class RenderedEnvelope:
 
 
 def is_supported_release(version: str) -> bool:
-    """True for agent-desktop 1.0.x, the contract this plugin was written against."""
+    """True for agent-desktop 1.x, the major version this plugin was written against."""
     return bool(_RELEASE.fullmatch(version.strip()))
 
 
@@ -173,7 +173,7 @@ def render_envelope(envelope: dict[str, Any]) -> RenderedEnvelope:
 
 
 async def ensure_supported_binary(binary: str) -> str | None:
-    """Return an error when ``binary`` is not agent-desktop 1.0.x.
+    """Return an error when ``binary`` is not agent-desktop 1.x.
 
     A successful check is remembered. A failure is not, so installing the
     right binary takes effect on the next call without a restart.
@@ -191,8 +191,8 @@ async def ensure_supported_binary(binary: str) -> str | None:
         if not isinstance(version, str) or not is_supported_release(version):
             shown = version if isinstance(version, str) else "an unreadable version"
             return (
-                "Suzent's desktop plugin supports agent-desktop 1.0.x. "
-                f"This binary reported {shown}. Install a 1.0.x release from "
+                "Suzent's desktop plugin supports agent-desktop 1.x. "
+                f"This binary reported {shown}. Install a 1.x release from "
                 "https://github.com/vercel-labs/agent-desktop/releases"
             )
         _supported.add(binary)
