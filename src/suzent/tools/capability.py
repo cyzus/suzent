@@ -28,6 +28,38 @@ logger = get_logger(__name__)
 _TOOL_ERROR_MESSAGE_LIMIT = 2000
 
 
+def without_model_excluded_metadata(part: Any) -> Any:
+    """The tool result as the model receives it, without display-only metadata.
+
+    Tools name the metadata keys only the UI or calling code uses in
+    ``model_excluded_metadata``; the stored part keeps them.
+    """
+    from suzent.tools.base import ToolResult
+    from suzent.tools.registry import get_model_excluded_metadata
+
+    if not isinstance(part, ToolReturnPart):
+        return part
+    excluded = get_model_excluded_metadata().get(part.tool_name)
+    if not excluded:
+        return part
+    content = part.content
+    if isinstance(content, ToolResult):
+        content = content.model_dump(mode="json")
+    if not isinstance(content, dict) or not isinstance(content.get("metadata"), dict):
+        return part
+    return replace(
+        part,
+        content={
+            **content,
+            "metadata": {
+                key: value
+                for key, value in content["metadata"].items()
+                if key not in excluded
+            },
+        },
+    )
+
+
 @dataclass
 class ToolResultContextCapability(AbstractCapability[AgentDeps]):
     """Keep display-only tool metadata out of requests, preserving stored history."""
@@ -39,38 +71,15 @@ class ToolResultContextCapability(AbstractCapability[AgentDeps]):
         request_context: ModelRequestContext,
         handler: WrapModelRequestHandler,
     ) -> ModelResponse:
-        from suzent.tools.registry import get_model_excluded_metadata
-        from suzent.tools.base import ToolResult
-
-        excluded_by_tool = get_model_excluded_metadata()
-        messages = []
-        for message in request_context.messages:
-            if not isinstance(message, ModelRequest):
-                messages.append(message)
-                continue
-            parts = []
-            for part in message.parts:
-                excluded = excluded_by_tool.get(getattr(part, "tool_name", ""))
-                content = getattr(part, "content", None)
-                if excluded and isinstance(content, ToolResult):
-                    content = content.model_dump(mode="json")
-                if (
-                    excluded
-                    and isinstance(part, ToolReturnPart)
-                    and isinstance(content, dict)
-                    and isinstance(content.get("metadata"), dict)
-                ):
-                    content = {
-                        **content,
-                        "metadata": {
-                            key: value
-                            for key, value in content["metadata"].items()
-                            if key not in excluded
-                        },
-                    }
-                    part = replace(part, content=content)
-                parts.append(part)
-            messages.append(replace(message, parts=parts))
+        messages = [
+            replace(
+                message,
+                parts=[without_model_excluded_metadata(part) for part in message.parts],
+            )
+            if isinstance(message, ModelRequest)
+            else message
+            for message in request_context.messages
+        ]
         return await handler(replace(request_context, messages=messages))
 
 

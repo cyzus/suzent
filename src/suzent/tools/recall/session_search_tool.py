@@ -13,9 +13,9 @@ included only when ``role_filter`` requests it.
 """
 
 from collections.abc import Sequence
-from typing import Annotated, Literal, Optional
+from typing import Annotated, Literal, Optional, TypedDict
 
-from pydantic import Field
+from pydantic import ConfigDict, Field, with_config
 from pydantic_ai import RunContext
 
 from suzent.core.agent_deps import AgentDeps
@@ -30,6 +30,54 @@ VALID_ROLES = {"user", "assistant", "tool"}
 TranscriptRole = Literal["user", "assistant", "tool"]
 
 DEFAULT_ROLES: tuple[str, ...] = ("user", "assistant")
+
+
+@with_config(ConfigDict(extra="allow", use_attribute_docstrings=True))
+class SessionSummary(TypedDict, total=False):
+    session_id: str
+    """Pass as session_id to read the whole session."""
+    title: str
+    updated_at: str
+    snippet: str
+    """Discovery mode: the matching text."""
+    message_count: int
+    """Browse mode: visible user and assistant messages."""
+    preview: str
+    """Browse mode: the session's last message."""
+
+
+class SessionMessage(TypedDict):
+    role: str
+    text: str
+
+
+@with_config(ConfigDict(extra="allow", use_attribute_docstrings=True))
+class SessionSearchMetadata(TypedDict, total=False):
+    mode: Literal["read", "discovery", "browse"]
+    query: str
+    match_count: int
+    count: int
+    sessions: list[SessionSummary]
+    """Discovery and browse modes."""
+    session_id: str
+    offset: Optional[int]
+    next_offset: Optional[int]
+    total_messages: int
+    truncated: bool
+    messages: list[SessionMessage]
+    """Read mode: the visible messages, in order."""
+
+
+class SessionSearchResult(ToolResult):
+    metadata: SessionSearchMetadata = Field(default_factory=dict)
+
+
+def _structured_messages(messages: list[dict]) -> list[SessionMessage]:
+    return [
+        {"role": str(m.get("role", "?")), "text": text}
+        for m in messages
+        if (text := (m.get("text") or "").strip())
+    ]
 
 
 def _parse_role_filter(
@@ -71,6 +119,8 @@ class SessionSearchTool(Tool):
     name = "SessionSearchTool"
     tool_name = "session_search"
     group = ToolGroup.MEMORY
+    # The message already shows the sessions and messages the model reads.
+    model_excluded_metadata = frozenset({"sessions", "messages"})
 
     async def forward(
         self,
@@ -120,7 +170,7 @@ class SessionSearchTool(Tool):
                 "Assistant reasoning is never shown.",
             ),
         ] = None,
-    ) -> ToolResult:
+    ) -> SessionSearchResult:
         """Recall past conversations: read a session, search them, or browse recent ones.
 
         Modes are chosen by which arguments are provided:
@@ -140,7 +190,7 @@ class SessionSearchTool(Tool):
             return self._browse(db, limit, current_chat_id)
         except Exception as e:
             logger.error(f"session_search failed: {e}")
-            return ToolResult.error_result(
+            return SessionSearchResult.error_result(
                 ToolErrorCode.EXECUTION_FAILED,
                 f"Session search failed: {e}",
             )
@@ -154,12 +204,12 @@ class SessionSearchTool(Tool):
         roles: tuple[str, ...],
         offset: int | None = None,
         page_size: int = 20,
-    ) -> ToolResult:
+    ) -> SessionSearchResult:
         session = db.read_chat_session(
             session_id, role_filter=roles, offset=offset, page_size=page_size
         )
         if not session:
-            return ToolResult.error_result(
+            return SessionSearchResult.error_result(
                 ToolErrorCode.FILE_NOT_FOUND,
                 f"No session found with id '{session_id}'.",
             )
@@ -171,7 +221,7 @@ class SessionSearchTool(Tool):
             header += ", showing first 20 + last 10; set offset=0 to page through all messages"
         header += "):"
         body = _format_messages(session["messages"])
-        return ToolResult.success_result(
+        return SessionSearchResult.success_result(
             f"{header}\n\n{body}" if body else f"{header}\n\n(no visible messages)",
             metadata={
                 "mode": "read",
@@ -180,6 +230,7 @@ class SessionSearchTool(Tool):
                 "session_id": session_id,
                 "total_messages": session["total_messages"],
                 "truncated": session["truncated"],
+                "messages": _structured_messages(session["messages"]),
             },
         )
 
@@ -190,16 +241,21 @@ class SessionSearchTool(Tool):
         limit: int,
         roles: tuple[str, ...],
         current_chat_id: Optional[str],
-    ) -> ToolResult:
+    ) -> SessionSearchResult:
         # Exclude the current session (recall is about *other* conversations) inside the
         # query, so excluding it never costs a result slot under the limit.
         results = db.search_chat_messages(
             query, limit=limit, role_filter=roles, exclude_chat_id=current_chat_id
         )
         if not results:
-            return ToolResult.success_result(
+            return SessionSearchResult.success_result(
                 f"No past sessions matched '{query}'.",
-                metadata={"mode": "discovery", "query": query, "match_count": 0},
+                metadata={
+                    "mode": "discovery",
+                    "query": query,
+                    "match_count": 0,
+                    "sessions": [],
+                },
             )
 
         blocks = [f"Found {len(results)} session(s) matching '{query}':\n"]
@@ -211,27 +267,39 @@ class SessionSearchTool(Tool):
                 f"Match: {r['snippet']}\n\n"
                 f"Context:\n{ctx_text}"
             )
-        return ToolResult.success_result(
+        return SessionSearchResult.success_result(
             "\n\n".join(blocks),
             metadata={
                 "mode": "discovery",
                 "query": query,
                 "match_count": len(results),
+                "sessions": [
+                    {
+                        "session_id": r["chat_id"],
+                        "title": r.get("title") or "",
+                        "updated_at": str(r.get("updated_at") or ""),
+                        "snippet": r.get("snippet") or "",
+                    }
+                    for r in results
+                ],
             },
         )
 
-    def _browse(self, db, limit: int, current_chat_id: Optional[str]) -> ToolResult:
+    def _browse(
+        self, db, limit: int, current_chat_id: Optional[str]
+    ) -> SessionSearchResult:
         from suzent.database.search import sanitize_messages
 
         # Over-fetch by one so excluding the current chat still yields `limit` rows.
         summaries = db.list_chats(limit=limit + 1)
         summaries = [s for s in summaries if s.id != current_chat_id][:limit]
         if not summaries:
-            return ToolResult.success_result(
+            return SessionSearchResult.success_result(
                 "No past sessions found.",
-                metadata={"mode": "browse", "count": 0},
+                metadata={"mode": "browse", "count": 0, "sessions": []},
             )
         lines = ["Recent sessions:\n"]
+        sessions: list[SessionSummary] = []
         for s in summaries:
             # The sidebar summary count (s.messageCount) counts only assistant turns
             # and can be stale; recompute the visible (user+assistant) message count
@@ -244,7 +312,20 @@ class SessionSearchTool(Tool):
                 f"  Updated: {s.updatedAt}  ·  {msg_count} messages\n"
                 f"  {preview}"
             )
-        return ToolResult.success_result(
+            sessions.append(
+                {
+                    "session_id": s.id,
+                    "title": s.title or "",
+                    "updated_at": str(s.updatedAt or ""),
+                    "message_count": msg_count,
+                    "preview": preview,
+                }
+            )
+        return SessionSearchResult.success_result(
             "\n".join(lines),
-            metadata={"mode": "browse", "count": len(summaries)},
+            metadata={
+                "mode": "browse",
+                "count": len(summaries),
+                "sessions": sessions,
+            },
         )

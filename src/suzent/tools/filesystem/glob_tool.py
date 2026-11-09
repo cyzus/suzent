@@ -2,9 +2,9 @@
 GlobTool - Find files matching a pattern.
 """
 
-from typing import Annotated, Optional
+from typing import Annotated, Optional, TypedDict
 
-from pydantic import Field
+from pydantic import ConfigDict, Field, with_config
 from pydantic_ai import RunContext
 
 from suzent.core.agent_deps import AgentDeps
@@ -16,6 +16,30 @@ from suzent.tools.filesystem.path_resolver import PathResolver
 
 logger = get_logger(__name__)
 
+# The message lists the first 100 paths for the model to read; the structured
+# list is for code that iterates over the matches, so it can go further.
+MAX_GLOB_LISTED_PATHS = 100
+MAX_GLOB_STRUCTURED_PATHS = 1000
+
+
+class GlobMatch(TypedDict):
+    path: str
+    is_dir: bool
+
+
+@with_config(ConfigDict(extra="allow", use_attribute_docstrings=True))
+class GlobMetadata(TypedDict, total=False):
+    match_count: int
+    pattern: str
+    path: Optional[str]
+    matches: list[GlobMatch]
+    """Matching paths, files first, at most 1000."""
+    matches_truncated: bool
+
+
+class GlobResult(ToolResult):
+    metadata: GlobMetadata = Field(default_factory=dict)
+
 
 class GlobTool(Tool):
     """
@@ -26,6 +50,8 @@ class GlobTool(Tool):
     tool_name = "glob_search"
     group = ToolGroup.FILESYSTEM
     builtin = True
+    # The message already lists the paths the model reads.
+    model_excluded_metadata = frozenset({"matches"})
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -44,7 +70,7 @@ class GlobTool(Tool):
                 description="Optional search root directory. Leave empty to search the current workspace root.",
             ),
         ] = None,
-    ) -> ToolResult:
+    ) -> GlobResult:
         """Find files matching a glob pattern.
 
         Searches for files matching the given glob pattern in the specified directory
@@ -120,38 +146,51 @@ class GlobTool(Tool):
                         f"Use '**/{pattern}' to search subdirectories."
                     )
 
-                return ToolResult.success_result(
+                return GlobResult.success_result(
                     no_match_msg,
-                    metadata={"match_count": 0, "pattern": pattern, "path": path},
+                    metadata={
+                        "match_count": 0,
+                        "pattern": pattern,
+                        "path": path,
+                        "matches": [],
+                        "matches_truncated": False,
+                    },
                 )
 
             # Format output
             result_lines = [f"Found {len(results)} matches for '{pattern}':"]
-            for vpath, is_dir in results[:100]:  # Limit to 100 results
+            for vpath, is_dir in results[:MAX_GLOB_LISTED_PATHS]:
                 marker = "[DIR] " if is_dir else ""
                 result_lines.append(f"  {marker}{vpath}")
 
-            if len(results) > 100:
-                result_lines.append(f"  ... and {len(results) - 100} more")
+            if len(results) > MAX_GLOB_LISTED_PATHS:
+                result_lines.append(
+                    f"  ... and {len(results) - MAX_GLOB_LISTED_PATHS} more"
+                )
 
-            return ToolResult.success_result(
+            return GlobResult.success_result(
                 "\n".join(result_lines),
                 metadata={
                     "match_count": len(results),
                     "pattern": pattern,
                     "path": path,
+                    "matches": [
+                        {"path": vpath, "is_dir": is_dir}
+                        for vpath, is_dir in results[:MAX_GLOB_STRUCTURED_PATHS]
+                    ],
+                    "matches_truncated": len(results) > MAX_GLOB_STRUCTURED_PATHS,
                 },
             )
 
         except ValueError as e:
-            return ToolResult.error_result(
+            return GlobResult.error_result(
                 ToolErrorCode.INVALID_ARGUMENT,
                 str(e),
                 metadata={"pattern": pattern, "path": path},
             )
         except Exception as e:
             logger.error(f"Error in glob {pattern}: {e}")
-            return ToolResult.error_result(
+            return GlobResult.error_result(
                 ToolErrorCode.EXECUTION_FAILED,
                 str(e),
                 metadata={"pattern": pattern, "path": path},
