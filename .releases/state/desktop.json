@@ -189,6 +189,7 @@
     ".releases/changes/realtime-model-list.json",
     ".releases/changes/realtime-voice.json",
     ".releases/changes/reduced-motion-assembly-conveyor.json",
+    ".releases/changes/reduced-motion-progress-signals.json",
     ".releases/changes/refine-chat-bubbles.json",
     ".releases/changes/regent-board-instant-resolve.json",
     ".releases/changes/regent-board.json",
