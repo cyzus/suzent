@@ -12,6 +12,7 @@
     ".releases/changes/android-settings-button.json",
     ".releases/changes/android-streaming-tables.json",
     ".releases/changes/android-zxing-only-scanner.json",
+    ".releases/changes/citations-inside-bold.json",
     ".releases/changes/context-menu-actions.json",
     ".releases/changes/dark-yellow-inline-code.json",
     ".releases/changes/ios-app-store-orientations.json",
