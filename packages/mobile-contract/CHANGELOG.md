@@ -1,6 +1,6 @@
 # Mobile changelog
 
-## [mobile-v0.8.0] - 2026-11-08
+## [mobile-v0.8.0] - 2026-11-09
 
 ### Release notes
 - Keep a collapsed activity rail closed while a reply is streaming, and stop streaming blue and a single failure from recoloring the whole rail.
