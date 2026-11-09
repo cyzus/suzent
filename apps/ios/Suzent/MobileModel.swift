@@ -187,6 +187,9 @@ import SuzentCore
     private var repairActive = false
     private var connection: Connection? { store.active?.connection }
     private var client: (any MobileClient)?
+    private let connectionUpgrade = ConnectionUpgrade<SuzentClient>()
+    // Previously captured clients may still serve polling requests or the device socket.
+    private var retiredClients: [SuzentClient] = []
     private var streamTask: Task<Void, Never>?
     private var nodeTask: Task<Void, Never>?
     private var socket: (any MobileSocket)?
@@ -420,35 +423,35 @@ import SuzentCore
     /// Builds the session on a separate client and swaps it in only once everything has loaded,
     /// so a failed switch leaves the current desktop untouched.
     private func activate(_ id: String, _ stored: Connection) async throws {
+        connectionUpgrade.cancel()
         var saved = stored
         var throughRelay: RelayRoute?
         reconnectStage = 0
-        reconnectStatus = "LAN · \(displayOrigin(saved.origin))"
-        do {
-            var reachable: String?
-            var visited = Set<String>()
-            for origin in [saved.origin] + (saved.origins ?? []) where reachable == nil && visited.insert(origin).inserted {
-                try Task.checkCancellation()
-                reconnectStatus = "LAN · \(displayOrigin(origin))"
-                let probe = try SuzentClient(backend: try Backend(origin, allowHTTP: allowsHTTP), token: "", probeOnly: true, deviceTrust: saved.tls)
-                defer { probe.close() }
-                do { _ = try await probe.capabilities(); reachable = origin }
-                catch { try Task.checkCancellation() }
+        reconnectStatus = String(localized: "Finding a connection")
+        let trust = saved.tls
+        let relay = saved.relay
+        let allowHTTP = allowsHTTP
+        let route = try await resolveConnectionRoute(
+            origins: [saved.origin] + (saved.origins ?? []), hasRelay: relay != nil
+        ) { route in
+            let probe: SuzentClient
+            switch route {
+            case .direct(let origin):
+                probe = try SuzentClient(backend: try Backend(origin, allowHTTP: allowHTTP), token: "", probeOnly: true, deviceTrust: trust)
+            case .relay:
+                guard let relay else { throw PairingError.unreachable }
+                probe = try SuzentClient(relay: relay, token: "", probeOnly: true)
             }
-            if let reachable { saved.origin = reachable }
-            else if let relay = saved.relay {
-                try Task.checkCancellation()
-                reconnectStage = 1
-                reconnectStatus = "RELAY"
-                let probe = try SuzentClient(relay: relay, token: "", probeOnly: true)
-                defer { probe.close() }
-                do { _ = try await probe.capabilities(); throughRelay = relay }
-                catch { try Task.checkCancellation(); throw PairingError.unreachable }
-            } else { throw PairingError.unreachable }
+            defer { probe.close() }
+            _ = try await probe.capabilities()
+        }
+        switch route {
+        case .direct(let origin): saved.origin = origin
+        case .relay: throughRelay = relay
         }
         guard saved.clientProtocol == 1 else { throw PairingError.incompatible }
         reconnectStage = 2
-        reconnectStatus = "VERIFYING"
+        reconnectStatus = String(localized: "Verifying connection")
         let candidate: SuzentClient
         if let throughRelay {
             candidate = try SuzentClient(relay: throughRelay, token: saved.hostToken)
@@ -481,7 +484,7 @@ import SuzentCore
             _ = try await candidate.capabilities()
             let session = try await candidate.clientSession()
             reconnectStage = 3
-            reconnectStatus = "SYNCING"
+            reconnectStatus = String(localized: "Syncing desktop")
             let navigation = try await candidate.initialNavigation()
             let taskList = session.supportsScheduledTasks ? try await candidate.scheduledTasks() : []
             let initialChat = try await candidate.composer()
@@ -498,6 +501,8 @@ import SuzentCore
             store = next
             origin = saved.origin
             canReconnect = true
+            retiredClients.forEach { $0.close() }
+            retiredClients = []
             client?.close()
             client = candidate
             device = session.device
@@ -510,7 +515,57 @@ import SuzentCore
             selected = initialChat
             restoreModel(initialChat)
             connected = true
+            if throughRelay != nil { startDirectUpgrade(id, saved, candidate) }
         } catch { candidate.close(); throw error }
+    }
+
+    private func startDirectUpgrade(_ id: String, _ saved: Connection, _ relayed: SuzentClient) {
+        let allowHTTP = allowsHTTP
+        let deviceID = device?.deviceId
+        connectionUpgrade.start(
+            prepare: {
+                let route = try await resolveConnectionRoute(origins: [saved.origin] + (saved.origins ?? []), hasRelay: false) { route in
+                    guard case .direct(let origin) = route else { throw PairingError.unreachable }
+                    let probe = try SuzentClient(backend: try Backend(origin, allowHTTP: allowHTTP), token: "", probeOnly: true, deviceTrust: saved.tls)
+                    defer { probe.close() }
+                    _ = try await probe.capabilities()
+                }
+                guard case .direct(let origin) = route else { throw PairingError.unreachable }
+                let direct = try SuzentClient(backend: try Backend(origin, allowHTTP: allowHTTP), token: saved.hostToken, deviceTrust: saved.tls)
+                do {
+                    try await withConnectionTimeout(.seconds(5)) {
+                        _ = try await direct.capabilities()
+                        let session = try await direct.clientSession()
+                        guard session.device.deviceId == deviceID else { throw ClientError.invalidResponse }
+                    }
+                    return direct
+                } catch { direct.close(); throw error }
+            },
+            isCurrent: { [weak self] in
+                guard let self else { return false }
+                return foreground && connected && !isDemo && store.activeId == id &&
+                    (client as? SuzentClient) === relayed && connection?.hostToken == saved.hostToken
+            },
+            isIdle: { [weak self] in
+                guard let self else { return false }
+                return !busy && !streaming && !voice.active && !approvalBusy && !stopInFlight && checkingDesktopId == nil
+            },
+            validate: { direct in
+                try await withConnectionTimeout(.seconds(5)) {
+                    let session = try await direct.clientSession()
+                    guard session.device.deviceId == deviceID else { throw ClientError.invalidResponse }
+                }
+            },
+            install: { [weak self] direct in
+                guard let self, var latest = store.desktop(id)?.connection else { throw CancellationError() }
+                latest.origin = direct.backend.url.absoluteString
+                try storeConnection(id, latest)
+                origin = latest.origin
+                retiredClients.append(relayed)
+                client = direct
+            },
+            discard: { $0.close() }
+        )
     }
 
     private func storeConnection(_ id: String, _ connection: Connection) throws {
@@ -973,12 +1028,17 @@ import SuzentCore
     func setForeground(_ active: Bool) async {
         foreground = active
         if !active {
+            connectionUpgrade.cancel()
             cancelReconnect()
             streamTask?.cancel()
             streaming = false
             liveParts = []
             disconnectNode()
         } else {
+            if let relayed = client as? SuzentClient, relayed.relay != nil,
+               let id = store.activeId, let saved = connection {
+                startDirectUpgrade(id, saved, relayed)
+            }
             if !connected && canReconnect { await connect() }
             await refresh()
             if let chat = selected, chat.isRunning == true, let client {
@@ -1084,6 +1144,9 @@ import SuzentCore
     }
 
     private func resetSessionState() {
+        connectionUpgrade.cancel()
+        retiredClients.forEach { $0.close() }
+        retiredClients = []
         voice.stop()
         voiceSupported = false
         scheduledTasks = []
