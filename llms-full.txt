@@ -10275,6 +10275,17 @@ TOOL_FUNCTIONS = {
 - Return informative error messages as strings (don't raise exceptions)
 - Set `deferrable = False` on the tool class if it should never appear in the `tool_search` catalog (e.g. always-on internals like MemorySearchTool)
 
+### Structured results
+
+A tool that returns a list the caller may want to loop over (paths, matches, search hits, tasks) should also return it as typed metadata, so calling code does not have to parse the message:
+
+- Declare the metadata as a `TypedDict` and subclass `ToolResult` with `metadata: <YourMetadata>`, then annotate `forward()` with the subclass. pydantic-ai turns that annotation into the tool's return schema. Decorate the `TypedDict` with `@with_config(ConfigDict(extra="allow", use_attribute_docstrings=True))`: without `extra="allow"` pydantic silently drops any key the type does not declare.
+- When the message already shows the same data, list the key in `model_excluded_metadata`. The model then reads it once, in the message; the stored result keeps it, and the context estimate leaves it out.
+- Bound the list. The message is capped by `output_char_limit`, metadata is not, and it is stored with the chat.
+- Text written by someone other than the user (mail, web pages) reaches the model fenced in the message. Keep its structured copy in an excluded key and pass strings through `sanitize_untrusted_text`.
+
+`glob_search`, `grep_search`, `read_file`, `web_search`, `webpage_fetch`, `memory_search`, `session_search`, `list_tasks`, `mail_search` and `mail_read` follow this pattern.
+
 ## Tool Registry
 
 The tool registry (`src/suzent/tools/registry.py`) provides programmatic access:
