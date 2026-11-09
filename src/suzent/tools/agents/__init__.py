@@ -14,6 +14,7 @@ if TYPE_CHECKING:
     from suzent.tools.agents.agent_lifecycle_tools import AgentSendTool as AgentSendTool
     from suzent.tools.agents.agent_lifecycle_tools import AgentStopTool as AgentStopTool
     from suzent.tools.agents.agent_tool import AgentTool as AgentTool
+    from suzent.tools.agents.regent_send_tool import RegentSendTool as RegentSendTool
 
 _EXPORTS = {
     "AgentTool": "suzent.tools.agents.agent_tool",
@@ -21,6 +22,7 @@ _EXPORTS = {
     "AgentReadTool": "suzent.tools.agents.agent_lifecycle_tools",
     "AgentSendTool": "suzent.tools.agents.agent_lifecycle_tools",
     "AgentStopTool": "suzent.tools.agents.agent_lifecycle_tools",
+    "RegentSendTool": "suzent.tools.agents.regent_send_tool",
 }
 
 __all__ = list(_EXPORTS)

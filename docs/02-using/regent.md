@@ -128,6 +128,11 @@ To change what it looks for, edit its `heartbeat.md` checklist from Regent's
 **Config** tab. You can also change how often it runs, or turn it off; turning
 it off sticks.
 
+The [memory organizer](../03-features/memory/README.md) also reports to Regent
+after it tidies your notebook, when it notices something worth your attention,
+such as lessons that could become a skill. Regent weighs these like any other
+report and only brings you what matters.
+
 ## Reminders and follow-ups
 
 Ask Regent to remind you of something, or to check back on some work later:

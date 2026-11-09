@@ -161,6 +161,7 @@ class ConfigModel(BaseModel):
         "GlobTool",
         "GrepTool",
         "MemorySearchTool",
+        "RegentSendTool",
     ]
     # Lint phase: a periodic editorial audit of the vault (contradictions, broken
     # links, orphans, decay) run by the same dream runner AFTER ingest catches up.
