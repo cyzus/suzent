@@ -58,7 +58,7 @@ afterEach(() => vi.unstubAllGlobals());
 describe('composer editor cap in the input panel', () => {
   it('caps the editor with a max height and keeps it scrolling and compact', () => {
     const html = renderComposer();
-    expect(html).toContain('max-height:360px');
+    expect(html).toContain('max-height:450px');
     expect(html).toContain('min-h-[40px]');
     expect(html).toContain('overflow-y-auto');
     expect(html).not.toContain('max-h-[120px]');

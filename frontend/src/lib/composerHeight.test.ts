@@ -2,8 +2,9 @@ import { describe, expect, it } from 'vitest';
 
 import {
   COMPOSER_EDITOR_MIN_HEIGHT_PX,
-  DESKTOP_COMPOSER_EDITOR_MAX_HEIGHT_PX,
-  DESKTOP_COMPOSER_RESERVED_HEIGHT_PX,
+  DESKTOP_COMPOSER_CHROME_PX,
+  DESKTOP_COMPOSER_MAX_HEIGHT_RATIO,
+  DESKTOP_COMPOSER_MIN_TRANSCRIPT_PX,
   MOBILE_COMPOSER_EDITOR_MAX_HEIGHT_PX,
   composerEditorHeightPx,
   composerEditorMaxHeightPx,
@@ -13,6 +14,9 @@ import {
 const desktop = (viewportHeight: number) =>
   composerEditorMaxHeightPx({ viewportWidth: 1280, viewportHeight });
 
+const half = (viewportHeight: number) =>
+  Math.floor(viewportHeight * DESKTOP_COMPOSER_MAX_HEIGHT_RATIO);
+
 describe('composer editor height', () => {
   it('keeps the historical 120px cap on narrow screens', () => {
     expect(MOBILE_COMPOSER_EDITOR_MAX_HEIGHT_PX).toBe(120);
@@ -21,33 +25,42 @@ describe('composer editor height', () => {
     expect(composerEditorMaxHeightPx({ viewportWidth: 1023, viewportHeight: 900 })).toBe(120);
   });
 
-  it('raises the desktop cap from 120px to 360px on a normal window', () => {
-    expect(DESKTOP_COMPOSER_EDITOR_MAX_HEIGHT_PX).toBe(360);
-    expect(desktop(760)).toBe(360);
-    expect(desktop(900)).toBe(360);
-    expect(desktop(1440)).toBe(360);
+  it('caps a desktop window at half its current height', () => {
+    expect(DESKTOP_COMPOSER_MAX_HEIGHT_RATIO).toBe(0.5);
+    for (const height of [560, 650, 760, 900, 1080, 1440]) {
+      expect(desktop(height)).toBe(half(height));
+    }
+    expect(desktop(761)).toBe(380);
   });
 
-  it('shrinks the desktop cap so a short window keeps chat and controls', () => {
-    expect(DESKTOP_COMPOSER_RESERVED_HEIGHT_PX).toBe(400);
-    expect(desktop(560)).toBe(160);
-    expect(desktop(650)).toBe(250);
-    expect(desktop(430)).toBe(COMPOSER_EDITOR_MIN_HEIGHT_PX);
-    expect(desktop(320)).toBe(COMPOSER_EDITOR_MIN_HEIGHT_PX);
+  it('follows a resize instead of a fixed pixel cap', () => {
+    expect(desktop(800)).toBe(400);
+    expect(desktop(1000)).toBe(500);
+    expect(desktop(1000)).toBeGreaterThan(desktop(800));
+    expect(desktop(800) / 800).toBe(0.5);
+  });
+
+  it('only backs off half the window when the controls would not fit', () => {
+    const safetyFloor = 2 * (DESKTOP_COMPOSER_CHROME_PX + DESKTOP_COMPOSER_MIN_TRANSCRIPT_PX);
+    expect(safetyFloor).toBeLessThan(560);
+    expect(desktop(400)).toBe(192);
+    expect(desktop(240)).toBe(COMPOSER_EDITOR_MIN_HEIGHT_PX);
+    expect(desktop(560)).toBe(half(560));
   });
 
   it('stays one line when empty and shrinks again after text is removed', () => {
     const cap = desktop(900);
+    expect(cap).toBe(450);
     expect(composerEditorHeightPx(0, cap)).toBe(40);
     expect(composerEditorHeightPx(40, cap)).toBe(40);
     expect(composerEditorHeightPx(96, cap)).toBe(96);
-    expect(composerEditorHeightPx(900, cap)).toBe(360);
+    expect(composerEditorHeightPx(900, cap)).toBe(450);
     expect(composerEditorHeightPx(48, cap)).toBe(48);
   });
 
   it('assumes a normal desktop window outside the browser', () => {
     expect(composerViewport()).toEqual({ viewportWidth: 1440, viewportHeight: 900 });
-    expect(composerEditorMaxHeightPx(composerViewport())).toBe(360);
+    expect(composerEditorMaxHeightPx(composerViewport())).toBe(450);
   });
 
   it('still scrolls inside the mobile cap instead of growing', () => {

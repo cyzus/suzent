@@ -1,4 +1,4 @@
 {
   "products": {"desktop": "patch"},
-  "summary": "The desktop message box grows much taller for long text, and stays shorter in a small window."
+  "summary": "The desktop message box can grow to half the window while you edit a long message."
 }

@@ -11,19 +11,22 @@ export const COMPOSER_EDITOR_MIN_HEIGHT_PX = 40;
  */
 export const MOBILE_COMPOSER_EDITOR_MAX_HEIGHT_PX = 120;
 
-/**
- * About twelve lines of `text-lg` / `leading-7`. Tall enough to revise a long
- * prompt, and exactly what the default 760px desktop window can spare once
- * the header, a readable transcript, and the composer controls are reserved.
- */
-export const DESKTOP_COMPOSER_EDITOR_MAX_HEIGHT_PX = 360;
+/** Desktop long text may use half the current window. Empty text stays one line. */
+export const DESKTOP_COMPOSER_MAX_HEIGHT_RATIO = 0.5;
 
 /**
- * Space that stays outside the editor on a desktop window: the 48px header,
- * roughly 240px of transcript, and the attach / send / model / permission
- * controls that are not part of the editor's own max-height.
+ * Always-visible controls outside the editor: attach, send, model, and
+ * permission. Attachments scroll inside their own cap and are not deducted,
+ * so a normal window stays at exactly half.
  */
-export const DESKTOP_COMPOSER_RESERVED_HEIGHT_PX = 400;
+export const DESKTOP_COMPOSER_CHROME_PX = 112;
+
+/**
+ * A few lines of transcript that must remain when the window is tiny.
+ * Half the window is only reduced once the viewport is shorter than
+ * `2 * (chrome + this)`, which is below the desktop app's 560px minimum.
+ */
+export const DESKTOP_COMPOSER_MIN_TRANSCRIPT_PX = 96;
 
 export function composerEditorMaxHeightPx(viewport: {
   viewportWidth: number;
@@ -32,11 +35,13 @@ export function composerEditorMaxHeightPx(viewport: {
   if (!Number.isFinite(viewport.viewportWidth) || viewport.viewportWidth < DESKTOP_BREAKPOINT_PX) {
     return MOBILE_COMPOSER_EDITOR_MAX_HEIGHT_PX;
   }
-  const fitted = viewport.viewportHeight - DESKTOP_COMPOSER_RESERVED_HEIGHT_PX;
-  return Math.min(
-    DESKTOP_COMPOSER_EDITOR_MAX_HEIGHT_PX,
-    Math.max(COMPOSER_EDITOR_MIN_HEIGHT_PX, Math.floor(fitted))
-  );
+  if (!Number.isFinite(viewport.viewportHeight) || viewport.viewportHeight <= 0) {
+    return COMPOSER_EDITOR_MIN_HEIGHT_PX;
+  }
+  const half = Math.floor(viewport.viewportHeight * DESKTOP_COMPOSER_MAX_HEIGHT_RATIO);
+  const roomBesideChrome =
+    viewport.viewportHeight - DESKTOP_COMPOSER_CHROME_PX - DESKTOP_COMPOSER_MIN_TRANSCRIPT_PX;
+  return Math.max(COMPOSER_EDITOR_MIN_HEIGHT_PX, Math.min(half, Math.floor(roomBesideChrome)));
 }
 
 /** Content height, never below one line and never past the current cap. */
