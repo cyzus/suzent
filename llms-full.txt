@@ -137,11 +137,16 @@ agent.
 | **Headless server** | Suzent running as a background service with no window. | [Headless server](#headless-server) |
 | **Chat apps** | Telegram, Slack, Discord, Feishu, or WeChat. | [Chat apps](https://suzent.com/docs/chat-apps) |
 
-On Windows, closing the desktop window leaves Suzent in the notification
-area. On macOS, it leaves Suzent in the menu bar. **Open** brings the window
-back, and so does clicking the dock icon or opening the app again. **Quit**
-exits. Until you quit, work Suzent already started keeps running. On Linux,
-closing the window quits. To keep Suzent running after you quit — on any
+On Windows, closing the desktop window asks whether to **Minimize to tray**
+or **Quit Suzent**; tick **Remember my choice** to stop being asked. On macOS,
+closing the window leaves Suzent in the menu bar. You can change what closing
+does under **Settings → Background Service → When you close the window**.
+
+While Suzent sits in the notification area or menu bar, its icon lists the
+chats that are working or waiting on you; click one to open it. **Open** brings
+the window back, and so does clicking the dock icon or opening the app again.
+**Quit** exits. Until you quit, work Suzent already started keeps running. On
+Linux, closing the window quits. To keep Suzent running after you quit — on any
 system — use the
 [background service](https://suzent.com/docs/features/automation#keep-suzent-running-in-the-background).
 
@@ -618,8 +623,9 @@ same way, from its box in the chat.
 
 ## Talk instead of typing
 
-Click the microphone next to the paperclip in the message box to start voice
-mode, and just speak. A fast voice model answers you out loud and hands
+When the message box is empty, its send button shows a microphone. Click it to
+start voice mode, and just speak. As soon as you type, it turns back into the
+send button. A fast voice model answers you out loud and hands
 anything that needs real work to your agent, which does it in the chat as
 usual, with its tools, memory, and the chat's permission mode. While it works
 you can keep talking: add to the request, correct it, or say "stop". When it's
@@ -1289,9 +1295,12 @@ Change the 20-turn limit with `goals_max_turns` in
 Scheduled tasks, heartbeats, chat apps, and paired devices only work while
 Suzent is running.
 
-On Windows and macOS, closing the window does not quit. Suzent stays in the
-notification area or the menu bar and keeps going until you choose **Quit**.
-On Linux, closing the window quits.
+On Windows and macOS, closing the window can leave Suzent in the notification
+area or the menu bar, where it keeps going until you choose **Quit**. Windows
+asks each time until you tick **Remember my choice**; macOS minimizes to the
+menu bar. Change it under **Settings → Background Service → When you close the
+window** (**Ask every time**, **Minimize to tray**, or **Quit Suzent**). On
+Linux, closing the window quits.
 
 To keep Suzent running after you quit, and to start it when you sign in, turn
 on **Settings → Background Service**. It needs no administrator access, and it
@@ -2121,7 +2130,7 @@ On your home Wi-Fi that just works. To use it elsewhere, put both devices on
 yourself](#through-your-own-relay), or give Suzent a public HTTPS address of
 your own. Your computer has to be on and running Suzent; the
 [background service](https://suzent.com/docs/features/automation#keep-suzent-running-in-the-background)
-keeps it running when the window is closed.
+keeps it running after you quit the desktop app.
 
 ### Through your own relay
 
@@ -6267,8 +6276,10 @@ next to the message box, or choose one of the
 ### Scheduled tasks don't run when I close the window.
 
 Tasks, heartbeats, and chat apps only work while Suzent is running. On Windows
-and macOS, closing the window leaves Suzent in the notification area or the
-menu bar, so tasks keep running until you choose **Quit**. After you quit, or
+and macOS, choose **Minimize to tray** when you close the window (or set it
+under **Settings → Background Service → When you close the window**) and
+Suzent stays in the notification area or the menu bar, so tasks keep running
+until you choose **Quit**. After you quit, or
 on Linux, turn on **Settings → Background Service**. See
 [Automation](https://suzent.com/docs/features/automation#keep-suzent-running-in-the-background).
 
@@ -6315,7 +6326,7 @@ background service that won't start, run `suzent service doctor`.
 
 ### How do I update?
 
-Open **Settings → About** and click **Check for updates**, or run
+Open **Settings → About** and click **Check now** under **Software updates**, or run
 `suzent update`. If an update was interrupted, run `suzent repair`. See
 [Updating Suzent](https://suzent.com/docs/getting-started/updating).
 
@@ -6350,7 +6361,7 @@ Open **Settings** from the bottom of the left sidebar. Pages are grouped into
 | **Mesh** | Make this computer reachable on your network, and work with other agents. | [Devices & other agents](https://suzent.com/docs/features/nodes) |
 | **Notifications** | Choose when a finished task notifies you (**Always**, **Only in background**, or **Never**) and which sound plays. Pop-up notifications only appear in the desktop app. | [Below](#notifications) |
 | **Appearance** | Theme, color scheme, and language. | [Making it yours](https://suzent.com/docs/using/make-it-yours#look-and-language) |
-| **Background Service** | Keep Suzent running after you quit, and start it at sign-in. | [Automation](https://suzent.com/docs/features/automation#keep-suzent-running-in-the-background) |
+| **Background Service** | Keep Suzent running after you quit, start it at sign-in, and choose what closing the window does. | [Automation](https://suzent.com/docs/features/automation#keep-suzent-running-in-the-background) |
 | **Security** | Turn the sandbox on for every chat, and create host tokens for remote administration. | [Workspace & sandbox](https://suzent.com/docs/features/filesystem), [Permissions & approvals](https://suzent.com/docs/features/tools/human-in-the-loop) |
 | **Data & Sync** | Sync your settings, skills, and memory through GitHub. | [GitHub Sync](https://suzent.com/docs/features/github-sync) |
 | **Usage** | See what you've spent and how many tokens you've used. | [FAQ](https://suzent.com/docs/reference/faq#how-much-am-i-spending) |
