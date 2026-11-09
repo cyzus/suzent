@@ -234,34 +234,10 @@ function HeaderTitle({ text, onUnlock }: HeaderTitleProps): React.ReactElement {
   );
 }
 
-interface MacTrafficLightsProps {
-  isMaximized: boolean;
-  onMaximize: () => void;
-}
-
-function MacTrafficLights({ isMaximized, onMaximize }: MacTrafficLightsProps): React.ReactElement {
-  const { t } = useI18n();
-  const appWindow = window.__TAURI__?.window.getCurrentWindow();
-
-  return (
-    <div className="mr-3 flex h-10 shrink-0 items-center gap-2" aria-label={t('app.title')}>
-      <button
-        onClick={() => appWindow?.close()}
-        className="h-3 w-3 rounded-full border border-[#e0443e] bg-[#ff5f57] transition-opacity hover:opacity-90"
-        title={t('titlebar.close')}
-      />
-      <button
-        onClick={() => appWindow?.minimize()}
-        className="h-3 w-3 rounded-full border border-[#dfa123] bg-[#febc2e] transition-opacity hover:opacity-90"
-        title={t('titlebar.minimize')}
-      />
-      <button
-        onClick={onMaximize}
-        className="h-3 w-3 rounded-full border border-[#1ea833] bg-[#28c840] transition-opacity hover:opacity-90"
-        title={isMaximized ? t('titlebar.restore') : t('titlebar.maximize')}
-      />
-    </div>
-  );
+// The window's native traffic lights float over this spot (placed in
+// `create_main_window`); keep it clear so they do not cover header controls.
+function MacTrafficLightsSpacer(): React.ReactElement {
+  return <div className="mr-3 h-10 w-[54px] shrink-0" aria-hidden="true" />;
 }
 
 type MainView = 'chat' | 'memory' | 'skills' | 'emotes';
@@ -835,12 +811,7 @@ function AppInner(): React.ReactElement {
             onOpenSettings={() => openSettings()}
             onClose={closeLeftSidebar}
             titlebarControls={
-              showMacWindowControls && isLeftSidebarOpen ? (
-                <MacTrafficLights
-                  isMaximized={isWindowMaximized}
-                  onMaximize={toggleWindowMaximize}
-                />
-              ) : null
+              showMacWindowControls && isLeftSidebarOpen ? <MacTrafficLightsSpacer /> : null
             }
           />
           <div
@@ -851,12 +822,7 @@ function AppInner(): React.ReactElement {
               onMouseDown={handleHeaderMouseDown}
             >
               <div className="flex min-w-0 flex-1 items-center gap-2 md:gap-0">
-                {showMacWindowControls && !isLeftSidebarOpen ? (
-                  <MacTrafficLights
-                    isMaximized={isWindowMaximized}
-                    onMaximize={toggleWindowMaximize}
-                  />
-                ) : null}
+                {showMacWindowControls && !isLeftSidebarOpen ? <MacTrafficLightsSpacer /> : null}
                 {mobile ? (
                   <button
                     type="button"
