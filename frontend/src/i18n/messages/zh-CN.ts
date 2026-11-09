@@ -2689,6 +2689,20 @@ export const zhCN = {
     viaEngine: '来自 {engine}',
   },
   permissionDock: {
+    allowOptions: '选择允许范围',
+    once: '仅本次',
+    commandSession: '这条命令 · 当前聊天',
+    commandAlways: '这条命令 · 始终',
+    allow: '允许',
+    decline: '拒绝',
+
+    scope: '授权范围',
+    rejectSend: '拒绝并发送',
+    cancelFeedback: '取消反馈',
+
+    feedback: '反馈',
+    more: '更多选项与详情',
+    less: '收起',
     riskLabel: '{risk}风险',
     riskLevels: {
       safe: '安全',
@@ -2714,7 +2728,7 @@ export const zhCN = {
     yesAllowPrefixSession: '是，在本次会话中允许所有 {command} …',
     yesAllowPrefixGlobal: '是，始终允许所有 {command} …',
     no: '否',
-    feedbackPlaceholder: '否，并告诉 Suzent 应该如何调整',
+    feedbackPlaceholder: '可选：说明拒绝原因…',
     submit: '提交',
   },
   activityRail: {
