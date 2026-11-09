@@ -28,6 +28,8 @@ world asks first (see [Permissions & approvals](./human-in-the-loop.md)).
 
 Tools from [MCP servers](./mcp.md) you add appear alongside these.
 
+To let the agent batch many look-ups in one step, turn on [Code mode](./code-mode.md).
+
 ## Choosing tools for a chat
 
 Open the right sidebar with **Open Sidebar** and go to the **Tools** tab. Tick a

@@ -28,6 +28,7 @@ class SettingsOperationsMixin:
             thinking=prefs.get("thinking"),
             sandbox_enabled=bool(prefs.get("sandbox_enabled", True)),
             sandbox_volumes=prefs.get("sandbox_volumes"),
+            code_mode=bool(prefs.get("code_mode", False)),
             updated_at=self._parse_config_datetime(prefs.get("updated_at")),
         )
 
@@ -40,6 +41,7 @@ class SettingsOperationsMixin:
         thinking: str = None,
         sandbox_enabled: bool = None,
         sandbox_volumes: List[str] = None,
+        code_mode: bool = None,
     ) -> bool:
         """Save user preferences to the user config file."""
         from suzent.core.user_config import UserConfigStore
@@ -53,6 +55,7 @@ class SettingsOperationsMixin:
                 "thinking": thinking,
                 "sandbox_enabled": sandbox_enabled,
                 "sandbox_volumes": sandbox_volumes,
+                "code_mode": code_mode,
             }
         )
         return True

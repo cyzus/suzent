@@ -286,6 +286,7 @@ def build_agent_deps(
         prompt_cache_chat_id=_get_config_value(config, "prompt_cache_chat_id", "")
         or "",
         a2ui_queue=asyncio.Queue(),
+        ui_event_queue=asyncio.Queue(),
         inline_a2ui_surfaces={},
         file_tracker=file_tracker,
     )

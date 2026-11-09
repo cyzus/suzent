@@ -380,6 +380,18 @@ const BUILDERS: Record<string, Builder> = {
 
   glob_search: (args, t) => ({ verb: verb(t, 'findFiles'), detail: str(args.pattern) }),
 
+  // The snippet's first line is usually an import, so show its last one, which
+  // is what the snippet returns.
+  run_code: (args, t) => ({
+    verb: verb(t, 'runCode'),
+    detail:
+      str(args.code)
+        ?.split('\n')
+        .map((line) => line.trim())
+        .filter(Boolean)
+        .pop() ?? null,
+  }),
+
   grep_search: (args, t) => {
     const pattern = str(args.pattern);
     const scope = str(args.include) ?? (str(args.path) ? basename(str(args.path)!) : null);
@@ -617,6 +629,7 @@ const REPEAT_KEYS: Record<string, string> = {
   web_search: 'searchWeb',
   grep_search: 'searchCode',
   glob_search: 'findFiles',
+  run_code: 'runCode',
   webpage_fetch: 'openPage',
   browser_action: 'browser',
 };

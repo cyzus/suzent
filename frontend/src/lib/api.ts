@@ -1178,6 +1178,7 @@ export async function saveUserPreferences(preferences: {
   memory_enabled?: boolean;
   thinking?: ThinkingEffort;
   sandbox_enabled?: boolean;
+  code_mode?: boolean;
   embedding_model?: string;
   extraction_model?: string;
   EXTRACTION_MODEL?: string;
