@@ -50,6 +50,7 @@ import { NewChatView } from './NewChatView';
 import { FocalBriefing } from './chat/FocalBriefing';
 import { FOCAL_CHAT_ID, focalRequestText } from '../lib/focalAgent';
 import { ChatInputPanel, type FileMentionSelection } from './ChatInputPanel';
+import { COMPOSER_EDITOR_MIN_HEIGHT_PX, composerEditorMaxHeightPx } from '../lib/composerHeight';
 import { ChatImageGallery } from './ChatImageGallery';
 import { ImageViewer } from './ImageViewer';
 import { FileViewer } from './FileViewer';
@@ -2638,8 +2639,12 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   useEffect(() => {
     const textarea = textareaRef.current;
     if (textarea) {
+      const maxHeight = composerEditorMaxHeightPx({
+        viewportWidth: window.innerWidth,
+        viewportHeight: window.innerHeight,
+      });
       textarea.style.height = '0px';
-      textarea.style.height = `${Math.min(Math.max(textarea.scrollHeight, 40), 120)}px`;
+      textarea.style.height = `${Math.min(Math.max(textarea.scrollHeight, COMPOSER_EDITOR_MIN_HEIGHT_PX), maxHeight)}px`;
     }
   }, [input, isRightSidebarOpen]);
 
@@ -3659,6 +3664,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                   inputSuggestion={inputSuggestion}
                   voice={voice}
                   showScrollToBottom={showScrollButton}
+                  scrollContainerRef={scrollContainerRef}
                   onScrollToBottom={scrollToBottom}
                   onFileMentionSelected={(mention) =>
                     setFileMentions((prev) => [

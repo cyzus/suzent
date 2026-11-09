@@ -1,0 +1,4 @@
+{
+  "products": {"desktop": "patch"},
+  "summary": "The desktop message box can grow to half the window while you edit a long message."
+}
