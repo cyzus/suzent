@@ -205,6 +205,7 @@ jobs:
 
       - name: Build installer app
         working-directory: apps/suzent-installer
+        shell: bash
         run: |
           if [[ -n "$INSTALLER_DMG" ]]; then
             npx tauri build --target universal-apple-darwin
@@ -225,10 +226,11 @@ jobs:
       - name: Sign and notarize macOS binaries and installer disk image
         if: runner.os == 'macOS'
         shell: bash
-        run: bash scripts/sign-macos-release.sh "$APP_BINARY" "$MACOS_INSTALLER_BINARY"
+        run: bash scripts/sign-macos-release.sh "$APP_BINARY" "$INSTALLER_BINARY"
         env:
           APP_BINARY: ${{ matrix.binary }}
-          MACOS_INSTALLER_BINARY: ${{ matrix.installer_binary }}
+          INSTALLER_BINARY: ${{ matrix.installer_binary }}
+          MACOS_INSTALLER_BINARY: ${{ matrix.installer_dmg_asset && matrix.installer_binary || '' }}
           MACOS_INSTALLER_APP: ${{ matrix.installer_app }}
           MACOS_INSTALLER_DMG: ${{ matrix.installer_dmg_asset }}
           MACOS_CERTIFICATE_BASE64: ${{ secrets.MACOS_CERTIFICATE_BASE64 }}
