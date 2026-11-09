@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [v0.24.0] - 2026-11-08
+## [v0.24.0] - 2026-11-09
 
 ### Release notes
 - About now shows update status plus install identity: versions, commit, build source, distribution, runtime, and installation ID.
@@ -30,6 +30,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Simplify settings headers and appearance controls, with direct notification choices and sound previews.
 - /skill <name> now gives the agent the skill's full instructions with your message, so it no longer has to load the skill itself.
 - Type /skill to list your skills, or /skill <name> to have the agent use one, with skill names suggested as you type.
+- Show a peeking Suzent indicator above the chat composer when scrolled up during streaming so clicking it jumps back to the bottom.
 - Fixed settings and device files failing to load on Windows systems with a non-UTF-8 locale, such as Chinese (gbk).
 
 ## [v0.23.0] - 2026-11-06
