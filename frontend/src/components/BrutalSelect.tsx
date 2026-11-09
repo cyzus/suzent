@@ -47,7 +47,9 @@ export const BrutalSelect: React.FC<BrutalSelectProps> = ({
   const effectivePlaceholder = placeholder ?? t('select.placeholder');
   const [isOpen, setIsOpen] = useState(false);
   const [dropdownPosition, setDropdownPosition] = useState<{
-    top: number;
+    top?: number;
+    bottom?: number;
+    maxHeight: number;
     left: number;
     width: number;
   } | null>(null);
@@ -67,39 +69,33 @@ export const BrutalSelect: React.FC<BrutalSelectProps> = ({
 
   // Calculate dropdown position
   const updatePosition = React.useCallback(() => {
-    if (buttonRef.current) {
-      const rect = buttonRef.current.getBoundingClientRect();
-      const dropdownHeight = Math.min(normalizedOptions.length * 40, 240); // Estimate height
+    const button = buttonRef.current;
+    const dropdown = dropdownRef.current;
+    if (!button || !dropdown) return;
 
-      const spaceAbove = rect.top;
-      const spaceBelow = window.innerHeight - rect.bottom;
+    const rect = button.getBoundingClientRect();
+    dropdown.style.width = `${rect.width}px`;
+    const margin = 8;
+    const gap = 4;
+    const dropdownHeight = Math.min(dropdown.scrollHeight + 6, 240);
+    const dropdownWidth = dropdown.offsetWidth;
+    const spaceAbove = Math.max(0, rect.top - gap - margin);
+    const spaceBelow = Math.max(0, window.innerHeight - rect.bottom - gap - margin);
+    const preferredSpace = dropUp ? spaceAbove : spaceBelow;
+    const otherSpace = dropUp ? spaceBelow : spaceAbove;
+    const shouldDropUp =
+      preferredSpace < dropdownHeight && otherSpace > preferredSpace ? !dropUp : dropUp;
 
-      let shouldDropUp = dropUp;
-
-      // Auto-flip logic
-      if (dropUp && spaceAbove < dropdownHeight && spaceBelow > dropdownHeight) {
-        shouldDropUp = false;
-      } else if (!dropUp && spaceBelow < dropdownHeight && spaceAbove > dropdownHeight) {
-        shouldDropUp = true;
-      }
-
-      setEffectiveDropUp(shouldDropUp);
-
-      if (shouldDropUp) {
-        setDropdownPosition({
-          top: rect.top - dropdownHeight - 4,
-          left: rect.left,
-          width: rect.width,
-        });
-      } else {
-        setDropdownPosition({
-          top: rect.bottom + 4,
-          left: rect.left,
-          width: rect.width,
-        });
-      }
-    }
-  }, [dropUp, normalizedOptions.length]);
+    setEffectiveDropUp(shouldDropUp);
+    setDropdownPosition({
+      ...(shouldDropUp
+        ? { bottom: Math.max(margin, window.innerHeight - rect.top + gap) }
+        : { top: Math.max(margin, rect.bottom + gap) }),
+      left: Math.max(margin, Math.min(rect.left, window.innerWidth - dropdownWidth - margin)),
+      width: rect.width,
+      maxHeight: Math.min(240, shouldDropUp ? spaceAbove : spaceBelow),
+    });
+  }, [dropUp]);
 
   useLayoutEffect(() => {
     if (isOpen) {
@@ -113,7 +109,7 @@ export const BrutalSelect: React.FC<BrutalSelectProps> = ({
         window.removeEventListener('scroll', updatePosition, true);
       };
     }
-  }, [isOpen, updatePosition]);
+  }, [isOpen, options, updatePosition]);
 
   // Close on click outside
   useEffect(() => {
@@ -135,15 +131,18 @@ export const BrutalSelect: React.FC<BrutalSelectProps> = ({
 
   const dropdown =
     isOpen &&
-    dropdownPosition &&
     createPortal(
       <div
         ref={dropdownRef}
         className={`fixed z-[9999] bg-white dark:bg-zinc-800 border-3 border-brutal-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] max-h-60 overflow-x-hidden overflow-y-auto scrollbar-thin animate-brutal-drop ${dropdownClassName}`}
         style={{
-          top: dropdownPosition.top,
-          left: dropdownPosition.left,
-          width: dropdownPosition.width,
+          top: dropdownPosition?.top,
+          bottom: dropdownPosition?.bottom,
+          left: dropdownPosition?.left ?? 0,
+          width: dropdownPosition?.width ?? buttonRef.current?.getBoundingClientRect().width,
+          maxHeight: dropdownPosition?.maxHeight ?? 240,
+          maxWidth: 'calc(100vw - 16px)',
+          visibility: dropdownPosition ? undefined : 'hidden',
         }}
       >
         {normalizedOptions.map((option, optionIndex) => {
