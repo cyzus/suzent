@@ -2680,6 +2680,20 @@ export const zhCN = {
     viaEngine: '来自 {engine}',
   },
   permissionDock: {
+    riskLabel: '{risk}风险',
+    riskLevels: {
+      safe: '安全',
+      low: '低',
+      medium: '中',
+      high: '高',
+      critical: '严重',
+    },
+    sources: {
+      policy: '策略',
+      rule: '规则',
+      auto_classifier: '自动审查',
+      full_access: '完全访问',
+    },
     title: '我可以{action}吗？',
     useTool: '使用 {tool}',
     localProject: '项目（本地）',

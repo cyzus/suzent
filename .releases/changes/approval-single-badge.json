@@ -1,1 +1,1 @@
-{"products": {"desktop": "patch"}, "summary": "Tool approvals show one pending badge instead of two, scroll the waiting call into view, and the approval card names the tool being approved."}
+{"products": {"desktop": "patch"}, "summary": "Tool approvals show one pending badge instead of two and scroll the waiting call into view, and the approval card is easier to read: it names the tool and shows the reason at full size, tinted by risk level."}
