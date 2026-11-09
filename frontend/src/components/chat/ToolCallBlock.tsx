@@ -264,7 +264,10 @@ const ToolCallBlockComponent: React.FC<ToolCallBlockProps> = ({
     }, 250);
     return () => window.clearTimeout(timer);
   }, [isPending, inActivityRail]);
-  const isDenied = approvalState === 'denied';
+  // A denial the user made arrives as a resolution on an otherwise completed
+  // call (its output is the denial notice), so the approval state alone left a
+  // green tick beside the "user denied" badge once the turn was reloaded.
+  const isDenied = approvalState === 'denied' || permissionResolution?.behavior === 'deny';
   // The body can mount a Monaco editor -- read_file, write_file and edit_file
   // all render FileDiffViewer -- and grid-rows-[0fr] hides it without
   // unmounting it, so expanding a rail built a full code editor for every file
@@ -659,7 +662,9 @@ const ToolCallBlockComponent: React.FC<ToolCallBlockProps> = ({
             </svg>
           </span>
         )}
-        {isDenied && <span className="text-[10px] text-red-500 font-bold shrink-0">DENIED</span>}
+        {isDenied && !decisionBadge && (
+          <span className="text-[10px] text-red-500 font-bold shrink-0">DENIED</span>
+        )}
         {/* Stays in the header in both states. It used to be collapsed-only and
             re-rendered inside the permission panel below, so expanding read as
             the badge teleporting diagonally down the block while the body was
