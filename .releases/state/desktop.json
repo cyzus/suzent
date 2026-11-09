@@ -224,6 +224,7 @@
     ".releases/changes/right-sidebar-overview.json",
     ".releases/changes/scheduled-task-failures.json",
     ".releases/changes/settings-services-page.json",
+    ".releases/changes/shell-approval-risk-separation.json",
     ".releases/changes/shell-command-yield.json",
     ".releases/changes/shell-noninteractive-stdin.json",
     ".releases/changes/sidebar-automation-row-style.json",

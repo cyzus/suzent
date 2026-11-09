@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Package a universal macOS installer disk image for both Apple Silicon and Intel Macs.
 - With reduced motion turned on, the thinking animation now shows finished robots stepping along the line instead of a frozen frame.
 - With reduced motion turned on, the startup bar, compaction bar, running-tool dot and typing dots now fade gently instead of freezing, so you can still tell work is in progress.
+- Improve tool permission details and separate shell approval requirements from risk for read-only chained commands.
 - File, web, memory, session, task and mail tools now return their results as structured data alongside the text, and that data no longer counts toward the context estimate.
 
 ## [v0.24.1] - 2026-11-09
