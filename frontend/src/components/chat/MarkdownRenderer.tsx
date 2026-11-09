@@ -333,19 +333,31 @@ export const MarkdownRenderer = React.memo<MarkdownRendererProps>(
     // marker into text + <CitationBadge> nodes. This is recursive because
     // react-markdown may wrap text in <strong>, <em>, links, etc.
     const applyCitations = React.useCallback(
-      (children: React.ReactNode, keyPrefix: string): React.ReactNode => {
-        const walk = (child: React.ReactNode, key: string): React.ReactNode => {
-          if (typeof child === 'string' && hasCitationMarker(child)) {
+      (children: React.ReactNode, keyPrefix: string, linkFiles = false): React.ReactNode => {
+        const linkText = (text: string, key: string, link: boolean): React.ReactNode =>
+          link && handleFileClick ? (
+            <ClickableContent key={key} content={text} onFileClick={handleFileClick} />
+          ) : (
+            text
+          );
+        const walk = (child: React.ReactNode, key: string, link: boolean): React.ReactNode => {
+          if (typeof child === 'string') {
+            if (!hasCitationMarker(child)) return linkText(child, key, link);
             // Route even when sourcesMap is null/empty so unresolvable markers are
             // stripped rather than leaking their raw protocol glyphs.
-            return renderTextWithCitations(child, sourcesMapRef.current ?? null, key);
+            return renderTextWithCitations(child, sourcesMapRef.current ?? null, key).map(
+              (node, i) => (typeof node === 'string' ? linkText(node, `${key}-t${i}`, link) : node)
+            );
           }
           if (React.isValidElement(child) && child.props?.children) {
             if (child.type === 'code' || child.props?.node?.tagName === 'code') {
               return child;
             }
+            // Links and other custom renderers read their children as text, so
+            // file paths are only linked inside plain emphasis.
+            const nestedLink = link && (child.type === 'strong' || child.type === 'em');
             const nextChildren = React.Children.map(child.props.children, (nested, i) =>
-              walk(nested, `${key}-${i}`)
+              walk(nested, `${key}-${i}`, nestedLink)
             );
             return React.cloneElement(child as React.ReactElement<any>, undefined, nextChildren);
           }
@@ -354,14 +366,18 @@ export const MarkdownRenderer = React.memo<MarkdownRendererProps>(
 
         const arr = React.Children.toArray(children);
         if (
-          !arr.some((c) => (typeof c === 'string' ? hasCitationMarker(c) : React.isValidElement(c)))
+          !arr.some((c) =>
+            typeof c === 'string'
+              ? hasCitationMarker(c) || (linkFiles && handleFileClick)
+              : React.isValidElement(c)
+          )
         ) {
           return children;
         }
-        return arr.map((child, i) => walk(child, `${keyPrefix}-${i}`));
+        return arr.map((child, i) => walk(child, `${keyPrefix}-${i}`, linkFiles));
       },
       // eslint-disable-next-line react-hooks/exhaustive-deps -- the signature tracks the map's contents
-      [sourcesSignature]
+      [sourcesSignature, handleFileClick]
     );
 
     // Normalize content
@@ -572,43 +588,12 @@ export const MarkdownRenderer = React.memo<MarkdownRendererProps>(
             );
           }
 
-          // Check if paragraph contains only simple text (for ClickableContent detection)
-          const isSimpleText = React.Children.toArray(pArg.children).every(
-            (child) =>
-              typeof child === 'string' ||
-              (React.isValidElement(child) && (child.type === 'strong' || child.type === 'em'))
-          );
-
-          // Apply ClickableContent for plain text paragraphs to detect file
-          // paths — but only when there are no citation markers, since that
-          // path flattens children to a string and would drop citation badges.
-          const hasCite = React.Children.toArray(pArg.children).some(
-            (c) => typeof c === 'string' && hasCitationMarker(c)
-          );
-          if (isSimpleText && handleFileClick && !hasCite) {
-            const extractText = (children: any): string => {
-              return React.Children.toArray(children)
-                .map((child) => {
-                  if (typeof child === 'string') return child;
-                  if (React.isValidElement(child) && child.props?.children) {
-                    return extractText(child.props.children);
-                  }
-                  return '';
-                })
-                .join('');
-            };
-
-            const textContent = extractText(pArg.children);
-            return (
-              <p className="leading-relaxed break-words whitespace-pre-wrap m-0">
-                <ClickableContent content={textContent} onFileClick={handleFileClick} />
-              </p>
-            );
-          }
-
+          // Link file paths in the text leaves rather than flattening the
+          // paragraph: flattening dropped bold/italic and left citation markers
+          // nested inside them as raw private-use glyphs.
           return (
             <p className="leading-relaxed break-words whitespace-pre-wrap m-0">
-              {applyCitations(pArg.children, 'p')}
+              {applyCitations(pArg.children, 'p', true)}
             </p>
           );
         },
