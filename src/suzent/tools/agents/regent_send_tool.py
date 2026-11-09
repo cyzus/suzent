@@ -6,7 +6,7 @@ from pydantic import Field
 from pydantic_ai import RunContext
 
 from suzent.core.agent_deps import AgentDeps
-from suzent.core.focal_agent import FOCAL_CHAT_ID
+from suzent.core.focal_agent import FOCAL_CHAT_ID, get_or_create_focal_chat
 from suzent.tools.agents.agent_lifecycle_tools import AgentSendTool, _require_chat_id
 from suzent.tools.base import ToolResult
 
@@ -35,6 +35,9 @@ class RegentSendTool(AgentSendTool):
         ],
     ) -> ToolResult:
         """Send one message to Regent, which decides whether the user hears it."""
+        # A headless install may never have opened Regent, and _deliver only
+        # reaches chats that exist.
+        get_or_create_focal_chat()
         return await self._deliver(
             _require_chat_id(ctx), FOCAL_CHAT_ID, message.strip(), False
         )

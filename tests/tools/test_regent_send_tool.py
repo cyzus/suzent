@@ -4,7 +4,7 @@ from types import SimpleNamespace
 import pytest
 
 from suzent.core import focal_agent
-from suzent.core.focal_agent import FOCAL_CHAT_ID, get_or_create_focal_chat
+from suzent.core.focal_agent import FOCAL_CHAT_ID
 from suzent.database import ChatDatabase
 from suzent.memory.memory_context import (
     DreamRoots,
@@ -38,8 +38,10 @@ def _ctx(chat_id: str) -> SimpleNamespace:
     return SimpleNamespace(deps=SimpleNamespace(chat_id=chat_id))
 
 
-async def test_a_background_run_reaches_regent(db, enqueued) -> None:
-    get_or_create_focal_chat()
+async def test_a_background_run_reaches_regent_before_anyone_opened_it(
+    db, enqueued
+) -> None:
+    assert db.get_chat(FOCAL_CHAT_ID) is None
     dream_chat = db.create_chat("Dream", {"platform": "dream"})
 
     result = await RegentSendTool().forward(
