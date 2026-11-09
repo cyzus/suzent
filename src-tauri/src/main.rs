@@ -201,38 +201,26 @@ fn start_update_and_restart(
     Ok(())
 }
 
-#[tauri::command]
-fn set_startup_window_controls(window: tauri::WebviewWindow, enabled: bool) -> Result<(), String> {
-    window
-        .set_decorations(enabled)
-        .map_err(|error| error.to_string())?;
+/// The config marks the main window `create: false` so macOS can build it
+/// with a titled style mask: a borderless window ignores minimize, so the
+/// yellow traffic light did nothing. The native lights sit over the web
+/// content, which leaves room for them in its header.
+fn create_main_window(app: &tauri::App) -> tauri::Result<()> {
+    let config = app
+        .config()
+        .app
+        .windows
+        .iter()
+        .find(|window| window.label == "main")
+        .ok_or_else(|| tauri::Error::WindowNotFound)?;
+    let builder = tauri::WebviewWindowBuilder::from_config(app.handle(), config)?;
     #[cfg(target_os = "macos")]
-    {
-        let style = if enabled {
-            tauri::TitleBarStyle::Overlay
-        } else {
-            tauri::TitleBarStyle::Visible
-        };
-        // On macOS the decorations change lands asynchronously and rebuilds
-        // the style mask without the full-size content flag. Set straight
-        // away, the title bar style is applied first and then wiped, and the
-        // web content sits a title bar lower than the page thinks, so every
-        // click lands off the pointer (tauri#10225). Apply it afterwards.
-        let styled = window.clone();
-        std::thread::spawn(move || {
-            std::thread::sleep(Duration::from_millis(150));
-            if let Err(error) = styled.set_title_bar_style(style) {
-                eprintln!("Could not restore the title bar style: {error}");
-            }
-        });
-        window
-            .set_title(if enabled {
-                ""
-            } else {
-                "SUZENT - Your Personal Agent"
-            })
-            .map_err(|error| error.to_string())?;
-    }
+    let builder = builder
+        .decorations(true)
+        .title_bar_style(tauri::TitleBarStyle::Overlay)
+        .hidden_title(true)
+        .traffic_light_position(tauri::LogicalPosition::new(16.0, 25.0));
+    builder.build()?;
     Ok(())
 }
 
@@ -1084,6 +1072,7 @@ fn main() {
             spawn_backend_start(app.clone());
         }))
         .setup(|app| {
+            create_main_window(app)?;
             app.manage(AppState {
                 backend: Mutex::new(None),
                 backend_startup: Mutex::new(()),
@@ -1123,7 +1112,6 @@ fn main() {
             check_for_update,
             start_update_and_restart,
             restart_app,
-            set_startup_window_controls,
             bootstrap_status,
             bootstrap_manifest,
             run_bootstrap_stage,
