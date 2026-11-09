@@ -1,4 +1,6 @@
 import React from 'react';
+import { ShieldCheckIcon } from '@heroicons/react/24/outline';
+import { BrutalSelect } from '../BrutalSelect';
 import { useI18n } from '../../i18n';
 import type { AGUIPart, ApprovalRememberScope, PermissionAction } from '../../types/agui';
 import { isImeComposing } from '../../lib/ime';
@@ -115,12 +117,12 @@ function riskToneFor(risk: string | undefined): RiskTone {
     case 'critical':
       return {
         panel: 'border-red-600 bg-red-50 dark:border-red-400 dark:bg-red-950/30',
-        chip: 'border-red-700 bg-red-600 text-white dark:border-red-400 dark:bg-red-500',
+        chip: 'text-red-700 dark:text-red-400',
       };
     case 'medium':
       return {
         panel: 'border-amber-500 bg-amber-50 dark:border-amber-400 dark:bg-amber-950/25',
-        chip: 'border-brutal-black bg-brutal-yellow text-brutal-black dark:border-amber-300',
+        chip: 'text-neutral-500 dark:text-neutral-400',
       };
     default:
       return {
@@ -166,6 +168,9 @@ const ApprovalCard: React.FC<{
 }> = ({ approval, onDecision, keyboardActive }) => {
   const { t } = useI18n();
   const [feedback, setFeedback] = React.useState('');
+  const editingFeedback = feedback.trim().length > 0;
+  const [selectedActionId, setSelectedActionId] = React.useState('');
+  const feedbackInputRef = React.useRef<HTMLInputElement>(null);
   const displayName = normalizeToolName(approval.toolName).replace(/_/g, ' ');
   const description =
     typeof approval.args.description === 'string' ? approval.args.description.trim() : '';
@@ -185,31 +190,30 @@ const ApprovalCard: React.FC<{
         ? approval.args.path
         : '';
   const detail = command || filePath || JSON.stringify(approval.args, null, 2);
-  const confidenceLabel =
-    approval.confidence == null
-      ? null
-      : typeof approval.confidence === 'number'
-        ? `${Math.round(approval.confidence * 100)}%`
-        : t(`toolCallBlock.permissionConfidenceLevels.${approval.confidence}`);
-  const confidenceSummary = confidenceLabel
-    ? t('toolCallBlock.permissionConfidenceSummary', { value: confidenceLabel })
-    : null;
   const riskTone = riskToneFor(approval.risk);
   const riskText = approval.risk
     ? t('permissionDock.riskLabel', {
         risk: labelOr(t, `permissionDock.riskLevels.${approval.risk}`, approval.risk),
       })
     : null;
-  const sourceText = approval.source
-    ? labelOr(t, `permissionDock.sources.${approval.source}`, approval.source)
-    : null;
-  const metaSummary = [sourceText, confidenceSummary, approval.reviewerModel]
-    .filter(Boolean)
-    .join(' · ');
   const orderedActions = React.useMemo(
-    () => getActionDisplayOrder(approval.actions),
-    [approval.actions]
+    () =>
+      getActionDisplayOrder(approval.actions).filter(
+        (action) =>
+          approval.source !== 'auto_classifier' ||
+          action.scope === 'once' ||
+          action.behavior === 'deny'
+      ),
+    [approval.actions, approval.source]
   );
+
+  const allowActions = orderedActions.filter((action) => action.behavior === 'allow');
+  const selectedAction =
+    allowActions.find((action) => action.id === selectedActionId) ?? allowActions[0];
+  const cancelFeedback = (): void => {
+    setFeedback('');
+    requestAnimationFrame(() => feedbackInputRef.current?.focus());
+  };
 
   const submitAction = React.useCallback(
     (action: PermissionAction, actionFeedback?: string) => {
@@ -235,63 +239,47 @@ const ApprovalCard: React.FC<{
 
   const rejectAction = orderedActions.find((action) => action.behavior === 'deny');
   React.useEffect(() => {
-    if (!keyboardActive) return;
+    if (!keyboardActive || editingFeedback) return;
     const handleKeyDown = (event: KeyboardEvent) => {
+      if (isImeComposing(event)) return;
       const target = event.target as HTMLElement | null;
       const isTyping =
         target?.tagName === 'INPUT' || target?.tagName === 'TEXTAREA' || target?.isContentEditable;
       if (isTyping) return;
 
       if (event.ctrlKey && event.key === 'Enter') {
-        const allowOnce = orderedActions.find(
-          (action) => action.behavior === 'allow' && action.scope === 'once'
-        );
+        const allowOnce = selectedAction;
         if (allowOnce) {
           event.preventDefault();
           selectAction(allowOnce);
         }
         return;
       }
-
-      if (event.ctrlKey || event.altKey || event.metaKey) return;
-
-      const index = Number(event.key) - 1;
-      if (Number.isInteger(index) && orderedActions[index]) {
-        event.preventDefault();
-        selectAction(orderedActions[index]);
-      }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [keyboardActive, orderedActions, selectAction]);
-
-  const shortcutFor = (action: PermissionAction) =>
-    orderedActions.findIndex((candidate) => candidate.id === action.id) + 1;
+  }, [keyboardActive, selectedAction, selectAction, editingFeedback]);
 
   const actionLabel = (action: PermissionAction): string => {
-    if (action.behavior === 'deny') return t('permissionDock.no');
-    if (action.scope === 'once') return t('permissionDock.yes');
-    const actionCommand = getActionCommand(action);
-    if (actionCommand) {
-      const { command, isPrefix } = actionCommand;
-      if (isPrefix) {
-        return action.scope === 'session'
-          ? t('permissionDock.yesAllowPrefixSession', { command })
-          : t('permissionDock.yesAllowPrefixGlobal', { command });
-      }
-      return action.scope === 'session'
-        ? t('permissionDock.yesAllowCommandSession', { command })
-        : t('permissionDock.yesAllowCommandGlobal', { command });
+    if (action.scope === 'once') return t('permissionDock.once');
+    const commandRule = getActionCommand(action);
+    if (commandRule && !commandRule.isPrefix) {
+      return t(
+        action.scope === 'session'
+          ? 'permissionDock.commandSession'
+          : 'permissionDock.commandAlways'
+      );
     }
-    const actionText = `${action.label.charAt(0).toLowerCase()}${action.label.slice(1)}`;
-    return t('permissionDock.yesAnd', { action: actionText });
+    return action.label;
   };
 
   return (
-    <section className="mx-auto w-full max-w-5xl animate-brutal-drop overflow-hidden border-2 border-brutal-black bg-white font-mono text-brutal-black shadow-[3px_3px_0_0_#000] dark:border-neutral-500 dark:bg-zinc-900 dark:text-white dark:shadow-[3px_3px_0_0_rgba(255,255,255,0.14)]">
-      <div className="flex items-start gap-2.5 px-4 pt-3.5">
-        <span className="mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full border border-brutal-black bg-brutal-yellow dark:border-neutral-300" />
-        <div className="min-w-0 flex-1 text-[13px] font-bold leading-6">
+    <section className="mx-auto w-full max-w-5xl animate-brutal-drop overflow-hidden rounded-sm border-2 border-brutal-black bg-white font-mono text-brutal-black shadow-[3px_3px_0_0_#000] dark:border-neutral-500 dark:bg-zinc-900 dark:text-white dark:shadow-[3px_3px_0_0_rgba(255,255,255,0.14)]">
+      <div className="flex items-start gap-2.5 px-4 pt-3">
+        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-sm bg-brutal-yellow text-brutal-black">
+          <ShieldCheckIcon className="h-4 w-4" aria-hidden="true" />
+        </span>
+        <div className="min-w-0 flex-1 text-[13px] font-medium leading-6">
           {t('permissionDock.title', {
             action: promptAction,
           })}
@@ -300,7 +288,7 @@ const ApprovalCard: React.FC<{
             files?"), so name the tool itself: that is what the user approves. */}
         {description && (
           <span
-            className="mt-0.5 shrink-0 border border-neutral-400 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-neutral-600 dark:border-zinc-500 dark:text-neutral-300"
+            className="mt-0.5 max-w-[25%] truncate px-1.5 py-0.5 text-[10px] text-neutral-500 dark:text-neutral-400"
             title={approval.toolName}
           >
             {displayName}
@@ -309,7 +297,7 @@ const ApprovalCard: React.FC<{
       </div>
 
       {detail && (
-        <pre className="mx-4 mt-2.5 max-h-28 overflow-auto whitespace-pre-wrap break-words border border-neutral-300 bg-neutral-100 px-3 py-2 font-mono text-[12px] leading-5 text-neutral-800 dark:border-zinc-700 dark:bg-zinc-800 dark:text-neutral-200">
+        <pre className="mx-4 mt-3 whitespace-pre-wrap break-words rounded-sm border border-neutral-200 bg-neutral-50 px-3 py-2.5 font-mono text-[12px] leading-5 text-neutral-800 dark:border-zinc-700 dark:bg-zinc-800 dark:text-neutral-200">
           {detail}
         </pre>
       )}
@@ -318,109 +306,121 @@ const ApprovalCard: React.FC<{
         // The reason is why the user is being asked at all, so it reads at body
         // size and wraps in full instead of an ellipsised footnote; the risk
         // level tints it so a high-risk call does not look like a routine one.
-        <div className={`mx-4 mt-2.5 min-w-0 border-l-4 px-3 py-2 ${riskTone.panel}`}>
+        <div className="mx-4 mt-3 min-w-0">
           <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
             {riskText && (
-              <span
-                className={`shrink-0 border px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider ${riskTone.chip}`}
-              >
+              <span className={`shrink-0 text-[11px] font-medium ${riskTone.chip}`}>
                 {riskText}
-              </span>
-            )}
-            {metaSummary && (
-              <span
-                className="min-w-0 truncate text-[10px] text-neutral-500 dark:text-neutral-400"
-                title={metaSummary}
-              >
-                {metaSummary}
               </span>
             )}
           </div>
           <p className="mt-1.5 whitespace-pre-wrap break-words text-[12px] leading-5 text-neutral-800 dark:text-neutral-100">
             {approval.reason}
           </p>
-          {approval.riskCategories.length > 0 && (
-            <div className="mt-1.5 flex flex-wrap gap-1">
-              {approval.riskCategories.map((category) => (
-                <span
-                  key={category}
-                  className="border border-neutral-300 bg-white/70 px-1.5 py-px text-[10px] text-neutral-600 dark:border-zinc-600 dark:bg-zinc-900/60 dark:text-neutral-300"
-                >
-                  {category.replace(/_/g, ' ')}
-                </span>
-              ))}
-            </div>
+        </div>
+      )}
+
+      <div className="permission-dock-controls mx-4 mb-3 mt-4 border-t border-neutral-200 pt-3 dark:border-zinc-700">
+        <div className="permission-dock-persistent flex h-full items-center gap-3">
+          {rejectAction && (
+            <input
+              ref={feedbackInputRef}
+              type="text"
+              value={feedback}
+              aria-label={t('permissionDock.feedback')}
+              onChange={(event) => setFeedback(event.target.value)}
+              onKeyDown={(event) => {
+                if (isImeComposing(event)) return;
+                if (event.key === 'Escape') {
+                  event.preventDefault();
+                  cancelFeedback();
+                }
+                if (event.key === 'Enter' && feedback.trim()) {
+                  event.preventDefault();
+                  if (rejectAction) submitAction(rejectAction, feedback);
+                }
+              }}
+              placeholder={t('permissionDock.feedbackPlaceholder')}
+              className="h-9 min-w-0 flex-1 border border-brutal-black bg-white px-2.5 text-xs outline-none focus:bg-brutal-yellow/10 focus:ring-2 focus:ring-brutal-yellow dark:border-neutral-500 dark:bg-zinc-800 dark:text-white"
+            />
           )}
-        </div>
-      )}
-
-      <div className="mx-4 mt-3 overflow-hidden border border-neutral-300 dark:border-zinc-700">
-        {orderedActions.map((action) => (
-          <button
-            key={action.id}
-            type="button"
-            onClick={() => selectAction(action)}
-            className="group flex min-h-10 w-full items-center gap-2.5 border-b border-neutral-200 px-2.5 text-left text-[12px] font-bold transition-colors last:border-b-0 hover:bg-brutal-yellow hover:text-brutal-black dark:border-zinc-700 dark:hover:bg-brutal-yellow dark:hover:text-brutal-black"
-          >
-            <span className="flex h-6 w-6 shrink-0 items-center justify-center border border-neutral-300 bg-transparent text-[10px] font-medium text-neutral-500 dark:border-zinc-600 dark:text-neutral-400 group-hover:border-brutal-black group-hover:bg-white group-hover:text-brutal-black">
-              {shortcutFor(action)}
-            </span>
-            <span className="min-w-0 flex-1 truncate" title={actionLabel(action)}>
-              {actionLabel(action)}
-            </span>
-            {action.behavior === 'allow' && action.scope === 'once' && (
-              <span className="shrink-0 text-[9px] font-normal uppercase tracking-wide text-neutral-400 group-hover:text-brutal-black/60 dark:text-neutral-500">
-                {t('permissionDock.ctrlEnter')}
-              </span>
+          <div className="permission-dock-action-slot ml-auto flex shrink-0 justify-end">
+            {editingFeedback && rejectAction ? (
+              <div
+                key="feedback"
+                className="permission-dock-transition flex h-full items-center gap-2"
+              >
+                <button
+                  type="button"
+                  disabled={!feedback.trim()}
+                  onClick={() => submitAction(rejectAction, feedback)}
+                  className="h-9 shrink-0 border-2 border-brutal-black bg-brutal-black px-3 text-xs font-bold text-white disabled:opacity-35 dark:border-neutral-300 dark:bg-neutral-200 dark:text-brutal-black"
+                >
+                  {t('permissionDock.rejectSend')}
+                </button>
+                <button
+                  type="button"
+                  onClick={cancelFeedback}
+                  aria-label={t('permissionDock.cancelFeedback')}
+                  className="h-9 w-9 shrink-0 text-lg text-neutral-500 hover:bg-neutral-100 dark:hover:bg-zinc-800"
+                >
+                  ×
+                </button>
+              </div>
+            ) : (
+              <div
+                key="actions"
+                className="permission-dock-transition flex h-full flex-wrap items-center justify-end gap-2"
+              >
+                {rejectAction && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => selectAction(rejectAction)}
+                      className="min-h-9 border-2 border-neutral-300 px-3 py-1.5 text-xs font-bold hover:bg-neutral-100 dark:border-zinc-600 dark:hover:bg-zinc-800"
+                    >
+                      {t('permissionDock.decline')}
+                    </button>
+                  </>
+                )}{' '}
+                {selectedAction && (
+                  <div className="flex min-w-0 items-stretch border-2 border-brutal-black bg-brutal-yellow text-brutal-black">
+                    <button
+                      type="button"
+                      onClick={() => selectAction(selectedAction)}
+                      className="flex min-h-8 min-w-0 items-center gap-2 px-3 py-1.5 text-xs font-bold hover:bg-black/5"
+                    >
+                      {selectedAction.scope === 'once'
+                        ? t('permissionDock.allow')
+                        : actionLabel(selectedAction)}
+                      <span className="text-[10px] font-normal opacity-60">
+                        {t('permissionDock.ctrlEnter')}
+                      </span>
+                    </button>
+                    {allowActions.length > 1 && (
+                      <BrutalSelect
+                        value={selectedAction.id}
+                        onChange={setSelectedActionId}
+                        ariaLabel={t('permissionDock.allowOptions')}
+                        menuAlign="end"
+                        options={allowActions.map((action) => ({
+                          value: action.id,
+                          label: actionLabel(action),
+                        }))}
+                        variant="ghost"
+                        dropUp
+                        className="w-9 shrink-0 border-l border-brutal-black/30"
+                        buttonClassName="!h-full !px-2 !py-1.5 !text-brutal-black [&>span]:sr-only hover:!bg-black/5"
+                        dropdownClassName="permission-scope-menu !min-w-64"
+                      />
+                    )}
+                  </div>
+                )}
+              </div>
             )}
-          </button>
-        ))}
-      </div>
-
-      {rejectAction && (
-        <div className="mt-3.5 flex min-w-0 items-center gap-2 border-t-2 border-brutal-black bg-neutral-50 px-4 py-2.5 dark:border-neutral-500 dark:bg-zinc-950/40">
-          <span className="flex h-8 w-8 shrink-0 items-center justify-center border border-brutal-black bg-white text-neutral-500 dark:border-neutral-500 dark:bg-zinc-800 dark:text-neutral-300">
-            <svg
-              viewBox="0 0 24 24"
-              className="h-3.5 w-3.5"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.8"
-              aria-hidden="true"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 0 1 1.13-1.897L16.862 4.487Z"
-              />
-              <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 7.125 16.875 4.5" />
-            </svg>
-          </span>
-          <input
-            type="text"
-            value={feedback}
-            onChange={(event) => setFeedback(event.target.value)}
-            onKeyDown={(event) => {
-              if (isImeComposing(event)) return;
-              if (event.key === 'Enter' && feedback.trim()) {
-                event.preventDefault();
-                submitAction(rejectAction, feedback);
-              }
-            }}
-            placeholder={t('permissionDock.feedbackPlaceholder')}
-            className="h-8 min-w-0 flex-1 border border-brutal-black bg-white px-2.5 text-[12px] text-brutal-black outline-none placeholder:text-neutral-400 focus:bg-brutal-yellow/10 dark:border-neutral-500 dark:bg-zinc-800 dark:text-white dark:placeholder:text-neutral-500"
-          />
-          <button
-            type="button"
-            disabled={!feedback.trim()}
-            onClick={() => submitAction(rejectAction, feedback)}
-            className="flex h-8 shrink-0 items-center gap-1 border-2 border-brutal-black bg-brutal-black px-3 text-[10px] font-bold uppercase tracking-wide text-white shadow-[2px_2px_0_0_#000] transition-all hover:bg-neutral-800 active:translate-x-[1px] active:translate-y-[1px] active:shadow-none disabled:cursor-not-allowed disabled:opacity-35 dark:border-neutral-300 dark:bg-neutral-200 dark:text-brutal-black dark:shadow-[2px_2px_0_0_rgba(255,255,255,0.18)] dark:hover:bg-white"
-          >
-            {t('permissionDock.submit')}
-            <span className="text-[13px] opacity-60">↵</span>
-          </button>
+          </div>
         </div>
-      )}
+      </div>
     </section>
   );
 };

@@ -2762,6 +2762,20 @@ export const en = {
     viaEngine: 'via {engine}',
   },
   permissionDock: {
+    allowOptions: 'Choose permission duration',
+    once: 'Just once',
+    commandSession: 'This command · this chat',
+    commandAlways: 'This command · always',
+    allow: 'Allow',
+    decline: 'Decline',
+
+    scope: 'Permission scope',
+    rejectSend: 'Decline & send',
+    cancelFeedback: 'Cancel feedback',
+
+    feedback: 'Feedback',
+    more: 'More options & details',
+    less: 'Show less',
     riskLabel: '{risk} risk',
     riskLevels: {
       safe: 'Safe',
@@ -2787,7 +2801,7 @@ export const en = {
     yesAllowPrefixSession: 'Yes, allow all {command} … for this session',
     yesAllowPrefixGlobal: 'Yes, always allow all {command} …',
     no: 'No',
-    feedbackPlaceholder: 'No, and tell Suzent what to do differently',
+    feedbackPlaceholder: 'Optional: explain why you are declining…',
     submit: 'Submit',
   },
   activityRail: {
