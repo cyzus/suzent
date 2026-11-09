@@ -230,6 +230,7 @@
     ".releases/changes/slim-deps-web-fetch.json",
     ".releases/changes/startup-retry-in-place.json",
     ".releases/changes/streaming-peek-scroll-button.json",
+    ".releases/changes/streaming-peek-visibility-threshold.json",
     ".releases/changes/streaming-render-and-chat-reads.json",
     ".releases/changes/subagent-followup.json",
     ".releases/changes/subagent-fork-model-live-view.json",
