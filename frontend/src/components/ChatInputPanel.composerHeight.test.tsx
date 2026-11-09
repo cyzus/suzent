@@ -63,6 +63,6 @@ describe('composer editor cap in the input panel', () => {
     expect(html).toContain('overflow-y-auto');
     expect(html).not.toContain('max-h-[120px]');
     expect(html).toContain('chatInput.attachFiles');
-    expect(html).toContain('chatInput.sendMessage');
+    expect(html).toContain('voice.micButton');
   });
 });

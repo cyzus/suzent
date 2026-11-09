@@ -1,0 +1,6 @@
+{
+  "products": {
+    "desktop": "patch"
+  },
+  "summary": "Show the voice button in the composer's primary action slot when the input is empty and switch to the send button when text is entered, removing the separate toolbar voice button."
+}

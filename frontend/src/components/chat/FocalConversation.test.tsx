@@ -72,7 +72,7 @@ describe('Focal conversation controls', () => {
   it('keeps model and thinking controls while hiding only focal permission controls', () => {
     const html = composer('focal-suzent');
     expect(html).toContain('chatInput.attachFiles');
-    expect(html).toContain('chatInput.sendMessage');
+    expect(html).toContain('voice.micButton');
     expect(html).toContain('chat-composer-model');
     expect(html).toContain('suzent-ts__trigger');
     expect(html).not.toContain('chatWindow.permissionModeInputLabels');
