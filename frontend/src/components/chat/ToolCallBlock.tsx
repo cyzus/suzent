@@ -590,7 +590,7 @@ const ToolCallBlockComponent: React.FC<ToolCallBlockProps> = ({
     isPending && inActivityRail
       ? 'tool-call-header-pending'
       : isStreaming && !hasOutput
-        ? `${pickToolRunningSurfaceClass(toolName)} !text-brutal-black dark:!text-white border-2 !border-brutal-black dark:!border-white`
+        ? `${pickToolRunningSurfaceClass(toolName)} !text-brutal-black dark:!text-white border-2 !border-brutal-black dark:!border-white !shadow-none dark:!shadow-none`
         : 'border-2 border-transparent',
   ].join(' ');
 

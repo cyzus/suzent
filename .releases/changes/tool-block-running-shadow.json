@@ -1,0 +1,1 @@
+{"products": {"desktop": "patch"}, "summary": "Remove the heavy offset shadow from running tool and sub-agent headers so expanding them looks clean."}
