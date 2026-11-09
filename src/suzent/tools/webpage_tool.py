@@ -1,7 +1,7 @@
 import html
-from typing import Annotated
+from typing import Annotated, Optional, TypedDict
 
-from pydantic import Field
+from pydantic import ConfigDict, Field, with_config
 from pydantic_ai import RunContext
 from pydantic_ai.exceptions import ModelRetry
 
@@ -14,6 +14,20 @@ from suzent.tools.base import Tool, ToolErrorCode, ToolGroup, ToolResult
 _MIN_CONTENT_CHARS = 200
 _MAX_CONTENT_CHARS = 200_000
 _TIMEOUT_SECONDS = 30
+
+
+@with_config(ConfigDict(extra="allow", use_attribute_docstrings=True))
+class WebpageMetadata(TypedDict, total=False):
+    url: str
+    title: str
+    """The page's HTML title, else its first heading, else the URL."""
+    source_id: Optional[str]
+    """The citation id the message starts with, as "[source_id] title"."""
+    media_type: str
+
+
+class WebpageResult(ToolResult):
+    metadata: WebpageMetadata = Field(default_factory=dict)
 
 
 def _make_fetcher():
@@ -102,22 +116,24 @@ class WebpageTool(Tool):
                 description="URL of a publicly accessible web page to fetch and convert to markdown."
             ),
         ],
-    ) -> ToolResult:
+    ) -> WebpageResult:
         """Fetch and extract content from a web page as markdown.
 
         Args:
             url: The URL of the page to retrieve content from.
         """
-        result, page_title = await self._fetch_url(url)
+        fetched, page_title = await self._fetch_url(url)
+        result = WebpageResult.model_validate(fetched.model_dump())
         if result.success:
+            # Prefer the HTML <title>, then the first markdown heading, else the URL.
+            title = (
+                (page_title[:120] if page_title else None)
+                or _title_from_markdown(result.message)
+                or url
+            )
+            result.metadata["title"] = title
             mgr = getattr(ctx.deps, "citation_manager", None)
             if mgr is not None:
-                # Prefer the HTML <title>, then the first markdown heading, else the URL.
-                title = (
-                    (page_title[:120] if page_title else None)
-                    or _title_from_markdown(result.message)
-                    or url
-                )
                 source_id = mgr.register(
                     type=CitationSourceType.WEBPAGE,
                     title=title,
@@ -126,4 +142,5 @@ class WebpageTool(Tool):
                 )
                 # Label the content with its id so the model cites it correctly.
                 result.message = f"[{source_id}] {title}\n\n{result.message}"
+                result.metadata["source_id"] = source_id
         return result

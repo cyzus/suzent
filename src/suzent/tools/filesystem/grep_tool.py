@@ -7,9 +7,9 @@ import re
 import shutil
 import subprocess
 from pathlib import Path
-from typing import Annotated, List, Optional, Tuple
+from typing import Annotated, List, Optional, Tuple, TypedDict
 
-from pydantic import Field
+from pydantic import ConfigDict, Field, with_config
 from pydantic_ai import RunContext
 
 from suzent.core.agent_deps import AgentDeps
@@ -28,6 +28,56 @@ RIPGREP_OUTPUT_LIMIT = 2 * 1024 * 1024
 # Shared with find_files' walk pruning; kept here as a defense for the case
 # where the caller explicitly targets a path inside a pruned dir.
 DEFAULT_EXCLUDED_DIRS = DEFAULT_PRUNED_DIRS
+MAX_GREP_LISTED_MATCHES = 50
+# Code that loops over the matches can use more than the model reads, but each
+# line is stored with the chat, so both the count and the line are bounded.
+MAX_GREP_STRUCTURED_MATCHES = 500
+MAX_GREP_STRUCTURED_LINE_CHARS = 500
+
+
+@with_config(ConfigDict(use_attribute_docstrings=True))
+class GrepMatch(TypedDict):
+    path: str
+    line: int
+    text: str
+    is_match: bool
+    """False for a surrounding line included by context_lines."""
+
+
+@with_config(ConfigDict(extra="allow", use_attribute_docstrings=True))
+class GrepMetadata(TypedDict, total=False):
+    match_count: int
+    file_count: int
+    scanned_files: int
+    skipped_large_files: int
+    skipped_excluded_files: int
+    capped: bool
+    pattern: str
+    path: Optional[str]
+    include: Optional[str]
+    context_lines: int
+    engine: str
+    matches: list[GrepMatch]
+    """Matching lines in file order, at most 500, without the context markers."""
+    matches_truncated: bool
+
+
+class GrepResult(ToolResult):
+    metadata: GrepMetadata = Field(default_factory=dict)
+
+
+def _structured_match(path: str, line: int, text: str, context_lines: int) -> GrepMatch:
+    """One result line without the marker that context output puts in front."""
+    is_match = True
+    if context_lines:
+        is_match = text.startswith(">")
+        text = text[2:]
+    return {
+        "path": path,
+        "line": line,
+        "text": text.rstrip("\r\n")[:MAX_GREP_STRUCTURED_LINE_CHARS],
+        "is_match": is_match,
+    }
 
 
 class GrepTool(Tool):
@@ -39,6 +89,8 @@ class GrepTool(Tool):
     tool_name = "grep_search"
     group = ToolGroup.FILESYSTEM
     builtin = True
+    # The message already lists the lines the model reads.
+    model_excluded_metadata = frozenset({"matches"})
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -80,7 +132,7 @@ class GrepTool(Tool):
                 description="Number of surrounding lines to include around each match.",
             ),
         ] = None,
-    ) -> ToolResult:
+    ) -> GrepResult:
         """Search file contents using a regex pattern.
 
         Searches through files for lines matching the given regular expression. Supports
@@ -108,7 +160,7 @@ class GrepTool(Tool):
             try:
                 regex = re.compile(pattern, flags)
             except re.error as e:
-                return ToolResult.error_result(
+                return GrepResult.error_result(
                     ToolErrorCode.INVALID_ARGUMENT,
                     f"Invalid regex pattern: {e}",
                     metadata={"pattern": pattern, "path": path, "include": include},
@@ -208,14 +260,14 @@ class GrepTool(Tool):
             )
 
         except ValueError as e:
-            return ToolResult.error_result(
+            return GrepResult.error_result(
                 ToolErrorCode.INVALID_ARGUMENT,
                 str(e),
                 metadata={"pattern": pattern, "path": path, "include": include},
             )
         except Exception as e:
             logger.error(f"Error in grep: {e}")
-            return ToolResult.error_result(
+            return GrepResult.error_result(
                 ToolErrorCode.EXECUTION_FAILED,
                 str(e),
                 metadata={"pattern": pattern, "path": path, "include": include},
@@ -361,7 +413,7 @@ class GrepTool(Tool):
         skipped_excluded_files: int,
         capped: bool,
         engine: str,
-    ) -> ToolResult:
+    ) -> GrepResult:
         metadata = {
             "match_count": len(results),
             "file_count": files_with_matches,
@@ -374,6 +426,13 @@ class GrepTool(Tool):
             "include": include,
             "context_lines": context_lines,
             "engine": engine,
+            "matches": [
+                _structured_match(display_path, line_number, text, context_lines)
+                for display_path, line_number, text in results[
+                    :MAX_GREP_STRUCTURED_MATCHES
+                ]
+            ],
+            "matches_truncated": len(results) > MAX_GREP_STRUCTURED_MATCHES,
         }
         if not results:
             message = f"No matches for '{pattern}' in {path or 'the default folder'}"
@@ -385,20 +444,22 @@ class GrepTool(Tool):
                     )
                 else:
                     message += " (search output was capped; narrow 'path' or 'include')"
-            return ToolResult.success_result(message, metadata=metadata)
+            return GrepResult.success_result(message, metadata=metadata)
 
         output_lines = [
             f"Found {len(results)} match(es) in {files_with_matches} file(s):"
         ]
         current_file = None
-        for display_path, line_number, content in results[:50]:
+        for display_path, line_number, content in results[:MAX_GREP_LISTED_MATCHES]:
             if display_path != current_file:
                 output_lines.append(f"\n{display_path}:")
                 current_file = display_path
             output_lines.append(f"  {line_number}: {content.rstrip()}")
-        if len(results) > 50:
-            output_lines.append(f"\n... and {len(results) - 50} more matches")
-        return ToolResult.success_result("\n".join(output_lines), metadata=metadata)
+        if len(results) > MAX_GREP_LISTED_MATCHES:
+            output_lines.append(
+                f"\n... and {len(results) - MAX_GREP_LISTED_MATCHES} more matches"
+            )
+        return GrepResult.success_result("\n".join(output_lines), metadata=metadata)
 
     def _is_text_file(self, path: Path) -> bool:
         """Check if file is likely a text file."""

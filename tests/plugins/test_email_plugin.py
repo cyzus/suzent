@@ -193,6 +193,9 @@ async def test_search_fences_untrusted_content(fake):
     assert "id=42 UNREAD" in result.message
     assert result.message.count("</email_content>") == 1
     assert tools.MailSearchTool.is_readonly_call({})
+    (summary,) = result.metadata["messages"]
+    assert summary["id"] == "42" and summary["unread"]
+    assert tools.MailSearchTool.model_excluded_metadata == {"messages"}
 
 
 async def test_read_leaves_the_message_unread(fake):
@@ -206,6 +209,7 @@ async def test_read_leaves_the_message_unread(fake):
     assert args[-2:] == ["--", "42"]
     assert "<email_content>" in result.message
     assert tools.MailReadTool.invalid_call_reason({"message_id": "--seen"})
+    assert result.metadata["headers"]["subject"] == "Invoice"
 
 
 async def test_reply_draft_goes_to_the_drafts_folder(fake):
