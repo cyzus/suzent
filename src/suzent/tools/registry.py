@@ -247,6 +247,7 @@ def _all_tool_classes() -> tuple:
         AgentReadTool,
         AgentSendTool,
         AgentStopTool,
+        RegentSendTool,
     )
 
     builtin = (
@@ -285,6 +286,7 @@ def _all_tool_classes() -> tuple:
         AgentReadTool,
         AgentSendTool,
         AgentStopTool,
+        RegentSendTool,
         FocalDispatchTool,
         FocalScheduleTool,
         FocalNotesTool,
