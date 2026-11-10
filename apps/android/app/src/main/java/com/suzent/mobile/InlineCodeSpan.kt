@@ -36,9 +36,14 @@ private class InlineCodeBorderSpan(private val view: TextView, private val fill:
         text: CharSequence, start: Int, end: Int, lineNumber: Int,
     ) {
         val layout = view.layout ?: return
-        if (start < 0 || end > layout.text.length || start >= end) return
-        val x0 = layout.getPrimaryHorizontal(start)
-        val x1 = layout.getPrimaryHorizontal(end.coerceAtMost(layout.text.length))
+        val spanned = text as? Spanned ?: return
+        // Android hands every LineBackgroundSpan the whole line's range, so clip to this chip's own range.
+        val from = maxOf(start, spanned.getSpanStart(this))
+        val to = minOf(end, spanned.getSpanEnd(this))
+        if (from < 0 || to > layout.text.length || from >= to) return
+        val x0 = layout.getPrimaryHorizontal(from)
+        // An offset at a soft wrap belongs to the next line, so a chip that wraps runs to this line's right edge.
+        val x1 = if (to == end && lineNumber < layout.lineCount - 1) layout.getLineRight(lineNumber) else layout.getPrimaryHorizontal(to)
         val rectLeft = minOf(x0, x1)
         val rectRight = maxOf(x0, x1)
         if (rectRight <= rectLeft) return
