@@ -218,8 +218,9 @@ fun MarkdownText(text: String, citationSources: List<CitationSource> = emptyList
         })
         .usePlugin(object : AbstractMarkwonPlugin() {
             override fun configureTheme(builder: MarkwonTheme.Builder) {
-                // The bordered chip draws the fill. A theme background would paint over its border.
-                builder.codeBackgroundColor(0)
+                // The bordered chip draws the fill. Markwon treats 0 as "use the default tint", which paints a
+                // translucent box over the chip, so pass a fully transparent colour that is not 0.
+                builder.codeBackgroundColor(0x00FFFFFF)
                     .codeTextColor(Color.Black.toArgb())
                     .codeBlockBackgroundColor(codeBackground.toArgb())
                     .codeBlockTextColor(codeForeground.toArgb())
