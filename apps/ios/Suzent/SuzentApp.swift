@@ -431,8 +431,10 @@ struct ContentView: View {
                             }
                             Group {
                                 Text(model.busy ? (model.reconnectStatus ?? "") : "").suzentFont(PresentationTokens.typeCaption, weight: .semibold, design: .monospaced)
-                                    .tracking(0.8).foregroundStyle(Color.suzentMuted).lineLimit(1)
-                            }.frame(height: 16)
+                                    .tracking(0.8).foregroundStyle(Color.suzentMuted)
+                                    .multilineTextAlignment(.center)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }.frame(minHeight: 16)
                         }
                         Group {
                             if model.busy {
