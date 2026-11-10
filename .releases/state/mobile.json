@@ -7,6 +7,7 @@
     ".releases/changes/android-composer-motion.json",
     ".releases/changes/android-context-menu-polish.json",
     ".releases/changes/android-history-loading-motion.json",
+    ".releases/changes/android-inline-code-chips.json",
     ".releases/changes/android-play-optimization.json",
     ".releases/changes/android-relay.json",
     ".releases/changes/android-settings-button.json",

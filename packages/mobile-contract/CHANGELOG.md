@@ -3,6 +3,7 @@
 ## [mobile-v0.8.2] - 2026-11-10
 
 ### Release notes
+- Android: inline code shows as a readable yellow chip in dark mode again, instead of a dark box with faint text or a whole line painted yellow.
 - Allow connection status text to wrap and grow with the font size instead of clipping it.
 
 ## [mobile-v0.8.1] - 2026-11-09
