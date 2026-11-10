@@ -1,5 +1,10 @@
 # Mobile changelog
 
+## [mobile-v0.8.2] - 2026-11-10
+
+### Release notes
+- Allow connection status text to wrap and grow with the font size instead of clipping it.
+
 ## [mobile-v0.8.1] - 2026-11-09
 
 ### Release notes
