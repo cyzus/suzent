@@ -319,6 +319,26 @@ def test_moonshot_route_keeps_its_provider_and_uses_the_proxy(kit, agent_module)
     )
 
 
+def test_the_official_openai_endpoint_is_never_proxied(kit, agent_module):
+    kit.run(agent_module, "openai/gpt-test", "Do the task")
+
+    assert kit.summary()["proxy"] is None
+    assert "OPENAI_BASE_URL" not in kit.seen_env()
+
+
+def test_a_custom_openai_endpoint_goes_through_the_proxy(
+    kit, agent_module, monkeypatch
+):
+    monkeypatch.setenv("OPENAI_BASE_URL", "https://gateway.example/v1")
+
+    kit.run(agent_module, "openai/gpt-test", "Do the task")
+
+    assert kit.summary()["proxy"] == "ok"
+    assert kit.seen_env()["OPENAI_BASE_URL"] == (
+        f"http://127.0.0.1:{kit.common.PROXY_PORT}/v1"
+    )
+
+
 def test_a_failed_run_still_saves_its_evidence_and_fails(kit, agent_module):
     stub = Path(kit.common.SUZENT)
     stub.write_text(stub.read_text().replace("exit 0", "exit 1"))
@@ -392,7 +412,8 @@ def test_pier_installs_at_build_time_as_root_then_agent(kit):
     ("model", "domains"),
     [
         ("fireworks_ai/accounts/fireworks/models/kimi-k3", ["api.fireworks.ai"]),
-        ("moonshot/kimi-k3", ["api.moonshot.ai"]),
+        ("moonshot/kimi-k3", ["api.moonshot.cn"]),
+        ("openai/gpt-test", ["api.openai.com"]),
         ("deepseek/deepseek-v4-flash", []),
     ],
 )

@@ -19,6 +19,7 @@ LOGS_DIR = "/logs/agent"
 SUMMARY_FILE = "suzent.json"
 USAGE_LOG_FILE = "suzent-usage.jsonl"
 PROXY_PORT = 8899
+_OPENAI_BASE_URL = "https://api.openai.com/v1"
 
 _PATH = 'export PATH="$HOME/.local/bin:$PATH"; '
 _FORWARDED_ENV_SUFFIXES = ("_API_KEY", "_BASE_URL")
@@ -47,8 +48,8 @@ class ModelRoute:
 
     model: str
     # Where the provider is served, and the Suzent setting that can point the
-    # provider somewhere else. Both are None when Suzent cannot redirect it,
-    # which also means its calls cannot be logged one by one.
+    # provider somewhere else. Without the setting the provider is reached
+    # directly, so its calls cannot be logged one by one.
     base_url: str | None = None
     base_url_env: str | None = None
     env: dict[str, str] = field(default_factory=dict)
@@ -77,17 +78,23 @@ def resolve_model(model_name: str | None, environ: Mapping[str, str]) -> ModelRo
                 env=env,
             )
         case "moonshot":
+            # Suzent's own default, the mainland platform. Keys are not shared
+            # between Moonshot's regions, so the region is the caller's choice.
             return ModelRoute(
                 model=model_name,
                 base_url=environ.get("MOONSHOT_BASE_URL")
-                or "https://api.moonshot.ai/v1",
+                or "https://api.moonshot.cn/v1",
                 base_url_env="MOONSHOT_BASE_URL",
             )
         case "openai":
+            base_url = environ.get("OPENAI_BASE_URL") or _OPENAI_BASE_URL
+            # Suzent routes prompt caching per conversation only when it sees
+            # OpenAI's own host, so that endpoint is never put behind the proxy.
+            first_party = urlsplit(base_url).hostname == "api.openai.com"
             return ModelRoute(
                 model=model_name,
-                base_url=environ.get("OPENAI_BASE_URL") or "https://api.openai.com/v1",
-                base_url_env="OPENAI_BASE_URL",
+                base_url=base_url,
+                base_url_env=None if first_party else "OPENAI_BASE_URL",
             )
         case _:
             return ModelRoute(model=model_name)

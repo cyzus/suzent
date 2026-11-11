@@ -58,12 +58,20 @@ environment the runner uses is forwarded to the container.
 | `-m` value | How Suzent runs it | Per-call usage log |
 |---|---|---|
 | `fireworks_ai/<model>` | OpenAI-compatible provider at `api.fireworks.ai`, with `FIREWORKS_API_KEY` | Yes |
-| `moonshot/<model>` | Moonshot provider at `api.moonshot.ai`, or `MOONSHOT_BASE_URL` | Yes |
-| `openai/<model>` | OpenAI provider, or `OPENAI_BASE_URL` | Yes |
+| `moonshot/<model>` | Moonshot provider at `api.moonshot.cn`, or `MOONSHOT_BASE_URL` | Yes |
+| `openai/<model>` with `OPENAI_BASE_URL` set to another host | OpenAI-compatible provider at that host | Yes |
+| `openai/<model>` | OpenAI provider at `api.openai.com` | No |
 | anything else | Passed to Suzent unchanged as `<provider>/<model>` | No |
 
+Moonshot keys work on one regional platform only. For a key from the
+international platform, set `MOONSHOT_BASE_URL=https://api.moonshot.ai/v1`.
+
+OpenAI's own endpoint is reached directly, because Suzent routes prompt caching
+per conversation only when it sees that host, and a proxy in between would
+change the caching being measured.
+
 With Pier, a provider in the last row gets no network access, so use one of
-the first three for tasks without internet.
+the others for tasks without internet.
 
 ## Per-call usage
 
