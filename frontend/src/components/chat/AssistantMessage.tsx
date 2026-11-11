@@ -12,7 +12,7 @@ import {
 } from '../../lib/chatUtils';
 import { ThinkingAnimation, AgentBadge, RobotIcon } from './ThinkingAnimation';
 import { MarkdownRenderer } from './MarkdownRenderer';
-import { ImageResultGallery, hasVisualMediaResults } from './ImageResultGallery';
+import { ImageResultGallery, hasVisualMediaResults, getRailImagePaths } from './ImageResultGallery';
 import { ImageWithFallback } from './ImageWithFallback';
 import { ToolCallBlock } from './ToolCallBlock';
 import { toolCallFailed } from './toolSummary';
@@ -247,6 +247,7 @@ const AGUIPartsContent: React.FC<{
   );
   // Only the turn's final rail is live. Earlier ones are finished work: they
   // must not animate, and must not each start their own worked-for clock.
+  const seenRailImages = new Set<string>();
   const currentActivityGroupIndex = findLastActivityGroupIndex(renderGroups);
 
   return (
@@ -269,6 +270,10 @@ const AGUIPartsContent: React.FC<{
           return (
             <React.Fragment key={`activity-${gi}`}>
               <ActivityRail
+                imagePaths={getRailImagePaths(
+                  group.chunks.flatMap(({ chunk }) => (chunk.type === 'tool' ? chunk.items : [])),
+                  seenRailImages
+                )}
                 itemCount={countActivityItems(group.chunks)}
                 summaryTools={group.chunks.flatMap(({ chunk }) =>
                   chunk.type === 'tool'
@@ -449,6 +454,7 @@ const AGUIPartsContent: React.FC<{
                 })}
               </ActivityRail>
               <ImageResultGallery
+                showImages={false}
                 calls={group.chunks.flatMap(({ chunk }) =>
                   chunk.type === 'tool' ? chunk.items : []
                 )}
@@ -1251,6 +1257,7 @@ const AssistantMessageComponent: React.FC<AssistantMessageProps> = ({
     return null;
   }
 
+  const seenRailImages = new Set<string>();
   const legacyRenderGroups = groupActivityChunks(
     validChunks.flatMap((chunk) =>
       chunk.type === 'toolCall'
@@ -1302,6 +1309,18 @@ const AssistantMessageComponent: React.FC<AssistantMessageProps> = ({
                   return (
                     <React.Fragment key={`legacy-activity-${groupIndex}`}>
                       <ActivityRail
+                        imagePaths={getRailImagePaths(
+                          group.chunks.flatMap(({ chunk }) =>
+                            chunk.type === 'toolCall'
+                              ? chunk.blocks.map((block) => ({
+                                  toolName: block.toolName,
+                                  output: block.content,
+                                  args: block.toolArgs,
+                                }))
+                              : []
+                          ),
+                          seenRailImages
+                        )}
                         itemCount={countActivityItems(group.chunks)}
                         summaryTools={group.chunks.flatMap(({ chunk }) =>
                           chunk.type === 'toolCall'
@@ -1383,6 +1402,7 @@ const AssistantMessageComponent: React.FC<AssistantMessageProps> = ({
                         })}
                       </ActivityRail>
                       <ImageResultGallery
+                        showImages={false}
                         calls={group.chunks.flatMap(({ chunk }) =>
                           chunk.type === 'toolCall'
                             ? chunk.blocks.map((block) => ({

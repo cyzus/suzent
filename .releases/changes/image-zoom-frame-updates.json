@@ -1,0 +1,1 @@
+{"products":{"desktop":"patch"},"summary":"Reduce image zoom stutter by batching gesture updates per animation frame and removing competing transitions."}

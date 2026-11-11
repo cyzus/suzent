@@ -18,7 +18,9 @@ import type {
   ToolPermissionResolution,
 } from '../../types/agui';
 import { DisclosureChevron } from '../DisclosureChevron';
-import { MediaToolRenderer } from './MediaToolRenderer';
+import { RailImageThumbnails } from './RailImageThumbnails';
+import { isImeComposing } from '../../lib/ime';
+import { getMediaToolPaths, MediaToolRenderer } from './MediaToolRenderer';
 import { CodeSnippetRenderer } from './CodeSnippetRenderer';
 
 export interface ToolRendererProps {
@@ -580,6 +582,21 @@ const ToolCallBlockComponent: React.FC<ToolCallBlockProps> = ({
     ];
   });
 
+  const railImagePaths =
+    inActivityRail &&
+    output &&
+    parsedOutput?.success !== false &&
+    (toolName === 'analyze_visual' ||
+      toolName === 'analyze_image' ||
+      ((toolName === 'generate_image' || toolName === 'edit_image') &&
+        parsedOutput?.success === true))
+      ? getMediaToolPaths({
+          toolName,
+          parsedArgs: parsedToolArgs,
+          metadata: rendererMetadata,
+        }).filter((path) => !/\.(mp4|mov|webm|avi|mkv)$/i.test(path))
+      : [];
+
   const headerClassName = [
     'group/tool-header hover-tint-text items-center gap-1.5 px-2.5 py-1 text-[11px] font-mono font-bold uppercase tracking-wide rounded-sm transition-colors select-none max-w-full min-w-0',
     inActivityRail ? 'flex w-full' : 'inline-flex',
@@ -612,173 +629,180 @@ const ToolCallBlockComponent: React.FC<ToolCallBlockProps> = ({
       ref={rootRef}
       className={`${inActivityRail ? 'my-0' : 'my-1.5'} min-w-0 w-full overflow-x-hidden`}
     >
-      {/* Compact pill header */}
-      {/* Header is a div (not button) so the inline auto-approve badge button
-          below is valid HTML — a <button> cannot nest inside a <button>. */}
       <div
-        role="button"
-        tabIndex={hasDetails ? 0 : -1}
-        aria-expanded={hasDetails ? expanded : undefined}
-        onClick={() => {
-          if (!hasDetails) return;
-          userToggledRef.current = true;
-          setExpanded(!expanded);
-        }}
-        onKeyDown={(e) => {
-          if (!hasDetails) return;
-          if (e.key === 'Enter' || e.key === ' ') {
-            e.preventDefault();
+        className={inActivityRail ? 'flex min-w-0 items-center justify-between gap-3' : undefined}
+      >
+        {/* Compact pill header */}
+        {/* Header is a div (not button) so the inline auto-approve badge button
+          below is valid HTML — a <button> cannot nest inside a <button>. */}
+        <div
+          role="button"
+          tabIndex={hasDetails ? 0 : -1}
+          aria-expanded={hasDetails ? expanded : undefined}
+          onClick={() => {
+            if (!hasDetails) return;
             userToggledRef.current = true;
             setExpanded(!expanded);
-          }
-        }}
-        className={headerClassName}
-        title={summary.title ?? undefined}
-      >
-        {/* Icon */}
-        <ToolGroupIcon
-          toolName={toolName}
-          approvalState={approvalState}
-          isStreaming={isStreaming}
-          hasOutput={hasOutput}
-        />
+          }}
+          onKeyDown={(e) => {
+            if (isImeComposing(e)) return;
+            if (!hasDetails) return;
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              userToggledRef.current = true;
+              setExpanded(!expanded);
+            }
+          }}
+          className={headerClassName}
+          title={summary.title ?? undefined}
+        >
+          {/* Icon */}
+          <ToolGroupIcon
+            toolName={toolName}
+            approvalState={approvalState}
+            isStreaming={isStreaming}
+            hasOutput={hasOutput}
+          />
 
-        {/* Action verb + argument detail (e.g. READ ToolCallBlock.tsx) */}
-        {/* The verb can be a whole sentence for a described command, so it has
+          {/* Action verb + argument detail (e.g. READ ToolCallBlock.tsx) */}
+          {/* The verb can be a whole sentence for a described command, so it has
             to be able to give ground — it used to be shrink-0 and by itself
             overflowed the rail. The detail yields first (shrink-[3]) so the
             action stays readable longest. */}
-        <span className="flex min-w-0 items-center gap-1.5">
-          <span className="truncate min-w-0">{summary.verb}</span>
-          {summary.detail && (
-            <span className="truncate min-w-0 shrink-[3] max-w-[320px] font-normal normal-case tracking-normal opacity-80">
-              {summary.detail}
-            </span>
-          )}
+          <span className="flex min-w-0 items-center gap-1.5">
+            <span className="truncate min-w-0">{summary.verb}</span>
+            {summary.detail && (
+              <span className="truncate min-w-0 shrink-[3] max-w-[320px] font-normal normal-case tracking-normal opacity-80">
+                {summary.detail}
+              </span>
+            )}
 
-          {/* Diff lines if available */}
-          {(addedLines > 0 || removedLines > 0) && (
-            <span className="flex items-center gap-1.5 opacity-90 text-[10px] ml-1 shrink-0 font-bold">
-              {addedLines > 0 && (
-                <span className="text-green-600 dark:text-green-400">+{addedLines}</span>
-              )}
-              {removedLines > 0 && (
-                <span className="text-red-600 dark:text-red-400">-{removedLines}</span>
-              )}
-            </span>
-          )}
-        </span>
+            {/* Diff lines if available */}
+            {(addedLines > 0 || removedLines > 0) && (
+              <span className="flex items-center gap-1.5 opacity-90 text-[10px] ml-1 shrink-0 font-bold">
+                {addedLines > 0 && (
+                  <span className="text-green-600 dark:text-green-400">+{addedLines}</span>
+                )}
+                {removedLines > 0 && (
+                  <span className="text-red-600 dark:text-red-400">-{removedLines}</span>
+                )}
+              </span>
+            )}
+          </span>
 
-        <span className="contents">
-          {/* Status badges */}
-          {isPending && (
-            <span className="flex items-center gap-0.5 shrink-0">
-              <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
-            </span>
-          )}
-          {!isPending && !isDenied && isFailed && (
-            <span
-              className="flex items-center gap-0.5 shrink-0"
-              aria-label={t('toolCallBlock.failed')}
-            >
-              <svg
-                className="w-2.5 h-2.5 text-red-600"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                strokeWidth={3}
+          <span className="contents">
+            {/* Status badges */}
+            {isPending && (
+              <span className="flex items-center gap-0.5 shrink-0">
+                <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+              </span>
+            )}
+            {!isPending && !isDenied && isFailed && (
+              <span
+                className="flex items-center gap-0.5 shrink-0"
+                aria-label={t('toolCallBlock.failed')}
               >
-                <path strokeLinecap="round" strokeLinejoin="round" d="M6 6l12 12M18 6L6 18" />
-              </svg>
-            </span>
-          )}
-          {hasOutput && !isStreaming && !isPending && !isDenied && !isFailed && (
-            <span className="flex items-center gap-0.5 shrink-0">
-              <svg
-                className="w-2.5 h-2.5 text-green-600"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                strokeWidth={3}
-              >
-                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-              </svg>
-            </span>
-          )}
-          {isDenied && !decisionBadge && (
-            <span className="text-[10px] text-red-500 font-bold shrink-0">DENIED</span>
-          )}
-        </span>
-        <span className="contents">
-          {/* Stays in the header in both states. It used to be collapsed-only and
+                <svg
+                  className="w-2.5 h-2.5 text-red-600"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  strokeWidth={3}
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 6l12 12M18 6L6 18" />
+                </svg>
+              </span>
+            )}
+            {hasOutput && !isStreaming && !isPending && !isDenied && !isFailed && (
+              <span className="flex items-center gap-0.5 shrink-0">
+                <svg
+                  className="w-2.5 h-2.5 text-green-600"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  strokeWidth={3}
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                </svg>
+              </span>
+            )}
+            {isDenied && !decisionBadge && (
+              <span className="text-[10px] text-red-500 font-bold shrink-0">DENIED</span>
+            )}
+          </span>
+          <span className="contents">
+            {/* Stays in the header in both states. It used to be collapsed-only and
             re-rendered inside the permission panel below, so expanding read as
             the badge teleporting diagonally down the block while the body was
             still animating open. One home, no motion. */}
-          {decisionBadge && (
-            <span
-              // Not shrink-0 like the icon badges: the needs-review and denied
-              // badges carry a sentence ("Review required · high"), so on a narrow
-              // row one went on pushing past the rail's hidden overflow and was
-              // cut off mid-word with no way to read it. Let it give ground and
-              // ellipsise instead.
-              title={decisionBadge.label}
-              className={`rounded-sm border px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide min-w-0 max-w-[40%] shrink-[2] truncate ${decisionBadge.className}`}
-            >
-              {decisionBadge.label}
-            </span>
-          )}
+            {decisionBadge && (
+              <span
+                // Not shrink-0 like the icon badges: the needs-review and denied
+                // badges carry a sentence ("Review required · high"), so on a narrow
+                // row one went on pushing past the rail's hidden overflow and was
+                // cut off mid-word with no way to read it. Let it give ground and
+                // ellipsise instead.
+                title={decisionBadge.label}
+                className={`rounded-sm border px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide min-w-0 max-w-[40%] shrink-[2] truncate ${decisionBadge.className}`}
+              >
+                {decisionBadge.label}
+              </span>
+            )}
 
-          {/* Auto-approval badge */}
-          {isAutoApproved && !isPending && !isDenied && (
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                onRemovePolicy?.(toolName);
-              }}
-              className="flex items-center gap-1 px-1.5 py-0.5 bg-blue-50 border border-blue-600 rounded-sm hover:bg-blue-100 transition-colors shrink-0"
-              title="This tool is auto-approved. Click to remove."
-            >
-              <svg
-                className="w-2.5 h-2.5 text-blue-700"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                strokeWidth={3}
+            {/* Auto-approval badge */}
+            {isAutoApproved && !isPending && !isDenied && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onRemovePolicy?.(toolName);
+                }}
+                className="flex items-center gap-1 px-1.5 py-0.5 bg-blue-50 border border-blue-600 rounded-sm hover:bg-blue-100 transition-colors shrink-0"
+                title="This tool is auto-approved. Click to remove."
               >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"
-                />
-              </svg>
-              <span className="text-[9px] font-bold text-blue-700 uppercase">Auto</span>
-              <svg
-                className="w-2 h-2 text-blue-600"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                strokeWidth={3}
-              >
-                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
-          )}
-        </span>
-        <span className="contents">
-          {/* Expand/collapse chevron */}
-          {hasDetails && !inActivityRail && (
-            <DisclosureChevron
-              expanded={expanded}
-              className="w-3 h-3 text-neutral-400 transition-transform duration-200"
-            />
-          )}
-          {hasDetails && inActivityRail && (
-            <DisclosureChevron
-              expanded={expanded}
-              className="w-3 h-3 text-neutral-400 opacity-0 transition-all duration-150 group-hover/tool-header:opacity-100"
-            />
-          )}
-        </span>
+                <svg
+                  className="w-2.5 h-2.5 text-blue-700"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  strokeWidth={3}
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"
+                  />
+                </svg>
+                <span className="text-[9px] font-bold text-blue-700 uppercase">Auto</span>
+                <svg
+                  className="w-2 h-2 text-blue-600"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  strokeWidth={3}
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            )}
+          </span>
+          <span className="contents">
+            {/* Expand/collapse chevron */}
+            {hasDetails && !inActivityRail && (
+              <DisclosureChevron
+                expanded={expanded}
+                className="w-3 h-3 text-neutral-400 transition-transform duration-200"
+              />
+            )}
+            {hasDetails && inActivityRail && (
+              <DisclosureChevron
+                expanded={expanded}
+                className="w-3 h-3 text-neutral-400 opacity-0 transition-all duration-150 group-hover/tool-header:opacity-100"
+              />
+            )}
+          </span>
+        </div>
+
+        {!expanded && railImagePaths.length > 0 && <RailImageThumbnails paths={railImagePaths} />}
       </div>
 
       {/* Expandable content */}
