@@ -637,6 +637,13 @@ Ordinary edits, such as code or notes it changed while working, stay on the
 listed, and neither are changes you undid. The **Overview** shows how many
 artifacts there are and the latest few images.
 
+To see everything it has made across all your chats, click **Artifacts** in the
+left sidebar. Files are grouped by project, so pick a project on the left to see
+only its files, or filter to images, video and audio, or other files, and search
+by file name or chat title. Each file shows the chat that made it; click the chat
+name to jump back to that conversation. Files you put in a project's
+`artifacts/` folder yourself show up too, marked as in the project library.
+
 ## Talk instead of typing
 
 When the message box is empty, its send button shows a microphone. Click it to
@@ -3427,6 +3434,12 @@ Clicking a button or submitting a form sends your action and any form values
 to the agent as a new message, and it responds. This tool is **Render UI** in
 the **Interaction** group of the tool picker. It's off by default, but the
 agent can switch it on when it needs it.
+
+To keep a panel, such as a chart or a table of results, click the download
+button in its header. It is saved as a web page in the project's
+`artifacts/canvas/` folder, named after the panel, and shows up on the
+**Artifacts** page. Buttons and forms are left out of the saved copy, since they
+only work inside the chat. Saving the same panel again replaces the file.
 
 ## Receiving files
 
