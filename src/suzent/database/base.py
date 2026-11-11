@@ -53,6 +53,10 @@ class ChatDatabaseBase:
         )
         event.listen(self.engine, "connect", _configure_connection)
 
+        from .write_queue import configure_write_queue
+
+        configure_write_queue(self.engine, self.db_path)
+
         # Create all tables
         SQLModel.metadata.create_all(self.engine)
 
