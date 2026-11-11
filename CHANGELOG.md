@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Simplify image preview navigation and hide duplicate thumbnails while tool details are expanded.
 - The agent can now hand you finished files with Send File: they arrive in the chat app you wrote from (Telegram, Slack, Discord, Feishu), under the reply on the computer, and on your phone, where you can download and share them.
 - Open sidebar images in the shared zoomable overlay with navigation between images in the loaded folder.
+- Simplify sidebar project styling and show running status only on chat rows.
 - Remove the heavy offset shadow from running tool and sub-agent headers so expanding them looks clean.
 - Videos (MP4, MOV, WebM) in the workspace file panel now play in place instead of opening as text, and video and audio players in the installed app are no longer blocked by its content security policy.
 
