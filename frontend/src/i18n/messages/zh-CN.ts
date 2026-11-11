@@ -2805,6 +2805,8 @@ export const zhCN = {
     emptyDirectory: '空目录',
     itemsCount: '{count} 个项目',
     errorPrefix: '错误：',
+    copyLocation: '复制文件位置',
+    locationCopied: '已复制位置',
     contextMenu: {
       label: '文件操作',
       open: '打开',

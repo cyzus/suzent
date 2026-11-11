@@ -101,8 +101,14 @@ jobs:
         uv pip install ruff
         ruff check .
 
+    # --with-deps pulls fonts from the runner's apt mirror, which can be
+    # unreachable; the image already has Chromium's libraries, so fall back.
     - name: Install browser test runtime
-      run: uv run playwright install --with-deps chromium
+      run: |
+        uv run playwright install --with-deps chromium || {
+          echo "::warning::apt mirror unreachable; installing Chromium without system packages"
+          uv run playwright install chromium
+        }
 
     - name: Run tests
       run: |
