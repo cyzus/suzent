@@ -1174,7 +1174,7 @@ struct ContentView: View {
             }
             .task(id: QueueRelease(chat: chat.id, queued: model.queued.map(\.id), busy: model.busy || model.approvalBusy,
                                    running: model.streaming || chat.isRunning == true, waiting: !model.pendingApprovals.isEmpty)) {
-                await model.releaseQueued()
+                model.releaseQueued()
             }
             .overlay(Rectangle().stroke(Color.suzentOutline, lineWidth: PresentationTokens.borderWidth))
             .background { Rectangle().fill(Color.suzentShadow).offset(x: 2, y: 2) }

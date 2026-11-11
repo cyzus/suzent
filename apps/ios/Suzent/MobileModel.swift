@@ -118,6 +118,7 @@ import SuzentCore
     var surfacesSupported = false
     var steerSupported = false
     private(set) var queues = MessageQueues()
+    private var releasing = false
     let voice = VoiceSession()
 
     var voiceUnavailableReason: String? {
@@ -900,11 +901,16 @@ import SuzentCore
     }
 
     /// Sends the next queued message once this conversation is idle; called whenever that may have changed.
-    func releaseQueued() async {
+    /// The send runs in a task the model owns: the view's trigger is cancelled by the very state changes the send makes.
+    func releaseQueued() {
         guard let chat = selected, let next = queues.of(chat.id).first else { return }
-        guard !busy, !streaming, chat.isRunning != true, pendingApprovals.isEmpty, !approvalBusy, foreground else { return }
+        guard !releasing, !busy, !streaming, chat.isRunning != true, pendingApprovals.isEmpty, !approvalBusy, foreground else { return }
         queues.remove(next.id, from: chat.id)
-        if !(await submit(next.text, outgoing: next.attachments, fromDraft: false)) { restore(next) }
+        releasing = true
+        Task {
+            defer { releasing = false }
+            if !(await submit(next.text, outgoing: next.attachments, fromDraft: false)) { restore(next) }
+        }
     }
 
     // A message that could not go out returns to the composer, never back into the queue, so a failing
