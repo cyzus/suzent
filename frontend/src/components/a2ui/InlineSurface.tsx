@@ -17,6 +17,7 @@ import { useI18n } from '../../i18n';
 import { A2UIRenderer } from './A2UIRenderer';
 import { isAnsweredQuestion } from '../../lib/questionAnswer';
 import { WorkspacePanel } from '../WorkspacePanel';
+import { SaveSurfaceButton } from './SaveSurfaceButton';
 import { BrutalButton, BrutalIconButton } from '../BrutalButton';
 import {
   useInlineSurfaceContext,
@@ -190,6 +191,7 @@ export const InlineSurface: React.FC<InlineSurfaceProps> = ({
               <ViewColumnsIcon className="w-4 h-4 stroke-2" />
             </BrutalIconButton>
           )}
+          <SaveSurfaceButton surface={surface} />
           <FullscreenButton
             onClick={() => (ctx ? ctx.openInCanvas(surface, true) : setFullscreen(true))}
           />
