@@ -8,6 +8,9 @@ import android.view.ViewGroup
 import android.widget.TextView
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import androidx.compose.ui.graphics.toArgb
+import io.noties.markwon.AbstractMarkwonPlugin
+import io.noties.markwon.core.MarkwonTheme
 import io.noties.markwon.Markwon
 import io.noties.markwon.ext.tables.TablePlugin
 import org.junit.Assert.assertEquals
@@ -74,6 +77,28 @@ class StableTableTextViewTest {
             setBackgroundColor(Color.rgb(24, 24, 24))
         }
         assertTrue("Theme change retained cached table colors", settledReference(reference, source, 700).sameAs(render(stable, 700)))
+    }
+
+    @Test fun inlineCodeKeepsYellowBackgroundInsideDarkTableCells() = onMain {
+        val view = createStable().apply {
+            setTextColor(Color.WHITE)
+            setBackgroundColor(Color.rgb(24, 24, 24))
+        }
+        val yellow = suzentYellow(true).toArgb()
+        val renderer = Markwon.builder(context())
+            .usePlugin(object : AbstractMarkwonPlugin() {
+                override fun configureTheme(builder: MarkwonTheme.Builder) {
+                    builder.codeBackgroundColor(yellow).codeTextColor(Color.BLACK)
+                }
+            })
+            .usePlugin(requireNotNull(view.tablePlugin)).build()
+        val content = renderer.render(renderer.parse("| Code |\n| --- |\n| `hello` |"))
+        renderer.setParsedMarkdown(view, view.prepareMarkdown(content))
+        val bitmap = render(view, 700)
+        val pixels = IntArray(bitmap.width * bitmap.height)
+        bitmap.getPixels(pixels, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
+        assertTrue("Table inline code lost its yellow fill", pixels.count { it == yellow } > 100)
+        assertTrue("Table inline code lost its black text", pixels.any { it == Color.BLACK })
     }
 
     private fun createStable(): StableTableTextView = StableTableTextView(context()).apply {
