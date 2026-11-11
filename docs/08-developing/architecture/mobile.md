@@ -266,6 +266,26 @@ Only the latest message shows its action row; every message offers the same acti
 bubble, so message text keeps native selection. Send, copy, long press and approval
 choices give haptic feedback, and iOS text follows Dynamic Type.
 
+### Tool media
+
+The mobile chat load (`src/suzent/mobile/media.py`) adds `media:[{id,kind,name}]` to each
+finished, successful tool part that produced or read media: `saved_paths` of
+`generate_image`, `edit_image`, `check_video` and `speak`, and `visual_path` of
+`analyze_visual`, limited to image, video and audio extensions. The id is the first 32
+hex digits of the path's SHA-256, so the phone never learns desktop paths.
+`GET /mobile/client/chats/{id}/media/{media_id}` re-scans the stored transcript for a
+matching path, resolves it with the same `PathResolver` the desktop's `/sandbox/serve`
+uses, and returns a `FileResponse` (Range requests work, which the relay streams).
+Anything not reported by a media tool in that chat is a 404.
+
+Clients render the items under a turn's activity summary, outside the collapsed rail.
+Each item is downloaded once into the app's cache (`cacheDir/media/<desktop>/` on
+Android, `Caches/media/<desktop>/` on iOS) and played from the local file: Android uses
+`VideoView` with `MediaController` for video and `MediaPlayer` for audio, iOS uses
+AVKit's `VideoPlayer` for both. Downloading first keeps playback independent of the
+transport, since neither system player can speak the relay tunnel. Images are decoded
+at most 1600 px on the long side. Live turns show media once the saved transcript loads.
+
 ### Conversation info and phone preferences
 
 `GET /mobile/client/chats/{id}/overview` (session capability `chat_overview: 1`) returns

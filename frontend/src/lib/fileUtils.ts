@@ -6,6 +6,7 @@
 export const FILE_TYPES = {
   IMAGE: ['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp'],
   PDF: ['pdf'],
+  VIDEO: ['mp4', 'mov', 'webm', 'm4v'],
   HTML: ['html', 'htm'],
   MARKDOWN: ['md'],
   MERMAID: ['mermaid'],
@@ -16,6 +17,7 @@ export const FILE_TYPES = {
 export const BINARY_SERVED_FILES = [
   ...FILE_TYPES.PDF,
   ...FILE_TYPES.IMAGE,
+  ...FILE_TYPES.VIDEO,
   ...FILE_TYPES.HTML,
 ] as const;
 
@@ -32,6 +34,14 @@ export function getFileExtension(filename: string): string {
 export function isImageFile(filename: string): boolean {
   const ext = getFileExtension(filename);
   return FILE_TYPES.IMAGE.includes(ext as any);
+}
+
+/**
+ * Check if file is a video the webview can play
+ */
+export function isVideoFile(filename: string): boolean {
+  const ext = getFileExtension(filename);
+  return FILE_TYPES.VIDEO.includes(ext as any);
 }
 
 /**

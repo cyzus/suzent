@@ -218,6 +218,11 @@ old one; pair the phone again afterwards. The same relay also gives
   computer, under `uploads/`. If the model reads images, it sees photos
   directly; other files are handed to the agent to open with its tools.
   Attaching needs the **Send messages** permission.
+- **See what the agent made.** Images, videos and speech the agent creates,
+  and videos or pictures it looked at for you, appear under its reply as on the
+  computer. Videos and audio play with the phone's own player. Each file is
+  fetched from your computer the first time you see it, so it needs the
+  computer to be reachable then, and it works through your relay too.
 - **Pick the model.** **Desktop model** lists the models you've enabled on
   your computer.
 - **Answer approvals.** When the agent needs permission, **Approval required**

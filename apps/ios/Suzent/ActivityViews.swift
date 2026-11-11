@@ -113,6 +113,8 @@ struct ActivityTurn: View {
                     ActivityReveal(expanded: expanded || pending) {
                         ActivityContent(parts: work, citationSources: citationSources, regent: regent).padding(.bottom, 10)
                     }
+                    let media = mediaItems(parts)
+                    if !media.isEmpty { MediaGallery(items: media).padding(.bottom, 10) }
                     ActivityContent(parts: persistent + Array(parts.dropFirst(start)), citationSources: citationSources, regent: regent,
                                     bubbleMenu: bubbleMenu)
                 }
