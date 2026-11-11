@@ -1,5 +1,5 @@
 {
-  "version": "0.8.1",
+  "version": "0.8.2",
   "consumed": [
     ".releases/changes/activity-rail-streaming.json",
     ".releases/changes/anchor-long-press-menus.json",
@@ -7,6 +7,7 @@
     ".releases/changes/android-composer-motion.json",
     ".releases/changes/android-context-menu-polish.json",
     ".releases/changes/android-history-loading-motion.json",
+    ".releases/changes/android-inline-code-chips.json",
     ".releases/changes/android-play-optimization.json",
     ".releases/changes/android-relay.json",
     ".releases/changes/android-settings-button.json",
@@ -37,6 +38,7 @@
     ".releases/changes/mobile-chat-title-header.json",
     ".releases/changes/mobile-component-parity.json",
     ".releases/changes/mobile-composer-dark-colors.json",
+    ".releases/changes/mobile-connection-status-text.json",
     ".releases/changes/mobile-conversation-home.json",
     ".releases/changes/mobile-demo-copy.json",
     ".releases/changes/mobile-desktop-composer.json",
