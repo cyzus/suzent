@@ -76,7 +76,7 @@ const isCronFailureHandledInChat = (job: CronJob): boolean => {
 };
 
 /**
- * A row's or project's status, Slack-style: unread is carried by bold text, so the only
+ * A chat's status: unread is carried by bold text, so the only
  * mark is a blue square while something runs. What waits on the user lives on
  * Regent's board, not in the sidebar.
  */
@@ -283,7 +283,6 @@ export const ChatList: React.FC<ChatListProps> = ({
   const [loadingArchived, setLoadingArchived] = useState(false);
   // Grows by a page per "load more"; a refetch covers everything already shown.
   const [archivedLimit, setArchivedLimit] = useState(ARCHIVED_PAGE_SIZE);
-  const [runningChatProjects, setRunningChatProjects] = useState<Record<string, string | null>>({});
   const knownChats = useMemo(
     () =>
       new Map(
@@ -297,26 +296,6 @@ export const ChatList: React.FC<ChatListProps> = ({
     const known = currentChatId ? knownChats.get(currentChatId) : undefined;
     if (known) setCurrentChatSummary(known);
   }, [currentChatId, knownChats]);
-
-  useEffect(() => {
-    const controller = new AbortController();
-    const missingIds = [...activeStreams].filter(
-      (id) => !knownChats.has(id) && !(id in runningChatProjects)
-    );
-    void Promise.allSettled(
-      missingIds.map(async (id) => {
-        const response = await fetch(`${getApiBase()}/chats/${encodeURIComponent(id)}`, {
-          signal: controller.signal,
-        });
-        if (!response.ok) return;
-        const chat: { projectId?: string | null } = await response.json();
-        if (!controller.signal.aborted) {
-          setRunningChatProjects((previous) => ({ ...previous, [id]: chat.projectId ?? null }));
-        }
-      })
-    );
-    return () => controller.abort();
-  }, [activeStreams, knownChats, runningChatProjects]);
 
   // When a chat opens from outside the sidebar (the task board, a link), open
   // its project and bring its row into view so the list shows where you are.
@@ -386,17 +365,6 @@ export const ChatList: React.FC<ChatListProps> = ({
     return () => clearTimeout(timer);
   }, [locatedChatId]);
 
-  const runningProjectIds = useMemo(() => {
-    const ids = new Set<string>();
-    for (const chat of knownChats.values()) {
-      if (chat.projectId && isChatRunning(chat.id, chat.isRunning)) ids.add(chat.projectId);
-    }
-    for (const id of activeStreams) {
-      const projectId = knownChats.get(id)?.projectId ?? runningChatProjects[id];
-      if (projectId) ids.add(projectId);
-    }
-    return ids;
-  }, [activeStreams, knownChats, runningChatProjects, isChatRunning]);
   const [projectChatKindTotals, setProjectChatKindTotals] = useState<ChatKindCounts>({
     you: 0,
     scheduled: 0,
@@ -1477,8 +1445,8 @@ export const ChatList: React.FC<ChatListProps> = ({
             freshPointerPoint(e) ?? { x: rect.left + 16, y: rect.top + rect.height / 2 }
           );
         }}
-        className={`group relative transition-colors ${compact ? 'min-h-9 px-2.5 py-2 rounded-sm' : nested ? 'py-1.5 border-transparent' : 'py-2 border-b last:border-b-0'}
-          ${compact ? '' : chatKind === 'subagent' ? (nested ? 'pl-10 pr-2' : 'pl-8 pr-3.5') : nested ? 'pl-8 pr-2' : 'px-3.5'}
+        className={`group relative transition-colors ${compact ? 'min-h-9 px-2.5 py-2 rounded-sm' : nested ? 'py-2 rounded-sm border-transparent' : 'py-2 border-b last:border-b-0'}
+          ${compact ? '' : chatKind === 'subagent' ? (nested ? 'pl-10 pr-2' : 'pl-8 pr-3.5') : nested ? 'pl-7 pr-2' : 'px-3.5'}
           ${renamingChatId ? (renamingChatId === chat.id ? 'cursor-default' : 'opacity-50 pointer-events-none') : 'cursor-pointer'}
           ${rowSurface} ${locatedChatId === chat.id ? 'chat-row-located' : ''}`}
       >
@@ -2394,22 +2362,19 @@ export const ChatList: React.FC<ChatListProps> = ({
                                         ? setFilterId(ALL_PROJECTS_FILTER)
                                         : handleSelectFilter(project.id)
                                     }
-                                    className="min-w-0 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-2.5 py-1 text-left outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brutal-blue"
+                                    className="min-w-0 flex items-center gap-1.5 px-2 py-1.5 text-left outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brutal-blue"
                                   >
+                                    <ChevronRightIcon
+                                      aria-hidden="true"
+                                      className={`h-3 w-3 shrink-0 text-neutral-400 transition-transform ${isOpen ? 'rotate-90' : ''}`}
+                                    />
                                     <span
-                                      className={`min-w-0 truncate text-[11px] ${projectUnread(project) > 0 ? 'font-extrabold text-brutal-black dark:text-white' : isOpen ? 'font-semibold text-brutal-black dark:text-white' : 'font-medium text-neutral-700 dark:text-neutral-200'}`}
+                                      className={`min-w-0 truncate text-[11px] ${projectUnread(project) > 0 ? 'font-extrabold text-brutal-black dark:text-white' : 'font-medium text-neutral-500 dark:text-neutral-400'}`}
                                     >
                                       {project.name}
                                     </span>
                                   </button>
                                   <span className="relative flex items-center justify-center">
-                                    <span
-                                      className={`flex transition-opacity ${projectMenu?.projectId === project.id ? 'opacity-0' : 'group-hover/proj:opacity-0 group-focus-within/proj:opacity-0'}`}
-                                    >
-                                      <RunningMark
-                                        running={!isOpen && runningProjectIds.has(project.id)}
-                                      />
-                                    </span>
                                     <button
                                       type="button"
                                       aria-label={t('chatList.menu.title')}
