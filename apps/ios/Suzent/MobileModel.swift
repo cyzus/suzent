@@ -690,11 +690,11 @@ import SuzentCore
                 next.rename(id, to: name)
                 if (try? CredentialStore.save(next)) != nil { store = next }
             }
-            if let id = selected?.id, !id.isEmpty, chatVisible, foreground { await clearUnread(id, client: client) }
             if let id = selected?.id, !id.isEmpty, !streaming {
                 let chat = try await client.chat(id)
                 guard generation == current, selected?.id == id, !streaming else { return }
                 selected = chat
+                if chatVisible, foreground { await clearUnread(id, client: client) }
                 if chat.isRegent {
                     if regentVisible && (chat.regent?.unread ?? 0) > 0 { try await client.markRead(id) }
                     if current == generation && selected?.id == id && chat.isRunning == true && liveParts.isEmpty { observe(id, client: client) }

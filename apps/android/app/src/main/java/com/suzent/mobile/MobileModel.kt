@@ -603,11 +603,11 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
             attachmentsSupported = api.supportsAttachments
             scheduledTasks = taskList
             val id = selected?.id
-            if (!id.isNullOrEmpty() && chatVisible && foreground) clearUnread(api, id)
             if (!id.isNullOrEmpty() && !streaming) {
                 val chat = api.chat(id)
                 if (current == generation && selected?.id == id && !streaming) {
                     selected = chat
+                    if (chatVisible && foreground) clearUnread(api, id)
                     if (chat.isRegent) {
                         if (regentVisible && (chat.regent?.unread ?: 0) > 0) api.markRead(id)
                         if (current == generation && selected?.id == id && chat.running && liveParts.isEmpty()) observe(id)
