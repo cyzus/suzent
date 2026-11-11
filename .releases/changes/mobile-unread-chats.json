@@ -1,4 +1,4 @@
 {
   "products": {"desktop": "patch", "mobile": "patch"},
-  "summary": "On the phone, conversations with replies you have not seen show in bold, like on desktop, so you can tell which of several running chats has finished; opening one marks it read on both."
+  "summary": "On the phone, conversations and collapsed projects show when something is running or has replies you have not seen, like on desktop; opening a conversation marks it read on both."
 }

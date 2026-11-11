@@ -111,7 +111,8 @@ data class ChatOverview(val goal: Goal?, val tasks: List<PlanTask>, val context:
     }
 }
 
-data class Project(val id: String, val name: String, val chatCount: Int? = null)
+/** [running] and [unread] cover the whole project, so a collapsed one still shows activity. */
+data class Project(val id: String, val name: String, val chatCount: Int? = null, val running: Boolean = false, val unread: Boolean = false)
 
 class SSEDecoder {
     private val lines = mutableListOf<String>()

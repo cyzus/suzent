@@ -84,7 +84,10 @@ cases are in `activity-timing-fixtures.json`.
 Session capability `chat_pagination: 1` enables these read-only navigation routes:
 
 - `GET /mobile/client/navigation`: independent Regent presence plus authorized
-  projects with `chatCount` (non-pinned, non-cron, non-archived chats).
+  projects with `chatCount` (non-pinned, non-cron, non-archived chats), plus
+  `running` and `unread` flags covering every authorized chat in the project, so a
+  collapsed project can show activity without loading its pages. Native clients
+  refresh this with each status poll.
 - `POST /mobile/client/chat-page`: `{kind, value, offset, limit}` returns
   `{chats, total, nextOffset}`. Kinds are `recent`, `pinned`, `project` (value is
   project ID) and `search` (value is a title substring). Default page size is 30,

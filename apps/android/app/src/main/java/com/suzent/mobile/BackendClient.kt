@@ -165,7 +165,7 @@ class BackendClient(val backend: Backend, private val token: String, probeOnly: 
         val array = value.getJSONArray("projects")
         return NavigationMetadata(value.optJSONObject("regent")?.let(Chat::parse), (0 until array.length()).map {
             val project = array.getJSONObject(it)
-            Project(project.getString("id"), project.getString("name"), project.getInt("chatCount"))
+            Project(project.getString("id"), project.getString("name"), project.getInt("chatCount"), project.optBoolean("running"), project.optBoolean("unread"))
         })
     }
     override suspend fun chatStatuses(ids: List<String>): List<Chat> {

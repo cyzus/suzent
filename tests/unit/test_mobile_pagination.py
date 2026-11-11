@@ -167,7 +167,13 @@ def test_more_than_1000_and_project_counts_are_authorized(pagination_client, tem
     scoped = headers(chat_ids=["page-0000"])
     metadata = client.get("/mobile/client/navigation", headers=scoped).json()
     assert metadata["projects"] == [
-        {"id": project, "name": "Paged project", "chatCount": 1}
+        {
+            "id": project,
+            "name": "Paged project",
+            "chatCount": 1,
+            "running": False,
+            "unread": False,
+        }
     ]
     found = client.post(
         "/mobile/client/chat-page",
@@ -188,3 +194,43 @@ def test_search_treats_wildcards_as_literal_text(pagination_client, temp_db):
         json={"kind": "search", "value": "%_"},
     ).json()
     assert [c["id"] for c in page["chats"]] == [target]
+
+
+def test_collapsed_projects_report_running_and_unread(
+    pagination_client, temp_db, monkeypatch
+):
+    from suzent.database.models import ChatModel
+
+    client, headers = pagination_client
+    project = temp_db.create_project("Busy project", "busy-project")
+    with temp_db._session() as session:
+        session.add_all(
+            [
+                ChatModel(
+                    id=chat_id,
+                    title=chat_id,
+                    created_at=datetime(2026, 11, 11, tzinfo=timezone.utc),
+                    updated_at=datetime(2026, 11, 11, tzinfo=timezone.utc),
+                    config=config,
+                    project_id=project,
+                )
+                for chat_id, config in [
+                    ("busy-shared", {}),
+                    ("busy-private", {"unread_count": 1}),
+                ]
+            ]
+        )
+        session.commit()
+    monkeypatch.setattr(
+        "suzent.core.stream_registry.running_chat_ids", lambda: ["busy-private"]
+    )
+
+    def flags(**permissions: object) -> tuple[bool, bool]:
+        metadata = client.get(
+            "/mobile/client/navigation", headers=headers(**permissions)
+        ).json()
+        row = next(p for p in metadata["projects"] if p["id"] == project)
+        return row["running"], row["unread"]
+
+    assert flags(all_chats=True) == (True, True)
+    assert flags(chat_ids=["busy-shared"]) == (False, False)

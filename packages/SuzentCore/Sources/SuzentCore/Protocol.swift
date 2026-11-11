@@ -127,7 +127,12 @@ public struct Project: Decodable, Identifiable, Sendable {
     public let id: String
     public let name: String
     public let chatCount: Int?
-    public init(id: String, name: String, chatCount: Int? = nil) { self.id = id; self.name = name; self.chatCount = chatCount }
+    /// Cover the whole project, so a collapsed one still shows activity; older desktops omit them.
+    public let running: Bool?
+    public let unread: Bool?
+    public init(id: String, name: String, chatCount: Int? = nil, running: Bool? = nil, unread: Bool? = nil) {
+        self.id = id; self.name = name; self.chatCount = chatCount; self.running = running; self.unread = unread
+    }
 }
 
 public struct FileAttachment: Decodable, Sendable, Equatable {

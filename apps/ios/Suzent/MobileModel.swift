@@ -77,17 +77,19 @@ import SuzentCore
             let updates = try await client.chatStatuses(Array(requested))
             guard current == generation, revision == navigationRevision else { return }
             chats = chats.filter { !requested.contains($0.id) } + updates
+            // Collapsed projects have no loaded rows, so their running and unread marks come from metadata.
+            let metadata = try await client.navigationMetadata()
+            guard current == generation, revision == navigationRevision else { return }
+            projects = metadata.projects
+            if let regent = metadata.regent { mergeNavigationChats([regent]) }
             if Date().timeIntervalSince(lastNavigationRefresh) >= 60 {
                 let recentIDs = chatPages[ChatPageQuery()]?.chats.map(\.id)
                 let pinnedIDs = chatPages[ChatPageQuery("pinned")]?.chats.map(\.id)
-                let metadata = try await client.navigationMetadata()
                 let recent = chatPages[ChatPageQuery()].map { $0.chats.count <= 30 } == true
                     ? try await client.chatPage(ChatPageQuery(), offset: 0, limit: 30) : nil
                 let pinned = (chatPages[ChatPageQuery("pinned")]?.chats.count ?? 0) <= 30
                     ? try await client.chatPage(ChatPageQuery("pinned"), offset: 0, limit: 30) : nil
                 guard current == generation, revision == navigationRevision else { return }
-                projects = metadata.projects
-                if let regent = metadata.regent { mergeNavigationChats([regent]) }
                 if let recent, !loadingPages.contains(ChatPageQuery()), chatPages[ChatPageQuery()]?.chats.map(\.id) == recentIDs {
                     chatPages[ChatPageQuery()] = recent; mergeNavigationChats(recent.chats)
                 }

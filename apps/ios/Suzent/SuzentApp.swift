@@ -767,7 +767,9 @@ struct ContentView: View {
             HStack(spacing: 6) {
                 Image(systemName: "folder").font(.system(size: 18)).padding(.trailing, 6)
                 Text(project.name).lineLimit(1).truncationMode(.tail)
+                    .fontWeight(!isOpen && project.unread == true ? .heavy : nil)
                 Spacer()
+                if !isOpen && (project.running == true || rows.contains { $0.chat.isRunning == true }) { Image(systemName: "ellipsis") }
                 Text("\(project.chatCount ?? rows.count)").font(.caption).foregroundStyle(Color.suzentMuted)
                 Image(systemName: isOpen ? "chevron.down" : "chevron.right").font(.system(size: 10)).foregroundStyle(Color.suzentMuted)
             }

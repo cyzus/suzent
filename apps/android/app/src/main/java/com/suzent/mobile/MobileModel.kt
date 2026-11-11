@@ -111,15 +111,17 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
             val updates = api.chatStatuses(requested.toList())
             if (current != generation || revision != navigationRevision) return
             chats = chats.filterNot { it.id in requested } + updates
+            // Collapsed projects have no loaded rows, so their running and unread marks come from metadata.
+            val metadata = api.navigationMetadata()
+            if (current != generation || revision != navigationRevision) return
+            projects = metadata.projects
+            metadata.regent?.let { mergeNavigationChats(listOf(it)) }
             if (System.currentTimeMillis() - lastNavigationRefresh >= 60_000) {
                 val recentIds = chatPages[ChatPageQuery()]?.chats?.map { it.id }
                 val pinnedIds = chatPages[ChatPageQuery("pinned")]?.chats?.map { it.id }
-                val metadata = api.navigationMetadata()
                 val recent = if ((chatPages[ChatPageQuery()]?.chats?.size ?: 0) <= 30) api.chatPage(ChatPageQuery()) else null
                 val pinned = if ((chatPages[ChatPageQuery("pinned")]?.chats?.size ?: 0) <= 30) api.chatPage(ChatPageQuery("pinned")) else null
                 if (current != generation || revision != navigationRevision) return
-                projects = metadata.projects
-                metadata.regent?.let { mergeNavigationChats(listOf(it)) }
                 if (recent != null && ChatPageQuery() !in loadingPages && chatPages[ChatPageQuery()]?.chats?.map { it.id } == recentIds) {
                     chatPages = chatPages + (ChatPageQuery() to recent); mergeNavigationChats(recent.chats)
                 }
