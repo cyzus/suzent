@@ -23,6 +23,7 @@ import { MemoryView, type MemoryTab } from './components/memory/MemoryView';
 import { SettingsModal } from './components/settings/SettingsModal';
 import { Sidebar } from './components/sidebar/Sidebar';
 import { SkillsView } from './components/skills/SkillsView';
+import { ArtifactsPage } from './components/artifacts/ArtifactsPage';
 import { ConversationIdentity, StatusBar } from './components/StatusBar';
 import { RegentLogoSlot } from './components/regent/RegentHeader';
 import { ChatProvider, useChatCoreStore } from './hooks/useChatStore';
@@ -240,7 +241,7 @@ function MacTrafficLightsSpacer(): React.ReactElement {
   return <div className="mr-3 h-10 w-[54px] shrink-0" aria-hidden="true" />;
 }
 
-type MainView = 'chat' | 'memory' | 'skills' | 'emotes';
+type MainView = 'chat' | 'memory' | 'skills' | 'artifacts' | 'emotes';
 
 const STAGED_UPDATE_POLL_MS = 5 * 60_000;
 // Matches the backend's agent idle window, so an untouched window and quiet
@@ -988,6 +989,19 @@ function AppInner(): React.ReactElement {
                 className="workspace-base-view flex-1 flex flex-col min-h-0 animate-view-fade"
               >
                 <SkillsView chatId={currentChatId} />
+              </div>
+            )}
+            {mainView === 'artifacts' && (
+              <div
+                key="artifacts"
+                className="workspace-base-view flex-1 flex flex-col min-h-0 animate-view-fade"
+              >
+                <ArtifactsPage
+                  onOpenChat={(chatId) => {
+                    void loadChat(chatId);
+                    setMainView('chat');
+                  }}
+                />
               </div>
             )}
             {mainView === 'emotes' && (
