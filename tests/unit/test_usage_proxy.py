@@ -122,6 +122,9 @@ def test_proxy_relays_provider_errors_and_logs_them_without_usage(proxy):
         _post(f"{url}/v1/chat/completions/broken", {})
 
     assert error.value.code == 429
+    # The proxy logs a call once its response has been relayed in full, so
+    # read to the end before looking at the log.
+    assert error.value.read() == b'{"error":"slow down"}'
     [record] = _records(log_path)
     assert record["status"] == 429
     assert record["prompt"] is None
