@@ -631,6 +631,11 @@ def get_background_queue(chat_id: str) -> Optional[_BusStreamQueue]:
     return background_queues.get(chat_id)
 
 
+def running_chat_ids() -> list[str]:
+    """Chats whose background producer is still active."""
+    return [chat_id for chat_id, q in background_queues.items() if q.producer_active]
+
+
 def is_background_streaming(chat_id: str) -> bool:
     """Return True if a background stream producer is still active for this chat.
 

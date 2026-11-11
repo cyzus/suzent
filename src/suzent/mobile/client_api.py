@@ -252,6 +252,7 @@ def chat_summaries(
             "projectId": projects_by_chat.get(chat_id, (None, None))[0],
             "projectName": projects_by_chat.get(chat_id, (None, None))[1],
             "platform": navigation.get(chat_id, {}).get("platform"),
+            "unreadCount": navigation.get(chat_id, {}).get("unreadCount", 0),
             "parentChatId": parent
             if (parent := navigation.get(chat_id, {}).get("parentChatId"))
             and grant.permissions.permits_chat(parent)
@@ -295,14 +296,37 @@ async def chat_page(request: Request) -> JSONResponse:
 
 async def navigation(request: Request) -> JSONResponse:
     grant = authorize(request)
-    counts = get_database().mobile_project_counts(
+    db = get_database()
+    counts = db.mobile_project_counts(
         None if grant.permissions.all_chats else grant.permissions.chat_ids
     )
+    from suzent.core.stream_registry import running_chat_ids
+
+    running = [
+        chat_id
+        for chat_id in running_chat_ids()
+        if chat_id != FOCAL_CHAT_ID and grant.permissions.permits_chat(chat_id)
+    ]
+    running_projects = {
+        project_id
+        for project_id, _ in db.get_chat_projects(running).values()
+        if project_id
+    }
+    unread_projects = {
+        project_id
+        for project_id, unread in db.get_project_unread_counts().items()
+        if any(grant.permissions.permits_chat(chat_id) for chat_id in unread)
+    }
     return reply(
         {
             "regent": regent_summary() if grant.permissions.all_chats else None,
             "projects": [
-                {**project, "chatCount": counts.get(project["id"], 0)}
+                {
+                    **project,
+                    "chatCount": counts.get(project["id"], 0),
+                    "running": project["id"] in running_projects,
+                    "unread": project["id"] in unread_projects,
+                }
                 for project in allowed_projects(grant)
             ],
         }
