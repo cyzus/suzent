@@ -3,9 +3,11 @@
 ## [mobile-v0.9.0] - 2026-11-11
 
 ### Release notes
+- On the phone, tap an image the agent made to view it full screen and zoom, and touch and hold to save it to your photos or share it.
 - On the phone, typing while the agent works now offers Redirect (interrupt and continue with your message) and Queue (send when the reply ends), matching desktop.
 - Images, videos and speech the agent makes now show under its reply on the phone, with videos and audio playing inline.
 - On the phone, conversations and collapsed projects show when something is running or has replies you have not seen, like on desktop; opening a conversation marks it read on both.
+- The agent can now hand you finished files with Send File: they arrive in the chat app you wrote from (Telegram, Slack, Discord, Feishu), under the reply on the computer, and on your phone, where you can download and share them.
 
 ## [mobile-v0.8.2] - 2026-11-10
 
