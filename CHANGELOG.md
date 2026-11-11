@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A new Artifacts panel in the side panel collects the images, videos, speech and files the agent made in a chat, with previews.
 - Make Smart mode the default permission mode for new chats, remove its confirmation dialog, and add concise inline descriptions to the mode selector.
 - Show image thumbnails beside individual tool rows when the activity rail is expanded.
+- Respect provider wait settings before the first model response and allow extending slow response waits.
 - Let zoomed images fill the preview window with navigation controls floating above the image.
 - Reduce image zoom stutter by batching gesture updates per animation frame and removing competing transitions.
 - Preview images in an overlay, refresh media cards, and preserve native image context menus.
@@ -20,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Show deduplicated image thumbnails beside activity summaries and support zooming and panning image previews.
 - Simplify image preview navigation and hide duplicate thumbnails while tool details are expanded.
 - The agent can now hand you finished files with Send File: they arrive in the chat app you wrote from (Telegram, Slack, Discord, Feishu), under the reply on the computer, and on your phone, where you can download and share them.
+- Queue concurrent database writes to prevent chats from losing saved progress during slow saves and report slow write owners.
 - Open sidebar images in the shared zoomable overlay with navigation between images in the loaded folder.
 - Simplify sidebar project styling and show running status only on chat rows.
 - Remove the heavy offset shadow from running tool and sub-agent headers so expanding them looks clean.
