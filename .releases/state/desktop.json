@@ -1,5 +1,5 @@
 {
-  "version": "0.25.1",
+  "version": "0.26.0",
   "consumed": [
     ".releases/changes/about-install-identity.json",
     ".releases/changes/acp-auth-streaming.json",
@@ -143,6 +143,7 @@
     ".releases/changes/mobile-permissions-editor.json",
     ".releases/changes/mobile-project-order.json",
     ".releases/changes/mobile-reconnect-animation.json",
+    ".releases/changes/mobile-redirect-queue.json",
     ".releases/changes/mobile-regent-activity.json",
     ".releases/changes/mobile-regent-coronation.json",
     ".releases/changes/mobile-rename-paired-phone.json",
