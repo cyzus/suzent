@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Release notes
 - A new Artifacts panel in the side panel collects the images, videos, speech and files the agent made in a chat, with previews.
+- Make Smart mode the default permission mode for new chats, remove its confirmation dialog, and add concise inline descriptions to the mode selector.
 - Show image thumbnails beside individual tool rows when the activity rail is expanded.
 - Let zoomed images fill the preview window with navigation controls floating above the image.
 - Reduce image zoom stutter by batching gesture updates per animation frame and removing competing transitions.
