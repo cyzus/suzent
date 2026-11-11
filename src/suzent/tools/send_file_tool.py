@@ -18,13 +18,6 @@ logger = get_logger(__name__)
 
 MAX_FILES = 10
 MB = 1024 * 1024
-# Bot upload limits, checked first so the agent hears why instead of a bare failure.
-PLATFORM_FILE_LIMITS = {
-    "telegram": 50 * MB,
-    "discord": 10 * MB,
-    "feishu": 30 * MB,
-}
-UNSUPPORTED_PLATFORMS = {"wechat"}
 SEND_TIMEOUT_SECONDS = 120
 
 
@@ -87,7 +80,8 @@ class SendFileTool(Tool):
                 )
             files.append(path)
 
-        saved_paths = [str(path) for path in files]
+        # Virtual paths, because the desktop and phone load attachments back through the resolver.
+        saved_paths = [resolver.to_virtual_path(path) or str(path) for path in files]
         social = ctx.deps.social_context or {}
         platform = social.get("platform")
         target = social.get("target_id")
@@ -110,13 +104,6 @@ class SendFileTool(Tool):
         caption: Optional[str],
         saved_paths: list[str],
     ) -> ToolResult:
-        if platform in UNSUPPORTED_PLATFORMS:
-            return ToolResult.error_result(
-                ToolErrorCode.EXECUTION_FAILED,
-                f"{platform} can't receive files from Suzent yet. Tell the user where "
-                "the file is saved on their computer instead.",
-                metadata={"saved_paths": saved_paths, "channel": platform},
-            )
         manager = deps.channel_manager
         loop = deps.event_loop
         if manager is None:
@@ -129,13 +116,21 @@ class SendFileTool(Tool):
                 "Chat apps are not connected, so the file could not be sent.",
                 metadata={"saved_paths": saved_paths, "channel": platform},
             )
+        channel = manager.channels.get(platform)
+        if channel is not None and not channel.supports_files:
+            return ToolResult.error_result(
+                ToolErrorCode.EXECUTION_FAILED,
+                f"{platform} can't receive files from Suzent yet. Tell the user where "
+                "the file is saved on their computer instead.",
+                metadata={"saved_paths": saved_paths, "channel": platform},
+            )
 
-        limit = PLATFORM_FILE_LIMITS.get(platform)
+        limit = channel.max_file_bytes if channel is not None else None
         delivered: list[str] = []
         failed: dict[str, str] = {}
-        for path in files:
+        for path, shown in zip(files, saved_paths):
             if limit is not None and path.stat().st_size > limit:
-                failed[str(path)] = f"larger than {platform}'s {limit // MB} MB limit"
+                failed[shown] = f"larger than {platform}'s {limit // MB} MB limit"
                 continue
             note = caption if not delivered else None
             try:
@@ -144,17 +139,17 @@ class SendFileTool(Tool):
                 )
             except TimeoutError:
                 sent = False
-                failed[str(path)] = "timed out"
+                failed[shown] = "timed out"
             except Exception as exc:
                 logger.warning(
                     "Sending a file to {} failed: {}", platform, type(exc).__name__
                 )
                 sent = False
-                failed[str(path)] = "the chat app rejected it"
+                failed[shown] = "the chat app rejected it"
             if sent:
-                delivered.append(str(path))
+                delivered.append(shown)
             else:
-                failed.setdefault(str(path), "the chat app rejected it")
+                failed.setdefault(shown, "the chat app rejected it")
 
         metadata = {
             "saved_paths": saved_paths,

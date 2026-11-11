@@ -263,9 +263,14 @@ Hands up to 10 finished files to the user in the current conversation. Each path
 through the chat's `PathResolver`, so only files the conversation may read can be sent.
 In a social conversation (`deps.social_context` has `platform` and `target_id`) every file
 is sent with `ChannelManager.send_file`, dispatched onto the channel's event loop, with the
-caption on the first file only. Per-platform size limits (`PLATFORM_FILE_LIMITS`) are
-checked first, and WeChat, whose driver can't upload yet, is reported as unsupported.
-Elsewhere nothing is sent: the result's `saved_paths` is what the desktop chat renders
+caption on the first file only. Each channel driver owns its platform's differences: the
+tool checks the driver's `max_file_bytes` before uploading and reports a driver with
+`supports_files = False` (WeChat today) as unsupported, and the driver's `send_file` does
+the upload itself (Slack threads, Feishu image and file keys, and so on). A new channel
+needs no change to the tool.
+Elsewhere nothing is sent. `saved_paths` holds virtual paths (`to_virtual_path`, falling
+back to the host path), because the desktop and phone load them back through the
+resolver. It is what the desktop chat renders
 (images and video in the gallery, other files as `SentFileCard`) and what the mobile chat
 load turns into media ids. The result also carries `delivered_paths` and, for channels,
 `failed` with a reason per file. It is builtin and needs no approval because it never

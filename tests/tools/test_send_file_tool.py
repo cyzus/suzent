@@ -4,7 +4,6 @@ from types import SimpleNamespace
 
 import pytest
 
-from suzent.tools import send_file_tool
 from suzent.tools.send_file_tool import SendFileTool
 
 
@@ -18,10 +17,14 @@ class _Resolver:
             raise ValueError("outside the workspace")
         return path
 
+    def to_virtual_path(self, path: Path) -> str:
+        return f"/workspace/{path.relative_to(self.root)}"
+
 
 class _Channels:
-    def __init__(self, result: bool = True) -> None:
+    def __init__(self, result: bool = True, **drivers: SimpleNamespace) -> None:
         self.result = result
+        self.channels = drivers
         self.sent: list[tuple[str, str, str, str | None]] = []
 
     async def send_file(self, platform, target, path, caption=None):
@@ -59,8 +62,8 @@ async def test_desktop_and_phone_get_the_files_as_attachments(workspace: Path) -
 
     assert result.success
     assert result.metadata["saved_paths"] == [
-        str(workspace / "report.pdf"),
-        str(workspace / "chart.png"),
+        "/workspace/report.pdf",
+        "/workspace/chart.png",
     ]
 
 
@@ -89,18 +92,17 @@ async def test_social_chat_sends_through_its_channel_with_caption_once(
         ("telegram", "42", "report.pdf", "Here you go"),
         ("telegram", "42", "chart.png", None),
     ]
-    assert len(result.metadata["delivered_paths"]) == 2
+    assert result.metadata["delivered_paths"] == [
+        "/workspace/report.pdf",
+        "/workspace/chart.png",
+    ]
 
 
-async def test_reports_oversized_and_rejected_files(
-    workspace: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    monkeypatch.setitem(
-        send_file_tool.PLATFORM_FILE_LIMITS,
-        "discord",
-        3,
+async def test_reports_oversized_and_rejected_files(workspace: Path) -> None:
+    channels = _Channels(
+        result=False,
+        discord=SimpleNamespace(max_file_bytes=3, supports_files=True),
     )
-    channels = _Channels(result=False)
     result = await SendFileTool().forward(
         _ctx(workspace, {"platform": "discord", "target_id": "7"}, channels),
         ["report.pdf", "chart.png"],
@@ -113,7 +115,9 @@ async def test_reports_oversized_and_rejected_files(
 
 
 async def test_wechat_is_reported_as_unsupported(workspace: Path) -> None:
-    channels = _Channels()
+    channels = _Channels(
+        wechat=SimpleNamespace(max_file_bytes=None, supports_files=False)
+    )
     result = await SendFileTool().forward(
         _ctx(workspace, {"platform": "wechat", "target_id": "w"}, channels),
         ["report.pdf"],

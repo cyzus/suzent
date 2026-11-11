@@ -55,6 +55,8 @@ class FeishuChannel(SocialChannel):
     Feishu (Lark) Driver using Protocol v1 and WebSocket (Long Connection).
     """
 
+    max_file_bytes = 30 * 1024 * 1024
+
     def __init__(self, config: Dict[str, Any]):
         """
         Initialize Feishu Channel.

@@ -251,6 +251,8 @@ class WeChatChannel(SocialChannel):
     conversation target after each received message.
     """
 
+    supports_files = False
+
     def __init__(self, config: dict[str, Any]):
         super().__init__("wechat", config)
         self.bot_token = config.get("bot_token") or config.get("token")
