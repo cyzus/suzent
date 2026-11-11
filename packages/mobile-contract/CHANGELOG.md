@@ -4,6 +4,7 @@
 
 ### Release notes
 - On the phone, typing while the agent works now offers Redirect (interrupt and continue with your message) and Queue (send when the reply ends), matching desktop.
+- On the phone, conversations and collapsed projects show when something is running or has replies you have not seen, like on desktop; opening a conversation marks it read on both.
 
 ## [mobile-v0.8.2] - 2026-11-10
 
