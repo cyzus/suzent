@@ -2210,6 +2210,9 @@ export const zhCN = {
     showPage: '查看网页',
   },
   a2uiSurface: {
+    saveAsFile: '保存为文件（artifacts/）',
+    savedTo: '已保存到 {path}',
+    saveFailed: '保存失败',
     showHere: '在此显示',
     showInChat: '在聊天中显示',
     inChat: '显示在聊天中',

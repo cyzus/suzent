@@ -285,7 +285,7 @@ from suzent.routes.heartbeat_routes import (
     get_heartbeat_global_config,
     save_heartbeat_global_config,
 )
-from suzent.routes.a2ui_routes import a2ui_action, a2ui_answer
+from suzent.routes.a2ui_routes import a2ui_action, a2ui_answer, a2ui_save
 from suzent.routes.acp_routes import (
     create_acp_session,
     list_acp_agents,
@@ -1567,6 +1567,7 @@ app = Starlette(
         Route("/heartbeat/config", save_heartbeat_global_config, methods=["POST"]),
         Route("/canvas/{chat_id}/action", a2ui_action, methods=["POST"]),
         Route("/canvas/{chat_id}/answer", a2ui_answer, methods=["POST"]),
+        Route("/canvas/{chat_id}/save", a2ui_save, methods=["POST"]),
         Route("/events/stream", event_bus_stream, methods=["GET"]),
         Route("/subagents/active", list_active_subagents, methods=["GET"]),
         Route("/background-tasks/stream", stream_background_tasks, methods=["GET"]),

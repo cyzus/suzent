@@ -2275,6 +2275,9 @@ export const en = {
     showPage: 'View page',
   },
   a2uiSurface: {
+    saveAsFile: 'Save as a file in artifacts/',
+    savedTo: 'Saved to {path}',
+    saveFailed: 'Could not save',
     showHere: 'Show here',
     showInChat: 'Show in chat',
     inChat: 'Shown in the chat',

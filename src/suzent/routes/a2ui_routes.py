@@ -128,3 +128,45 @@ async def a2ui_answer(request: Request) -> JSONResponse:
     return JSONResponse(
         {"error": "No pending question for this surface"}, status_code=404
     )
+
+
+async def a2ui_save(request: Request) -> JSONResponse:
+    """
+    POST /canvas/{chat_id}/save
+
+    Body:
+        surface  dict  – the surface as the chat shows it
+
+    Saves the surface as an HTML page in the chat's project library and returns
+    ``{path, workspace_path}``.
+    """
+    from pathlib import Path
+
+    from pydantic import ValidationError
+
+    from suzent.a2ui.export import save_surface
+    from suzent.a2ui.models import A2UISurface
+    from suzent.config import CONFIG
+    from suzent.database import get_database
+
+    chat_id = request.path_params.get("chat_id")
+    try:
+        data = await request.json()
+        surface = A2UISurface.model_validate(data.get("surface"))
+    except (ValueError, ValidationError, AttributeError):
+        return JSONResponse({"error": "A valid surface is required"}, status_code=400)
+
+    db = get_database()
+    if db.get_chat(chat_id) is None:
+        return JSONResponse({"error": "Chat not found"}, status_code=404)
+    project_dir = (
+        Path(CONFIG.sandbox_data_path) / "projects" / db.get_chat_project_slug(chat_id)
+    )
+    path = save_surface(surface, project_dir)
+    logger.info("Saved canvas {} to {}", surface.id, path)
+    return JSONResponse(
+        {
+            "path": str(path),
+            "workspace_path": "/workspace/" + path.relative_to(project_dir).as_posix(),
+        }
+    )
