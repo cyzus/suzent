@@ -71,3 +71,10 @@ def test_send_file_shares_any_file_type() -> None:
     assert (
         tool_media_paths(tool("check_video", {"saved_paths": ["/a/report.pdf"]})) == []
     )
+
+
+def test_send_file_shows_files_even_when_the_chat_app_upload_failed() -> None:
+    failed = tool("send_file", {"saved_paths": ["/a/report.pdf"]}, success=False)
+    rejected = tool("send_file", {}, success=False)
+    assert tool_media_paths(failed) == ["/a/report.pdf"]
+    assert tool_media_paths(rejected) == []

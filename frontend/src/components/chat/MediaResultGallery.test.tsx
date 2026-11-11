@@ -52,7 +52,7 @@ describe('media results', () => {
     expect(media).toHaveLength(1);
     expect(media[0].path).toBe('/video.mp4');
   });
-  it('sorts files handed over with send_file by kind, and ignores failed sends', () => {
+  it('sorts files handed over with send_file by kind, including failed chat-app sends', () => {
     const sent = call('send_file', {
       saved_paths: ['/w/chart.PNG', '/w/clip.mp4', '/w/voice.mp3', '/w/report.pdf'],
     });
@@ -66,8 +66,9 @@ describe('media results', () => {
       true
     );
     expect(hasMediaResults([call('send_file', { saved_paths: ['/w/report.pdf'] }, false)])).toBe(
-      false
+      true
     );
+    expect(hasMediaResults([call('send_file', {}, false)])).toBe(false);
   });
   it('renders an explicit playback control and unavailable-device hint without autoplay', () => {
     const html = renderToStaticMarkup(

@@ -69,7 +69,8 @@ def tool_media_paths(part: dict) -> list[str]:
     if name not in SAVED_PATH_TOOLS and name != "analyze_visual":
         return []
     result = _envelope(part.get("output"))
-    if not result or result.get("success") is not True:
+    # A send_file whose chat-app upload failed still names files that exist here.
+    if not result or (result.get("success") is not True and name not in ANY_FILE_TOOLS):
         return []
     metadata = result.get("metadata")
     if not isinstance(metadata, dict):

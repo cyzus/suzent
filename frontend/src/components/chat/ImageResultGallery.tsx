@@ -16,12 +16,14 @@ const SENT_IMAGE = /\.(png|jpe?g|gif|webp)$/i;
 const SENT_VIDEO = /\.(mp4|mov|webm|m4v)$/i;
 const SENT_AUDIO = /\.(mp3|m4a|aac|wav|ogg|opus)$/i;
 
-/** Paths the agent handed over with send_file, from successful calls only. */
+/**
+ * Paths the agent handed over with send_file. A call whose chat-app upload failed still
+ * lists them: the files exist on this computer, so they are shown here regardless.
+ */
 function sentPaths(call: ImageResultCall): string[] {
   if (call.toolName !== 'send_file') return [];
   const result = parseToolResultEnvelope(call.output);
-  if (result?.success !== true || !result.metadata || typeof result.metadata !== 'object')
-    return [];
+  if (!result?.metadata || typeof result.metadata !== 'object') return [];
   const paths = (result.metadata as Record<string, unknown>).saved_paths;
   return Array.isArray(paths)
     ? paths.filter((path): path is string => typeof path === 'string' && !!path.trim())
