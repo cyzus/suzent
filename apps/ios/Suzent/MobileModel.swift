@@ -141,6 +141,31 @@ import SuzentCore
         return try? await client.overview(chatID)
     }
 
+    @ObservationIgnored private var mediaDownloads: [URL: Task<URL?, Never>] = [:]
+
+    /// A tool's image, video or audio, downloaded once into Caches; nil when it can't be fetched.
+    func mediaFile(_ chatID: String, item: MediaItem) async -> URL? {
+        guard item.isValid, let client else { return nil }
+        // Ids are per desktop path, so each desktop keeps its own folder.
+        let desktop = String((store.activeId ?? "demo").utf8.reduce(UInt64(14_695_981_039_346_656_037)) { ($0 ^ UInt64($1)) &* 1_099_511_628_211 }, radix: 16)
+        guard let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first else { return nil }
+        let directory = caches.appendingPathComponent("media/\(desktop)", isDirectory: true)
+        let file = directory.appendingPathComponent("\(item.id).\(item.fileExtension)")
+        if FileManager.default.fileExists(atPath: file.path) { return file }
+        if let running = mediaDownloads[file] { return await running.value }
+        let task = Task<URL?, Never> {
+            do {
+                try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+                try await client.media(chatID, mediaID: item.id, to: file)
+                return file
+            } catch { return nil }
+        }
+        mediaDownloads[file] = task
+        let result = await task.value
+        mediaDownloads[file] = nil
+        return result
+    }
+
     func startVoice() {
         if let reason = voiceUnavailableReason { error = reason; return }
         guard voiceSupported, !busy, !streaming, device?.permissions.send == true,

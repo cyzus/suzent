@@ -10,7 +10,13 @@ data class MessagePart(
     val args: String = "", val output: String = "", val toolCallId: String = "",
     val state: String = "", val messageId: String = "", val citationSources: List<CitationSource> = emptyList(), val outcome: String = "", val regentBubble: Boolean = false,
     val surface: A2UISurface? = null,
+    val media: List<MediaItem> = emptyList(),
 )
+
+/** An image, video or audio file a tool made, fetched from the desktop by its opaque id. */
+data class MediaItem(val id: String, val kind: String, val name: String) {
+    val extension: String get() = name.substringAfterLast('.', "").lowercase().filter { it.isLetterOrDigit() }.take(5)
+}
 
 data class DisplayMessage(val role: String, val parts: List<MessagePart>, val citationSources: List<CitationSource> = emptyList(),
     val model: String? = null, val timestamp: String? = null, val messageIndex: Int = 0, val files: List<FileAttachment> = emptyList(), val reaction: String? = null, val workedSeconds: Int? = null, val firstMessageIndex: Int? = null) {

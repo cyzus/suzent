@@ -19,7 +19,12 @@ from pydantic import (
 )
 from starlette.exceptions import HTTPException
 from starlette.requests import HTTPConnection, Request
-from starlette.responses import JSONResponse, Response, StreamingResponse
+from starlette.responses import (
+    FileResponse,
+    JSONResponse,
+    Response,
+    StreamingResponse,
+)
 from starlette.routing import Route, WebSocketRoute
 from starlette.websockets import WebSocket
 
@@ -27,6 +32,7 @@ from suzent.auth_boundary import extract_token
 from suzent.core.focal_agent import FOCAL_CHAT_ID, FOCAL_TITLE, focal_status
 from suzent.database import get_database
 from suzent.mobile.attachments import attachment_registry
+from suzent.mobile.media import find_media, media_type, with_media
 from suzent.mobile.pairing import ClientGrant, PairingStore
 from suzent.routes.mobile_routes import get_mobile_store, reply
 
@@ -187,6 +193,7 @@ async def session(request: Request) -> JSONResponse:
             "surfaces": 1,
             "voice": 1,
             "steer": 1,
+            "media": 1,
             **relay_field(request),
         }
     )
@@ -373,11 +380,8 @@ async def chat(request: Request) -> JSONResponse:
     metadata = get_database().get_chat_projects([chat_id]).get(chat_id, (None, None))
     return reply(
         {
-            **{
-                key: data[key]
-                for key in ("id", "title", "messages", "isRunning")
-                if key in data
-            },
+            **{key: data[key] for key in ("id", "title", "isRunning") if key in data},
+            "messages": with_media(data.get("messages") or []),
             **({"regent": regent_summary()["regent"]} if regent else {}),
             "projectId": None if regent else metadata[0],
             "projectName": None if regent else metadata[1],
@@ -398,6 +402,33 @@ async def chat(request: Request) -> JSONResponse:
             else None,
             "models": get_enabled_models_from_db() if native else [],
         }
+    )
+
+
+async def media(request: Request) -> Response:
+    chat_id = request.path_params["chat_id"]
+    authorize(request, chat_id)
+    stored_chat = get_database().get_chat(chat_id)
+    if stored_chat is None:
+        raise HTTPException(404, "Conversation unavailable")
+    path = find_media(
+        list(getattr(stored_chat, "messages", None) or []),
+        request.path_params["media_id"],
+    )
+    if path is None:
+        raise HTTPException(404, "Media unavailable")
+    from suzent.routes.sandbox_routes import _get_resolver_for_request
+
+    try:
+        host_path = _get_resolver_for_request(chat_id).resolve(path)
+    except ValueError:
+        raise HTTPException(404, "Media unavailable") from None
+    if not host_path.is_file():
+        raise HTTPException(404, "Media unavailable")
+    return FileResponse(
+        host_path,
+        media_type=media_type(path)[1],
+        headers={"Cache-Control": "private, max-age=86400"},
     )
 
 
@@ -985,6 +1016,7 @@ client_routes = [
     Route("/mobile/client/chats/{chat_id}", chat, methods=["GET"]),
     Route("/mobile/client/chats/{chat_id}/read", mark_read, methods=["POST"]),
     Route("/mobile/client/chats/{chat_id}/overview", overview, methods=["GET"]),
+    Route("/mobile/client/chats/{chat_id}/media/{media_id}", media, methods=["GET"]),
     Route("/mobile/client/upload", upload, methods=["POST"]),
     Route("/mobile/client/send", send, methods=["POST"]),
     Route("/mobile/client/message-action", message_action, methods=["POST"]),

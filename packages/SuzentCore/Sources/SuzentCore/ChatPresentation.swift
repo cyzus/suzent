@@ -22,6 +22,8 @@ public struct MessagePart: Decodable, Sendable, Equatable {
     public var regentBubble: Bool? = nil
     public var citationSources: [CitationSource]?
     public var surface: A2UISurface? = nil
+    /// Images, video and audio the tool made, which the desktop serves by id.
+    public var media: [MediaItem]? = nil
     public init(type: String, text: String? = nil, toolName: String? = nil, args: String? = nil,
                 output: String? = nil, toolCallId: String? = nil, state: String? = nil, messageId: String? = nil,
                 citationSources: [CitationSource]? = nil) {
@@ -30,6 +32,35 @@ public struct MessagePart: Decodable, Sendable, Equatable {
         self.citationSources = citationSources
     }
 
+}
+
+public struct MediaItem: Decodable, Sendable, Equatable, Hashable, Identifiable {
+    public let id: String
+    public let kind: String
+    public let name: String
+    public init(id: String, kind: String, name: String) { self.id = id; self.kind = kind; self.name = name }
+    private enum CodingKeys: String, CodingKey { case id, kind, name }
+    // Lenient, so one malformed entry is dropped by `isValid` instead of failing the whole transcript.
+    public init(from decoder: any Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        id = (try? values.decodeIfPresent(String.self, forKey: .id)) ?? ""
+        kind = (try? values.decodeIfPresent(String.self, forKey: .kind)) ?? ""
+        name = (try? values.decodeIfPresent(String.self, forKey: .name)) ?? ""
+    }
+
+    /// Only ids the backend could have issued, and kinds this app can show.
+    public var isValid: Bool {
+        id.count == 32 && id.allSatisfy { $0.isHexDigit && !$0.isUppercase } && ["image", "video", "audio"].contains(kind)
+    }
+    public var fileExtension: String {
+        let ext = (name as NSString).pathExtension.lowercased().filter { $0.isLetter || $0.isNumber }
+        return ext.isEmpty ? "bin" : String(ext.prefix(5))
+    }
+}
+
+public func mediaItems(_ parts: [MessagePart]) -> [MediaItem] {
+    var seen = Set<String>()
+    return parts.flatMap { $0.media ?? [] }.filter { $0.isValid && seen.insert($0.id).inserted }
 }
 
 public struct DisplayMessage: Sendable {

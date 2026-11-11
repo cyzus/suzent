@@ -26,6 +26,12 @@ public protocol MobileClient: Sendable {
     func answerSurface(_ chatID: String, surfaceID: String, answer: [String: JSONValue]) async throws
     func decideApprovals(_ id: String, pending: [ApprovalRequest], choices: [String: String]) async throws
     func observe(_ chatID: String, onEvent: @Sendable (StreamEvent) async -> Void) async throws
+    /// Downloads a tool's image, video or audio to `destination`.
+    func media(_ chatID: String, mediaID: String, to destination: URL) async throws
+}
+
+public extension MobileClient {
+    func media(_ chatID: String, mediaID: String, to destination: URL) async throws { throw ClientError.invalidResponse }
 }
 
 extension SuzentClient: MobileClient {}
