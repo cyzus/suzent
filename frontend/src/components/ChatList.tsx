@@ -11,6 +11,7 @@ import {
   EllipsisVerticalIcon,
   PencilSquareIcon,
   PlusIcon,
+  RectangleStackIcon,
   SparklesIcon,
 } from '@heroicons/react/24/outline';
 import { useChatStore } from '../hooks/useChatStore';
@@ -110,7 +111,7 @@ function SidebarRowSkeleton({ compact = false }: { compact?: boolean }): React.R
   );
 }
 
-export type SidebarView = 'chat' | 'memory' | 'skills';
+export type SidebarView = 'chat' | 'memory' | 'skills' | 'artifacts';
 
 interface ChatListProps {
   mobile?: boolean;
@@ -2010,6 +2011,15 @@ export const ChatList: React.FC<ChatListProps> = ({
               >
                 <SparklesIcon className="h-4 w-4 shrink-0" aria-hidden="true" />
                 <span className="flex-1 truncate">{t('nav.skills')}</span>
+              </button>
+              <button
+                type="button"
+                aria-current={activeView === 'artifacts' ? 'page' : undefined}
+                onClick={() => onOpenView?.('artifacts')}
+                className={sidebarNavRowClass(activeView === 'artifacts')}
+              >
+                <RectangleStackIcon className="h-4 w-4 shrink-0" aria-hidden="true" />
+                <span className="flex-1 truncate">{t('nav.artifacts')}</span>
               </button>
             </nav>
           )}
