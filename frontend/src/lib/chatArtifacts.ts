@@ -60,7 +60,9 @@ function displayPathOf(path: string): string {
 function savedPaths(toolName: string | undefined, output: string | undefined): string[] {
   if (!toolName || !OUTPUT_TOOLS.has(toolName)) return [];
   const envelope = parseToolResultEnvelope(output);
-  if (!envelope || envelope.success === false) return [];
+  if (!envelope) return [];
+  // A send_file that a chat app refused still names files that exist on this computer.
+  if (envelope.success === false && toolName !== 'send_file') return [];
   const metadata = envelope.metadata as { saved_paths?: unknown } | undefined;
   const paths = metadata?.saved_paths;
   return Array.isArray(paths)

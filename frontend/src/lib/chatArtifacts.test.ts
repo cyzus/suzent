@@ -104,6 +104,23 @@ describe('collectChatArtifacts', () => {
     ]);
   });
 
+  it('keeps files a chat app refused to receive from send_file', () => {
+    const messages: Message[] = [
+      assistant({
+        parts: [
+          {
+            type: 'tool',
+            toolName: 'send_file',
+            state: 'completed',
+            output: toolResult([`${PROJECT}/artifacts/report.pdf`], false),
+          },
+        ],
+      }),
+    ];
+
+    expect(collectChatArtifacts(messages).map((artifact) => artifact.name)).toEqual(['report.pdf']);
+  });
+
   it('skips inputs, failures, undone turns and deleted files', () => {
     const messages: Message[] = [
       assistant({
