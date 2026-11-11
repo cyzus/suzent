@@ -93,6 +93,13 @@ class FinalAnswer(StreamEvent):
 
 
 @dataclass
+class UsageUpdate(StreamEvent):
+    """Token usage the run reported for the stream it closes."""
+
+    usage: dict[str, Any]
+
+
+@dataclass
 class ApprovalRequest(StreamEvent):
     """A tool call that requires human-in-the-loop approval."""
 
@@ -270,6 +277,8 @@ class StreamParser:
                     args=val.get("args", {}),
                     decision=val.get("decision"),
                 )
+            elif name == CustomEventName.USAGE_UPDATE and isinstance(value, dict):
+                yield UsageUpdate(value)
         elif evt_type == StreamEventType.RUN_ERROR:
             # A failed run may leave tool calls that never closed.
             yield from self.flush()
