@@ -41,6 +41,7 @@ import {
   SparklesIcon,
 } from '@heroicons/react/24/outline';
 import { PanelResizeHandle } from '../PanelResizeHandle';
+import { SidebarToggleIcon } from '../SidebarToggleIcon';
 import { ToolsPanel } from './ToolsPanel';
 import { FocalToolsPanel } from './FocalToolsPanel';
 import {
@@ -428,7 +429,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
       icon: CpuChipIcon,
       labelKey: 'sidebar.tabs.agents',
       fallbackLabel: 'Background tasks',
-      hasContent: hasAgentContent,
+      hasContent: Boolean(currentChatId) || hasAgentContent,
       hasActivity: hasBackgroundActivity,
       activityClass: 'bg-brutal-blue animate-pulse',
       pinned: false,
@@ -643,28 +644,31 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
     agents: {
       summary: runningAgentCount
         ? t('sidebar.overview.running', { count: runningAgentCount })
-        : undefined,
-      preview: (
-        <ul className="mt-1.5 space-y-0.5">
-          {previewAgents.map((task) => (
-            <li
-              key={task.task_id}
-              className="flex items-center gap-2 text-xs text-neutral-500 dark:text-neutral-400"
-            >
-              <span
-                className={`h-1.5 w-1.5 shrink-0 rounded-full ${
-                  isSubAgentActive(task.status)
-                    ? 'bg-brutal-blue animate-pulse'
-                    : task.status === 'failed'
-                      ? 'bg-brutal-red'
-                      : 'bg-neutral-300 dark:bg-zinc-600'
-                }`}
-              />
-              <span className="truncate">{task.description}</span>
-            </li>
-          ))}
-        </ul>
-      ),
+        : backgroundTasks.length > 0
+          ? String(backgroundTasks.length)
+          : undefined,
+      preview:
+        previewAgents.length > 0 ? (
+          <ul className="mt-1.5 space-y-0.5">
+            {previewAgents.map((task) => (
+              <li
+                key={task.task_id}
+                className="flex items-center gap-2 text-xs text-neutral-500 dark:text-neutral-400"
+              >
+                <span
+                  className={`h-1.5 w-1.5 shrink-0 rounded-full ${
+                    isSubAgentActive(task.status)
+                      ? 'bg-brutal-blue animate-pulse'
+                      : task.status === 'failed'
+                        ? 'bg-brutal-red'
+                        : 'bg-neutral-300 dark:bg-zinc-600'
+                  }`}
+                />
+                <span className="truncate">{task.description}</span>
+              </li>
+            ))}
+          </ul>
+        ) : undefined,
       body: (
         <OverviewList
           items={backgroundTasks}
@@ -688,8 +692,8 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
       ),
     },
     artifacts: {
-      summary: artifacts.length,
-      preview: <ArtifactsPreview artifacts={artifacts} />,
+      summary: artifacts.length > 0 ? artifacts.length : undefined,
+      preview: artifacts.length > 0 ? <ArtifactsPreview artifacts={artifacts} /> : undefined,
       body: (
         <OverviewList
           items={artifacts.slice(0, 6)}
@@ -864,10 +868,10 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
     setCoverWidth(null);
     onClose();
   };
-  // The overview blends into the chat; content panels keep the brutalist edge.
+  // The overview uses a subtle 1px divider and tray background; content panels keep the brutalist edge.
   const sidebarLeftBorder =
     activeTab === 'overview'
-      ? ''
+      ? 'border-l border-neutral-200 dark:border-zinc-800'
       : coveringChat
         ? 'border-l border-neutral-300 dark:border-zinc-700'
         : 'border-l-3 border-brutal-black';
@@ -1222,19 +1226,21 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                         : 'text-neutral-500 hover:bg-neutral-100 hover:text-brutal-black dark:text-neutral-400 dark:hover:bg-zinc-700 dark:hover:text-white'
                     }`}
                   >
-                    <Icon className="h-4 w-4" />
+                    {tab.id === 'overview' ? (
+                      <SidebarToggleIcon
+                        side="right"
+                        open={isActive}
+                        className="h-4 w-4"
+                      />
+                    ) : (
+                      <Icon className="h-4 w-4" />
+                    )}
                     {tab.hasActivity && !isActive && (
                       <span
                         className={`absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full border border-brutal-black ${tab.activityClass ?? 'bg-brutal-yellow'}`}
                       />
                     )}
                   </button>
-                  {tab.id === 'overview' && visibleHeaderTabs.length > 1 && (
-                    <span
-                      className="mx-1 h-4 w-px bg-neutral-300 dark:bg-zinc-600"
-                      aria-hidden="true"
-                    />
-                  )}
                 </React.Fragment>
               );
             })}
