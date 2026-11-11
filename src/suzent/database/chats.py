@@ -1384,6 +1384,23 @@ class ChatOperationsMixin:
             statement = statement.order_by(ChatModel.updated_at.desc()).limit(limit)
             return [(row[0], row[1]) for row in session.exec(statement).all()]
 
+    def list_chat_transcripts(
+        self, project_ids: list[str]
+    ) -> list[tuple[str, str, str, list]]:
+        """``(id, title, project_id, messages)`` for unarchived chats in *project_ids*."""
+        if not project_ids:
+            return []
+        with self._session() as session:
+            statement = select(
+                ChatModel.id, ChatModel.title, ChatModel.project_id, ChatModel.messages
+            ).where(
+                ChatModel.archived.is_(False), ChatModel.project_id.in_(project_ids)
+            )
+            return [
+                (row[0], row[1], row[2], row[3] or [])
+                for row in session.exec(statement).all()
+            ]
+
     def get_chat_navigation(
         self, chat_ids: list[str]
     ) -> dict[str, dict[str, str | int | None]]:

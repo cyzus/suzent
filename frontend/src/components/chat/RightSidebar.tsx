@@ -38,7 +38,7 @@ import {
   ServerStackIcon,
   CircleStackIcon,
   EllipsisHorizontalIcon,
-  SparklesIcon,
+  RectangleStackIcon,
 } from '@heroicons/react/24/outline';
 import { PanelResizeHandle } from '../PanelResizeHandle';
 import { SidebarToggleIcon } from '../SidebarToggleIcon';
@@ -386,7 +386,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
     },
     {
       id: 'artifacts',
-      icon: SparklesIcon,
+      icon: RectangleStackIcon,
       labelKey: 'sidebar.tabs.artifacts',
       fallbackLabel: 'Artifacts',
       hasContent: hasArtifacts,

@@ -78,6 +78,7 @@ from suzent.routes.commands_routes import get_commands
 from suzent.routes.project_routes import (
     create_project,
     delete_project,
+    list_artifacts,
     list_projects,
     list_project_folders,
     move_all_chats,
@@ -1267,6 +1268,7 @@ app = Starlette(
             delete_permission_rule,
             methods=["DELETE"],
         ),
+        Route("/artifacts", list_artifacts, methods=["GET"]),
         Route("/projects", list_projects, methods=["GET"]),
         Route("/projects", create_project, methods=["POST"]),
         Route("/projects/{project_id}", update_project, methods=["PATCH"]),
