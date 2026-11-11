@@ -11,6 +11,7 @@ import { BrutalButton } from '../BrutalButton';
 import { RefreshButton } from '../RefreshButton';
 import { BrutalSegmentedTabs } from '../BrutalSegmentedTabs';
 import { useChatStore } from '../../hooks/useChatStore';
+import { ImageViewer } from '../ImageViewer';
 import { FilePreview } from './FilePreview';
 import { FileTreeContextMenu } from './FileTreeContextMenu';
 import { isBinaryServedFile, isImageFile, isMarkdownFile, isCodeFile } from '../../lib/fileUtils';
@@ -360,7 +361,7 @@ export const SandboxFiles: React.FC<SandboxFilesProps> = ({
       setFileContent(null);
       setLoadingFile(false);
       setPreviewRevision((revision) => revision + 1);
-      onViewModeChange?.(true);
+      onViewModeChange?.(!isImageFile(path));
     },
     [onViewModeChange]
   );
@@ -374,16 +375,11 @@ export const SandboxFiles: React.FC<SandboxFilesProps> = ({
 
   useEffect(() => {
     if (externalFilePath && externalFileName) {
-      setSelectedFile(externalFilePath);
-      setError(null);
-      setFileContent(null);
-      setLoadingFile(false);
-      setPreviewRevision((revision) => revision + 1);
-      onViewModeChange?.(true);
+      handleSelectFile(externalFilePath);
     }
     // externalFileNonce is included so re-clicking the same file (which keeps
     // path/name identical) still re-opens it after a "back".
-  }, [externalFilePath, externalFileName, externalFileNonce, onViewModeChange]);
+  }, [externalFilePath, externalFileName, externalFileNonce, handleSelectFile]);
 
   const openPathInExplorer = useCallback(
     async (path: string) => {
@@ -536,7 +532,7 @@ export const SandboxFiles: React.FC<SandboxFilesProps> = ({
   }
 
   // File Content View
-  if (selectedFile) {
+  if (selectedFile && !isImageFile(selectedFile)) {
     const filename = selectedFile.split('/').pop() || selectedFile;
 
     return (
@@ -616,8 +612,28 @@ export const SandboxFiles: React.FC<SandboxFilesProps> = ({
   const isRootLoading = loadingDirs.has(activeRoot);
   const totalItems = Array.from(dirContents.values()).reduce((acc, items) => acc + items.length, 0);
 
+  const imageUrl = (path: string): string =>
+    `${getApiBase()}/sandbox/serve?${getSandboxParams(currentChatId, path, config.sandbox_volumes)}`;
+  const imageDirectory = selectedFile?.slice(0, selectedFile.lastIndexOf('/')) || activeRoot;
+  const imagePaths = (dirContents.get(imageDirectory) || [])
+    .filter((item) => !item.is_dir && isImageFile(item.name))
+    .map((item) => `${imageDirectory}/${item.name}`);
+  if (selectedFile && isImageFile(selectedFile) && !imagePaths.includes(selectedFile)) {
+    imagePaths.push(selectedFile);
+  }
+  const imageUrls = imagePaths.map(imageUrl);
+
   return (
     <div className="flex flex-col h-full bg-white dark:bg-zinc-900">
+      <ImageViewer
+        src={selectedFile && isImageFile(selectedFile) ? imageUrl(selectedFile) : null}
+        images={imageUrls}
+        onNavigate={(src) => {
+          const index = imageUrls.indexOf(src);
+          if (index >= 0) setSelectedFile(imagePaths[index]);
+        }}
+        onClose={handleBack}
+      />
       {/* Toolbar */}
       <div
         className={

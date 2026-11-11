@@ -9,6 +9,7 @@ import { parseToolResultEnvelope } from './ToolCallBlock';
 interface ImageResultCall {
   toolName?: string;
   output?: string;
+  args?: string;
 }
 
 export function getImageResultPaths(calls: ImageResultCall[]): string[] {
@@ -26,6 +27,31 @@ export function getImageResultPaths(calls: ImageResultCall[]): string[] {
       paths.add(path);
   }
   return [...paths];
+}
+
+export function getRailImagePaths(calls: ImageResultCall[], seen = new Set<string>()): string[] {
+  const paths = calls.flatMap((call) => {
+    if (call.toolName !== 'analyze_visual') return getImageResultPaths([call]);
+    const result = parseToolResultEnvelope(call.output);
+    if (!call.output || result?.success === false) return [];
+    let args: Record<string, unknown> = {};
+    try {
+      args = JSON.parse(call.args || '{}');
+    } catch {
+      /* Streaming arguments may be incomplete. */
+    }
+    return getMediaToolPaths({
+      toolName: call.toolName,
+      parsedArgs: args,
+      metadata: result?.metadata as Record<string, unknown> | undefined,
+    }).filter((path) => !/\.(mp4|mov|webm|avi|mkv)$/i.test(path));
+  });
+  return paths.filter((path) => {
+    const key = path.replace(/\\/g, '/').replace(/\/\.\//g, '/');
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 interface PlayableResult {
@@ -76,13 +102,16 @@ export function hasVisualMediaResults(calls: ImageResultCall[]): boolean {
   );
 }
 
-export const ImageResultGallery: React.FC<{ calls: ImageResultCall[] }> = ({ calls }) => {
+export const ImageResultGallery: React.FC<{ calls: ImageResultCall[]; showImages?: boolean }> = ({
+  calls,
+  showImages = true,
+}) => {
   const paths = getImageResultPaths(calls);
   const media = getPlayableResults(calls);
   const { currentChatId, config } = useChatStore();
   return (
     <>
-      {paths.length > 0 && (
+      {showImages && paths.length > 0 && (
         <MediaToolRenderer
           toolName="generate_image"
           parsedArgs={null}

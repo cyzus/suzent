@@ -1,3 +1,4 @@
+import { RailImageThumbnails } from './RailImageThumbnails';
 import { ToolGroupIcon, pickToolRunningSurfaceClass } from './toolGroupIcon';
 import { summarizeActivity, type ActivitySummaryTool } from './activitySummary';
 import React, { useEffect, useState } from 'react';
@@ -532,6 +533,7 @@ export const ActivityRail: React.FC<{
   children: React.ReactNode;
   itemCount: number;
   summaryTools?: ActivitySummaryTool[];
+  imagePaths?: string[];
   defaultExpanded?: boolean;
   /** The turn is still streaming. */
   isActive?: boolean;
@@ -548,6 +550,7 @@ export const ActivityRail: React.FC<{
   children,
   itemCount,
   summaryTools,
+  imagePaths = [],
   defaultExpanded = false,
   isActive = false,
   isCurrent = isActive,
@@ -616,67 +619,70 @@ export const ActivityRail: React.FC<{
 
   return (
     <div className="activity-rail-shell min-w-0 w-full" data-current-activity={isCurrent}>
-      <button
-        type="button"
-        aria-expanded={visible}
-        aria-controls={bodyId}
-        onClick={() => {
-          userToggledRef.current = true;
-          setExpanded((value) => !value);
-        }}
-        className={`activity-rail-header ${
-          hasPending
-            ? 'activity-rail-header-pending'
-            : isCurrent && !visible
-              ? thinking
-                ? ''
-                : runningTool
-                  ? `activity-turn-tool ${pickToolRunningSurfaceClass(runningTool)}`
-                  : latestTool
-                    ? ''
-                    : 'activity-rail-header-active'
-              : ''
-        }`}
-      >
-        {thinking ? null : isCurrent && !visible && agentResult ? (
-          <AgentAvatar
-            model={agentTask?.model_override ?? agentResult.model}
-            status={agentStatus}
-            className="w-4 h-4 text-[7px] leading-none"
-          />
-        ) : isCurrent && !visible && latestTool?.toolName ? (
-          <ToolGroupIcon
-            toolName={latestTool.toolName}
-            isStreaming={Boolean(runningTool)}
-            hasOutput={!runningTool}
-          />
-        ) : null}
-        <span
-          className={`truncate min-w-0 ${thinking && !visible ? 'reasoning-thinking-label' : ''}`}
-          title={headerLabel}
+      <div className="flex min-w-0 items-center justify-between gap-3">
+        <button
+          type="button"
+          aria-expanded={visible}
+          aria-controls={bodyId}
+          onClick={() => {
+            userToggledRef.current = true;
+            setExpanded((value) => !value);
+          }}
+          className={`activity-rail-header min-w-0 ${
+            hasPending
+              ? 'activity-rail-header-pending'
+              : isCurrent && !visible
+                ? thinking
+                  ? ''
+                  : runningTool
+                    ? `activity-turn-tool ${pickToolRunningSurfaceClass(runningTool)}`
+                    : latestTool
+                      ? ''
+                      : 'activity-rail-header-active'
+                : ''
+          }`}
         >
-          {hasPending ? (currentLabel ?? t('activityRail.approvalNeeded')) : headerLabel}
-        </span>
-        {hasPending && (
-          <span className="activity-rail-pending-badge">{t('activityRail.pending')}</span>
-        )}
-        {!summary && (
-          <>
-            <span className="shrink-0 text-neutral-300 dark:text-neutral-600" aria-hidden="true">
-              |
-            </span>
-            <span className="shrink-0 whitespace-nowrap text-neutral-500 dark:text-neutral-400">
-              {t(itemCount === 1 ? 'activityRail.step' : 'activityRail.steps', {
-                count: itemCount,
-              })}
-            </span>
-          </>
-        )}
-        <DisclosureChevron
-          expanded={visible}
-          className="activity-rail-chevron w-3 h-3 text-neutral-500 dark:text-neutral-400 transition-all duration-200"
-        />
-      </button>
+          {thinking ? null : isCurrent && !visible && agentResult ? (
+            <AgentAvatar
+              model={agentTask?.model_override ?? agentResult.model}
+              status={agentStatus}
+              className="w-4 h-4 text-[7px] leading-none"
+            />
+          ) : isCurrent && !visible && latestTool?.toolName ? (
+            <ToolGroupIcon
+              toolName={latestTool.toolName}
+              isStreaming={Boolean(runningTool)}
+              hasOutput={!runningTool}
+            />
+          ) : null}
+          <span
+            className={`truncate min-w-0 ${thinking && !visible ? 'reasoning-thinking-label' : ''}`}
+            title={headerLabel}
+          >
+            {hasPending ? (currentLabel ?? t('activityRail.approvalNeeded')) : headerLabel}
+          </span>
+          {hasPending && (
+            <span className="activity-rail-pending-badge">{t('activityRail.pending')}</span>
+          )}
+          {!summary && (
+            <>
+              <span className="shrink-0 text-neutral-300 dark:text-neutral-600" aria-hidden="true">
+                |
+              </span>
+              <span className="shrink-0 whitespace-nowrap text-neutral-500 dark:text-neutral-400">
+                {t(itemCount === 1 ? 'activityRail.step' : 'activityRail.steps', {
+                  count: itemCount,
+                })}
+              </span>
+            </>
+          )}
+          <DisclosureChevron
+            expanded={visible}
+            className="activity-rail-chevron w-3 h-3 text-neutral-500 dark:text-neutral-400 transition-all duration-200"
+          />
+        </button>
+        {!visible && imagePaths.length > 0 && <RailImageThumbnails paths={imagePaths} />}
+      </div>
       <div
         id={bodyId}
         aria-hidden={!visible}

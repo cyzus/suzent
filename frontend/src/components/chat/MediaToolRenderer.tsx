@@ -38,7 +38,7 @@ const ImagePreview: React.FC<{ src: string; path: string; onOpen: (src: string) 
     <button
       type="button"
       onClick={() => onOpen(src)}
-      className="block min-w-0 text-left cursor-zoom-in"
+      className="block min-w-0 max-w-full overflow-hidden rounded-xl border border-neutral-200 bg-neutral-50 text-left cursor-zoom-in transition-shadow hover:shadow-md focus-visible:ring-2 focus-visible:ring-blue-500 dark:border-zinc-700 dark:bg-zinc-900"
     >
       {failed ? (
         <span className="text-xs text-neutral-500">{t('imageTool.previewFailed')}</span>
@@ -48,10 +48,12 @@ const ImagePreview: React.FC<{ src: string; path: string; onOpen: (src: string) 
           alt={name}
           loading="lazy"
           onError={() => setFailed(true)}
-          className="max-w-full max-h-80 object-contain rounded-sm border border-neutral-200 dark:border-zinc-700"
+          className="max-w-full max-h-80 object-contain mx-auto"
         />
       )}
-      <span className="block mt-1 text-xs text-neutral-500 break-all">{name}</span>
+      <span className="block truncate border-t border-neutral-200 px-3 py-2 text-xs text-neutral-500 dark:border-zinc-700">
+        {name}
+      </span>
     </button>
   );
 };
