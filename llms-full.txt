@@ -2045,6 +2045,25 @@ to **Send**, and a running agent task shows **Stop**. A progress indicator
 replaces the action while a message is being processed. If voice needs setup or
 additional permissions, tapping its button explains what to change.
 
+### Redirect or queue while the agent works
+
+You don't have to wait for a reply to finish. Type while the agent is working and
+the **Stop** button gives way to two buttons:
+
+- **Redirect** (yellow arrow) interrupts the agent and continues the same turn
+  with your new message, like pressing Enter mid-reply on desktop. What the agent
+  had written so far stays in the conversation.
+- **Queue** (clock) holds the message until the current reply ends, then sends it
+  as the next message, like Cmd/Ctrl+Enter on desktop.
+
+Queued messages appear above the message box. Tap **Redirect now** on one to send
+it straight away, or the ✕ to drop it. Queued messages go out in order while the
+conversation is open, and they are kept only on the phone until then. If one
+can't be sent, it returns to the message box so nothing you typed is lost.
+Redirect needs both **Send messages** and **Stop responses**; with only **Send
+messages**, or with attachments alone, you can still queue. Redirect sends text
+only, so any attachments stay in the message box.
+
 Use a desktop version that supports mobile voice and configure a realtime voice
 model in **Settings → Voice & audio** on the desktop first. Your phone needs both **Send
 messages** and **Stop responses** permissions, because voice can start and cancel
@@ -2179,7 +2198,7 @@ old one; pair the phone again afterwards. The same relay also gives
   full width.
 - **Talk to the agent.** Send messages, watch replies stream in with their
   sources and an activity summary you can expand for each tool's details, and
-  stop a reply. Long-press a message to copy or share it, edit and resend your
+  stop a reply, or redirect or queue a follow-up while it works. Long-press a message to copy or share it, edit and resend your
   last message, retry a reply, or branch a conversation. Edit and retry need
   **Full control** (or the manage permission under **Custom**).
 - **Talk to Regent.** If the phone may read all conversations, you can talk to
@@ -8277,6 +8296,18 @@ Tokens are encrypted with an Android Keystore AES-GCM key; app backup is disable
    retransmissions and replace transient text when a fresh snapshot arrives.
    `STREAM_END` confirms persistence; the received response stays visible until
    saved history has loaded. See [Stream recovery](https://suzent.com/docs/developing/architecture/stream-recovery-protocol).
+While a turn runs, the composer offers redirect and queue in place of Stop once
+there is typed content, matching desktop's Enter and Cmd/Ctrl+Enter.
+`POST /mobile/client/steer` (session capability `steer: 1`, requires both `send`
+and `stop`) forwards text and an optional model to `/chat/steer-send`, or to
+`/chat/send` when the turn already ended. On acceptance the client cancels its
+current live stream, keeps the partial reply on screen (running or
+approval-pending tools end as errors, as on desktop) and subscribes again. Queued
+messages live only in the phone's memory, per conversation; the open
+conversation releases the next one through the normal send path once it is
+idle (not streaming, not running, no pending approvals). A failed release or
+redirect returns its text and attachments to the composer instead of the queue,
+so a failing desktop is not retried in a loop.
 The native clients subscribe immediately after send acknowledgment, showing the
 accepted user message locally while the backend remains authoritative. Live text
 is published in 50 ms batches, with a final flush on completion or failure.
@@ -11272,7 +11303,7 @@ Use the signed Release builds, not the debug builds, for acceptance:
 - Pair over local trusted HTTPS and a remote HTTPS address; reject changed trust.
 - Cancel/timeout on wrong Wi-Fi, desktop shutdown, or rejected permissions.
 - Re-pair the same installation and revoke credentials from desktop.
-- Send, stop, approve tools, background/foreground, and recover a running stream.
+- Send, stop, redirect and queue mid-turn, approve tools, background/foreground, and recover a running stream.
 - Upgrade a signed Android release and a TestFlight build without losing pairing.
 - Check iOS selection overlay, long names, large text, dark mode, and VoiceOver.
 - Confirm the privacy/support pages, permission explanations, store screenshots,
