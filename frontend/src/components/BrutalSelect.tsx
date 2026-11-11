@@ -174,7 +174,7 @@ export const BrutalSelect: React.FC<BrutalSelectProps> = ({
                   onChange(option.value);
                   setIsOpen(false);
                 }}
-                className={`w-full text-left px-3 py-2 font-bold text-sm uppercase transition-colors border-b-2 border-neutral-100 dark:border-zinc-700 last:border-0 ${
+                className={`group w-full text-left px-3 py-2 font-bold text-sm uppercase transition-colors border-b-2 border-neutral-100 dark:border-zinc-700 last:border-0 ${
                   option.disabled
                     ? 'bg-white dark:bg-zinc-800 text-neutral-400 dark:text-neutral-600 cursor-not-allowed'
                     : value === option.value
@@ -184,7 +184,15 @@ export const BrutalSelect: React.FC<BrutalSelectProps> = ({
               >
                 {option.label}
                 {option.hint && (
-                  <span className="block normal-case font-normal text-[10px] text-neutral-500 dark:text-neutral-500 mt-0.5">
+                  <span
+                    className={`block normal-case font-normal text-[10px] leading-tight mt-0.5 ${
+                      option.disabled
+                        ? 'text-neutral-500 dark:text-neutral-500'
+                        : value === option.value
+                          ? 'text-neutral-300 dark:text-neutral-700'
+                          : 'text-neutral-500 dark:text-neutral-400 group-hover:text-neutral-700 dark:group-hover:text-neutral-300'
+                    }`}
+                  >
                     {option.hint}
                   </span>
                 )}

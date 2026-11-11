@@ -1,0 +1,6 @@
+{
+  "products": {
+    "desktop": "patch"
+  },
+  "summary": "Make Smart mode the default permission mode for new chats, remove its confirmation dialog, and add concise inline descriptions to the mode selector."
+}
