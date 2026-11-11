@@ -84,7 +84,10 @@ cases are in `activity-timing-fixtures.json`.
 Session capability `chat_pagination: 1` enables these read-only navigation routes:
 
 - `GET /mobile/client/navigation`: independent Regent presence plus authorized
-  projects with `chatCount` (non-pinned, non-cron, non-archived chats).
+  projects with `chatCount` (non-pinned, non-cron, non-archived chats), plus
+  `running` and `unread` flags covering every authorized chat in the project, so a
+  collapsed project can show activity without loading its pages. Native clients
+  refresh this with each status poll.
 - `POST /mobile/client/chat-page`: `{kind, value, offset, limit}` returns
   `{chats, total, nextOffset}`. Kinds are `recent`, `pinned`, `project` (value is
   project ID) and `search` (value is a title substring). Default page size is 30,
@@ -93,6 +96,11 @@ Session capability `chat_pagination: 1` enables these read-only navigation route
 - `POST /mobile/client/chat-status`: `{ids: [...]}` accepts at most 100 IDs and
   returns authorized, existing, non-archived summaries only. Omitted IDs must be
   evicted, while summaries loaded concurrently outside that request are retained.
+
+Chat summaries carry `unreadCount`, the number of finished turns nobody has viewed
+yet (absent on older desktops, read as 0). Clients show unread rows in bold, the way
+the desktop sidebar does, and clear the count with `POST /mobile/client/chats/{id}/read`
+when they open the conversation or while it stays on screen.
 
 Authorization is applied before paging and counting. Regent never consumes a page
 slot and still requires all-conversation access. The legacy chat index remains for

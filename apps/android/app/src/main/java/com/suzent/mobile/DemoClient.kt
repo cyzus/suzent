@@ -70,7 +70,7 @@ class DemoClient(fixture: String, private val storage: File? = null, language: S
         records = JSONArray(listOf(item) + objects(records)); save()
         return Chat.parse(item)
     }
-    override suspend fun markRead(id: String) { record(id).optJSONObject("regent")?.put("unread", 0); save() }
+    override suspend fun markRead(id: String) { record(id).put("unreadCount", 0).optJSONObject("regent")?.put("unread", 0); save() }
     override suspend fun chat(id: String): Chat { advance(id); return Chat.parse(record(id)) }
     /** The demo never asks a blocking question, so there is nothing to answer. */
     override suspend fun answerSurface(id: String, surfaceId: String, answer: Map<String, Any?>) {}
