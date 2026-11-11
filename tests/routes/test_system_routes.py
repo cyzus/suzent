@@ -145,3 +145,49 @@ def test_runtime_kind_marks_source_checkouts(monkeypatch, tmp_path) -> None:
     monkeypatch.setattr(suzent_version, "get_backend_source_root", lambda: tmp_path)
 
     assert suzent_version.get_runtime_kind() == "source"
+
+
+class _WorkspaceResolver:
+    def __init__(self, root) -> None:
+        self.root = root
+
+    def resolve(self, path: str):
+        return self.root / path.removeprefix("/workspace/")
+
+
+def _host_path_client(monkeypatch, tmp_path) -> TestClient:
+    monkeypatch.setattr(
+        system_routes, "_get_resolver", lambda _chat_id: _WorkspaceResolver(tmp_path)
+    )
+    app = Starlette(
+        routes=[Route("/system/host_path", system_routes.host_path, methods=["POST"])]
+    )
+    return TestClient(app)
+
+
+def test_host_path_resolves_a_virtual_path_to_the_file_on_disk(
+    monkeypatch, tmp_path
+) -> None:
+    report = tmp_path / "artifacts" / "report.md"
+    report.parent.mkdir()
+    report.write_text("hi")
+
+    response = _host_path_client(monkeypatch, tmp_path).post(
+        "/system/host_path",
+        json={"path": "/workspace/artifacts/report.md", "chat_id": "c1"},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"path": str(report)}
+
+
+def test_host_path_rejects_missing_and_empty_paths(monkeypatch, tmp_path) -> None:
+    client = _host_path_client(monkeypatch, tmp_path)
+
+    missing = client.post(
+        "/system/host_path", json={"path": "/workspace/gone.md", "chat_id": "c1"}
+    )
+    empty = client.post("/system/host_path", json={"path": " ", "chat_id": "c1"})
+
+    assert missing.status_code == 404
+    assert empty.status_code == 400

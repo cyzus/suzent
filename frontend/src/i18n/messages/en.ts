@@ -2873,6 +2873,8 @@ export const en = {
     emptyDirectory: 'Empty directory',
     itemsCount: '{count} items',
     errorPrefix: 'ERROR: ',
+    copyLocation: 'Copy file location',
+    locationCopied: 'Location copied',
     contextMenu: {
       label: 'File actions',
       open: 'Open',

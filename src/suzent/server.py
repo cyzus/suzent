@@ -205,6 +205,7 @@ from suzent.routes.system_routes import (
     get_system_version,
     list_host_files,
     open_in_explorer,
+    host_path,
 )
 from suzent.routes.session_routes import (
     get_session_state,
@@ -1377,6 +1378,7 @@ app = Starlette(
         Route("/system/idle", get_system_idle, methods=["GET"]),
         Route("/system/files", list_host_files, methods=["GET"]),
         Route("/system/open_explorer", open_in_explorer, methods=["POST"]),
+        Route("/system/host_path", host_path, methods=["POST"]),
         Route("/memory/core", get_core_memory, methods=["GET"]),
         Route("/memory/core", update_core_memory_block, methods=["PUT"]),
         Route("/memory/project-contexts", list_project_contexts, methods=["GET"]),
