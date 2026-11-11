@@ -202,6 +202,10 @@ export const en = {
       skill_execute: 'Loaded skills',
     },
   },
+  sentFile: {
+    label: 'Sent file',
+    reveal: 'Show in folder',
+  },
   videoPlayer: {
     reveal: 'Show file location',
     menu: 'Video controls',
@@ -578,6 +582,7 @@ export const en = {
       chats: 'Chats',
       config: 'Config',
       files: 'Files',
+      artifacts: 'Artifacts',
       tools: 'Tools',
       context: 'Context',
       browser: 'Web',
@@ -590,6 +595,13 @@ export const en = {
     },
     settings: 'Settings',
     settingsDesc: '',
+  },
+  artifacts: {
+    empty: 'Nothing made in this chat yet',
+    images: 'Images',
+    media: 'Video and audio',
+    files: 'Files',
+    openInFiles: 'Open {file} in Files',
   },
   repositoryContext: {
     title: 'Context',

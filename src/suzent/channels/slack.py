@@ -176,9 +176,12 @@ class SlackChannel(SocialChannel):
         if not self.web_client:
             return False
 
+        channel, _, thread_ts = target_id.partition(":")
+        if thread_ts:
+            kwargs.setdefault("thread_ts", thread_ts)
         try:
             await self.web_client.files_upload_v2(
-                channel=target_id, file=file_path, initial_comment=caption, **kwargs
+                channel=channel, file=file_path, initial_comment=caption, **kwargs
             )
             return True
         except Exception as e:

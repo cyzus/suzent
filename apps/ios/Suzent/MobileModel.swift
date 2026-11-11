@@ -149,8 +149,9 @@ import SuzentCore
         // Ids are per desktop path, so each desktop keeps its own folder.
         let desktop = String((store.activeId ?? "demo").utf8.reduce(UInt64(14_695_981_039_346_656_037)) { ($0 ^ UInt64($1)) &* 1_099_511_628_211 }, radix: 16)
         guard let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first else { return nil }
-        let directory = caches.appendingPathComponent("media/\(desktop)", isDirectory: true)
-        let file = directory.appendingPathComponent("\(item.id).\(item.fileExtension)")
+        // The original name, so a shared file arrives as report.pdf rather than an id.
+        let directory = caches.appendingPathComponent("media/\(desktop)/\(item.id)", isDirectory: true)
+        let file = directory.appendingPathComponent(item.safeName)
         if FileManager.default.fileExists(atPath: file.path) { return file }
         if let running = mediaDownloads[file] { return await running.value }
         let task = Task<URL?, Never> {

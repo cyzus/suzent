@@ -77,4 +77,7 @@ import Testing
     let part = try JSONDecoder().decode(MessagePart.self, from: Data(json.utf8))
     #expect(mediaItems([part]) == [MediaItem(id: id, kind: "video", name: "clip.MP4")])
     #expect(mediaItems([part]).first?.fileExtension == "mp4")
+    #expect(MediaItem(id: id, kind: "file", name: "a/b.pdf").safeName == "a_b.pdf")
+    #expect(MediaItem(id: id, kind: "file", name: "..").safeName == "file.bin")
+    #expect(MediaItem(id: id, kind: "file", name: "x").isValid)
 }

@@ -5,6 +5,7 @@ import { getApiBase, getSandboxParams } from '../../lib/api';
 import { useChatStore } from '../../hooks/useChatStore';
 import { getMediaToolPaths, MediaToolRenderer } from './MediaToolRenderer';
 import { parseToolResultEnvelope } from './ToolCallBlock';
+import { SentFileCard } from './SentFileCard';
 
 interface ImageResultCall {
   toolName?: string;
@@ -12,9 +13,38 @@ interface ImageResultCall {
   args?: string;
 }
 
+const SENT_IMAGE = /\.(png|jpe?g|gif|webp)$/i;
+const SENT_VIDEO = /\.(mp4|mov|webm|m4v)$/i;
+const SENT_AUDIO = /\.(mp3|m4a|aac|wav|ogg|opus)$/i;
+
+/**
+ * Paths the agent handed over with send_file. A call whose chat-app upload failed still
+ * lists them: the files exist on this computer, so they are shown here regardless.
+ */
+function sentPaths(call: ImageResultCall): string[] {
+  if (call.toolName !== 'send_file') return [];
+  const result = parseToolResultEnvelope(call.output);
+  if (!result?.metadata || typeof result.metadata !== 'object') return [];
+  const paths = (result.metadata as Record<string, unknown>).saved_paths;
+  return Array.isArray(paths)
+    ? paths.filter((path): path is string => typeof path === 'string' && !!path.trim())
+    : [];
+}
+
+/** Sent files that are neither images, video nor audio, shown as file cards. */
+export function getSentFilePaths(calls: ImageResultCall[]): string[] {
+  const paths = new Set<string>();
+  for (const call of calls)
+    for (const path of sentPaths(call))
+      if (!SENT_IMAGE.test(path) && !SENT_VIDEO.test(path) && !SENT_AUDIO.test(path))
+        paths.add(path);
+  return [...paths];
+}
+
 export function getImageResultPaths(calls: ImageResultCall[]): string[] {
   const paths = new Set<string>();
   for (const call of calls) {
+    for (const path of sentPaths(call)) if (SENT_IMAGE.test(path)) paths.add(path);
     if (call.toolName !== 'generate_image' && call.toolName !== 'edit_image') continue;
     const result = parseToolResultEnvelope(call.output);
     if (result?.success !== true || !result.metadata || typeof result.metadata !== 'object')
@@ -63,6 +93,18 @@ interface PlayableResult {
 export function getPlayableResults(calls: ImageResultCall[]): PlayableResult[] {
   const seen = new Set<string>();
   return calls.flatMap<PlayableResult>((call, index) => {
+    if (call.toolName === 'send_file')
+      return sentPaths(call)
+        .filter((path) => (SENT_VIDEO.test(path) || SENT_AUDIO.test(path)) && !seen.has(path))
+        .map((path) => {
+          seen.add(path);
+          return {
+            key: path,
+            kind: SENT_VIDEO.test(path) ? ('video' as const) : ('audio' as const),
+            path,
+            metadata: { saved_paths: [path] },
+          };
+        });
     if (call.toolName !== 'check_video' && call.toolName !== 'speak') return [];
     const result = parseToolResultEnvelope(call.output);
     if (result?.success !== true || !result.metadata || typeof result.metadata !== 'object')
@@ -91,13 +133,18 @@ export function getPlayableResults(calls: ImageResultCall[]): PlayableResult[] {
 }
 
 export function hasMediaResults(calls: ImageResultCall[]): boolean {
-  return getImageResultPaths(calls).length > 0 || getPlayableResults(calls).length > 0;
+  return (
+    getImageResultPaths(calls).length > 0 ||
+    getPlayableResults(calls).length > 0 ||
+    getSentFilePaths(calls).length > 0
+  );
 }
 
 /** Media that should close an activity group to preserve its timeline position. */
 export function hasVisualMediaResults(calls: ImageResultCall[]): boolean {
   return (
     getImageResultPaths(calls).length > 0 ||
+    getSentFilePaths(calls).length > 0 ||
     getPlayableResults(calls).some((item) => item.kind === 'video')
   );
 }
@@ -108,6 +155,7 @@ export const ImageResultGallery: React.FC<{ calls: ImageResultCall[]; showImages
 }) => {
   const paths = getImageResultPaths(calls);
   const media = getPlayableResults(calls);
+  const files = getSentFilePaths(calls);
   const { currentChatId, config } = useChatStore();
   return (
     <>
@@ -131,6 +179,13 @@ export const ImageResultGallery: React.FC<{ calls: ImageResultCall[]; showImages
               <SpeechPlayer key={item.key} src={src} metadata={item.metadata} />
             );
           })}
+        </div>
+      )}
+      {files.length > 0 && (
+        <div className="my-2 flex flex-col items-start gap-2">
+          {files.map((path) => (
+            <SentFileCard key={path} path={path} />
+          ))}
         </div>
       )}
     </>

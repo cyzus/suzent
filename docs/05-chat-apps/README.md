@@ -34,7 +34,10 @@ for letting others in, and for choosing which model and tools chat apps use.
 **Conversations persist.** Each chat becomes a regular Suzent conversation that
 remembers its history, even after a restart. Photos are read by the model if it
 supports images. Files you send are saved to the project library's
-`uploads` folder, where the agent can open them.
+`uploads` folder, where the agent can open them. Files the agent makes for you
+come back to the same conversation (see
+[Receiving files](../03-features/tools/interaction.md#receiving-files)); WeChat
+can't receive them yet.
 
 ## Commands in a chat app
 
