@@ -2,7 +2,9 @@ package com.suzent.mobile
 
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.content.Intent
 import android.media.MediaPlayer
+import android.webkit.MimeTypeMap
 import android.widget.MediaController
 import android.widget.VideoView
 import androidx.compose.foundation.Image
@@ -26,6 +28,7 @@ import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
@@ -33,6 +36,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
@@ -41,8 +45,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.content.FileProvider
 import java.io.File
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /** Fetches a tool's media for the conversation on screen; absent where nothing can be fetched. */
@@ -54,14 +60,55 @@ private sealed interface MediaState {
     data class Ready(val file: File, val image: Bitmap? = null) : MediaState
 }
 
-/** The images, videos and audio a turn's tools made, shown inline like the desktop's result gallery. */
+/** The images, videos, audio and files a turn's tools made or sent, shown inline like the desktop's result gallery. */
 @Composable
 fun MediaGallery(items: List<MediaItem>) {
     val loader = LocalMediaLoader.current ?: return
     if (items.isEmpty()) return
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        items.distinctBy { it.id }.forEach { item -> key(item.id) { MediaTile(item, loader) } }
+        items.distinctBy { it.id }.forEach { item ->
+            key(item.id) { if (item.kind == "file") FileRow(item, loader) else MediaTile(item, loader) }
+        }
     }
+}
+
+/** A sent document or archive: fetched only when the user asks to share or open it. */
+@Composable
+private fun FileRow(item: MediaItem, loader: suspend (MediaItem) -> File?) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var busy by remember(item.id) { mutableStateOf(false) }
+    var failed by remember(item.id) { mutableStateOf(false) }
+    val frame = Modifier.fillMaxWidth().border(1.dp, MaterialTheme.colorScheme.outline)
+    Column(frame) {
+        Row(Modifier.padding(start = 12.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(painterResource(R.drawable.ic_attach_file), contentDescription = null, modifier = Modifier.size(18.dp),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(item.name, Modifier.weight(1f).padding(horizontal = 10.dp), fontSize = PresentationTokens.typeMeta.sp,
+                maxLines = 1, overflow = TextOverflow.Ellipsis)
+            SuzentIconButton(onClick = {
+                busy = true
+                failed = false
+                scope.launch {
+                    val file = loader(item)
+                    busy = false
+                    if (file == null) failed = true else shareFile(context, file)
+                }
+            }, label = stringResource(R.string.media_share, item.name), enabled = !busy) {
+                Icon(painterResource(R.drawable.ic_share), contentDescription = null, modifier = Modifier.size(18.dp))
+            }
+        }
+        if (busy) MediaNote(stringResource(R.string.media_loading, item.name), Modifier)
+        if (failed) MediaNote(stringResource(R.string.media_unavailable, item.name), Modifier)
+    }
+}
+
+private fun shareFile(context: android.content.Context, file: File) {
+    val uri = FileProvider.getUriForFile(context, "${context.packageName}.attachments", file)
+    val type = MimeTypeMap.getSingleton().getMimeTypeFromExtension(file.extension.lowercase()) ?: "application/octet-stream"
+    val send = Intent(Intent.ACTION_SEND).setType(type).putExtra(Intent.EXTRA_STREAM, uri)
+        .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    try { context.startActivity(Intent.createChooser(send, file.name)) } catch (_: android.content.ActivityNotFoundException) {}
 }
 
 @Composable

@@ -19,6 +19,10 @@ try:
         CreateMessageRequest,
         CreateMessageRequestBody,
         GetMessageResourceRequest,
+        CreateImageRequest,
+        CreateImageRequestBody,
+        CreateFileRequest,
+        CreateFileRequestBody,
     )
 except ImportError:
     lark = None
@@ -26,8 +30,24 @@ except ImportError:
     CreateMessageRequest = object
     CreateMessageRequestBody = object
     GetMessageResourceRequest = object
+    CreateImageRequest = CreateImageRequestBody = object
+    CreateFileRequest = CreateFileRequestBody = object
 
 logger = get_logger(__name__)
+
+FEISHU_IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"}
+FEISHU_IMAGE_LIMIT = 10 * 1024 * 1024
+FEISHU_FILE_TYPES = {
+    ".opus": "opus",
+    ".mp4": "mp4",
+    ".pdf": "pdf",
+    ".doc": "doc",
+    ".docx": "doc",
+    ".xls": "xls",
+    ".xlsx": "xls",
+    ".ppt": "ppt",
+    ".pptx": "ppt",
+}
 
 
 class FeishuChannel(SocialChannel):
@@ -320,54 +340,45 @@ class FeishuChannel(SocialChannel):
             logger.error(f"Error downloading Feishu resource {file_key}: {e}")
             return None
 
+    @staticmethod
+    def _receive_id_type(target_id: str) -> str:
+        if target_id.startswith("on_"):
+            return "union_id"
+        if target_id.startswith("oc_"):
+            return "chat_id"
+        return "open_id"
+
+    async def _create_message(
+        self, target_id: str, msg_type: str, content: dict
+    ) -> bool:
+        req_body = (
+            CreateMessageRequestBody.builder()
+            .receive_id(target_id)
+            .msg_type(msg_type)
+            .content(json.dumps(content))
+            .build()
+        )
+        req = (
+            CreateMessageRequest.builder()
+            .receive_id_type(self._receive_id_type(target_id))
+            .request_body(req_body)
+            .build()
+        )
+        resp = await asyncio.to_thread(lambda: self.client.im.v1.message.create(req))
+        if not resp.success():
+            logger.error(
+                f"Failed to send Feishu {msg_type} message: {resp.code} {resp.msg} - ReqID: {resp.request_id}"
+            )
+            return False
+        return True
+
     async def send_message(self, target_id: str, content: str, **kwargs) -> bool:
         """Send a text message."""
         try:
-            # Construct JSON content
-            content_json = json.dumps({"text": content})
-
-            req_body = (
-                CreateMessageRequestBody.builder()
-                .receive_id(target_id)
-                .msg_type("text")
-                .content(content_json)
-                .build()
-            )
-
-            req = (
-                CreateMessageRequest.builder()
-                .receive_id_type("open_id")
-                .request_body(req_body)
-                .build()
-            )
-
-            # Using open_id defaults? Target ID must match type.
-            # Assuming target_id is open_id. If union_id, need to change param.
-            # We'll try open_id first (most common for bot interactions).
-            # If target_id starts with 'ou_', it's open_id. 'on_' is union_id.
-            if target_id.startswith("on_"):
-                req = (
-                    CreateMessageRequest.builder()
-                    .receive_id_type("union_id")
-                    .request_body(req_body)
-                    .build()
-                )
-
-            resp = await asyncio.to_thread(
-                lambda: self.client.im.v1.message.create(req)
-            )
-
-            if not resp.success():
-                logger.error(
-                    f"Failed to send Feishu message: {resp.code} {resp.msg} - ReqID: {resp.request_id}"
-                )
-                logger.error(
-                    f"Failed Body: {resp.raw.content if hasattr(resp, 'raw') else 'Unknown'}"
-                )
-                return False
-            logger.info(f"Sent Feishu message to {target_id} (Success)")
-            return True
-
+            sent = await self._create_message(target_id, "text", {"text": content})
+            if sent:
+                logger.info(f"Sent Feishu message to {target_id} (Success)")
+            return sent
         except Exception as e:
             logger.error(f"Error sending Feishu message: {e}")
             return False
@@ -375,10 +386,70 @@ class FeishuChannel(SocialChannel):
     async def send_file(
         self, target_id: str, file_path: str, caption: str = None, **kwargs
     ) -> bool:
-        """Send a file/image."""
-        # For simplicity in MVP, define sending file logic later or just send text
-        await self.send_message(
-            target_id,
-            f"File sending not yet implemented for Feishu. (File: {Path(file_path).name})",
-        )
-        return True
+        """Upload a file or image, then post it; images up to 10 MB go inline."""
+        path = Path(file_path)
+        try:
+            if caption and not await self.send_message(target_id, caption):
+                return False
+            if (
+                path.suffix.lower() in FEISHU_IMAGE_SUFFIXES
+                and path.stat().st_size <= FEISHU_IMAGE_LIMIT
+            ):
+                image_key = await self._upload_image(path)
+                return bool(image_key) and await self._create_message(
+                    target_id, "image", {"image_key": image_key}
+                )
+            file_type = FEISHU_FILE_TYPES.get(path.suffix.lower(), "stream")
+            file_key = await self._upload_file(path, file_type)
+            if not file_key:
+                return False
+            msg_type = "audio" if file_type == "opus" else "file"
+            return await self._create_message(
+                target_id, msg_type, {"file_key": file_key}
+            )
+        except Exception as e:
+            logger.error(f"Error sending Feishu file: {e}")
+            return False
+
+    async def _upload_image(self, path: Path) -> str | None:
+        def upload() -> str | None:
+            with path.open("rb") as image:
+                req = (
+                    CreateImageRequest.builder()
+                    .request_body(
+                        CreateImageRequestBody.builder()
+                        .image_type("message")
+                        .image(image)
+                        .build()
+                    )
+                    .build()
+                )
+                resp = self.client.im.v1.image.create(req)
+            if not resp.success():
+                logger.error(f"Feishu image upload failed: {resp.code} {resp.msg}")
+                return None
+            return resp.data.image_key
+
+        return await asyncio.to_thread(upload)
+
+    async def _upload_file(self, path: Path, file_type: str) -> str | None:
+        def upload() -> str | None:
+            with path.open("rb") as handle:
+                req = (
+                    CreateFileRequest.builder()
+                    .request_body(
+                        CreateFileRequestBody.builder()
+                        .file_type(file_type)
+                        .file_name(path.name)
+                        .file(handle)
+                        .build()
+                    )
+                    .build()
+                )
+                resp = self.client.im.v1.file.create(req)
+            if not resp.success():
+                logger.error(f"Feishu file upload failed: {resp.code} {resp.msg}")
+                return None
+            return resp.data.file_key
+
+        return await asyncio.to_thread(upload)

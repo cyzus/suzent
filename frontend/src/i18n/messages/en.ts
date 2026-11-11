@@ -202,6 +202,10 @@ export const en = {
       skill_execute: 'Loaded skills',
     },
   },
+  sentFile: {
+    label: 'Sent file',
+    reveal: 'Show in folder',
+  },
   videoPlayer: {
     reveal: 'Show file location',
     menu: 'Video controls',

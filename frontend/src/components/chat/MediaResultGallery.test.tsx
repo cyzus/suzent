@@ -1,7 +1,13 @@
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import { getPlayableResults, hasMediaResults, hasVisualMediaResults } from './ImageResultGallery';
+import {
+  getImageResultPaths,
+  getPlayableResults,
+  getSentFilePaths,
+  hasMediaResults,
+  hasVisualMediaResults,
+} from './ImageResultGallery';
 import { SpeechPlayer } from './SpeechPlayer';
 import { I18nProvider } from '../../i18n';
 
@@ -45,6 +51,23 @@ describe('media results', () => {
 
     expect(media).toHaveLength(1);
     expect(media[0].path).toBe('/video.mp4');
+  });
+  it('sorts files handed over with send_file by kind, and ignores failed sends', () => {
+    const sent = call('send_file', {
+      saved_paths: ['/w/chart.PNG', '/w/clip.mp4', '/w/voice.mp3', '/w/report.pdf'],
+    });
+    expect(getImageResultPaths([sent])).toEqual(['/w/chart.PNG']);
+    expect(getPlayableResults([sent]).map((item) => [item.kind, item.path])).toEqual([
+      ['video', '/w/clip.mp4'],
+      ['audio', '/w/voice.mp3'],
+    ]);
+    expect(getSentFilePaths([sent])).toEqual(['/w/report.pdf']);
+    expect(hasVisualMediaResults([call('send_file', { saved_paths: ['/w/report.pdf'] })])).toBe(
+      true
+    );
+    expect(hasMediaResults([call('send_file', { saved_paths: ['/w/report.pdf'] }, false)])).toBe(
+      false
+    );
   });
   it('renders an explicit playback control and unavailable-device hint without autoplay', () => {
     const html = renderToStaticMarkup(

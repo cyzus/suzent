@@ -114,6 +114,7 @@ See [Canvas (A2UI)](./canvas.md) for full documentation.
 
 | Tool | Function | Context | HITL | Description |
 |------|----------|---------|------|-------------|
+| SendFileTool | `send_file` | ChannelManager, PathResolver | — | Builtin. Deliver workspace files to the user in the current conversation |
 | SocialMessageTool | `social_message` | ChannelManager | **Yes** (sends only) | Send messages to Telegram, Discord, Slack, Feishu |
 | SpeakTool | `speak` | — | — | Text-to-speech output |
 | SkillTool | `skill_execute` | SkillManager | — | Execute user-defined skills |
@@ -255,6 +256,21 @@ Long-term memory tools. See [Memory](../../03-features/memory/README.md) for the
 
 - `memory_search(query, limit)`: Semantic similarity search over archived memories
 - `memory_update(fact, retract, retract_as, kind, outcome, source, category, horizon)`: Record what the user states directly. `fact` writes a candidate for the dream; `retract` takes a claim back (`retract_as=wrong` also adds it to the rejected list, `outdated` only hides it); both together are a correction. `kind=experience` needs `outcome` and `kind=world` needs `source`. See [Memory Architecture](./memory-architecture.md#memory_update-the-explicit-path).
+
+### `send_file`
+
+Hands up to 10 finished files to the user in the current conversation. Each path goes
+through the chat's `PathResolver`, so only files the conversation may read can be sent.
+In a social conversation (`deps.social_context` has `platform` and `target_id`) every file
+is sent with `ChannelManager.send_file`, dispatched onto the channel's event loop, with the
+caption on the first file only. Per-platform size limits (`PLATFORM_FILE_LIMITS`) are
+checked first, and WeChat, whose driver can't upload yet, is reported as unsupported.
+Elsewhere nothing is sent: the result's `saved_paths` is what the desktop chat renders
+(images and video in the gallery, other files as `SentFileCard`) and what the mobile chat
+load turns into media ids. The result also carries `delivered_paths` and, for channels,
+`failed` with a reason per file. It is builtin and needs no approval because it never
+reaches anyone but the person already in the conversation; sending elsewhere is
+`social_message`.
 
 ### `social_message`
 

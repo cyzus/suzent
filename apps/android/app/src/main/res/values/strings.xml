@@ -328,4 +328,5 @@
     <string name="media_unavailable">%1$s can\'t be opened. It may have been moved or deleted on your computer.</string>
     <string name="media_play">Play %1$s</string>
     <string name="media_pause">Pause %1$s</string>
+    <string name="media_share">Share %1$s</string>
 </resources>

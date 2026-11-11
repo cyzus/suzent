@@ -194,6 +194,10 @@ export const zhCN = {
       skill_execute: '已加载技能',
     },
   },
+  sentFile: {
+    label: '发送的文件',
+    reveal: '在文件夹中显示',
+  },
   videoPlayer: {
     reveal: '找到文件位置',
     menu: '视频操作',
@@ -753,6 +757,11 @@ export const zhCN = {
         AskQuestionTool: {
           name: '询问问题',
           description: '需要用户输入时暂停执行并提出明确的问题。',
+        },
+        SendFileTool: {
+          name: '发送文件',
+          description:
+            '把完成的文件交给用户：发到对方所用的聊天应用，或作为附件显示在桌面和手机上。',
         },
         GoalTool: { name: '管理目标', description: '创建、查看和完成能够跨回合持续执行的目标。' },
         TaskCreateTool: {

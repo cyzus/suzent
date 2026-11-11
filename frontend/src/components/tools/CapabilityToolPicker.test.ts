@@ -112,6 +112,7 @@ const translatedToolIds = [
   'WebpageTool',
   'WebSearchTool',
   'AskQuestionTool',
+  'SendFileTool',
   'SkillTool',
   'GoalTool',
   'TaskCreateTool',

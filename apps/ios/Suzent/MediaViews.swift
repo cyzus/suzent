@@ -19,7 +19,7 @@ extension EnvironmentValues {
     }
 }
 
-/// The images, videos and audio a turn's tools made, shown inline like the desktop's result gallery.
+/// The images, videos, audio and files a turn's tools made or sent, shown inline like the desktop's result gallery.
 struct MediaGallery: View {
     let items: [MediaItem]
     @Environment(\.mediaLoader) private var loader
@@ -27,9 +27,56 @@ struct MediaGallery: View {
     var body: some View {
         if let loader, !items.isEmpty {
             VStack(alignment: .leading, spacing: 10) {
-                ForEach(items) { MediaTile(item: $0, loader: loader) }
+                ForEach(items) { item in
+                    if item.kind == "file" { FileRow(item: item, loader: loader) }
+                    else { MediaTile(item: item, loader: loader) }
+                }
             }
         }
+    }
+}
+
+/// A sent document or archive: fetched only when the user asks for it, then shared.
+private struct FileRow: View {
+    let item: MediaItem
+    let loader: MediaLoader
+    @State private var file: URL?
+    @State private var loading = false
+    @State private var failed = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 10) {
+                Image(systemName: "doc").foregroundStyle(Color.suzentMuted)
+                Text(item.name).suzentFont(PresentationTokens.typeMeta).lineLimit(1).truncationMode(.middle)
+                Spacer(minLength: 0)
+                if let file {
+                    ShareLink(item: file) { Image(systemName: "square.and.arrow.up") }
+                        .accessibilityLabel(Text("Share \(item.name)"))
+                } else {
+                    Button {
+                        Task {
+                            loading = true
+                            failed = false
+                            file = await loader.load(item)
+                            failed = file == nil
+                            loading = false
+                        }
+                    } label: { Image(systemName: "arrow.down.circle") }
+                        .disabled(loading)
+                        .accessibilityLabel(Text("Download \(item.name)"))
+                }
+            }.padding(.horizontal, 12).frame(minHeight: 44)
+            if loading {
+                Text(String(localized: "Loading \(item.name)…")).suzentFont(PresentationTokens.typeMeta)
+                    .foregroundStyle(Color.suzentMuted).padding([.horizontal, .bottom], 12)
+            } else if failed {
+                Text(String(localized: "\(item.name) can't be opened. It may have been moved or deleted on your computer."))
+                    .suzentFont(PresentationTokens.typeMeta).foregroundStyle(Color.suzentMuted).padding([.horizontal, .bottom], 12)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .overlay(Rectangle().stroke(Color.suzentOutline, lineWidth: 1))
     }
 }
 

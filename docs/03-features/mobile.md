@@ -219,8 +219,9 @@ old one; pair the phone again afterwards. The same relay also gives
   directly; other files are handed to the agent to open with its tools.
   Attaching needs the **Send messages** permission.
 - **See what the agent made.** Images, videos and speech the agent creates,
-  and videos or pictures it looked at for you, appear under its reply as on the
-  computer. Videos and audio play with the phone's own player. Each file is
+  videos or pictures it looked at for you, and files it hands you, appear under
+  its reply as on the computer. Videos and audio play with the phone's own
+  player. For other files, tap the download button, then share or open them. Each file is
   fetched from your computer the first time you see it, so it needs the
   computer to be reachable then, and it works through your relay too.
 - **Pick the model.** **Desktop model** lists the models you've enabled on
