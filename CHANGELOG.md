@@ -9,8 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Release notes
 - On the phone, typing while the agent works now offers Redirect (interrupt and continue with your message) and Queue (send when the reply ends), matching desktop.
+- Images, videos and speech the agent makes now show under its reply on the phone, with videos and audio playing inline.
 - On the phone, conversations and collapsed projects show when something is running or has replies you have not seen, like on desktop; opening a conversation marks it read on both.
 - Remove the heavy offset shadow from running tool and sub-agent headers so expanding them looks clean.
+- Videos (MP4, MOV, WebM) in the workspace file panel now play in place instead of opening as text, and video and audio players in the installed app are no longer blocked by its content security policy.
 
 ## [v0.25.0] - 2026-11-09
 
