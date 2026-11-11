@@ -367,6 +367,12 @@ public final class SuzentClient: Sendable {
         _ = try await data("mobile/client/stop", body: ["chat_id": chatID])
     }
 
+    public func steer(_ text: String, chatID: String, model: String? = nil) async throws {
+        var body = ["chat_id": chatID, "message": text]
+        if let model { body["model"] = model }
+        _ = try await data("mobile/client/steer", body: body)
+    }
+
     public func observe(_ chatID: String, onEvent: @Sendable (StreamEvent) async -> Void) async throws {
         var recovery = StreamRecovery()
         for attempt in 0..<5 {

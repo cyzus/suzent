@@ -11,6 +11,7 @@ import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
@@ -267,7 +268,7 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
         generation++
         streamJob?.cancel(); streaming = false; liveParts = emptyList()
         pendingApprovals = emptyList(); approvalChoices = emptyMap(); approvalBusy = false; drafts.clear(); draft = ""; error = null
-        discardAttachments()
+        discardAttachments(); discardQueues()
         viewModelScope.launch {
             try {
                 demo.reset()
@@ -630,6 +631,8 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
                 if (generation != current) return@launch
                 if (action == "delete") {
                     drafts.remove(chat.id)
+                    queues.of(chat.id).flatMap { it.attachments }.forEach { it.file.delete() }
+                    queues = queues.clear(chat.id)
                     chats = chats.filterNot { it.id == chat.id }
                     if (selected?.id == chat.id) {
                         streamJob?.cancel(); api.cancelLive()
@@ -780,7 +783,103 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
         attachments = emptyList()
     }
 
+    private fun discardQueues() {
+        queues.attachments.forEach { it.file.delete() }
+        queues = MessageQueues()
+    }
+
     fun send() = submit(draft.trim(), attachments, fromDraft = true)
+
+    var queues by mutableStateOf(MessageQueues())
+        private set
+    val queued: List<QueuedMessage> get() = queues.of(selected?.id)
+    /** Whether typed text can redirect the running turn here, rather than only wait in the queue. */
+    val redirectSupported: Boolean get() = client?.supportsSteer == true && device?.permissions?.stop == true
+
+    /** Holds the composer's message until this conversation's running turn ends. */
+    fun queue() {
+        val id = selected?.id?.takeIf { it.isNotEmpty() } ?: return
+        val text = draft.trim()
+        if (busy || (text.isEmpty() && attachments.isEmpty()) || device?.permissions?.send != true) return
+        queues = queues.add(id, QueuedMessage(text, attachments))
+        attachments = emptyList()
+        draft = ""; drafts.remove(id)
+    }
+
+    fun removeQueued(item: QueuedMessage) {
+        val id = selected?.id ?: return
+        item.attachments.forEach { it.file.delete() }
+        queues = queues.remove(id, item.id)
+    }
+
+    fun clearQueued() {
+        val id = selected?.id ?: return
+        queued.flatMap { it.attachments }.forEach { it.file.delete() }
+        queues = queues.clear(id)
+    }
+
+    /** Redirects the running turn with the composer's text, like Enter mid-turn on desktop; attachments stay put. */
+    fun redirect() = steer(draft.trim(), fromDraft = true)
+
+    /** Pulls one message out of line and redirects with it now; its attachments go back to the composer. */
+    fun redirectQueued(item: QueuedMessage) {
+        val id = selected?.id ?: return
+        if (busy || item.text.isEmpty() || item !in queued) return
+        // Its attachments must fit beside the composer's, or one set would be dropped.
+        if (item.attachments.size + attachments.size > MAX_ATTACHMENTS) { error = text(R.string.attachment_limit, MAX_ATTACHMENTS); return }
+        queues = queues.remove(id, item.id)
+        attachments = item.attachments + attachments
+        steer(item.text, fromDraft = false) { delivered -> if (!delivered) restore(item.copy(attachments = emptyList())) }
+    }
+
+    /** Sends the next queued message once this conversation is idle; called whenever that may have changed. */
+    fun releaseQueued() {
+        val chat = selected ?: return
+        val next = queues.of(chat.id).firstOrNull() ?: return
+        if (busy || streaming || chat.running || pendingApprovals.isNotEmpty() || approvalBusy || !foreground) return
+        queues = queues.remove(chat.id, next.id)
+        submit(next.text, next.attachments, fromDraft = false) { delivered -> if (!delivered) restore(next) }
+    }
+
+    // A message that could not go out returns to the composer, never back into the queue, so a failing
+    // desktop is not retried in a loop and nothing typed is lost.
+    private fun restore(item: QueuedMessage) {
+        draft = listOf(item.text, draft).filter { it.isNotBlank() }.joinToString("\n\n")
+        // Never truncated: a composer over the limit is refused on send, and the person chooses what to drop.
+        attachments = item.attachments + attachments
+    }
+
+    private fun steer(message: String, fromDraft: Boolean, done: (Boolean) -> Unit = {}) {
+        val api = client ?: return done(false)
+        val id = selected?.id?.takeIf { it.isNotEmpty() } ?: return done(false)
+        if (busy || message.isEmpty() || device?.permissions?.send != true || !redirectSupported) return done(false)
+        var delivered = false
+        busy = true
+        error = null
+        val current = generation
+        viewModelScope.launch {
+            try {
+                api.steer(id, message, selectedModel)
+                if (current != generation) return@launch
+                delivered = true
+                if (fromDraft) { draft = ""; drafts.remove(id) }
+                sentVersion++
+                // The interrupted turn's stream is retired so its partial reply stays on screen and the redirect streams fresh.
+                val previous = streamJob?.takeIf { it.isActive }
+                api.cancelLive(); previous?.cancelAndJoin()
+                if (current != generation || selected?.id != id) return@launch
+                val partial = if (previous != null) interruptedReply(liveParts, selectedModel ?: selected?.model) else null
+                liveParts = emptyList()
+                selected?.let { chat ->
+                    selected = chat.copy(running = true, messages = chat.messages + listOfNotNull(partial) + ChatMessage("user", message))
+                }
+                chats = chats.map { if (it.id == id) it.copy(running = true) else it }
+                if (foreground) observe(id)
+            } catch (failure: CancellationException) { throw failure }
+            catch (failure: Exception) { if (current == generation) handle(failure, R.string.send_unknown) }
+            finally { if (current == generation) busy = false; done(delivered) }
+        }
+    }
 
     val surfacesSupported: Boolean get() = client?.supportsSurfaces == true
 
@@ -1123,7 +1222,7 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
         retiredClients.clear()
         voice.stop()
         scheduledTasks = emptyList()
-        projects = emptyList(); selectedModel = null; drafts.clear(); discardAttachments(); attachmentsSupported = false
+        projects = emptyList(); selectedModel = null; drafts.clear(); discardAttachments(); discardQueues(); attachmentsSupported = false
         pendingApprovals = emptyList(); approvalChoices = emptyMap(); approvalBusy = false
         generation++
         nodeEnabled = false

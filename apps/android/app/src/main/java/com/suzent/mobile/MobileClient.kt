@@ -8,6 +8,7 @@ interface MobileClient {
     val supportsScheduledTasks: Boolean
     val supportsChatOverview: Boolean
     val supportsSurfaces: Boolean
+    val supportsSteer: Boolean
     fun close()
     fun cancelLive()
     suspend fun session(): ClientDevice
@@ -32,6 +33,8 @@ interface MobileClient {
     suspend fun upload(id: String, attachments: List<PendingAttachment>): List<String>
     suspend fun send(id: String, text: String, model: String? = null, attachments: List<String> = emptyList())
     suspend fun stop(id: String)
+    /** Interrupts the running turn and continues it with [text]; a turn that already ended simply gets [text] next. */
+    suspend fun steer(id: String, text: String, model: String? = null)
     suspend fun approvals(id: String): ApprovalState
     suspend fun answerSurface(id: String, surfaceId: String, answer: Map<String, Any?>)
     suspend fun decideApprovals(id: String, pending: List<ApprovalRequest>, choices: Map<String, String>)

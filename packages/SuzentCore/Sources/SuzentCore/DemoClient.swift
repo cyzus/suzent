@@ -58,7 +58,7 @@ import Foundation
         let permissions = ClientPermissions(chatIds: [], allChats: true, createChats: true, manageChats: true,
                                             send: true, stop: true, approveTools: true)
         return ClientSession(device: ClientDevice(deviceId: "offline-demo", displayName: "Suzent Demo", platform: "demo", permissions: permissions),
-                             clientProtocol: 1, streamProtocols: [1], pairingRepair: nil, attachments: 1, scheduledTasks: 1, chatOverview: 1, surfaces: 1)
+                             clientProtocol: 1, streamProtocols: [1], pairingRepair: nil, attachments: 1, scheduledTasks: 1, chatOverview: 1, surfaces: 1, steer: 1)
     }
 
     public func projects() async throws -> [Project] { try decode([Project].self, strings["projects"]!) }
@@ -185,6 +185,11 @@ import Foundation
         run.text = String(run.text.prefix(run.visible)) + label("stopped")
         runs[chatID] = run
         try finish(chatID)
+    }
+
+    public func steer(_ text: String, chatID: String, model: String? = nil) async throws {
+        try await stop(chatID)
+        try await send(text, chatID: chatID, model: model, attachments: [])
     }
 
     public func messageAction(_ id: String, index messageIndex: Int, action: String, text: String? = nil, model: String? = nil) async throws -> String {

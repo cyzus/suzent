@@ -674,6 +674,69 @@ def test_confirm_pairing_requires_mobile_credential(setup_client):
     assert client.post("/mobile/client/pairing/confirm", json={}).status_code == 401
 
 
+def test_steer_needs_send_and_stop_and_redirects_only_a_running_turn(
+    setup_client, monkeypatch
+):
+    from suzent.mobile.client_api import get_database
+
+    client, store = setup_client
+    calls = []
+    running = {"shared": False}
+
+    async def send(request):
+        calls.append(("send", await request.json()))
+        return JSONResponse({"chat_id": "shared"}, status_code=202)
+
+    async def steer(request):
+        calls.append(("steer", await request.json()))
+        return JSONResponse({"chat_id": "shared"}, status_code=202)
+
+    monkeypatch.setattr("suzent.routes.chat_routes.chat_send", send)
+    monkeypatch.setattr("suzent.routes.chat_routes.steer_chat_send", steer)
+    monkeypatch.setattr(
+        "suzent.core.stream_registry.is_background_streaming",
+        lambda chat_id: running.get(chat_id, False),
+    )
+    base = {"chat_id": "shared", "message": "Use the other file"}
+
+    send_only = grant(store, chat_ids=["shared"], send=True)
+    client.headers["Authorization"] = f"Bearer {send_only['token']}"
+    assert client.post("/mobile/client/steer", json=base).status_code == 403
+
+    result = grant(store, chat_ids=["shared"], send=True, stop=True)
+    client.headers["Authorization"] = f"Bearer {result['token']}"
+    for body in (
+        {**base, "message": "   "},
+        {**base, "config": {"permission_mode": "auto"}},
+        {**base, "attachments": ["0" * 32]},
+        {**base, "client_run_token": "x"},
+    ):
+        assert client.post("/mobile/client/steer", json=body).status_code == 400
+    assert (
+        client.post("/mobile/client/steer", json={**base, "message": "/x"}).status_code
+        == 403
+    )
+    assert (
+        client.post(
+            "/mobile/client/steer", json={**base, "chat_id": "private"}
+        ).status_code
+        == 403
+    )
+    assert calls == []
+
+    running["shared"] = True
+    redirect = {**base, "model": "test/other"}
+    assert client.post("/mobile/client/steer", json=redirect).status_code == 202
+    assert calls == [("steer", {**base, "config": {"model": "test/other"}})]
+    assert get_database().get_chat("shared").config == {"model": "test/other"}
+
+    # A turn that ended before the redirect arrived: the message starts the next one.
+    running["shared"] = False
+    assert client.post("/mobile/client/steer", json=base).status_code == 202
+    assert calls[-1] == ("send", {**base, "config": {"model": "test/other"}})
+    assert client.get("/mobile/client/session").json()["steer"] == 1
+
+
 @pytest.mark.parametrize("status", [202, 409, 500])
 def test_send_preserves_chat_config_and_saves_only_accepted_model(
     setup_client, monkeypatch, status

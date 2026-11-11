@@ -1,0 +1,4 @@
+{
+  "products": {"desktop": "minor", "mobile": "minor"},
+  "summary": "On the phone, typing while the agent works now offers Redirect (interrupt and continue with your message) and Queue (send when the reply ends), matching desktop."
+}
