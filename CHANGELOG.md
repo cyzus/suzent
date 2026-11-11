@@ -20,6 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - On the phone, conversations and collapsed projects show when something is running or has replies you have not seen, like on desktop; opening a conversation marks it read on both.
 - Show deduplicated image thumbnails beside activity summaries and support zooming and panning image previews.
 - Simplify image preview navigation and hide duplicate thumbnails while tool details are expanded.
+- Refine the desktop header and right sidebar overview with a 1px divider, unified sidebar toggle glyph, and inline cache/task indicators.
 - The agent can now hand you finished files with Send File: they arrive in the chat app you wrote from (Telegram, Slack, Discord, Feishu), under the reply on the computer, and on your phone, where you can download and share them.
 - Queue concurrent database writes to prevent chats from losing saved progress during slow saves and report slow write owners.
 - Open sidebar images in the shared zoomable overlay with navigation between images in the loaded folder.

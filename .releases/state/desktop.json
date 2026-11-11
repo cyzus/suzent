@@ -233,6 +233,7 @@
     ".releases/changes/resume-keeps-approved-card.json",
     ".releases/changes/resume-without-empty-prompt.json",
     ".releases/changes/retry-dispatched-agent-tasks.json",
+    ".releases/changes/right-sidebar-header-polish.json",
     ".releases/changes/right-sidebar-overview.json",
     ".releases/changes/scheduled-task-failures.json",
     ".releases/changes/send-file-tool.json",
