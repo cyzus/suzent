@@ -96,9 +96,7 @@ async def test_reports_oversized_and_rejected_files(
     workspace: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setitem(
-        __import__(
-            "suzent.tools.send_file_tool"
-        ).tools.send_file_tool.PLATFORM_FILE_LIMITS,
+        send_file_tool.PLATFORM_FILE_LIMITS,
         "discord",
         3,
     )
