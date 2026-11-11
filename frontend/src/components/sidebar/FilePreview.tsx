@@ -18,10 +18,18 @@ interface FilePreviewProps {
   content: string | null;
   chatId: string;
   path: string;
+  inheritChatVolumes?: boolean;
 }
 
-export const FilePreview: React.FC<FilePreviewProps> = ({ filename, content, chatId, path }) => {
+export const FilePreview: React.FC<FilePreviewProps> = ({
+  filename,
+  content,
+  chatId,
+  path,
+  inheritChatVolumes = true,
+}) => {
   const { config } = useChatStore();
+  const volumes = inheritChatVolumes ? config.sandbox_volumes : undefined;
   const expanded = useSidebarExpansion()?.expanded ?? false;
 
   // Construct raw serve URL
@@ -31,11 +39,11 @@ export const FilePreview: React.FC<FilePreviewProps> = ({ filename, content, cha
     const cleanPath = path.startsWith('/') ? path.slice(1) : path;
 
     // Get volume params only (empty chat_id/path as they are in the route)
-    const params = getSandboxParams('', '', config.sandbox_volumes);
+    const params = getSandboxParams('', '', volumes);
     const queryPart = params ? `?${params}` : '';
 
     return `${getApiBase()}/sandbox/serve/${chatId}/${cleanPath}${queryPart}`;
-  }, [chatId, path, config.sandbox_volumes]);
+  }, [chatId, path, volumes]);
 
   // 1. Images
   if (isImageFile(filename)) {

@@ -78,6 +78,7 @@ from suzent.routes.commands_routes import get_commands
 from suzent.routes.project_routes import (
     create_project,
     delete_project,
+    list_artifacts,
     list_projects,
     list_project_folders,
     move_all_chats,
@@ -284,7 +285,7 @@ from suzent.routes.heartbeat_routes import (
     get_heartbeat_global_config,
     save_heartbeat_global_config,
 )
-from suzent.routes.a2ui_routes import a2ui_action, a2ui_answer
+from suzent.routes.a2ui_routes import a2ui_action, a2ui_answer, a2ui_save
 from suzent.routes.acp_routes import (
     create_acp_session,
     list_acp_agents,
@@ -1267,6 +1268,7 @@ app = Starlette(
             delete_permission_rule,
             methods=["DELETE"],
         ),
+        Route("/artifacts", list_artifacts, methods=["GET"]),
         Route("/projects", list_projects, methods=["GET"]),
         Route("/projects", create_project, methods=["POST"]),
         Route("/projects/{project_id}", update_project, methods=["PATCH"]),
@@ -1565,6 +1567,7 @@ app = Starlette(
         Route("/heartbeat/config", save_heartbeat_global_config, methods=["POST"]),
         Route("/canvas/{chat_id}/action", a2ui_action, methods=["POST"]),
         Route("/canvas/{chat_id}/answer", a2ui_answer, methods=["POST"]),
+        Route("/canvas/{chat_id}/save", a2ui_save, methods=["POST"]),
         Route("/events/stream", event_bus_stream, methods=["GET"]),
         Route("/subagents/active", list_active_subagents, methods=["GET"]),
         Route("/background-tasks/stream", stream_background_tasks, methods=["GET"]),

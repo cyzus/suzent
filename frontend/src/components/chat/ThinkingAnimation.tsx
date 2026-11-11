@@ -57,7 +57,10 @@ const ThinkingAnimationComponent: React.FC<ThinkingAnimationProps> = ({ isThinki
       context.clearRect(0, 0, w, h);
       const scale = Math.min(w / 320, h / 108);
       context.setTransform(scale, 0, 0, scale, (w - 320 * scale) / 2, (h - 108 * scale) / 2);
-      for (const mark of assemblyFrame(seconds, motion.matches)) {
+      for (const mark of assemblyFrame(
+        seconds,
+        motion.matches || document.documentElement.dataset.motion === 'reduced'
+      )) {
         context.beginPath();
         mark.points.forEach(([x, y], i) => {
           if (i === 0) context.moveTo(x, y);

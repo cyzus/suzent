@@ -8,7 +8,14 @@ export const VoiceCubeStage: React.FC<VoiceCubeState> = (props) => {
 
   useEffect(() => {
     const canvas = canvasRef.current;
-    if (canvas) return mountVoiceCube(canvas, () => stateRef.current);
+    if (canvas) {
+      return mountVoiceCube(canvas, () => ({
+        ...stateRef.current,
+        reducedMotion:
+          stateRef.current.reducedMotion ??
+          (document.documentElement.dataset.motion === 'reduced' ? true : undefined),
+      }));
+    }
   }, []);
 
   return (

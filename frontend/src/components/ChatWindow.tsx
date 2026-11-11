@@ -561,7 +561,9 @@ const MessageList: React.FC<{
 
   let previousTimestamp: string | undefined;
   return (
-    <div className={`space-y-6 ${chatId === FOCAL_CHAT_ID ? 'regent-conversation-list' : ''}`}>
+    <div
+      className={`chat-transcript-column mx-auto space-y-6 ${chatId === FOCAL_CHAT_ID ? 'regent-conversation-list' : ''}`}
+    >
       {(liveTurn ? [...messages, liveTurn.message] : messages).map((m, idx) => {
         if (skipIndices.has(idx)) return null; // Part of a group, rendered by representative
         const live = liveTurn && idx === messages.length ? liveTurn : undefined;
@@ -3616,63 +3618,68 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
               <div
                 className={`px-2 pt-2 pb-1 flex flex-col gap-2 bg-neutral-50 dark:bg-zinc-900 relative z-10 shrink-0 ${showConnectionOverlay ? 'invisible' : ''}`}
               >
-                {hasPendingTransientApprovals && (
-                  <PermissionApprovalDock parts={streamingParts} onDecision={handleToolApproval} />
-                )}
-                {currentChatId && memoryChats.has(currentChatId) && (
-                  <div
-                    role="status"
-                    className="px-2 text-xs text-neutral-500 dark:text-neutral-400"
-                  >
-                    {t('backgroundTasks.memoryProcessing')}
-                  </div>
-                )}
-                {currentQueue && currentQueue.length > 0 && (
-                  <QueuedMessages
-                    items={currentQueue}
-                    onSteer={steerQueuedMessage}
-                    onRemove={removeQueuedMessage}
-                    onClear={clearQueuedMessages}
+                <div className="chat-transcript-column mx-auto flex flex-col gap-2">
+                  {hasPendingTransientApprovals && (
+                    <PermissionApprovalDock
+                      parts={streamingParts}
+                      onDecision={handleToolApproval}
+                    />
+                  )}
+                  {currentChatId && memoryChats.has(currentChatId) && (
+                    <div
+                      role="status"
+                      className="px-2 text-xs text-neutral-500 dark:text-neutral-400"
+                    >
+                      {t('backgroundTasks.memoryProcessing')}
+                    </div>
+                  )}
+                  {currentQueue && currentQueue.length > 0 && (
+                    <QueuedMessages
+                      items={currentQueue}
+                      onSteer={steerQueuedMessage}
+                      onRemove={removeQueuedMessage}
+                      onClear={clearQueuedMessages}
+                    />
+                  )}
+                  <ChatInputPanel
+                    input={input}
+                    setInput={setInput}
+                    selectedFiles={selectedFiles}
+                    handleFileSelect={handleFileSelect}
+                    removeFile={removeFile}
+                    uploadProgress={uploadProgress}
+                    isUploading={isUploading}
+                    fileError={fileError}
+                    send={send}
+                    queue={queueMessage}
+                    config={safeConfig}
+                    setConfig={setConfig}
+                    backendConfig={safeBackendConfig}
+                    fileInputRef={fileInputRef}
+                    textareaRef={textareaRef}
+                    configReady={configReady}
+                    streamingForCurrentChat={streamingForCurrentChat}
+                    stopStreaming={stopStreaming}
+                    stopInFlight={isStopping}
+                    modelSelectDropUp={true}
+                    modelValue={safeConfig.model}
+                    onModelChange={handleInputModelChange}
+                    onPaste={handlePaste}
+                    onImageClick={setViewingImage}
+                    currentChatId={currentChatId}
+                    inputSuggestion={inputSuggestion}
+                    voice={voice}
+                    showScrollToBottom={showScrollButton}
+                    scrollContainerRef={scrollContainerRef}
+                    onScrollToBottom={scrollToBottom}
+                    onFileMentionSelected={(mention) =>
+                      setFileMentions((prev) => [
+                        ...prev.filter((item) => item.name !== mention.name),
+                        mention,
+                      ])
+                    }
                   />
-                )}
-                <ChatInputPanel
-                  input={input}
-                  setInput={setInput}
-                  selectedFiles={selectedFiles}
-                  handleFileSelect={handleFileSelect}
-                  removeFile={removeFile}
-                  uploadProgress={uploadProgress}
-                  isUploading={isUploading}
-                  fileError={fileError}
-                  send={send}
-                  queue={queueMessage}
-                  config={safeConfig}
-                  setConfig={setConfig}
-                  backendConfig={safeBackendConfig}
-                  fileInputRef={fileInputRef}
-                  textareaRef={textareaRef}
-                  configReady={configReady}
-                  streamingForCurrentChat={streamingForCurrentChat}
-                  stopStreaming={stopStreaming}
-                  stopInFlight={isStopping}
-                  modelSelectDropUp={true}
-                  modelValue={safeConfig.model}
-                  onModelChange={handleInputModelChange}
-                  onPaste={handlePaste}
-                  onImageClick={setViewingImage}
-                  currentChatId={currentChatId}
-                  inputSuggestion={inputSuggestion}
-                  voice={voice}
-                  showScrollToBottom={showScrollButton}
-                  scrollContainerRef={scrollContainerRef}
-                  onScrollToBottom={scrollToBottom}
-                  onFileMentionSelected={(mention) =>
-                    setFileMentions((prev) => [
-                      ...prev.filter((item) => item.name !== mention.name),
-                      mention,
-                    ])
-                  }
-                />
+                </div>
               </div>
             )}
           </div>

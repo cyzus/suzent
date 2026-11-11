@@ -103,7 +103,9 @@ export const useTypewriter = (text: string, isEnabled: boolean = true) => {
     // Not animating, or the agent has run so far ahead that the reveal would
     // read as lag. Measured against the backlog, not the total length, so a
     // long answer keeps its smoothing all the way down.
-    if (!isEnabled || text.length - indexRef.current > MAX_ANIMATED_BACKLOG) {
+    const reducedMotion =
+      typeof document !== 'undefined' && document.documentElement.dataset.motion === 'reduced';
+    if (!isEnabled || reducedMotion || text.length - indexRef.current > MAX_ANIMATED_BACKLOG) {
       indexRef.current = text.length;
       setDisplayedText(text);
       clock.reset();
