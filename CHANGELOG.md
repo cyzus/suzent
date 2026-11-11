@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Respect provider wait settings before the first model response and allow extending slow response waits.
 - Let zoomed images fill the preview window with navigation controls floating above the image.
 - A new Artifacts page in the sidebar collects everything the agent made across all chats, grouped by project, with links back to the chat that made each file.
+- Add `suzent run`, which runs one task from the command line without a chat session and can report token usage as JSON.
 - Reduce image zoom stutter by batching gesture updates per animation frame and removing competing transitions.
 - Preview images in an overlay, refresh media cards, and preserve native image context menus.
 - On the phone, typing while the agent works now offers Redirect (interrupt and continue with your message) and Queue (send when the reply ends), matching desktop.
