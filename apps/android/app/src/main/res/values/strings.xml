@@ -270,6 +270,12 @@
     <string name="composer_grant_required">Change this phone’s permissions in desktop Settings → Devices to use this action.</string>
     <string name="composer_processing">Processing…</string>
     <string name="composer_stopping">Stopping…</string>
+    <string name="composer_queue">Queue until this turn ends</string>
+    <string name="composer_redirect">Redirect the agent</string>
+    <string name="queued_count">%1$d queued · sent when this turn ends</string>
+    <string name="queued_redirect">Redirect now</string>
+    <string name="queued_remove">Cancel this message</string>
+    <string name="queued_clear">Cancel all</string>
     <string name="voice_cancel_connection">Cancel voice connection</string>
     <string name="chat_info">Conversation info</string>
     <string name="chat_info_unavailable">Conversation info is unavailable right now.</string>

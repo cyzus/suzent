@@ -143,6 +143,18 @@ Tokens are encrypted with an Android Keystore AES-GCM key; app backup is disable
    retransmissions and replace transient text when a fresh snapshot arrives.
    `STREAM_END` confirms persistence; the received response stays visible until
    saved history has loaded. See [Stream recovery](stream-recovery-protocol.md).
+While a turn runs, the composer offers redirect and queue in place of Stop once
+there is typed content, matching desktop's Enter and Cmd/Ctrl+Enter.
+`POST /mobile/client/steer` (session capability `steer: 1`, requires both `send`
+and `stop`) forwards text and an optional model to `/chat/steer-send`, or to
+`/chat/send` when the turn already ended. On acceptance the client cancels its
+current live stream, keeps the partial reply on screen (running or
+approval-pending tools end as errors, as on desktop) and subscribes again. Queued
+messages live only in the phone's memory, per conversation; the open
+conversation releases the next one through the normal send path once it is
+idle (not streaming, not running, no pending approvals). A failed release or
+redirect returns its text and attachments to the composer instead of the queue,
+so a failing desktop is not retried in a loop.
 The native clients subscribe immediately after send acknowledgment, showing the
 accepted user message locally while the backend remains authoritative. Live text
 is published in 50 ms batches, with a final flush on completion or failure.

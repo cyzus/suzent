@@ -116,6 +116,8 @@ import SuzentCore
     var voiceSupported = false
     var overviewSupported = false
     var surfacesSupported = false
+    var steerSupported = false
+    private(set) var queues = MessageQueues()
     let voice = VoiceSession()
 
     var voiceUnavailableReason: String? {
@@ -243,6 +245,7 @@ import SuzentCore
             attachmentsSupported = true
             overviewSupported = true
             surfacesSupported = true
+            steerSupported = true
             applyNavigation(navigation); scheduledTasks = taskList
             selected = composer
             connected = true
@@ -255,7 +258,7 @@ import SuzentCore
         generation = UUID()
         streamTask?.cancel(); streaming = false; liveParts = []
         pendingApprovals = []; approvalChoices = [:]; approvalBusy = false; drafts = [:]; draft = ""; error = nil
-        discardAttachments()
+        discardAttachments(); discardQueues()
         do {
             try demo.reset()
             selected = try await demo.composer()
@@ -510,6 +513,7 @@ import SuzentCore
             voiceSupported = session.voice == 1
             overviewSupported = session.supportsChatOverview
             surfacesSupported = session.supportsSurfaces
+            steerSupported = session.supportsSteer
             applyNavigation(navigation)
             scheduledTasks = taskList
             selected = initialChat
@@ -680,6 +684,7 @@ import SuzentCore
             voiceSupported = session.voice == 1
             overviewSupported = session.supportsChatOverview
             surfacesSupported = session.supportsSurfaces
+            steerSupported = session.supportsSteer
             scheduledTasks = taskList
             if !isDemo, let id = store.activeId, let name = session.desktopName, store.active?.name != name {
                 var next = store
@@ -708,6 +713,8 @@ import SuzentCore
             guard generation == current else { return }
             if action == "delete" {
                 drafts.removeValue(forKey: chat.id)
+                queues.of(chat.id).flatMap(\.attachments).forEach { try? FileManager.default.removeItem(at: $0.url) }
+                queues.clear(chat.id)
                 chats.removeAll { $0.id == chat.id }
                 if selected?.id == chat.id {
                     streamTask?.cancel()
@@ -840,8 +847,103 @@ import SuzentCore
         attachments = []
     }
 
+    private func discardQueues() {
+        queues.attachments.forEach { try? FileManager.default.removeItem(at: $0.url) }
+        queues = MessageQueues()
+    }
+
     func send() async {
         _ = await submit(draft.trimmingCharacters(in: .whitespacesAndNewlines), outgoing: attachments, fromDraft: true)
+    }
+
+    var queued: [QueuedMessage] { queues.of(selected?.id) }
+    /// Whether typed text can redirect the running turn here, rather than only wait in the queue.
+    var redirectSupported: Bool { steerSupported && device?.permissions.stop == true }
+
+    /// Holds the composer's message until this conversation's running turn ends.
+    func queue() {
+        guard let id = selected?.id, !id.isEmpty, !busy, device?.permissions.send == true else { return }
+        let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty || !attachments.isEmpty else { return }
+        queues.add(QueuedMessage(text: text, attachments: attachments), to: id)
+        attachments = []
+        draft = ""; drafts[id] = nil
+    }
+
+    func removeQueued(_ item: QueuedMessage) {
+        guard let id = selected?.id else { return }
+        item.attachments.forEach { try? FileManager.default.removeItem(at: $0.url) }
+        queues.remove(item.id, from: id)
+    }
+
+    func clearQueued() {
+        guard let id = selected?.id else { return }
+        queued.flatMap(\.attachments).forEach { try? FileManager.default.removeItem(at: $0.url) }
+        queues.clear(id)
+    }
+
+    /// Redirects the running turn with the composer's text, like Enter mid-turn on desktop; attachments stay put.
+    func redirect() async {
+        _ = await steer(draft.trimmingCharacters(in: .whitespacesAndNewlines), fromDraft: true)
+    }
+
+    /// Pulls one message out of line and redirects with it now; its attachments go back to the composer.
+    func redirectQueued(_ item: QueuedMessage) async {
+        guard let id = selected?.id, !busy, !item.text.isEmpty, queued.contains(item) else { return }
+        queues.remove(item.id, from: id)
+        if !item.attachments.isEmpty { attachments = Array((item.attachments + attachments).prefix(maxAttachments)) }
+        if !(await steer(item.text, fromDraft: false)) { restore(QueuedMessage(text: item.text)) }
+    }
+
+    /// Sends the next queued message once this conversation is idle; called whenever that may have changed.
+    func releaseQueued() async {
+        guard let chat = selected, let next = queues.of(chat.id).first else { return }
+        guard !busy, !streaming, chat.isRunning != true, pendingApprovals.isEmpty, !approvalBusy, foreground else { return }
+        queues.remove(next.id, from: chat.id)
+        if !(await submit(next.text, outgoing: next.attachments, fromDraft: false)) { restore(next) }
+    }
+
+    // A message that could not go out returns to the composer, never back into the queue, so a failing
+    // desktop is not retried in a loop and nothing typed is lost.
+    private func restore(_ item: QueuedMessage) {
+        draft = [item.text, draft].filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }.joined(separator: "\n\n")
+        attachments = Array((item.attachments + attachments).prefix(maxAttachments))
+    }
+
+    private func steer(_ text: String, fromDraft: Bool) async -> Bool {
+        guard let client, redirectSupported, device?.permissions.send == true, let id = selected?.id, !id.isEmpty,
+              !busy, !text.isEmpty else { return false }
+        busy = true
+        error = nil
+        defer { busy = false }
+        let current = generation
+        do {
+            try await client.steer(text, chatID: id, model: selectedModel)
+            guard generation == current else { return true }
+            if fromDraft { draft = ""; drafts[id] = nil }
+            sentVersion += 1
+            // The interrupted turn's stream is retired so its partial reply stays on screen and the redirect streams fresh.
+            let watching = streaming
+            let previous = streamTask
+            previous?.cancel()
+            await previous?.value
+            guard generation == current, selected?.id == id else { return true }
+            streaming = false
+            let partial = watching ? interruptedReply(liveParts, model: selectedModel ?? selected?.model) : nil
+            liveParts = []
+            if var chat = selected {
+                chat.messages = (chat.messages ?? []) + [partial].compactMap { $0 } + [ChatMessage(role: "user", content: text)]
+                chat.isRunning = true
+                selected = chat
+                syncRunning(chat)
+            }
+            if foreground { observe(id, client: client) }
+            return true
+        } catch {
+            if case ClientError.http(401) = error { handle(error) }
+            else { self.error = String(localized: "Send could not be confirmed. Check the conversation before trying again.") }
+            return false
+        }
     }
 
     /// A button or form on a surface: a blocked question gets its answer, anything else is sent like a message.
@@ -1150,7 +1252,8 @@ import SuzentCore
         voice.stop()
         voiceSupported = false
         scheduledTasks = []
-        projects = []; selectedModel = nil; drafts = [:]; discardAttachments(); attachmentsSupported = false; overviewSupported = false; surfacesSupported = false
+        projects = []; selectedModel = nil; drafts = [:]; discardAttachments(); attachmentsSupported = false; overviewSupported = false; surfacesSupported = false; steerSupported = false
+        discardQueues()
         pendingApprovals = []; approvalChoices = [:]; approvalBusy = false
         generation = UUID()
         nodeEnabled = false

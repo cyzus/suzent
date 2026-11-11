@@ -52,6 +52,25 @@ to **Send**, and a running agent task shows **Stop**. A progress indicator
 replaces the action while a message is being processed. If voice needs setup or
 additional permissions, tapping its button explains what to change.
 
+### Redirect or queue while the agent works
+
+You don't have to wait for a reply to finish. Type while the agent is working and
+the **Stop** button gives way to two buttons:
+
+- **Redirect** (yellow arrow) interrupts the agent and continues the same turn
+  with your new message, like pressing Enter mid-reply on desktop. What the agent
+  had written so far stays in the conversation.
+- **Queue** (clock) holds the message until the current reply ends, then sends it
+  as the next message, like Cmd/Ctrl+Enter on desktop.
+
+Queued messages appear above the message box. Tap **Redirect now** on one to send
+it straight away, or the ✕ to drop it. Queued messages go out in order while the
+conversation is open, and they are kept only on the phone until then. If one
+can't be sent, it returns to the message box so nothing you typed is lost.
+Redirect needs both **Send messages** and **Stop responses**; with only **Send
+messages**, or with attachments alone, you can still queue. Redirect sends text
+only, so any attachments stay in the message box.
+
 Use a desktop version that supports mobile voice and configure a realtime voice
 model in **Settings → Voice & audio** on the desktop first. Your phone needs both **Send
 messages** and **Stop responses** permissions, because voice can start and cancel
@@ -186,7 +205,7 @@ old one; pair the phone again afterwards. The same relay also gives
   full width.
 - **Talk to the agent.** Send messages, watch replies stream in with their
   sources and an activity summary you can expand for each tool's details, and
-  stop a reply. Long-press a message to copy or share it, edit and resend your
+  stop a reply, or redirect or queue a follow-up while it works. Long-press a message to copy or share it, edit and resend your
   last message, retry a reply, or branch a conversation. Edit and retry need
   **Full control** (or the manage permission under **Custom**).
 - **Talk to Regent.** If the phone may read all conversations, you can talk to

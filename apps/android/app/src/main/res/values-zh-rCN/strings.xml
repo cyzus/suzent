@@ -268,6 +268,12 @@
     <string name="composer_grant_required">请在桌面端「设置 → 设备」中调整此手机的权限以使用该操作。</string>
     <string name="composer_processing">正在处理…</string>
     <string name="composer_stopping">正在停止…</string>
+    <string name="composer_queue">排队到本轮结束</string>
+    <string name="composer_redirect">重定向助手</string>
+    <string name="queued_count">%1$d 条排队中 · 本轮结束后发送</string>
+    <string name="queued_redirect">立即重定向</string>
+    <string name="queued_remove">取消这条消息</string>
+    <string name="queued_clear">全部取消</string>
     <string name="voice_cancel_connection">取消语音连接</string>
     <string name="chat_info">对话信息</string>
     <string name="chat_info_unavailable">暂时无法获取对话信息。</string>

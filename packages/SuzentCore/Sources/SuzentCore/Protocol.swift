@@ -159,13 +159,13 @@ public struct ChatMessage: Decodable, Sendable, Equatable {
     public var runActiveSeconds: Double?
     public var lastActivityAt: String?
 
-    public init(role: String, content: String, files: [FileAttachment] = []) {
+    public init(role: String, content: String, files: [FileAttachment] = [], parts: [MessagePart] = [], model: String? = nil) {
         self.role = role
         self.content = content
-        self.parts = []
+        self.parts = parts
         self.name = nil
         self.toolCallId = nil
-        self.model = nil
+        self.model = model
         self.timestamp = nil
         self.files = files
     }

@@ -61,6 +61,11 @@ class SendRequest(ChatRequest):
         return self
 
 
+class SteerRequest(ChatRequest):
+    message: str = Field(min_length=1, max_length=100000, pattern=r"\S")
+    model: str | None = Field(default=None, min_length=1, max_length=300)
+
+
 class ManageRequest(ChatRequest):
     action: Literal["pin", "unpin", "rename", "move", "delete"]
     value: str | None = Field(default=None, min_length=1, max_length=200)
@@ -181,6 +186,7 @@ async def session(request: Request) -> JSONResponse:
             "chat_overview": 1,
             "surfaces": 1,
             "voice": 1,
+            "steer": 1,
             **relay_field(request),
         }
     )
@@ -603,20 +609,38 @@ async def upload(request: Request) -> JSONResponse:
     )
 
 
+def turn_config(chat_id: str, model: str | None) -> tuple[dict, bool]:
+    """The stored chat config with the phone's model choice applied, and whether the chat runs natively."""
+    from suzent.core.providers import get_default_chat_model, get_enabled_models_from_db
+
+    chat = get_database().get_chat(chat_id)
+    if chat is None:
+        raise HTTPException(404, "Conversation unavailable")
+    config = dict(chat.config or {})
+    native = str(config.get("runtime", "native")).lower() != "acp"
+    if model is not None:
+        if not native or model not in get_enabled_models_from_db():
+            raise HTTPException(400, "Model unavailable for this conversation")
+        config["model"] = model
+    elif native and not config.get("model"):
+        config["model"] = config.get("subagent_model") or get_default_chat_model()
+    return config, native
+
+
+def remember_model(chat_id: str, config: dict, native: bool) -> None:
+    if native and config.get("model"):
+        get_database().merge_chat_config(chat_id, {"model": config["model"]})
+
+
 async def send(request: Request) -> JSONResponse:
     body = await parse(request, SendRequest)
     grant = authorize(request, body.chat_id, "send")
     if body.message.lstrip().startswith("/"):
         raise HTTPException(403, "Desktop commands are not available to mobile clients")
     from suzent.routes.chat_routes import chat_send
-    from suzent.core.providers import get_default_chat_model, get_enabled_models_from_db
 
     db = get_database()
-    chat = db.get_chat(body.chat_id)
-    if chat is None:
-        raise HTTPException(404, "Conversation unavailable")
-    config = dict(chat.config or {})
-    native = str(config.get("runtime", "native")).lower() != "acp"
+    config, native = turn_config(body.chat_id, body.model)
     payload = body.model_dump(exclude={"model", "attachments"}, exclude_none=True)
     if body.attachments and body.chat_id == FOCAL_CHAT_ID:
         raise HTTPException(400, "Regent does not accept attachments")
@@ -627,24 +651,34 @@ async def send(request: Request) -> JSONResponse:
         if files is None:
             raise HTTPException(400, "Attachment expired; attach it again")
         payload["files"] = files
-    if body.model is not None:
-        if not native or body.model not in get_enabled_models_from_db():
-            raise HTTPException(400, "Model unavailable for this conversation")
-        config["model"] = body.model
-    elif native and not config.get("model"):
-        config["model"] = config.get("subagent_model") or get_default_chat_model()
     payload["config"] = config
     already_sent = body.client_message_id is not None and db.has_client_message(
         body.chat_id, body.client_message_id
     )
     response = await chat_send(forwarded(request, payload))
-    if (
-        response.status_code == 202
-        and native
-        and not already_sent
-        and config.get("model")
-    ):
-        db.merge_chat_config(body.chat_id, {"model": config["model"]})
+    if response.status_code == 202 and not already_sent:
+        remember_model(body.chat_id, config, native)
+    return response
+
+
+async def steer(request: Request) -> JSONResponse:
+    """Interrupt the running turn and continue it with a new message, like Enter mid-turn on desktop."""
+    body = await parse(request, SteerRequest)
+    authorize(request, body.chat_id, "send")
+    authorize(request, body.chat_id, "stop")
+    if body.message.lstrip().startswith("/"):
+        raise HTTPException(403, "Desktop commands are not available to mobile clients")
+    from suzent.core.stream_registry import is_background_streaming
+    from suzent.routes.chat_routes import chat_send, steer_chat_send
+
+    config, native = turn_config(body.chat_id, body.model)
+    payload = {"chat_id": body.chat_id, "message": body.message, "config": config}
+    # The turn may have ended while the phone was deciding; then the message
+    # simply starts the next one.
+    route = steer_chat_send if is_background_streaming(body.chat_id) else chat_send
+    response = await route(forwarded(request, payload))
+    if response.status_code == 202:
+        remember_model(body.chat_id, config, native)
     return response
 
 
@@ -931,6 +965,7 @@ client_routes = [
     Route("/mobile/client/send", send, methods=["POST"]),
     Route("/mobile/client/message-action", message_action, methods=["POST"]),
     Route("/mobile/client/stop", stop, methods=["POST"]),
+    Route("/mobile/client/steer", steer, methods=["POST"]),
     Route("/mobile/client/manage", manage, methods=["POST"]),
     Route("/mobile/client/live", observe, methods=["POST"]),
 ]

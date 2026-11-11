@@ -1179,6 +1179,7 @@ private fun ColumnScope.Conversation(model: MobileModel) {
             animationSpec = spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMediumLow),
             alignment = Alignment.BottomCenter
         ).padding(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        QueuedMessages(model)
         if (model.voice.active) {
             VoiceCubeView(model.voice.animationState, model.voice.working, model.voice.micLevel, Modifier.fillMaxWidth().height(112.dp))
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -1204,7 +1205,7 @@ private fun ColumnScope.Conversation(model: MobileModel) {
             textStyle = MaterialTheme.typography.bodyMedium.copy(fontSize = PresentationTokens.typeChat.sp, color = MaterialTheme.colorScheme.onSurface),
             cursorBrush = androidx.compose.ui.graphics.SolidColor(suzentLink),
             decorationBox = { inner -> Box { if (model.draft.isEmpty()) Text(stringResource(R.string.message), fontSize = PresentationTokens.typeChat.sp, color = MaterialTheme.colorScheme.onSurfaceVariant); inner() } })
-        Spacer(Modifier.width(44.dp))
+        Spacer(Modifier.width(if (composerAction(model, chat) == ComposerAction.REDIRECT) 88.dp else 44.dp))
         }
         AnimatedVisibility(visible = expanded,
             enter = fadeIn(tween(160, delayMillis = 40)),
@@ -1221,7 +1222,7 @@ private fun ColumnScope.Conversation(model: MobileModel) {
                 }
 
             }
-            Spacer(Modifier.size(44.dp))
+            Spacer(Modifier.size(if (composerAction(model, chat) == ComposerAction.REDIRECT) 88.dp else 44.dp))
         }
         }
     }
@@ -1261,10 +1262,26 @@ private fun HistoryLoadingIndicator() {
     }
 }
 
+private fun composerAction(model: MobileModel, chat: Chat) = ComposerAction.resolve(model.draft.isNotBlank() || model.attachments.isNotEmpty(),
+    model.busy, model.streaming || chat.running, model.voice.active, model.voice.animationState == "connecting",
+    canRedirect = model.draft.isNotBlank() && model.redirectSupported)
+
 @Composable
 private fun SendAction(model: MobileModel, chat: Chat, startVoice: () -> Unit) {
-    val action = ComposerAction.resolve(model.draft.isNotBlank() || model.attachments.isNotEmpty(),
-        model.busy, model.streaming || chat.running, model.voice.active, model.voice.animationState == "connecting")
+    val action = composerAction(model, chat)
+    val queued = model.queued
+    LaunchedEffect(chat.id, queued, model.busy, model.streaming, chat.running, model.pendingApprovals.isEmpty(), model.approvalBusy) {
+        model.releaseQueued()
+    }
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        // Redirect is the main action mid-turn, as Enter is on desktop; waiting for the turn to end sits beside it.
+        if (action == ComposerAction.REDIRECT) ComposerButton(ComposerAction.QUEUE, model, chat, startVoice)
+        ComposerButton(action, model, chat, startVoice)
+    }
+}
+
+@Composable
+private fun ComposerButton(action: ComposerAction, model: MobileModel, chat: Chat, startVoice: () -> Unit) {
     val view = LocalView.current
     val context = androidx.compose.ui.platform.LocalContext.current
     val loading = action == ComposerAction.LOADING || (action == ComposerAction.STOP && model.stopInFlight)
@@ -1275,6 +1292,8 @@ private fun SendAction(model: MobileModel, chat: Chat, startVoice: () -> Unit) {
         ComposerAction.HANG_UP -> R.string.voice_end
         ComposerAction.STOP -> if (model.stopInFlight) R.string.composer_stopping else R.string.stop
         ComposerAction.LOADING -> R.string.composer_processing
+        ComposerAction.QUEUE -> R.string.composer_queue
+        ComposerAction.REDIRECT -> R.string.composer_redirect
     })
     Box(Modifier.size(44.dp).clickable(enabled = !loading, role = Role.Button, onClickLabel = label) {
         when (action) {
@@ -1287,19 +1306,35 @@ private fun SendAction(model: MobileModel, chat: Chat, startVoice: () -> Unit) {
                 chat.id.isEmpty() && model.device?.permissions?.createChats != true -> model.error = context.getString(R.string.composer_create_required)
                 else -> { view.suzentHaptic(SuzentHaptic.Light); model.send() }
             }
+            ComposerAction.QUEUE, ComposerAction.REDIRECT -> when {
+                model.device?.permissions?.send != true -> model.error = context.getString(R.string.composer_grant_required)
+                else -> { view.suzentHaptic(SuzentHaptic.Light); if (action == ComposerAction.QUEUE) model.queue() else model.redirect() }
+            }
             ComposerAction.LOADING -> Unit
         }
     }.semantics { contentDescription = label }, contentAlignment = Alignment.Center) {
-        val danger = action == ComposerAction.STOP || action == ComposerAction.HANG_UP
-        Box(Modifier.size(36.dp).background(if (danger) Color(PresentationTokens.danger) else MaterialTheme.colorScheme.primary)
+        val fill = when (action) {
+            ComposerAction.STOP, ComposerAction.HANG_UP -> Color(PresentationTokens.danger)
+            ComposerAction.REDIRECT -> Color(PresentationTokens.yellow)
+            ComposerAction.QUEUE -> MaterialTheme.colorScheme.surface
+            else -> MaterialTheme.colorScheme.primary
+        }
+        val tint = when (action) {
+            ComposerAction.REDIRECT -> Color.Black
+            ComposerAction.QUEUE -> MaterialTheme.colorScheme.onSurface
+            else -> Color.White
+        }
+        Box(Modifier.size(36.dp).background(fill)
             .border(2.dp, MaterialTheme.colorScheme.outline), contentAlignment = Alignment.Center) {
-            if (loading || action == ComposerAction.CONNECTING) CircularProgressIndicator(Modifier.size(18.dp), color = Color.White, strokeWidth = 2.dp)
+            if (loading || action == ComposerAction.CONNECTING) CircularProgressIndicator(Modifier.size(18.dp), color = tint, strokeWidth = 2.dp)
             else Icon(painterResource(when (action) {
                 ComposerAction.STOP -> R.drawable.ic_stop
                 ComposerAction.HANG_UP -> R.drawable.ic_hang_up
                 ComposerAction.VOICE -> R.drawable.ic_voice
+                ComposerAction.QUEUE -> R.drawable.ic_clock
+                ComposerAction.REDIRECT -> R.drawable.ic_redirect
                 else -> R.drawable.ic_send
-            }), contentDescription = null, tint = Color.White, modifier = Modifier.size(20.dp))
+            }), contentDescription = null, tint = tint, modifier = Modifier.size(20.dp))
         }
     }
 }

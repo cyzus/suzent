@@ -1116,7 +1116,9 @@ struct ContentView: View {
     }
 
     private func composer(_ chat: Chat) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+        let actionWidth: CGFloat = composerAction(chat) == .redirect ? 88 : 44
+        return VStack(alignment: .leading, spacing: 8) {
+            QueuedMessagesView(model: model)
             if model.voice.active {
                 VoiceCubeView(voice: model.voice).frame(height: 112).accessibilityHidden(true)
                 HStack(spacing: 10) {
@@ -1145,7 +1147,7 @@ struct ContentView: View {
                 TextField("Message", text: $model.draft, axis: .vertical).lineLimit(composing ? 1...6 : 1...1).focused($composing)
                     .tint(Color.suzentLink)
                     .suzentFont(PresentationTokens.typeChat).padding(.horizontal, 4).padding(.vertical, 12).frame(minHeight: 44).disabled(model.busy)
-                Color.clear.frame(width: 44, height: 44)
+                Color.clear.frame(width: actionWidth, height: 44)
             }
             if composing { HStack(spacing: 8) {
                 Button {
@@ -1158,12 +1160,22 @@ struct ContentView: View {
                 }.buttonStyle(.plain)
                 .disabled(model.busy || model.streaming || (chat.models ?? []).isEmpty || model.device?.permissions.send != true)
                 Spacer(minLength: 8)
-                Color.clear.frame(width: 44, height: 44)
+                Color.clear.frame(width: actionWidth, height: 44)
             }.transition(.opacity) }
         }.padding(10).background(Color.suzentSurface)
             .dynamicTypeSize(...DynamicTypeSize.accessibility3)
             .animation(reduceMotion ? nil : .smooth(duration: 0.28, extraBounce: 0), value: composing)
-            .overlay(alignment: .bottomTrailing) { sendAction(chat).padding(10) }
+            .overlay(alignment: .bottomTrailing) {
+                HStack(spacing: 0) {
+                    // Redirect is the main action mid-turn, as Enter is on desktop; waiting for the turn to end sits beside it.
+                    if composerAction(chat) == .redirect { sendAction(chat, action: .queue) }
+                    sendAction(chat, action: composerAction(chat))
+                }.padding(10)
+            }
+            .task(id: QueueRelease(chat: chat.id, queued: model.queued.map(\.id), busy: model.busy || model.approvalBusy,
+                                   running: model.streaming || chat.isRunning == true, waiting: !model.pendingApprovals.isEmpty)) {
+                await model.releaseQueued()
+            }
             .overlay(Rectangle().stroke(Color.suzentOutline, lineWidth: PresentationTokens.borderWidth))
             .background { Rectangle().fill(Color.suzentShadow).offset(x: 2, y: 2) }
             .padding(.trailing, 2).padding(.bottom, 2)
@@ -1191,11 +1203,16 @@ struct ContentView: View {
         }.frame(maxWidth: .infinity).padding(.horizontal, 8).padding(.vertical, keyboardVisible ? 12 : 40)
     }
 
-    private func sendAction(_ chat: Chat) -> some View {
-        let action = ComposerAction.resolve(
-            hasContent: !model.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !model.attachments.isEmpty,
+    private func composerAction(_ chat: Chat) -> ComposerAction {
+        let text = !model.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        return ComposerAction.resolve(
+            hasContent: text || !model.attachments.isEmpty,
             busy: model.busy, running: model.streaming || chat.isRunning == true,
-            voiceActive: model.voice.active, voiceConnecting: model.voice.animationState == "connecting")
+            voiceActive: model.voice.active, voiceConnecting: model.voice.animationState == "connecting",
+            canRedirect: text && model.redirectSupported)
+    }
+
+    private func sendAction(_ chat: Chat, action: ComposerAction) -> some View {
         let loading = action == .loading || (action == .stop && model.stopInFlight)
         let label: String = switch action {
         case .voice: String(localized: "Start voice conversation")
@@ -1204,8 +1221,24 @@ struct ContentView: View {
         case .connecting: String(localized: "Cancel voice connection")
         case .hangUp: String(localized: "End voice conversation")
         case .stop: model.stopInFlight ? String(localized: "Stopping…") : String(localized: "Stop")
+        case .queue: String(localized: "Queue until this turn ends")
+        case .redirect: String(localized: "Redirect the agent")
         }
-        let symbol = action == .stop ? "stop.fill" : action == .hangUp ? "phone.down.fill" : action == .voice ? "waveform" : "arrow.up"
+        let symbol: String = switch action {
+        case .stop: "stop.fill"
+        case .hangUp: "phone.down.fill"
+        case .voice: "waveform"
+        case .queue: "clock"
+        case .redirect: "arrow.uturn.right"
+        default: "arrow.up"
+        }
+        let fill: Color = switch action {
+        case .stop, .hangUp: Color(presentation: PresentationTokens.danger)
+        case .redirect: Color(presentation: PresentationTokens.yellow)
+        case .queue: Color.suzentSurface
+        default: Color(presentation: PresentationTokens.blue)
+        }
+        let tint: Color = action == .redirect ? .black : action == .queue ? Color.suzentText : .white
         return Button {
             switch action {
             case .voice: composing = false; model.startVoice()
@@ -1225,18 +1258,32 @@ struct ContentView: View {
                 }
                 sends += 1
                 Task { await model.send() }
+            case .queue, .redirect:
+                guard model.device?.permissions.send == true else {
+                    model.error = String(localized: "Change this phone’s permissions in desktop Settings → Devices to use this action."); return
+                }
+                if action == .queue { model.queue() } else { Task { await model.redirect() } }
             }
         } label: {
             Group {
-                if loading || action == .connecting { ProgressView().tint(.white) }
+                if loading || action == .connecting { ProgressView().tint(tint) }
                 else { Image(systemName: symbol).font(.system(size: action == .stop ? 14 : 20, weight: .bold)) }
-            }.foregroundStyle(.white).frame(width: 36, height: 36)
-                .background(Color(presentation: action == .stop || action == .hangUp ? PresentationTokens.danger : PresentationTokens.blue))
+            }.foregroundStyle(tint).frame(width: 36, height: 36)
+                .background(fill)
                 .overlay(Rectangle().stroke(Color.suzentOutline, lineWidth: 2))
                 .padding(4).contentShape(Rectangle())
         }.buttonStyle(.plain).disabled(loading).accessibilityLabel(label)
     }
 
+}
+
+/// What decides whether the next queued message can go out; any change re-checks it.
+private struct QueueRelease: Equatable {
+    let chat: String
+    let queued: [UUID]
+    let busy: Bool
+    let running: Bool
+    let waiting: Bool
 }
 
 private extension View {

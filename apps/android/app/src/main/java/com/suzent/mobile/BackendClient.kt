@@ -114,6 +114,9 @@ class BackendClient(val backend: Backend, private val token: String, probeOnly: 
     override var supportsSurfaces = false
         private set
 
+    override var supportsSteer = false
+        private set
+
     var supportsVoice = false
         private set
 
@@ -138,6 +141,7 @@ class BackendClient(val backend: Backend, private val token: String, probeOnly: 
         supportsVoice = value.optInt("voice") == 1
         supportsChatOverview = value.optInt("chat_overview") == 1
         supportsSurfaces = value.optInt("surfaces") == 1
+        supportsSteer = value.optInt("steer") == 1
         sessionRelay = RelayRoute.parse(value.optJSONObject("relay"), BuildConfig.DEBUG)
         return ClientDevice.parse(value.getJSONObject("device"))
             .copy(desktopName = value.optString("desktop_name").take(100).ifBlank { null })
@@ -257,6 +261,9 @@ class BackendClient(val backend: Backend, private val token: String, probeOnly: 
         json("mobile/client/approvals", JSONObject().put("chat_id", id).put("decisions", decisions))
     }
     override suspend fun stop(id: String) { json("mobile/client/stop", JSONObject().put("chat_id", id)) }
+    override suspend fun steer(id: String, text: String, model: String?) {
+        json("mobile/client/steer", JSONObject().put("chat_id", id).put("message", text).apply { if (model != null) put("model", model) })
+    }
 
     override suspend fun observe(id: String, event: suspend (JSONObject) -> Unit) = withContext(Dispatchers.IO) {
         var recovery = StreamRecovery()
