@@ -1063,6 +1063,7 @@ struct ContentView: View {
                     }.padding(16).readingWidth()
                     .environment(\.surfaceHandler, surfaceHandler(chat))
             }.id(chat.id).environment(\.railChoices, railChoices)
+                .environment(\.mediaLoader, MediaLoader { [model, chatID = chat.id] item in await model.mediaFile(chatID, item: item) })
             if !model.pendingApprovals.isEmpty {
                 // Pinned above the composer so a pending decision never scrolls out of reach.
                 ViewThatFits(in: .vertical) {

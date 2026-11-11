@@ -1,5 +1,6 @@
 package com.suzent.mobile
 
+import java.io.File
 import org.json.JSONObject
 
 /** Conversation operations shared by the real transport and the offline demonstration. */
@@ -41,4 +42,6 @@ interface MobileClient {
     suspend fun answerSurface(id: String, surfaceId: String, answer: Map<String, Any?>)
     suspend fun decideApprovals(id: String, pending: List<ApprovalRequest>, choices: Map<String, String>)
     suspend fun observe(id: String, event: suspend (JSONObject) -> Unit)
+    /** Downloads a tool's image, video or audio into [destination]. */
+    suspend fun media(chatId: String, mediaId: String, destination: File): Unit = throw UnsupportedOperationException()
 }

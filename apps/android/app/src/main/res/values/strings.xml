@@ -324,4 +324,8 @@
     <string name="reconnect_finding">Finding a connection</string>
     <string name="reconnect_verifying">Verifying connection</string>
     <string name="reconnect_syncing">Syncing desktop</string>
+    <string name="media_loading">Loading %1$s…</string>
+    <string name="media_unavailable">%1$s can\'t be opened. It may have been moved or deleted on your computer.</string>
+    <string name="media_play">Play %1$s</string>
+    <string name="media_pause">Pause %1$s</string>
 </resources>

@@ -4,6 +4,7 @@ import { MarkdownRenderer, CodeBlock, MermaidDiagram } from '../';
 import {
   isImageFile,
   isPdfFile,
+  isVideoFile,
   isHtmlFile,
   isMarkdownFile,
   isMermaidFile,
@@ -48,6 +49,21 @@ export const FilePreview: React.FC<FilePreviewProps> = ({ filename, content, cha
               ? 'max-w-full max-h-full object-contain'
               : 'max-w-full max-h-full object-contain drop-shadow-md rounded-sm'
           }
+        />
+      </div>
+    );
+  }
+
+  if (isVideoFile(filename)) {
+    return (
+      <div className="flex items-center justify-center p-4 bg-black h-full w-full">
+        <video
+          key={serveUrl}
+          src={serveUrl}
+          controls
+          playsInline
+          preload="metadata"
+          className="max-w-full max-h-full"
         />
       </div>
     );

@@ -1,6 +1,8 @@
 import asyncio
+import json
 import socket
 from datetime import datetime
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -12,6 +14,7 @@ from starlette.testclient import TestClient
 from suzent.auth_boundary import AuthBoundaryMiddleware
 from suzent.mobile.attachments import AttachmentRegistry
 from suzent.mobile.client_api import client_routes, revocable_stream
+from suzent.mobile.media import media_id
 from suzent.mobile.pairing import ClientPermissions, PairingStore
 from suzent.routes.mobile_routes import mobile_routes
 
@@ -1878,3 +1881,68 @@ def test_surface_answer_requires_send_scope_and_pending_question(
     assert client.post("/mobile/client/surface-answer", json=huge).status_code == 400
     extra = {**body, "config": {"tools": []}}
     assert client.post("/mobile/client/surface-answer", json=extra).status_code == 400
+
+
+def media_tool(name: str, paths: list[str]) -> dict:
+    return {
+        "type": "tool",
+        "toolName": name,
+        "output": json.dumps({"success": True, "metadata": {"saved_paths": paths}}),
+    }
+
+
+def test_media_route_serves_only_reported_files_in_shared_chats(
+    setup_client: tuple[TestClient, PairingStore],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    client, store = setup_client
+    from suzent.mobile.client_api import get_database
+
+    video = tmp_path / "clip.mp4"
+    video.write_bytes(b"0123456789")
+    secret = tmp_path / "secret.mp4"
+    secret.write_bytes(b"secret")
+    db = get_database()
+    db.get_chat("shared").messages = [
+        {"role": "assistant", "parts": [media_tool("check_video", [str(video)])]}
+    ]
+    db.get_chat("private").messages = db.get_chat("shared").messages
+    monkeypatch.setattr(
+        "suzent.routes.sandbox_routes._get_resolver_for_request",
+        lambda chat_id: SimpleNamespace(resolve=Path),
+    )
+
+    result = grant(store, chat_ids=["shared"])
+    client.headers["Authorization"] = f"Bearer {result['token']}"
+    assert client.get("/mobile/client/session").json()["media"] == 1
+
+    response = client.get(f"/mobile/client/chats/shared/media/{media_id(str(video))}")
+    assert response.status_code == 200
+    assert response.content == b"0123456789"
+    assert response.headers["content-type"] == "video/mp4"
+    ranged = client.get(
+        f"/mobile/client/chats/shared/media/{media_id(str(video))}",
+        headers={"Range": "bytes=2-4"},
+    )
+    assert ranged.status_code == 206 and ranged.content == b"234"
+
+    assert (
+        client.get(
+            f"/mobile/client/chats/shared/media/{media_id(str(secret))}"
+        ).status_code
+        == 404
+    )
+    assert (
+        client.get(
+            f"/mobile/client/chats/private/media/{media_id(str(video))}"
+        ).status_code
+        == 403
+    )
+    video.unlink()
+    assert (
+        client.get(
+            f"/mobile/client/chats/shared/media/{media_id(str(video))}"
+        ).status_code
+        == 404
+    )

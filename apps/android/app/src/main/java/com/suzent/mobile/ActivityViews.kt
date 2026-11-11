@@ -108,6 +108,8 @@ fun ActivityTurn(parts: List<MessagePart>, live: Boolean = false, regent: Boolea
             ActivityDisclosure(expanded || pending) {
                 Box(Modifier.padding(bottom = 10.dp)) { ActivityContent(work, false, citationSources, regent) }
             }
+            val media = remember(parts) { parts.flatMap { it.media } }
+            if (media.isNotEmpty()) Box(Modifier.padding(bottom = 10.dp)) { MediaGallery(media) }
             ActivityContent(persistent + parts.drop(start), false, citationSources, regent, onBubbleLongPress)
         }
     }
