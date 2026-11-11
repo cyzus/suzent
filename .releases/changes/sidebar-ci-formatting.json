@@ -1,0 +1,1 @@
+{"products": {"desktop": "none"}, "reason": "Formatting-only cleanup of existing sidebar and presentation generator code to satisfy CI and pre-commit.", "summary": "Normalize existing sidebar and presentation generator formatting."}
