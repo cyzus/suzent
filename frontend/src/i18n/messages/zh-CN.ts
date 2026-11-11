@@ -554,6 +554,7 @@ export const zhCN = {
       chats: '对话列表',
       config: '配置',
       files: '文件',
+      artifacts: '产出',
       tools: '工具',
       context: '上下文',
       browser: '网页',
@@ -566,6 +567,13 @@ export const zhCN = {
     },
     settings: '设置',
     settingsDesc: '',
+  },
+  artifacts: {
+    empty: '这个对话还没有产出文件',
+    images: '图片',
+    media: '视频和音频',
+    files: '文件',
+    openInFiles: '在文件中打开 {file}',
   },
   repositoryContext: {
     title: '上下文',
