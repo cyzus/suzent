@@ -65,12 +65,29 @@ export function ContextHeaderButton({
 
 /** Collapsed overview row: the measured headline with a single bar. */
 export function ContextUsageHeadline({ chatId }: { chatId: string }): JSX.Element | null {
-  const { measured, measuredPercent, limit } = useContextUsageStats(chatId);
+  const { t } = useI18n();
+  const { usage, measured, measuredPercent, limit } = useContextUsageStats(chatId);
   if (measured == null || measuredPercent == null || !limit) return null;
+  const inputTokens = usage?.input_tokens ?? 0;
+  const cacheRead = usage?.cache_read_tokens ?? 0;
+  const cacheShare =
+    inputTokens > 0 && cacheRead > 0
+      ? formatPercent(Math.min(100, (cacheRead / inputTokens) * 100))
+      : null;
   return (
     <div className="mt-2 space-y-1.5">
-      <div className="font-mono text-[11px] tabular-nums text-neutral-500 dark:text-neutral-400">
-        {formatTokens(measured)} / {formatTokens(limit)}
+      <div className="flex items-center justify-between gap-2 font-mono text-[11px] tabular-nums text-neutral-500 dark:text-neutral-400">
+        <span>
+          {formatTokens(measured)} / {formatTokens(limit)}
+        </span>
+        {cacheShare && (
+          <span
+            className="text-[10px] text-emerald-600 dark:text-emerald-400"
+            title={t('contextPanel.cacheShareHint')}
+          >
+            {t('contextPanel.cacheRead')} {cacheShare}
+          </span>
+        )}
       </div>
       <div className="h-1 overflow-hidden rounded-full bg-neutral-200 dark:bg-zinc-700">
         <div
