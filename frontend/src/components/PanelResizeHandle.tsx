@@ -74,7 +74,9 @@ export function PanelResizeHandle({
         const originalStyle = panel.style.cssText;
         const spacer = spacerRef?.current;
         const originalSpacerWidth = spacer?.style.width;
-        const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        const reduceMotion =
+          window.matchMedia('(prefers-reduced-motion: reduce)').matches ||
+          document.documentElement.dataset.motion === 'reduced';
         let previewMode: PanelResizeAction = initiallyCovering ? 'cover' : 'dock';
         let previewWidth = panel.getBoundingClientRect().width;
         cleanup.current = startPanelResize({

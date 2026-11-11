@@ -1435,6 +1435,38 @@ export const en = {
       colorScheme: 'Color Scheme',
       colorSchemeDesc: 'Choose the accent palette used in light and dark mode.',
       schemes: { warm: 'Warm', cold: 'Cold', green: 'Green', ember: 'Ember' },
+      uiFont: 'Interface font',
+      uiFonts: {
+        system: 'System default',
+        sans: 'Sans-serif',
+        mono: 'Monospace',
+        chooseLocal: 'Choose from device…',
+        localGroup: 'Device fonts',
+        presetGroup: 'Presets',
+      },
+      replyFont: 'Reply font',
+      replyFonts: {
+        'match-ui': 'Same as interface',
+        serif: 'Serif',
+        mono: 'Monospace',
+      },
+      chatFontSize: 'Chat history text size',
+      chatFontSizes: {
+        small: 'Small',
+        medium: 'Medium',
+        large: 'Large',
+      },
+      chatWidth: 'Chat history width',
+      chatWidths: {
+        narrow: 'Narrow',
+        medium: 'Medium',
+        wide: 'Wide',
+      },
+      motion: 'Motion',
+      motions: {
+        system: 'Follow system',
+        reduced: 'Reduced',
+      },
     },
     notifications: {
       title: 'Notifications',

@@ -155,6 +155,18 @@ module.exports = {
         'view-fade': 'viewFade 0.3s ease-out'
       },
       fontFamily: {
+        'sans': [
+          'var(--suzent-font-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif)'
+        ],
+        'serif': [
+          'Georgia',
+          '"Songti SC"',
+          '"SimSun"',
+          '"Source Han Serif SC"',
+          '"Noto Serif CJK SC"',
+          '"Times New Roman"',
+          'serif'
+        ],
         'mono': [
           'Consolas',
           'JetBrains Mono',
