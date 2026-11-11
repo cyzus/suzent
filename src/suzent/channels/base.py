@@ -41,6 +41,10 @@ class SocialChannel(ABC):
     Abstract Base Class for social platform drivers.
     """
 
+    # The platform's bot upload limit, checked before uploading so the agent hears why.
+    max_file_bytes: Optional[int] = None
+    supports_files: bool = True
+
     def __init__(self, name: str, config: Dict[str, Any]):
         self.name = name
         self.config = config

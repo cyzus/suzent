@@ -1,0 +1,1 @@
+{"products": {"desktop": "minor", "mobile": "patch"}, "summary": "The agent can now hand you finished files with Send File: they arrive in the chat app you wrote from (Telegram, Slack, Discord, Feishu), under the reply on the computer, and on your phone, where you can download and share them."}

@@ -27,6 +27,7 @@ BUILTIN_TOOL_NAMES = (
     "GrepTool",
     "SkillTool",
     "AskQuestionTool",
+    "SendFileTool",
 )
 
 AGENT_LIFECYCLE_TOOL_NAMES = (

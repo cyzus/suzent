@@ -367,3 +367,10 @@
 "Redirect the agent" = "重定向助手";
 "%@ can't be opened. It may have been moved or deleted on your computer." = "无法打开 %@，它可能已在电脑上被移动或删除。";
 "Loading %@…" = "正在加载 %@…";
+"Share %@" = "分享 %@";
+"Download %@" = "下载 %@";
+"Save to Photos" = "保存到相册";
+"Saved to Photos" = "已保存到相册";
+"Couldn't save to Photos" = "保存到相册失败";
+"Close" = "关闭";
+"Opens full screen. Touch and hold to save or share." = "全屏打开。长按可保存或分享。";

@@ -32,7 +32,7 @@ from suzent.auth_boundary import extract_token
 from suzent.core.focal_agent import FOCAL_CHAT_ID, FOCAL_TITLE, focal_status
 from suzent.database import get_database
 from suzent.mobile.attachments import attachment_registry
-from suzent.mobile.media import find_media, media_type, with_media
+from suzent.mobile.media import find_media, with_media
 from suzent.mobile.pairing import ClientGrant, PairingStore
 from suzent.routes.mobile_routes import get_mobile_store, reply
 
@@ -411,12 +411,13 @@ async def media(request: Request) -> Response:
     stored_chat = get_database().get_chat(chat_id)
     if stored_chat is None:
         raise HTTPException(404, "Conversation unavailable")
-    path = find_media(
+    found = find_media(
         list(getattr(stored_chat, "messages", None) or []),
         request.path_params["media_id"],
     )
-    if path is None:
+    if found is None:
         raise HTTPException(404, "Media unavailable")
+    path, content_type = found
     from suzent.routes.sandbox_routes import _get_resolver_for_request
 
     try:
@@ -427,7 +428,7 @@ async def media(request: Request) -> Response:
         raise HTTPException(404, "Media unavailable")
     return FileResponse(
         host_path,
-        media_type=media_type(path)[1],
+        media_type=content_type,
         headers={"Cache-Control": "private, max-age=86400"},
     )
 

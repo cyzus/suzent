@@ -47,7 +47,7 @@ data class Chat(val id: String, val title: String, val running: Boolean, val mes
                                 surface = part.optJSONObject("surface")?.let(A2UISurface::parse),
                                 media = part.optJSONArray("media")?.let { items -> (0 until items.length()).mapNotNull { mediaIndex ->
                                     items.optJSONObject(mediaIndex)?.let { item -> MediaItem(item.optString("id"), item.optString("kind"), item.optString("name")) }
-                                        ?.takeIf { it.id.matches(Regex("^[0-9a-f]{32}$")) && it.kind in setOf("image", "video", "audio") }
+                                        ?.takeIf { it.id.matches(Regex("^[0-9a-f]{32}$")) && it.kind in setOf("image", "video", "audio", "file") }
                                 } } ?: emptyList(),
                                 citationSources = (0 until sources.length()).mapNotNull { sourceIndex ->
                                     sources.optJSONObject(sourceIndex)?.let { source -> CitationSource(

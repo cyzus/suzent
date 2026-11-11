@@ -21,7 +21,7 @@ world asks first (see [Permissions & approvals](./human-in-the-loop.md)).
 | **Desktop** | Read and operate native apps on this computer. Off until you install the Desktop plugin and agent-desktop. | [Desktop apps](./desktop.md) |
 | **Orchestration** | Hand work to helper agents and load [skills](../skills.md). | [Sub-agents](./sub-agents.md) |
 | **Tasks & goals** | Track tasks, pursue a goal across many turns, and schedule its own follow-ups. | [Tasks & planning](./tasks.md) |
-| **Interaction** | Ask you a focused question, or show tables, forms, and buttons you can answer. | [Questions, canvas & messages](./interaction.md) |
+| **Interaction** | Ask you a focused question, show tables, forms, and buttons you can answer, and hand you finished files. | [Questions, canvas & messages](./interaction.md) |
 | **Creative** | Generate and edit images, make videos, speak, and send messages through your chat apps. | [Images, video & speech](./media.md) |
 | **Memory & recall** | Search what it remembers and find past conversations. | [Memory](../memory/README.md) |
 | **Email** | Search and read your mailboxes, save drafts, and send after you approve. | [Email](./email.md) |
@@ -36,8 +36,8 @@ Open the right sidebar with **Open Sidebar** and go to the **Tools** tab. Tick a
 group to switch all its tools on or off, or tick tools one by one.
 
 A sensible set is on by default: web search, files, commands, tasks and goals,
-image generation and editing, sub-agents, and memory search. **Skill** and
-**Ask Question** are always on.
+image generation and editing, sub-agents, and memory search. **Skill**,
+**Ask Question** and **Send File** are always on.
 
 You don't have to switch everything on up front. When a task needs a tool
 that's off, the agent can find it and turn it on for that chat by itself. Those

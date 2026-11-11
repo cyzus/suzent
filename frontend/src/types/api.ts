@@ -28,6 +28,8 @@ export interface MessageFileChange {
   diff: string;
   additions: number;
   deletions: number;
+  /** False when the turn deleted the file. */
+  after_exists?: boolean;
 }
 
 export interface RunTiming {

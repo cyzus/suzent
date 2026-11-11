@@ -194,6 +194,10 @@ export const zhCN = {
       skill_execute: '已加载技能',
     },
   },
+  sentFile: {
+    label: '发送的文件',
+    reveal: '在文件夹中显示',
+  },
   videoPlayer: {
     reveal: '找到文件位置',
     menu: '视频操作',
@@ -554,6 +558,7 @@ export const zhCN = {
       chats: '对话列表',
       config: '配置',
       files: '文件',
+      artifacts: '产出',
       tools: '工具',
       context: '上下文',
       browser: '网页',
@@ -566,6 +571,13 @@ export const zhCN = {
     },
     settings: '设置',
     settingsDesc: '',
+  },
+  artifacts: {
+    empty: '这个对话还没有产出文件',
+    images: '图片',
+    media: '视频和音频',
+    files: '文件',
+    openInFiles: '在文件中打开 {file}',
   },
   repositoryContext: {
     title: '上下文',
@@ -753,6 +765,11 @@ export const zhCN = {
         AskQuestionTool: {
           name: '询问问题',
           description: '需要用户输入时暂停执行并提出明确的问题。',
+        },
+        SendFileTool: {
+          name: '发送文件',
+          description:
+            '把完成的文件交给用户：发到对方所用的聊天应用，或作为附件显示在桌面和手机上。',
         },
         GoalTool: { name: '管理目标', description: '创建、查看和完成能够跨回合持续执行的目标。' },
         TaskCreateTool: {

@@ -191,7 +191,8 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
         // Ids are per desktop path, so each desktop keeps its own folder.
         val desktop = Integer.toHexString((desktops.activeId ?: "demo").hashCode())
         val directory = java.io.File(getApplication<Application>().cacheDir, "media/$desktop").apply { mkdirs() }
-        val file = java.io.File(directory, "${item.id}.${item.extension.ifEmpty { "bin" }}")
+        // The original name, so a shared file arrives as report.pdf rather than an id.
+        val file = java.io.File(java.io.File(directory, item.id).apply { mkdirs() }, item.safeName)
         if (file.isFile) return file
         val download = synchronized(mediaDownloads) {
             mediaDownloads.getOrPut(file.path) {

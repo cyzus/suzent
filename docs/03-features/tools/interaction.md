@@ -7,8 +7,8 @@ description: How the agent asks you a focused question, shows tables, forms, and
 # Questions, canvas & messages
 
 Besides writing replies, the agent can ask you a question with clickable
-answers, show you an interactive panel, and send a message through one of
-your chat apps.
+answers, show you an interactive panel, hand you finished files, and send a
+message through one of your chat apps.
 
 ## Questions
 
@@ -50,6 +50,29 @@ Clicking a button or submitting a form sends your action and any form values
 to the agent as a new message, and it responds. This tool is **Render UI** in
 the **Interaction** group of the tool picker. It's off by default, but the
 agent can switch it on when it needs it.
+
+## Receiving files
+
+When the agent finishes something you should have, such as a report, a
+spreadsheet, a chart, a video or a recording, it hands it to you with **Send
+File**. Where it arrives depends on where you're talking to it:
+
+- **On the computer**, the file appears under the reply. Images, videos and
+  audio play right there; other files show as a card with a button that opens
+  their folder.
+- **On your phone**, the same files appear under the reply. Images, videos and
+  audio play in place; for other files, tap the download button, then share or
+  open them with another app.
+- **In a chat app**, the file is sent to that conversation: Telegram, Slack,
+  Discord and Feishu receive it as a file or picture. WeChat can't receive
+  files from Suzent yet, so the agent tells you where the file is saved
+  instead. Each app has its own size limit (50 MB on Telegram, 30 MB on Feishu,
+  10 MB on Discord); a file over it isn't sent, and the agent tells you why.
+
+Send File is always on. It only sends files from the folders the conversation
+may already read, such as the project workspace, and only to you in the
+current conversation. To send something to someone else, the agent uses a
+chat-app message, which asks first.
 
 ## Sending a message through a chat app
 
