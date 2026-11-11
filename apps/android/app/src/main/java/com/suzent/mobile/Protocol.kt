@@ -27,7 +27,7 @@ data class ChatMessage(val role: String, val content: String, val parts: List<Me
 data class RegentStatus(val waiting: Int = 0, val unread: Int = 0, val lastMessageAt: String? = null)
 
 data class Chat(val id: String, val title: String, val running: Boolean, val messages: List<ChatMessage>,
-    val projectId: String? = null, val projectName: String? = null, val model: String? = null, val models: List<String> = emptyList(), val pinned: Boolean = false, val platform: String? = null, val parentChatId: String? = null, val regent: RegentStatus? = null) {
+    val projectId: String? = null, val projectName: String? = null, val model: String? = null, val models: List<String> = emptyList(), val pinned: Boolean = false, val platform: String? = null, val parentChatId: String? = null, val regent: RegentStatus? = null, val unread: Int = 0) {
     val isRegent: Boolean get() = platform == "focal"
     companion object {
         fun parse(json: JSONObject): Chat {
@@ -60,7 +60,7 @@ data class Chat(val id: String, val title: String, val running: Boolean, val mes
                 }, projectId = json.opt("projectId") as? String, projectName = json.opt("projectName") as? String,
                 regent = json.optJSONObject("regent")?.let { RegentStatus(it.optInt("waiting"), it.optInt("unread"), it.opt("lastMessageAt") as? String) },
                 platform = json.opt("platform") as? String, parentChatId = json.opt("parentChatId") as? String,
-                pinned = json.optBoolean("pinned"), model = json.opt("model") as? String, models = json.optJSONArray("models")?.let { a -> (0 until a.length()).map { a.getString(it) } } ?: emptyList())
+                pinned = json.optBoolean("pinned"), unread = json.optInt("unreadCount"), model = json.opt("model") as? String, models = json.optJSONArray("models")?.let { a -> (0 until a.length()).map { a.getString(it) } } ?: emptyList())
         }
     }
 }

@@ -42,7 +42,7 @@ class TestChatOperations:
             shared, config={"platform": "subagent", "parent_chat_id": "parent"}
         )
         assert db.get_chat_navigation([shared, "missing"]) == {
-            shared: {"platform": "subagent", "parentChatId": "parent"}
+            shared: {"platform": "subagent", "parentChatId": "parent", "unreadCount": 0}
         }
         assert len(db.list_chat_titles(limit=1)) == 1
         db.create_chat("Internal", {"platform": "dream"})

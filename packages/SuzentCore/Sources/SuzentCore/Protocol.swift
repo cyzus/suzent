@@ -60,6 +60,8 @@ public struct Chat: Decodable, Identifiable, Sendable {
     public var platform: String?
     public var parentChatId: String?
     public var regent: RegentStatus?
+    /// Finished turns nobody has viewed yet; older desktops omit it.
+    public var unreadCount: Int?
     public var isRegent: Bool { platform == "focal" }
 
     public init(id: String, title: String) {

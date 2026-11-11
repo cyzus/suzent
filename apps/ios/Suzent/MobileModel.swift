@@ -164,6 +164,8 @@ import SuzentCore
     }
     var liveParts: [MessagePart] = []
     var regentVisible = false
+    /// The open conversation is on screen, so its finished replies count as read.
+    var chatVisible = false
     var pendingApprovals: [ApprovalRequest] = []
     var approvalChoices: [String: String] = [:]
     var approvalBusy = false
@@ -686,6 +688,7 @@ import SuzentCore
                 next.rename(id, to: name)
                 if (try? CredentialStore.save(next)) != nil { store = next }
             }
+            if let id = selected?.id, !id.isEmpty, chatVisible, foreground { await clearUnread(id, client: client) }
             if let id = selected?.id, !id.isEmpty, !streaming {
                 let chat = try await client.chat(id)
                 guard generation == current, selected?.id == id, !streaming else { return }
@@ -749,7 +752,7 @@ import SuzentCore
             let saved = try await client.chat(chat.id)
             guard current == generation, selected?.id == chat.id else { return }
             selected = saved
-            if saved.isRegent { try await client.markRead(saved.id) }
+            if saved.isRegent { try await client.markRead(saved.id) } else { await clearUnread(saved.id, client: client) }
             guard current == generation, selected?.id == saved.id else { return }
             restoreModel(saved)
             openedVersion += 1
@@ -950,6 +953,18 @@ import SuzentCore
         let parts = await buffer.drain()
         guard generation == current, foreground, !Task.isCancelled else { return }
         if let parts { liveParts = parts }
+    }
+
+    /// Desktop counts each finished turn as unread until someone views the conversation.
+    private func clearUnread(_ id: String, client: any MobileClient) async {
+        guard chats.contains(where: { $0.id == id && ($0.unreadCount ?? 0) > 0 && !$0.isRegent }) else { return }
+        guard (try? await client.markRead(id)) != nil else { return }
+        chats = chats.map { item in
+            guard item.id == id else { return item }
+            var updated = item
+            updated.unreadCount = 0
+            return updated
+        }
     }
 
     private func syncRunning(_ saved: Chat) {

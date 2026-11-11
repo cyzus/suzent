@@ -108,6 +108,7 @@ private struct ChatSidebarRow: View {
     @State private var swipedDelete = 0
     private var pinned: Bool { chat.pinned == true }
     private var running: Bool { chat.isRunning == true }
+    private var unread: Bool { (chat.unreadCount ?? 0) > 0 && !selected }
     private var swipeable: Bool { enabled && canManage && !running }
 
     private var meta: Text? {
@@ -121,7 +122,7 @@ private struct ChatSidebarRow: View {
             HStack(spacing: 6) {
                 if pinned { Image(systemName: "pin.fill").font(.system(size: 10)) }
                 VStack(alignment: .leading, spacing: 0) {
-                    Text(chat.title).suzentFont(PresentationTokens.typeCaption, weight: .medium)
+                    Text(chat.title).suzentFont(PresentationTokens.typeCaption, weight: unread ? .heavy : .medium)
                         .lineLimit(1).truncationMode(.tail)
                     HStack(spacing: 0) {
                         if let meta { meta.lineLimit(1).truncationMode(.tail) }
@@ -327,6 +328,7 @@ struct ContentView: View {
         .onChange(of: model.selected?.isRegent == true && conversationVisible, initial: true) { _, visible in
             model.regentVisible = visible
         }
+        .onChange(of: conversationVisible, initial: true) { _, visible in model.chatVisible = visible }
         .onChange(of: model.connected) { _, connected in
             showModelPicker = false; showProjectPicker = false; path = []
             if !connected { showSettings = false }

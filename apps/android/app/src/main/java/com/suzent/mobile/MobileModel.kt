@@ -137,6 +137,8 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
     var attachments by mutableStateOf<List<PendingAttachment>>(emptyList())
     var attachmentsSupported by mutableStateOf(false)
     var regentVisible = false
+    /** The open conversation is on screen, so its finished replies count as read. */
+    var chatVisible by mutableStateOf(false)
     var liveParts by mutableStateOf<List<MessagePart>>(emptyList())
     var pendingApprovals by mutableStateOf<List<ApprovalRequest>>(emptyList())
     var approvalChoices by mutableStateOf<Map<String, String>>(emptyMap())
@@ -599,6 +601,7 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
             attachmentsSupported = api.supportsAttachments
             scheduledTasks = taskList
             val id = selected?.id
+            if (!id.isNullOrEmpty() && chatVisible && foreground) clearUnread(api, id)
             if (!id.isNullOrEmpty() && !streaming) {
                 val chat = api.chat(id)
                 if (current == generation && selected?.id == id && !streaming) {
@@ -617,6 +620,15 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
             }
             if (current == generation) handle(failure, R.string.refresh_error)
         }
+    }
+
+    /** Desktop counts each finished turn as unread until someone views the conversation. */
+    private suspend fun clearUnread(api: MobileClient, id: String) {
+        if (chats.none { it.id == id && it.unread > 0 && !it.isRegent }) return
+        try { api.markRead(id) }
+        catch (failure: CancellationException) { throw failure }
+        catch (_: Exception) { return }
+        chats = chats.map { if (it.id == id) it.copy(unread = 0) else it }
     }
 
     fun manageChat(chat: Chat, action: String, value: String? = null) {
@@ -673,11 +685,11 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
                 val saved = api.chat(chat.id)
                 if (current == generation && selected?.id == chat.id) {
                     selected = saved
-                    if (saved.isRegent) api.markRead(saved.id)
+                    if (saved.isRegent) api.markRead(saved.id) else clearUnread(api, saved.id)
                     if (current != generation || selected?.id != saved.id) return@launch
                     restoreModel(saved)
                     openedVersion++
-                    chats = chats.map { if (it.id == saved.id) saved.copy(messages = emptyList()) else it }
+                    chats = chats.map { if (it.id == saved.id) saved.copy(messages = emptyList(), unread = 0) else it }
                     if (saved.running) observe(chat.id)
                 }
             } catch (failure: CancellationException) { throw failure }
@@ -879,7 +891,7 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
                 val saved = api.chat(id)
                 if (current == generation && selected?.id == id) {
                     selected = saved
-                    chats = chats.map { if (it.id == saved.id) saved.copy(messages = emptyList()) else it }
+                    chats = chats.map { if (it.id == saved.id) saved.copy(messages = emptyList(), unread = it.unread) else it }
                     liveParts = emptyList()
                 }
             } catch (error: CancellationException) { throw error }

@@ -134,6 +134,7 @@ private fun MobileScreen(model: MobileModel) {
         val wide = maxWidth >= WideLayoutWidth
         LaunchedEffect(showHome, showSettings, model.selected?.id, wide) {
             model.regentVisible = (wide || !showHome) && !showSettings && model.selected?.isRegent == true
+            model.chatVisible = (wide || !showHome) && !showSettings
         }
         val openChat: (Chat) -> Unit = { chat -> focus.clearFocus(); model.open(chat); showSettings = false; showHome = false }
         val sidebar: @Composable () -> Unit = {
@@ -797,8 +798,9 @@ private fun SidebarChat(chat: Chat, selected: Boolean, model: MobileModel, open:
         verticalAlignment = Alignment.CenterVertically) {
         if (chat.pinned) Icon(painterResource(R.drawable.ic_chat_pin), null, tint = foreground, modifier = Modifier.padding(end = 6.dp).size(12.dp))
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            val unread = chat.unread > 0 && !(model.chatVisible && chat.id == model.selected?.id)
             Text(chat.title, color = foreground, fontSize = PresentationTokens.typeCaption.sp, lineHeight = 18.sp,
-                fontWeight = FontWeight.Medium, maxLines = 1,
+                fontWeight = if (unread) FontWeight.ExtraBold else FontWeight.Medium, maxLines = 1,
                 overflow = TextOverflow.Ellipsis)
             val muted = if (pressed) Color.Black else MaterialTheme.colorScheme.onSurfaceVariant
             val meta = when {

@@ -94,6 +94,11 @@ Session capability `chat_pagination: 1` enables these read-only navigation route
   returns authorized, existing, non-archived summaries only. Omitted IDs must be
   evicted, while summaries loaded concurrently outside that request are retained.
 
+Chat summaries carry `unreadCount`, the number of finished turns nobody has viewed
+yet (absent on older desktops, read as 0). Clients show unread rows in bold, the way
+the desktop sidebar does, and clear the count with `POST /mobile/client/chats/{id}/read`
+when they open the conversation or while it stays on screen.
+
 Authorization is applied before paging and counting. Regent never consumes a page
 slot and still requires all-conversation access. The legacy chat index remains for
 older apps; native clients fall back to it when the capability is absent.

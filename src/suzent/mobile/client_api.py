@@ -246,6 +246,7 @@ def chat_summaries(
             "projectId": projects_by_chat.get(chat_id, (None, None))[0],
             "projectName": projects_by_chat.get(chat_id, (None, None))[1],
             "platform": navigation.get(chat_id, {}).get("platform"),
+            "unreadCount": navigation.get(chat_id, {}).get("unreadCount", 0),
             "parentChatId": parent
             if (parent := navigation.get(chat_id, {}).get("parentChatId"))
             and grant.permissions.permits_chat(parent)
