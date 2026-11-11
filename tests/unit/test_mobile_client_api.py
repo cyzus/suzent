@@ -58,6 +58,7 @@ def setup_client(tmp_path, monkeypatch):
             key: {
                 "platform": records[key].config.get("platform"),
                 "parentChatId": records[key].config.get("parent_chat_id"),
+                "unreadCount": records[key].config.get("unread_count", 0),
             }
             for key in ids
             if key in records
@@ -109,6 +110,7 @@ def test_scoped_reads_and_host_endpoints(setup_client, monkeypatch):
             "projectId": "p-shared",
             "projectName": "Shared",
             "platform": None,
+            "unreadCount": 0,
             "parentChatId": None,
         }
     ]
@@ -1334,6 +1336,19 @@ def test_navigation_redacts_unshared_parent(
         row = next(row for row in rows if row["id"] == "shared")
         assert row["platform"] == "subagent"
         assert row["parentChatId"] == expected
+
+
+def test_navigation_reports_unread_replies(
+    setup_client: tuple[TestClient, PairingStore],
+) -> None:
+    client, store = setup_client
+    from suzent.mobile.client_api import get_database
+
+    get_database().get_chat("shared").config = {"unread_count": 2}
+    result = grant(store, chat_ids=["shared"])
+    client.headers["Authorization"] = f"Bearer {result['token']}"
+    rows = client.get("/mobile/client/chats").json()["chats"]
+    assert [(row["id"], row["unreadCount"]) for row in rows] == [("shared", 2)]
 
 
 def test_scheduled_tasks_are_scoped_and_safe(

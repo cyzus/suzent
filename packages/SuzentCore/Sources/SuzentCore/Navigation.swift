@@ -54,8 +54,11 @@ public extension MobileClient {
     func navigationMetadata() async throws -> NavigationMetadata {
         let rows = try await chats()
         let projects = try await projects().map { project in
-            Project(id: project.id, name: project.name,
-                    chatCount: rows.filter { $0.projectId == project.id && !$0.isRegent && !$0.isScheduled && $0.pinned != true }.count)
+            let members = rows.filter { $0.projectId == project.id && !$0.isRegent }
+            return Project(id: project.id, name: project.name,
+                           chatCount: members.filter { !$0.isScheduled && $0.pinned != true }.count,
+                           running: members.contains { $0.isRunning == true },
+                           unread: members.contains { ($0.unreadCount ?? 0) > 0 })
         }
         return NavigationMetadata(regent: rows.first { $0.isRegent }, projects: projects)
     }

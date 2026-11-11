@@ -101,6 +101,7 @@ import Foundation
 
     public func markRead(_ id: String) async throws {
         let i = try index(id)
+        records[i]["unreadCount"] = 0
         if var status = records[i]["regent"] as? [String: Any] { status["unread"] = 0; records[i]["regent"] = status; try save() }
     }
 

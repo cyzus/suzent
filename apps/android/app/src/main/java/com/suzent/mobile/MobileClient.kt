@@ -17,7 +17,9 @@ interface MobileClient {
     suspend fun navigationMetadata(): NavigationMetadata {
         val rows = chats()
         return NavigationMetadata(rows.firstOrNull { it.isRegent }, projects().map { project ->
-            project.copy(chatCount = rows.count { it.projectId == project.id && !it.isRegent && !it.isScheduled && !it.pinned })
+            val members = rows.filter { it.projectId == project.id && !it.isRegent }
+            project.copy(chatCount = members.count { !it.isScheduled && !it.pinned },
+                running = members.any { it.running }, unread = members.any { it.unread > 0 })
         })
     }
     suspend fun chatStatuses(ids: List<String>): List<Chat> = chats().filter { it.id in ids.toSet() }
