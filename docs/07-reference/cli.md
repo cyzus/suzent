@@ -111,6 +111,10 @@ again when the task is done.
 Leave out the task to read it from standard input, for example
 `cat task.md | suzent run`.
 
+Each run is saved as a conversation named `[run]` followed by the start of the
+task. Suzent does not rename it, so a run makes no extra model call for a
+title.
+
 Nobody is there to approve tool requests during a run. A tool that would ask
 for permission is denied, and the command lists what it denied when it
 finishes. Pass `--permission-mode full_access` to let the agent use every tool
