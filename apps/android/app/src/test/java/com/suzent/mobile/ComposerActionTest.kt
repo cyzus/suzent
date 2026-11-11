@@ -11,8 +11,8 @@ class ComposerActionTest {
     @Test fun activeCallHasOneHangUpActionEvenWhileTaskRuns() {
         for (content in listOf(false, true)) for (busy in listOf(false, true)) {
             assertEquals(ComposerAction.HANG_UP, ComposerAction.resolve(content, busy, true, true, false))
-            assertEquals(ComposerAction.STOP, ComposerAction.resolve(content, busy, true, false, false))
         }
+        for (busy in listOf(false, true)) assertEquals(ComposerAction.STOP, ComposerAction.resolve(false, busy, true, false, false))
     }
     @Test fun connectingCanBeCancelledAndConnectedCallsCanHangUp() {
         assertEquals(ComposerAction.CONNECTING, ComposerAction.resolve(false, false, false, true, true))
@@ -21,5 +21,11 @@ class ComposerActionTest {
     @Test fun runningTasksKeepStopWhileOtherWorkShowsProgress() {
         assertEquals(ComposerAction.CONNECTING, ComposerAction.resolve(true, true, true, true, true))
         assertEquals(ComposerAction.LOADING, ComposerAction.resolve(true, true, false, false, false))
+    }
+    @Test fun typingDuringATurnRedirectsOrQueuesInsteadOfStopping() {
+        assertEquals(ComposerAction.REDIRECT, ComposerAction.resolve(true, false, true, false, false, canRedirect = true))
+        assertEquals(ComposerAction.QUEUE, ComposerAction.resolve(true, false, true, false, false, canRedirect = false))
+        assertEquals(ComposerAction.LOADING, ComposerAction.resolve(true, true, true, false, false, canRedirect = true))
+        assertEquals(ComposerAction.STOP, ComposerAction.resolve(false, false, true, false, false, canRedirect = true))
     }
 }

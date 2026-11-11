@@ -359,3 +359,9 @@
 "Finding a connection" = "正在寻找可用连接";
 "Verifying connection" = "正在验证连接";
 "Syncing desktop" = "正在同步桌面";
+"%lld queued · sent when this turn ends" = "%lld 条排队中 · 本轮结束后发送";
+"Cancel all" = "全部取消";
+"Redirect now" = "立即重定向";
+"Cancel this message" = "取消这条消息";
+"Queue until this turn ends" = "排队到本轮结束";
+"Redirect the agent" = "重定向助手";

@@ -20,6 +20,8 @@ public protocol MobileClient: Sendable {
     func upload(_ attachments: [PendingAttachment], chatID: String) async throws -> [String]
     func send(_ text: String, chatID: String, model: String?, attachments: [String]) async throws
     func stop(_ chatID: String) async throws
+    /// Interrupts the running turn and continues it with `text`; a turn that already ended simply gets `text` next.
+    func steer(_ text: String, chatID: String, model: String?) async throws
     func approvals(_ id: String) async throws -> ApprovalState
     func answerSurface(_ chatID: String, surfaceID: String, answer: [String: JSONValue]) async throws
     func decideApprovals(_ id: String, pending: [ApprovalRequest], choices: [String: String]) async throws

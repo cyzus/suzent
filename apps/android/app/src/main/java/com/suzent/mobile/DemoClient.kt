@@ -24,6 +24,7 @@ class DemoClient(fixture: String, private val storage: File? = null, language: S
     override val supportsScheduledTasks = true
     override val supportsChatOverview = true
     override val supportsSurfaces = true
+    override val supportsSteer = true
     val prompts: List<String> get() = listOf(label("prompt"), label("tool_prompt"))
 
     init {
@@ -140,6 +141,11 @@ class DemoClient(fixture: String, private val storage: File? = null, language: S
         val run = runs[id] ?: return
         run.text = run.text.take(run.visible) + label("stopped")
         finish(id)
+    }
+
+    override suspend fun steer(id: String, text: String, model: String?) {
+        stop(id)
+        send(id, text, model, emptyList())
     }
 
     override suspend fun messageAction(id: String, index: Int, action: String, text: String?, model: String?): String {

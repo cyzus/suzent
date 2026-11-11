@@ -153,7 +153,7 @@ Use the signed Release builds, not the debug builds, for acceptance:
 - Pair over local trusted HTTPS and a remote HTTPS address; reject changed trust.
 - Cancel/timeout on wrong Wi-Fi, desktop shutdown, or rejected permissions.
 - Re-pair the same installation and revoke credentials from desktop.
-- Send, stop, approve tools, background/foreground, and recover a running stream.
+- Send, stop, redirect and queue mid-turn, approve tools, background/foreground, and recover a running stream.
 - Upgrade a signed Android release and a TestFlight build without losing pairing.
 - Check iOS selection overlay, long names, large text, dark mode, and VoiceOver.
 - Confirm the privacy/support pages, permission explanations, store screenshots,
