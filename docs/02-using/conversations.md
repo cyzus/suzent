@@ -95,7 +95,9 @@ panel: images it generated or edited, videos and speech it made, files it sent
 you, and files it saved into the project library's `artifacts/` folder. Newest
 comes first, and a file saved several times is listed once. Images show as
 thumbnails you can open full size, videos and audio play right in the panel,
-and clicking a file opens it under **Files**.
+and clicking a file opens it under **Files**. Above a file open there, the
+folder button shows it in Finder or File Explorer, and the clipboard button
+copies where it is saved on your computer.
 
 Ordinary edits, such as code or notes it changed while working, stay on the
 **Edited files** card under each reply instead. Files it only read are not
