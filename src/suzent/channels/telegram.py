@@ -134,6 +134,8 @@ class TelegramChannel(SocialChannel):
     Driver for Telegram Bot API.
     """
 
+    max_file_bytes = 50 * 1024 * 1024
+
     def __init__(self, config: dict[str, Any]):
         super().__init__("telegram", config)
         self.token = config.get("token")

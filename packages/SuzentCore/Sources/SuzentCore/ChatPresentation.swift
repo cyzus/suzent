@@ -50,7 +50,13 @@ public struct MediaItem: Decodable, Sendable, Equatable, Hashable, Identifiable 
 
     /// Only ids the backend could have issued, and kinds this app can show.
     public var isValid: Bool {
-        id.count == 32 && id.allSatisfy { $0.isHexDigit && !$0.isUppercase } && ["image", "video", "audio"].contains(kind)
+        id.count == 32 && id.allSatisfy { $0.isHexDigit && !$0.isUppercase } && ["image", "video", "audio", "file"].contains(kind)
+    }
+    /// The original name, safe as one path component, so a shared file keeps it.
+    public var safeName: String {
+        let cleaned = String(name.map { "/\\:\u{0}".contains($0) ? "_" : $0 })
+            .trimmingCharacters(in: CharacterSet(charactersIn: ". "))
+        return cleaned.isEmpty ? "file.\(fileExtension)" : String(cleaned.prefix(120))
     }
     public var fileExtension: String {
         let ext = (name as NSString).pathExtension.lowercased().filter { $0.isLetter || $0.isNumber }

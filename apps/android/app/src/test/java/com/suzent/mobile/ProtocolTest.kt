@@ -40,6 +40,8 @@ class ProtocolTest {
         val media = chat.messages.single().parts.single().media
         assertEquals(listOf(MediaItem(id, "video", "clip.MP4")), media)
         assertEquals("mp4", media.single().extension)
+        assertEquals("a_b.pdf", MediaItem(id, "file", "a/b.pdf").safeName)
+        assertEquals("file.bin", MediaItem(id, "file", "..").safeName)
     }
 
     private fun normalize(value: Any?): Any? = when (value) {

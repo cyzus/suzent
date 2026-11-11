@@ -1,4 +1,4 @@
-"""Images, video and audio the agent made in a conversation, as the phone sees them.
+"""Images, video, audio and files the agent made or sent in a conversation, as the phone sees them.
 
 The phone names a file by an opaque id derived from its path, never by the path
 itself, and only files a media tool reported in that conversation are served.
@@ -8,10 +8,11 @@ from __future__ import annotations
 
 import hashlib
 import json
+import mimetypes
 from pathlib import PurePath
 from typing import Literal
 
-type MediaKind = Literal["image", "video", "audio"]
+type MediaKind = Literal["image", "video", "audio", "file"]
 
 MEDIA_TYPES: dict[str, tuple[MediaKind, str]] = {
     ".png": ("image", "image/png"),
@@ -31,15 +32,21 @@ MEDIA_TYPES: dict[str, tuple[MediaKind, str]] = {
     ".opus": ("audio", "audio/ogg"),
 }
 
-SAVED_PATH_TOOLS = {"generate_image", "edit_image", "check_video", "speak"}
+SAVED_PATH_TOOLS = {"generate_image", "edit_image", "check_video", "speak", "send_file"}
+# Only send_file hands over arbitrary files; the others are media by construction.
+ANY_FILE_TOOLS = {"send_file"}
 
 
 def media_id(path: str) -> str:
     return hashlib.sha256(path.encode("utf-8")).hexdigest()[:32]
 
 
-def media_type(path: str) -> tuple[MediaKind, str] | None:
-    return MEDIA_TYPES.get(PurePath(path).suffix.lower())
+def media_type(path: str, any_file: bool = False) -> tuple[MediaKind, str] | None:
+    known = MEDIA_TYPES.get(PurePath(path).suffix.lower())
+    if known is None and any_file:
+        guessed = mimetypes.guess_type(PurePath(path).name)[0]
+        return "file", guessed or "application/octet-stream"
+    return known
 
 
 def _envelope(output: object) -> dict | None:
@@ -62,7 +69,8 @@ def tool_media_paths(part: dict) -> list[str]:
     if name not in SAVED_PATH_TOOLS and name != "analyze_visual":
         return []
     result = _envelope(part.get("output"))
-    if not result or result.get("success") is not True:
+    # A send_file whose chat-app upload failed still names files that exist here.
+    if not result or (result.get("success") is not True and name not in ANY_FILE_TOOLS):
         return []
     metadata = result.get("metadata")
     if not isinstance(metadata, dict):
@@ -74,19 +82,21 @@ def tool_media_paths(part: dict) -> list[str]:
     )
     if not isinstance(raw, list):
         return []
+    any_file = name in ANY_FILE_TOOLS
     paths: list[str] = []
     for path in raw:
-        if isinstance(path, str) and path.strip() and media_type(path) is not None:
+        if isinstance(path, str) and path.strip() and media_type(path, any_file):
             if path not in paths:
                 paths.append(path)
     return paths
 
 
 def media_items(part: dict) -> list[dict[str, str]]:
+    any_file = part.get("toolName") in ANY_FILE_TOOLS
     return [
         {
             "id": media_id(path),
-            "kind": media_type(path)[0],
+            "kind": media_type(path, any_file)[0],
             "name": PurePath(path).name,
         }
         for path in tool_media_paths(part)
@@ -111,8 +121,8 @@ def with_media(messages: list) -> list:
     return annotated
 
 
-def find_media(messages: list, wanted: str) -> str | None:
-    """The path behind ``wanted``, if a media tool in these messages reported it."""
+def find_media(messages: list, wanted: str) -> tuple[str, str] | None:
+    """The path and content type behind ``wanted``, if a tool in these messages reported it."""
     for message in messages:
         parts = message.get("parts") if isinstance(message, dict) else None
         for part in parts if isinstance(parts, list) else []:
@@ -120,5 +130,6 @@ def find_media(messages: list, wanted: str) -> str | None:
                 continue
             for path in tool_media_paths(part):
                 if media_id(path) == wanted:
-                    return path
+                    any_file = part.get("toolName") in ANY_FILE_TOOLS
+                    return path, media_type(path, any_file)[1]
     return None

@@ -270,8 +270,13 @@ choices give haptic feedback, and iOS text follows Dynamic Type.
 
 The mobile chat load (`src/suzent/mobile/media.py`) adds `media:[{id,kind,name}]` to each
 finished, successful tool part that produced or read media: `saved_paths` of
-`generate_image`, `edit_image`, `check_video` and `speak`, and `visual_path` of
-`analyze_visual`, limited to image, video and audio extensions. The id is the first 32
+`generate_image`, `edit_image`, `check_video`, `speak` and `send_file`, and
+`visual_path` of `analyze_visual`. Only `send_file` may hand over any file type (kind
+`file`, served with a content type guessed from its name); the others are limited to
+image, video and audio extensions. A `send_file` whose chat-app upload failed still
+counts, because its `saved_paths` are files that exist on the desktop (the desktop
+gallery and the Artifacts panel show them too); a call rejected before that carries no
+`saved_paths`. The id is the first 32
 hex digits of the path's SHA-256, so the phone never learns desktop paths.
 `GET /mobile/client/chats/{id}/media/{media_id}` re-scans the stored transcript for a
 matching path, resolves it with the same `PathResolver` the desktop's `/sandbox/serve`
@@ -283,7 +288,9 @@ Each item is downloaded once into the app's cache (`cacheDir/media/<desktop>/` o
 Android, `Caches/media/<desktop>/` on iOS) and played from the local file: Android uses
 `VideoView` with `MediaController` for video and `MediaPlayer` for audio, iOS uses
 AVKit's `VideoPlayer` for both. Downloading first keeps playback independent of the
-transport, since neither system player can speak the relay tunnel. Images are decoded
+transport, since neither system player can speak the relay tunnel. Items of kind
+`file` download only when tapped, keep their original name under `<id>/`, and open the
+system share sheet (Android through the existing `FileProvider`). Images are decoded
 at most 1600 px on the long side. Live turns show media once the saved transcript loads.
 
 ### Conversation info and phone preferences

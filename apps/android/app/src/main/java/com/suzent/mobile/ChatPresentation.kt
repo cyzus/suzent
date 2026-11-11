@@ -16,6 +16,8 @@ data class MessagePart(
 /** An image, video or audio file a tool made, fetched from the desktop by its opaque id. */
 data class MediaItem(val id: String, val kind: String, val name: String) {
     val extension: String get() = name.substringAfterLast('.', "").lowercase().filter { it.isLetterOrDigit() }.take(5)
+    val safeName: String get() = name.replace(Regex("[/\\\\:\u0000]"), "_").trim('.', ' ').take(120)
+        .ifEmpty { "file.${extension.ifEmpty { "bin" }}" }
 }
 
 data class DisplayMessage(val role: String, val parts: List<MessagePart>, val citationSources: List<CitationSource> = emptyList(),
