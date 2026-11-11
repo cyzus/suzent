@@ -12,7 +12,7 @@ from suzent.permissions.models import PermissionMode
 
 @pytest.fixture
 def default_mode() -> str:
-    return str(getattr(CONFIG, "default_permission_mode", "default") or "default")
+    return str(getattr(CONFIG, "default_permission_mode", "auto") or "auto")
 
 
 def test_seed_empty_config_uses_configured_default(default_mode: str) -> None:

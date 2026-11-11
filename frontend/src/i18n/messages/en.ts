@@ -2135,9 +2135,9 @@ export const en = {
       full_access: 'Full Access',
     },
     permissionModeDescriptions: {
-      default: 'Ask before state-changing tool actions.',
-      auto: 'Classify unresolved actions automatically; hard safety rules still apply.',
-      full_access: 'Run tool actions without approval prompts; explicit denies still apply.',
+      default: 'Ask before changes',
+      auto: 'Auto-approve safe actions',
+      full_access: 'Never ask for approval',
     },
     heartbeatRunning: 'Heartbeat running',
     heartbeatHealthy: 'Heartbeat healthy',
