@@ -34,6 +34,7 @@ targets:
         INFOPLIST_KEY_NSCameraUsageDescription: Scan a pairing invitation from your Suzent desktop, and take photos to send to Suzent.
         INFOPLIST_KEY_NSMicrophoneUsageDescription: Talk with Suzent using your microphone.
         INFOPLIST_KEY_NSLocalNetworkUsageDescription: Connect to your paired Suzent desktop backend.
+        INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription: Save images Suzent made to your photo library.
         INFOPLIST_FILE: Config/Release.plist
       configs:
         Release:

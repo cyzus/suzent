@@ -329,4 +329,10 @@
     <string name="media_play">Play %1$s</string>
     <string name="media_pause">Pause %1$s</string>
     <string name="media_share">Share %1$s</string>
+    <string name="media_open">Open %1$s full screen</string>
+    <string name="media_actions">Save or share</string>
+    <string name="media_close">Close</string>
+    <string name="media_save">Save to Photos</string>
+    <string name="media_saved">Saved to Photos</string>
+    <string name="media_save_failed">Couldn\'t save to Photos</string>
 </resources>

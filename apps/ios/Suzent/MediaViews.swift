@@ -1,5 +1,6 @@
 import AVKit
 import ImageIO
+import Photos
 import SwiftUI
 import SuzentCore
 
@@ -84,8 +85,11 @@ private struct MediaTile: View {
     let item: MediaItem
     let loader: MediaLoader
     @State private var image: UIImage?
+    @State private var file: URL?
     @State private var player: AVPlayer?
     @State private var failed = false
+    @State private var viewing = false
+    @State private var saveNote: String?
 
     var body: some View {
         content
@@ -98,9 +102,21 @@ private struct MediaTile: View {
     @ViewBuilder private var content: some View {
         if failed {
             note(String(localized: "\(item.name) can't be opened. It may have been moved or deleted on your computer."))
-        } else if let image {
+        } else if let image, let file {
             Image(uiImage: image).resizable().scaledToFit().frame(maxHeight: 360)
+                .contentShape(Rectangle())
+                .onTapGesture { viewing = true }
+                .contextMenu {
+                    Button { Task { saveNote = await PhotoSaver.saveNote(file) } } label: {
+                        Label("Save to Photos", systemImage: "square.and.arrow.down")
+                    }
+                    ShareLink(item: file) { Label("Share \(item.name)", systemImage: "square.and.arrow.up") }
+                }
+                .overlay(alignment: .bottom) { SaveNote(text: $saveNote) }
                 .accessibilityLabel(Text(item.name))
+                .accessibilityHint(Text("Opens full screen. Touch and hold to save or share."))
+                .accessibilityAddTraits(.isButton)
+                .fullScreenCover(isPresented: $viewing) { ImageViewer(file: file, name: item.name) }
         } else if let player {
             VideoPlayer(player: player).frame(height: item.kind == "audio" ? 80 : 240)
                 .accessibilityLabel(Text(item.name))
@@ -117,6 +133,7 @@ private struct MediaTile: View {
     private func load() async {
         guard let file = await loader.load(item) else { failed = true; return }
         if item.kind == "image" {
+            self.file = file
             let decoded = await Task.detached(priority: .userInitiated) { downsampledImage(file) }.value
             if let decoded { image = decoded } else { failed = true }
         } else {
@@ -125,13 +142,131 @@ private struct MediaTile: View {
     }
 }
 
-/// Decodes at most about 1600 px on the long side, so a large render can't exhaust memory.
-private func downsampledImage(_ url: URL) -> UIImage? {
+/// Full screen: pinch or double tap to zoom, drag to pan when zoomed, touch and hold to save or share.
+private struct ImageViewer: View {
+    let file: URL
+    let name: String
+    @Environment(\.dismiss) private var dismiss
+    @State private var image: UIImage?
+    @State private var scale: CGFloat = 1
+    @State private var settledScale: CGFloat = 1
+    @State private var offset: CGSize = .zero
+    @State private var settledOffset: CGSize = .zero
+    @State private var saveNote: String?
+
+    var body: some View {
+        ZStack {
+            Color.black.ignoresSafeArea()
+            if let image {
+                Image(uiImage: image).resizable().scaledToFit()
+                    .scaleEffect(scale).offset(offset)
+                    .gesture(zoom.simultaneously(with: pan))
+                    .onTapGesture(count: 2) { toggleZoom() }
+                    .contextMenu {
+                        Button { save() } label: { Label("Save to Photos", systemImage: "square.and.arrow.down") }
+                        ShareLink(item: file) { Label("Share \(name)", systemImage: "square.and.arrow.up") }
+                    }
+                    .accessibilityLabel(Text(name))
+                    .accessibilityAction(named: Text("Save to Photos")) { save() }
+            } else {
+                ProgressView().tint(.white)
+            }
+        }
+        .overlay(alignment: .top) { toolbar }
+        .overlay(alignment: .bottom) { SaveNote(text: $saveNote).padding(.bottom, 24) }
+        .task { image = await Task.detached(priority: .userInitiated) { downsampledImage(file, maxSide: 2560) }.value }
+    }
+
+    private var toolbar: some View {
+        HStack(spacing: 4) {
+            Button { dismiss() } label: { Image(systemName: "xmark").frame(width: 44, height: 44) }
+                .accessibilityLabel(Text("Close"))
+            Text(name).suzentFont(PresentationTokens.typeMeta).lineLimit(1).truncationMode(.middle)
+            Spacer(minLength: 0)
+            Button { save() } label: { Image(systemName: "square.and.arrow.down").frame(width: 44, height: 44) }
+                .accessibilityLabel(Text("Save to Photos"))
+            ShareLink(item: file) { Image(systemName: "square.and.arrow.up").frame(width: 44, height: 44) }
+                .accessibilityLabel(Text("Share \(name)"))
+        }
+        .foregroundStyle(.white).padding(.horizontal, 8)
+    }
+
+    private var zoom: some Gesture {
+        MagnifyGesture()
+            .onChanged { value in scale = min(max(settledScale * value.magnification, 1), 6) }
+            .onEnded { _ in
+                settledScale = scale
+                if scale == 1 { offset = .zero; settledOffset = .zero }
+            }
+    }
+
+    private var pan: some Gesture {
+        DragGesture()
+            .onChanged { value in
+                guard scale > 1 else { return }
+                offset = CGSize(width: settledOffset.width + value.translation.width,
+                                height: settledOffset.height + value.translation.height)
+            }
+            .onEnded { _ in settledOffset = offset }
+    }
+
+    private func toggleZoom() {
+        withAnimation(.easeOut(duration: 0.2)) {
+            if scale > 1 { scale = 1; offset = .zero } else { scale = 2.5 }
+        }
+        settledScale = scale
+        settledOffset = offset
+    }
+
+    private func save() {
+        Task { saveNote = await PhotoSaver.saveNote(file) }
+    }
+}
+
+/// A short confirmation that fades after two seconds.
+private struct SaveNote: View {
+    @Binding var text: String?
+
+    var body: some View {
+        if let text {
+            Text(text).suzentFont(PresentationTokens.typeMeta).foregroundStyle(.white)
+                .padding(.horizontal, 12).padding(.vertical, 8).background(Color.black.opacity(0.75))
+                .padding(8)
+                .task(id: text) {
+                    try? await Task.sleep(for: .seconds(2))
+                    self.text = nil
+                }
+        }
+    }
+}
+
+/// Adds an image to the photo library, asking only for add access.
+enum PhotoSaver {
+    static func save(_ url: URL) async -> Bool {
+        let status = await PHPhotoLibrary.requestAuthorization(for: .addOnly)
+        guard status == .authorized || status == .limited else { return false }
+        do {
+            try await PHPhotoLibrary.shared().performChanges {
+                PHAssetCreationRequest.forAsset().addResource(with: .photo, fileURL: url, options: nil)
+            }
+            return true
+        } catch {
+            return false
+        }
+    }
+
+    @MainActor static func saveNote(_ url: URL) async -> String {
+        await save(url) ? String(localized: "Saved to Photos") : String(localized: "Couldn't save to Photos")
+    }
+}
+
+/// Decodes at most about [maxSide] px on the long side, so a large render can't exhaust memory.
+private func downsampledImage(_ url: URL, maxSide: Int = 1600) -> UIImage? {
     guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else { return nil }
     let options: [CFString: Any] = [
         kCGImageSourceCreateThumbnailFromImageAlways: true,
         kCGImageSourceCreateThumbnailWithTransform: true,
-        kCGImageSourceThumbnailMaxPixelSize: 1600,
+        kCGImageSourceThumbnailMaxPixelSize: maxSide,
     ]
     guard let image = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else { return nil }
     return UIImage(cgImage: image)
