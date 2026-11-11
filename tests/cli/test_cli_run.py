@@ -79,6 +79,8 @@ def test_run_prints_reply_and_exits(invoke, tmp_path: Path):
     assert "Hello there" in result.stdout
     config = backend.payloads[0]["config"]
     assert config["cwd"] == str(tmp_path.resolve())
+    assert config["sandbox_enabled"] is False
+    assert config["interaction_profile"] == "headless"
     assert "permission_mode" not in config
     assert backend.payloads[0]["message"] == "Say hello"
 
@@ -155,6 +157,7 @@ def test_run_mounts_cwd_when_the_sandbox_is_on(invoke, tmp_path: Path):
     assert result.exit_code == 0
     config = backend.payloads[0]["config"]
     assert config["cwd"] == "/mnt/workspace"
+    assert config["sandbox_enabled"] is True
     assert config["sandbox_volumes"] == [f"{tmp_path.resolve()}:/mnt/workspace"]
 
 
@@ -212,6 +215,46 @@ def test_run_sets_code_mode_only_when_asked(invoke, flags, expected):
 
     assert result.exit_code == 0
     assert backend.payloads[0]["config"].get("code_mode") is expected
+
+
+def test_run_follows_the_saved_sandbox_preference_over_the_default(invoke):
+    backend = FakeBackend([_text("ok")])
+    backend.client.config.get.return_value = {
+        "models": ["openai/gpt-test"],
+        "sandboxEnabled": False,
+        "userPreferences": {"sandbox_enabled": True},
+    }
+
+    result = invoke(backend, "Do it")
+
+    assert result.exit_code == 0
+    config = backend.payloads[0]["config"]
+    assert config["sandbox_enabled"] is True
+    assert config["cwd"] == "/mnt/workspace"
+
+
+def test_run_keeps_tool_arguments_out_of_stderr(invoke):
+    call = {"toolCallId": "t1", "toolCallName": "run_command"}
+    backend = FakeBackend(
+        [
+            _sse({"type": "TOOL_CALL_START", **call}),
+            _sse(
+                {
+                    "type": "TOOL_CALL_ARGS",
+                    "toolCallId": "t1",
+                    "delta": '{"content": "curl -H \'Authorization: sk-secret\'"}',
+                }
+            ),
+            _sse({"type": "TOOL_CALL_END", "toolCallId": "t1"}),
+            _text("done"),
+        ]
+    )
+
+    result = invoke(backend, "Do it")
+
+    assert result.exit_code == 0
+    assert "[tool] run_command" in result.stderr
+    assert "sk-secret" not in result.output
 
 
 def test_run_requires_a_task(invoke):

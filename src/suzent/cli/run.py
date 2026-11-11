@@ -153,6 +153,11 @@ async def _chat_config(
     config: dict[str, Any] = {
         "sandbox_volumes": [f"{cwd}:{WORKSPACE_MOUNT}"],
         "cwd": WORKSPACE_MOUNT if sandboxed else str(cwd),
+        # Sent explicitly: the backend does not apply the saved preference to
+        # a turn, so it could otherwise execute in the other mode than `cwd`.
+        "sandbox_enabled": sandboxed,
+        # Without this the question tool waits for an answer nobody can give.
+        "interaction_profile": "headless",
     }
     if model:
         config["model"] = model
@@ -179,9 +184,9 @@ async def _follow_stream(
                 if not quiet:
                     typer.echo(content, nl=False)
             case ToolCall():
-                typer.echo(
-                    f"[tool] {event.tool_name} {event.format_arguments()}", err=True
-                )
+                # Name only: arguments can hold secrets, and stderr ends up
+                # in CI and benchmark logs. The chat log keeps the full call.
+                typer.echo(f"[tool] {event.tool_name}", err=True)
             case UsageUpdate(usage=usage):
                 result.add_usage(usage)
             case ErrorEvent(message=message):
