@@ -27,7 +27,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; connect-src 'self' http://localhost:* ws://localhost:* http://127.0.0.1:* ws://127.0.0.1:*; img-src 'self' data: blob: http://localhost:* http://127.0.0.1:*; frame-src 'self' http://localhost:* http://127.0.0.1:*; style-src 'self' 'unsafe-inline'"
+      "csp": "default-src 'self'; connect-src 'self' http://localhost:* ws://localhost:* http://127.0.0.1:* ws://127.0.0.1:*; img-src 'self' data: blob: http://localhost:* http://127.0.0.1:*; frame-src 'self' http://localhost:* http://127.0.0.1:*; media-src 'self' blob: http://localhost:* http://127.0.0.1:*; style-src 'self' 'unsafe-inline'"
     },
     "withGlobalTauri": true
   },
