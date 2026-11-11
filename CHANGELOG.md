@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [v0.26.0] - 2026-11-11
 
 ### Release notes
+- A new Artifacts panel in the side panel collects the images, videos, speech and files the agent made in a chat, with previews.
 - Show image thumbnails beside individual tool rows when the activity rail is expanded.
 - Let zoomed images fill the preview window with navigation controls floating above the image.
 - Reduce image zoom stutter by batching gesture updates per animation frame and removing competing transitions.
@@ -17,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - On the phone, conversations and collapsed projects show when something is running or has replies you have not seen, like on desktop; opening a conversation marks it read on both.
 - Show deduplicated image thumbnails beside activity summaries and support zooming and panning image previews.
 - Simplify image preview navigation and hide duplicate thumbnails while tool details are expanded.
+- The agent can now hand you finished files with Send File: they arrive in the chat app you wrote from (Telegram, Slack, Discord, Feishu), under the reply on the computer, and on your phone, where you can download and share them.
 - Open sidebar images in the shared zoomable overlay with navigation between images in the loaded folder.
 - Remove the heavy offset shadow from running tool and sub-agent headers so expanding them looks clean.
 - Videos (MP4, MOV, WebM) in the workspace file panel now play in place instead of opening as text, and video and audio players in the installed app are no longer blocked by its content security policy.
