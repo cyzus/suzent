@@ -12,9 +12,6 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 
 from suzent.logger import get_logger
-from suzent.tools.filesystem.path_resolver import PathResolver
-from suzent.database import get_database
-from suzent.config import get_effective_volumes
 
 # Re-exported: `suzent.version` is the light home for build identity, but
 # `service.state` and `server` reach for it here.
@@ -66,26 +63,6 @@ async def get_system_idle(_request: Request) -> JSONResponse:
     from suzent.service.auto_update import agents_idle
 
     return JSONResponse({"idle": agents_idle(time.time())})
-
-
-def _get_resolver(chat_id: str) -> PathResolver:
-    """Helper to create a PathResolver instance for the request context."""
-    custom_volumes = []
-    try:
-        db = get_database()
-        chat = db.get_chat(chat_id)
-        if chat and "config" in chat:
-            cv = chat["config"].get("sandbox_volumes", [])
-            custom_volumes = get_effective_volumes(cv)
-        else:
-            custom_volumes = get_effective_volumes([])
-    except Exception as e:
-        logger.warning(f"Failed to fetch chat config for volumes: {e}")
-        custom_volumes = get_effective_volumes([])
-
-    return PathResolver(
-        chat_id=chat_id, sandbox_enabled=True, custom_volumes=custom_volumes
-    )
 
 
 async def list_host_files(request: Request) -> JSONResponse:
@@ -148,6 +125,40 @@ async def list_host_files(request: Request) -> JSONResponse:
         return JSONResponse({"error": str(e)}, status_code=500)
 
 
+def _resolve_existing_path(path_str: str, chat_id: str | None) -> Path | None:
+    """Resolve a virtual or host path the chat may read to an existing host path.
+
+    Uses the same resolver as the file preview, so project folders and the
+    chat's working directory resolve here too.
+    """
+    if chat_id:
+        from suzent.routes.sandbox_routes import _get_resolver_for_request
+
+        try:
+            resolved = _get_resolver_for_request(chat_id).resolve(path_str)
+            if resolved and resolved.exists():
+                return resolved
+        except Exception as e:
+            logger.debug(f"Path resolution failed (falling back to raw path): {e}")
+    candidate = Path(path_str).resolve()
+    return candidate if candidate.exists() else None
+
+
+async def host_path(request: Request) -> JSONResponse:
+    """Return where a file the chat can see lives on this computer."""
+    try:
+        data = await request.json()
+    except ValueError:
+        return JSONResponse({"error": "Invalid JSON"}, status_code=400)
+    path_str = str(data.get("path", "")).strip()
+    if not path_str:
+        return JSONResponse({"error": "Path is required"}, status_code=400)
+    path = _resolve_existing_path(path_str, data.get("chat_id"))
+    if path is None:
+        return JSONResponse({"error": "Path does not exist"}, status_code=404)
+    return JSONResponse({"path": str(path)})
+
+
 async def open_in_explorer(request: Request) -> JSONResponse:
     """Open a file or directory in the system's file explorer."""
     try:
@@ -158,26 +169,8 @@ async def open_in_explorer(request: Request) -> JSONResponse:
         if not path_str:
             return JSONResponse({"error": "Path is required"}, status_code=400)
 
-        path = None
-
-        # Try to resolve path if chat_id is provided (supports virtual paths)
-        if chat_id:
-            try:
-                resolver = _get_resolver(chat_id)
-                resolved = resolver.resolve(path_str)
-                if resolved and resolved.exists():
-                    path = resolved
-            except Exception as e:
-                logger.debug(f"Path resolution failed (falling back to raw path): {e}")
-
-        # Fallback to raw path if resolution failed or no chat_id
-        if not path:
-            candidate = Path(path_str).resolve()
-            if candidate.exists():
-                path = candidate
-
-        # Final check
-        if not path or not path.exists():
+        path = _resolve_existing_path(path_str, chat_id)
+        if path is None:
             logger.warning(f"Path not found: {path_str}")
             return JSONResponse({"error": "Path does not exist"}, status_code=404)
 

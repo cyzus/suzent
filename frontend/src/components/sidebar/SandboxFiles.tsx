@@ -7,7 +7,7 @@ import { isWeb } from '../../lib/runtime';
 import { fileContextExtras } from '../../lib/fileContextActions';
 import { freshPointerPoint } from '../../lib/menuPlacement';
 import { useI18n } from '../../i18n';
-import { BrutalButton } from '../BrutalButton';
+import { BrutalButton, BrutalIconButton } from '../BrutalButton';
 import { RefreshButton } from '../RefreshButton';
 import { BrutalSegmentedTabs } from '../BrutalSegmentedTabs';
 import { useChatStore } from '../../hooks/useChatStore';
@@ -27,6 +27,8 @@ import {
   PhotoIcon,
   ArrowUpTrayIcon,
   ArrowTopRightOnSquareIcon,
+  CheckIcon,
+  ClipboardDocumentIcon,
 } from '@heroicons/react/24/outline';
 
 interface FileItem {
@@ -381,25 +383,72 @@ export const SandboxFiles: React.FC<SandboxFilesProps> = ({
     // path/name identical) still re-opens it after a "back".
   }, [externalFilePath, externalFileName, externalFileNonce, handleSelectFile]);
 
-  const openPathInExplorer = useCallback(
-    async (path: string) => {
-      if (!currentChatId) return;
+  /** Asks the backend to show a path in the system file manager; returns an error, if any. */
+  const revealPath = useCallback(
+    async (path: string): Promise<string | null> => {
+      if (!currentChatId) return t('sandbox.contextMenu.revealFailed');
       try {
         const response = await fetch(`${getApiBase()}/system/open_explorer`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ path, chat_id: currentChatId }),
         });
-        if (!response.ok) {
-          const data = await response.json().catch(() => null);
-          setError(data?.error || t('sandbox.contextMenu.revealFailed'));
-        }
+        if (response.ok) return null;
+        const data = await response.json().catch(() => null);
+        return data?.error || t('sandbox.contextMenu.revealFailed');
       } catch {
-        setError(t('sandbox.contextMenu.revealFailed'));
+        return t('sandbox.contextMenu.revealFailed');
       }
     },
     [currentChatId, t]
   );
+
+  const openPathInExplorer = useCallback(
+    async (path: string) => {
+      const failure = await revealPath(path);
+      if (failure) setError(failure);
+    },
+    [revealPath]
+  );
+
+  const [previewAction, setPreviewAction] = useState<{
+    kind: 'copied' | 'failed';
+    message?: string;
+  } | null>(null);
+  useEffect(() => {
+    setPreviewAction(null);
+  }, [selectedFile]);
+  useEffect(() => {
+    if (previewAction?.kind !== 'copied') return;
+    const timer = window.setTimeout(() => setPreviewAction(null), 1500);
+    return () => window.clearTimeout(timer);
+  }, [previewAction]);
+
+  const revealPreviewedFile = async (path: string): Promise<void> => {
+    const failure = await revealPath(path);
+    setPreviewAction(failure ? { kind: 'failed', message: failure } : null);
+  };
+
+  /** Copies where the file lives on this computer, not its path inside the workspace. */
+  const copyFileLocation = async (path: string): Promise<void> => {
+    const failed = { kind: 'failed' as const, message: t('sandbox.contextMenu.copyFailed') };
+    try {
+      const response = await fetch(`${getApiBase()}/system/host_path`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path, chat_id: currentChatId }),
+      });
+      const data = response.ok ? await response.json() : null;
+      if (!data?.path || !navigator.clipboard) {
+        setPreviewAction(failed);
+        return;
+      }
+      await navigator.clipboard.writeText(data.path);
+      setPreviewAction({ kind: 'copied' });
+    } catch {
+      setPreviewAction(failed);
+    }
+  };
 
   const openRootInExplorer = () => openPathInExplorer(activeRoot);
 
@@ -558,6 +607,28 @@ export const SandboxFiles: React.FC<SandboxFilesProps> = ({
               {filename}
             </span>
           </div>
+          <BrutalIconButton
+            type="button"
+            onClick={() => void revealPreviewedFile(selectedFile)}
+            label={t('sandbox.contextMenu.reveal')}
+            className="shrink-0 self-start"
+          >
+            <FolderOpenIcon className="h-4 w-4 stroke-2" />
+          </BrutalIconButton>
+          <BrutalIconButton
+            type="button"
+            onClick={() => void copyFileLocation(selectedFile)}
+            label={t(
+              previewAction?.kind === 'copied' ? 'sandbox.locationCopied' : 'sandbox.copyLocation'
+            )}
+            className="shrink-0 self-start"
+          >
+            {previewAction?.kind === 'copied' ? (
+              <CheckIcon className="h-4 w-4 stroke-2" />
+            ) : (
+              <ClipboardDocumentIcon className="h-4 w-4 stroke-2" />
+            )}
+          </BrutalIconButton>
           {(onMaximize || sidebarExpansion) && (
             <FullscreenButton
               expanded={sidebarExpansion?.expanded}
@@ -574,6 +645,11 @@ export const SandboxFiles: React.FC<SandboxFilesProps> = ({
           )}
         </div>
 
+        {previewAction?.kind === 'failed' && (
+          <p role="alert" className="shrink-0 px-3 py-1.5 text-xs text-red-700 dark:text-red-400">
+            {previewAction.message}
+          </p>
+        )}
         <div
           className={
             sidebarExpansion?.expanded
