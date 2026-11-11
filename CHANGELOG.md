@@ -8,9 +8,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [v0.26.0] - 2026-11-11
 
 ### Release notes
+- Show image thumbnails beside individual tool rows when the activity rail is expanded.
+- Let zoomed images fill the preview window with navigation controls floating above the image.
+- Reduce image zoom stutter by batching gesture updates per animation frame and removing competing transitions.
+- Preview images in an overlay, refresh media cards, and preserve native image context menus.
 - On the phone, typing while the agent works now offers Redirect (interrupt and continue with your message) and Queue (send when the reply ends), matching desktop.
 - Images, videos and speech the agent makes now show under its reply on the phone, with videos and audio playing inline.
 - On the phone, conversations and collapsed projects show when something is running or has replies you have not seen, like on desktop; opening a conversation marks it read on both.
+- Show deduplicated image thumbnails beside activity summaries and support zooming and panning image previews.
+- Simplify image preview navigation and hide duplicate thumbnails while tool details are expanded.
+- Open sidebar images in the shared zoomable overlay with navigation between images in the loaded folder.
 - Remove the heavy offset shadow from running tool and sub-agent headers so expanding them looks clean.
 - Videos (MP4, MOV, WebM) in the workspace file panel now play in place instead of opening as text, and video and audio players in the installed app are no longer blocked by its content security policy.
 
