@@ -825,8 +825,10 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
     fun redirectQueued(item: QueuedMessage) {
         val id = selected?.id ?: return
         if (busy || item.text.isEmpty() || item !in queued) return
+        // Its attachments must fit beside the composer's, or one set would be dropped.
+        if (item.attachments.size + attachments.size > MAX_ATTACHMENTS) { error = text(R.string.attachment_limit, MAX_ATTACHMENTS); return }
         queues = queues.remove(id, item.id)
-        if (item.attachments.isNotEmpty()) attachments = (item.attachments + attachments).take(MAX_ATTACHMENTS)
+        attachments = item.attachments + attachments
         steer(item.text, fromDraft = false) { delivered -> if (!delivered) restore(item.copy(attachments = emptyList())) }
     }
 
@@ -843,7 +845,8 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
     // desktop is not retried in a loop and nothing typed is lost.
     private fun restore(item: QueuedMessage) {
         draft = listOf(item.text, draft).filter { it.isNotBlank() }.joinToString("\n\n")
-        attachments = (item.attachments + attachments).take(MAX_ATTACHMENTS)
+        // Never truncated: a composer over the limit is refused on send, and the person chooses what to drop.
+        attachments = item.attachments + attachments
     }
 
     private fun steer(message: String, fromDraft: Boolean, done: (Boolean) -> Unit = {}) {

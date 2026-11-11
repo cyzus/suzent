@@ -890,8 +890,12 @@ import SuzentCore
     /// Pulls one message out of line and redirects with it now; its attachments go back to the composer.
     func redirectQueued(_ item: QueuedMessage) async {
         guard let id = selected?.id, !busy, !item.text.isEmpty, queued.contains(item) else { return }
+        // Its attachments must fit beside the composer's, or one set would be dropped.
+        guard item.attachments.count + attachments.count <= maxAttachments else {
+            error = String(localized: "You can attach up to \(maxAttachments) items per message."); return
+        }
         queues.remove(item.id, from: id)
-        if !item.attachments.isEmpty { attachments = Array((item.attachments + attachments).prefix(maxAttachments)) }
+        attachments = item.attachments + attachments
         if !(await steer(item.text, fromDraft: false)) { restore(QueuedMessage(text: item.text)) }
     }
 
@@ -907,7 +911,8 @@ import SuzentCore
     // desktop is not retried in a loop and nothing typed is lost.
     private func restore(_ item: QueuedMessage) {
         draft = [item.text, draft].filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }.joined(separator: "\n\n")
-        attachments = Array((item.attachments + attachments).prefix(maxAttachments))
+        // Never truncated: a composer over the limit is refused on send, and the person chooses what to drop.
+        attachments = item.attachments + attachments
     }
 
     private func steer(_ text: String, fromDraft: Bool) async -> Bool {
