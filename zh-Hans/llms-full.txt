@@ -5685,6 +5685,39 @@ Inside `suzent agent chat`, type `/` to see the
 asks for permission, you are asked to allow it right there. Type `exit` or press
 Ctrl+C to leave.
 
+## Running one task without a terminal session
+
+`suzent run "<task>"` sends one task, prints the reply, and exits. It never
+opens a chat prompt and never asks a question, so it suits scripts and
+scheduled jobs. If Suzent is not running, the command starts it and stops it
+again when the task is done.
+
+| Option | What it does |
+|---|---|
+| `--cwd <folder>` | The folder the agent works in. Defaults to the folder you run the command from. |
+| `--model`, `-m` | The model to use. It must be one of your enabled models. Defaults to your default model. |
+| `--permission-mode <mode>` | The permission mode for this run. Defaults to your saved mode. |
+| `--tools <names>` | A comma-separated list of the tools the agent may use for this run, for example `ReadFileTool,RunCommandTool`. Defaults to your saved tools. Built-in tools stay on. |
+| `--code-mode` / `--no-code-mode` | Turn code mode on or off for this run. Defaults to your saved setting. |
+| `--json` | Print one JSON object when the task is done, with the reply, the token usage, and the conversation ID. |
+| `--startup-timeout <seconds>` | How long to wait for Suzent to start when the command has to start it. |
+
+Leave out the task to read it from standard input, for example
+`cat task.md | suzent run`.
+
+Each run is saved as a conversation named `[run]` followed by the start of the
+task. Suzent does not rename it, so a run makes no extra model call for a
+title.
+
+Nobody is there to approve tool requests during a run. A tool that would ask
+for permission is denied, and the command lists what it denied when it
+finishes. Pass `--permission-mode full_access` to let the agent use every tool
+without asking. Only do that in a folder and on a machine where you accept
+whatever the agent does.
+
+The command exits with `0` when the task finished, `1` when the run failed,
+and `2` when the command was given a bad option.
+
 ## Configuration
 
 | Command | What it does |
