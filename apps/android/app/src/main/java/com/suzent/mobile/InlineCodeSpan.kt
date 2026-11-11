@@ -4,6 +4,8 @@ import android.graphics.Canvas
 import android.graphics.Paint
 import android.text.SpannableStringBuilder
 import android.text.Spanned
+import android.text.TextPaint
+import android.text.style.MetricAffectingSpan
 import android.text.style.LineBackgroundSpan
 import android.widget.TextView
 import io.noties.markwon.core.spans.CodeSpan
@@ -24,7 +26,14 @@ fun inlineCodeBordered(source: CharSequence, fill: Int, borderPx: Float, view: T
         text.insert(end, "\u00A0")
         text.insert(start, "\u00A0")
         text.removeSpan(span)
-        text.setSpan(span, start, end + 2, flags)
+        // Text-run backgrounds draw after line backgrounds and would cover the chip border.
+        text.setSpan(object : MetricAffectingSpan() {
+            override fun updateMeasureState(paint: TextPaint) = span.updateMeasureState(paint)
+            override fun updateDrawState(paint: TextPaint) {
+                span.updateDrawState(paint)
+                paint.bgColor = android.graphics.Color.TRANSPARENT
+            }
+        }, start, end + 2, flags)
         text.setSpan(InlineCodeBorderSpan(view, fill, borderPx), start, end + 2, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
     }
     return text
