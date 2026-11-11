@@ -23,7 +23,8 @@ export interface ContextMenuPointer {
   pointerType?: string;
 }
 
-const NATIVE_TARGET_SELECTOR = 'input, textarea, select, [contenteditable="true"], a[href]';
+const NATIVE_TARGET_SELECTOR =
+  'input, textarea, select, [contenteditable="true"], a[href], img, video, audio';
 
 export function asContextMenuElement(target: EventTarget | null): ContextMenuElement | null {
   if (!target || typeof target !== 'object') return null;
@@ -38,6 +39,10 @@ export function asContextMenuElement(target: EventTarget | null): ContextMenuEle
 
 export function isNativeLinkTarget(target: EventTarget | null): boolean {
   return Boolean(asContextMenuElement(target)?.closest('a[href]'));
+}
+
+export function isNativeMediaTarget(target: EventTarget | null): boolean {
+  return Boolean(asContextMenuElement(target)?.closest('img, video, audio'));
 }
 
 export function prefersNativeContextMenu(

@@ -119,3 +119,53 @@ it('ends a rail at each successful image result while preserving later tool and 
     ['analyze_image', 'edit_image'],
   ]);
 });
+
+it('deduplicates generated and analyzed images across rails while ignoring videos and failures', async () => {
+  const { getRailImagePaths } = await import('./ImageResultGallery');
+  const seen = new Set<string>();
+  expect(
+    getRailImagePaths(
+      [
+        {
+          toolName: 'generate_image',
+          output: JSON.stringify({
+            success: true,
+            metadata: { saved_paths: ['/workspace/a.png'] },
+          }),
+        },
+        {
+          toolName: 'analyze_visual',
+          output: JSON.stringify({ success: true, metadata: { visual_path: '/workspace/a.png' } }),
+        },
+      ],
+      seen
+    )
+  ).toEqual(['/workspace/a.png']);
+  expect(
+    getRailImagePaths(
+      [
+        {
+          toolName: 'analyze_visual',
+          args: JSON.stringify({ visual_path: '/workspace/./a.png' }),
+          output: 'A picture.',
+        },
+        {
+          toolName: 'analyze_visual',
+          args: JSON.stringify({ visual_path: '/workspace/b.png' }),
+          output: 'Another picture.',
+        },
+        {
+          toolName: 'analyze_visual',
+          args: JSON.stringify({ visual_path: 'movie.mp4' }),
+          output: 'A video.',
+        },
+        {
+          toolName: 'analyze_visual',
+          args: JSON.stringify({ visual_path: 'failed.png' }),
+          output: JSON.stringify({ success: false }),
+        },
+      ],
+      seen
+    )
+  ).toEqual(['/workspace/b.png']);
+});

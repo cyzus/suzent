@@ -26,9 +26,10 @@ export function VideoResultPlayer({
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   return (
     <figure
-      className="my-2 w-full overflow-hidden border border-neutral-200 bg-white dark:border-zinc-700 dark:bg-zinc-800"
+      className="my-2 w-full overflow-hidden rounded-xl border border-neutral-200 bg-white dark:border-zinc-700 dark:bg-zinc-800"
       onContextMenu={(event) => {
         event.preventDefault();
+        event.stopPropagation();
         const rect = event.currentTarget.getBoundingClientRect();
         setMenu(freshPointerPoint(event) ?? { x: rect.left + 12, y: rect.top + 12 });
       }}
@@ -36,6 +37,7 @@ export function VideoResultPlayer({
         if (isImeComposing(event)) return;
         if (event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10')) {
           event.preventDefault();
+          event.stopPropagation();
           const rect = event.currentTarget.getBoundingClientRect();
           setMenu({ x: rect.left + 12, y: rect.top + 12 });
         }
