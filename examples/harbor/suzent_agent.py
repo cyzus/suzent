@@ -3,7 +3,7 @@
 Run Harbor from this folder so it can import the module::
 
     harbor run -d terminal-bench-sample@2.0 -m moonshot/kimi-k3 \
-        --agent-import-path suzent_agent:SuzentAgent
+        -a suzent_agent:SuzentAgent
 
 Each trial installs Suzent from Git, runs the task with ``suzent run``, and
 reports the token usage Suzent printed. See README.md beside this file.

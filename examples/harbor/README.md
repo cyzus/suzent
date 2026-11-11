@@ -28,7 +28,7 @@ Run the runner from this folder so it can import the modules:
 cd examples/harbor
 export MOONSHOT_API_KEY=...
 harbor run -d terminal-bench-sample@2.0 -m moonshot/kimi-k3 \
-  --agent-import-path suzent_agent:SuzentAgent
+  -a suzent_agent:SuzentAgent
 ```
 
 ```bash
@@ -36,9 +36,10 @@ pier run -p /work/deep-swe/tasks/<task> -m moonshot/kimi-k3 \
   --agent-import-path suzent_pier_agent:SuzentAgent
 ```
 
-Pin the Suzent version with the runner's agent version option. It accepts a
-branch, a tag or a commit, and defaults to `main`. The version must include
-this folder, because the usage proxy runs from the installed checkout.
+Pin the Suzent version with the agent keyword option, `--ak version=<ref>`.
+It accepts a branch, a tag or a commit, and defaults to `main`. The version
+must include this folder, because the usage proxy runs from the installed
+checkout.
 
 ## Tasks without internet access
 
@@ -131,10 +132,11 @@ being measured.
 
 ## Limits
 
-- Neither agent has been run inside a real Harbor or Pier installation yet.
-  The Harbor agent follows `BaseInstalledAgent` on Harbor's `main` branch, and
-  the Pier agent follows the same class on Pier's `main` branch. FrontierHarness
-  Eval pins Harbor 0.22.0 and Pier 0.3.1, which may differ.
+- Neither agent has run a task inside a real Harbor or Pier installation yet.
+  The Harbor agent loads and constructs under Harbor 0.25.0; the Pier agent
+  follows `BaseInstalledAgent` on Pier's `main` branch and has not been loaded
+  by Pier. FrontierHarness Eval pins Harbor 0.22.0 and Pier 0.3.1, which may
+  differ.
 - The proxy reaches the provider with Python's default certificate store. A
   runtime that intercepts TLS, as Runta does to inject the provider key, has
   to make its certificate authority trusted inside the task container.
