@@ -78,8 +78,7 @@ every request unchanged and writes one line per chat completion to
 ```
 
 `prompt` includes `cached`. A call that returned no usage is logged with
-`"prompt": null`. The log counts every call, including the one Suzent makes to
-name a new conversation, which Suzent's own total leaves out.
+`"prompt": null`.
 
 FrontierHarness Eval reads per-call usage through
 `skills/frontierharness-eval/scripts/usage_details.py`. A harness that is not
@@ -132,6 +131,3 @@ being measured.
   runtime that intercepts TLS, as Runta does to inject the provider key, has
   to make its certificate authority trusted inside the task container.
 - The install needs a container image that can run Python 3.12 from `uv`.
-- The first line of the usage log is the call that names the conversation, not
-  the agent's first call. A benchmark that reprices the first call's cached
-  tokens reprices that small call instead, which understates the cost.
