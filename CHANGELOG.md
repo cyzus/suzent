@@ -8,12 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [v0.26.0] - 2026-11-11
 
 ### Release notes
+- Add interface font, reply font, chat text size, chat width, and motion controls to Appearance settings.
 - A new Artifacts panel in the side panel collects the images, videos, speech and files the agent made in a chat, with previews.
 - Make Smart mode the default permission mode for new chats, remove its confirmation dialog, and add concise inline descriptions to the mode selector.
 - Show image thumbnails beside individual tool rows when the activity rail is expanded.
 - The file preview in the side panel has buttons to show the file in Finder or File Explorer and to copy where it is saved on your computer.
 - Respect provider wait settings before the first model response and allow extending slow response waits.
 - Let zoomed images fill the preview window with navigation controls floating above the image.
+- A new Artifacts page in the sidebar collects everything the agent made across all chats, grouped by project, with links back to the chat that made each file.
 - Reduce image zoom stutter by batching gesture updates per animation frame and removing competing transitions.
 - Preview images in an overlay, refresh media cards, and preserve native image context menus.
 - On the phone, typing while the agent works now offers Redirect (interrupt and continue with your message) and Queue (send when the reply ends), matching desktop.
@@ -22,6 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Show deduplicated image thumbnails beside activity summaries and support zooming and panning image previews.
 - Simplify image preview navigation and hide duplicate thumbnails while tool details are expanded.
 - Refine the desktop header and right sidebar overview with a 1px divider, unified sidebar toggle glyph, and inline cache/task indicators.
+- Canvas panels can be saved as a web page in the project's artifacts folder, so a chart or table outlives the chat.
 - The agent can now hand you finished files with Send File: they arrive in the chat app you wrote from (Telegram, Slack, Discord, Feishu), under the reply on the computer, and on your phone, where you can download and share them.
 - Queue concurrent database writes to prevent chats from losing saved progress during slow saves and report slow write owners.
 - Open sidebar images in the shared zoomable overlay with navigation between images in the loaded folder.
