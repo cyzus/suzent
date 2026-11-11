@@ -1,5 +1,5 @@
 {
-  "version": "0.8.2",
+  "version": "0.9.0",
   "consumed": [
     ".releases/changes/activity-rail-streaming.json",
     ".releases/changes/anchor-long-press-menus.json",
@@ -64,6 +64,7 @@
     ".releases/changes/mobile-reconnect-animation.json",
     ".releases/changes/mobile-reconnect-stage-stream.json",
     ".releases/changes/mobile-reconnect-switch-desktop.json",
+    ".releases/changes/mobile-redirect-queue.json",
     ".releases/changes/mobile-regent-activity.json",
     ".releases/changes/mobile-regent-coronation.json",
     ".releases/changes/mobile-release-distribution.json",

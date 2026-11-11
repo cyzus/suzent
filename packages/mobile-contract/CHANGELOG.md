@@ -1,5 +1,10 @@
 # Mobile changelog
 
+## [mobile-v0.9.0] - 2026-11-11
+
+### Release notes
+- On the phone, typing while the agent works now offers Redirect (interrupt and continue with your message) and Queue (send when the reply ends), matching desktop.
+
 ## [mobile-v0.8.2] - 2026-11-10
 
 ### Release notes
