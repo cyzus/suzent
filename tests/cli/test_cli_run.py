@@ -81,6 +81,8 @@ def test_run_prints_reply_and_exits(invoke, tmp_path: Path):
     assert config["cwd"] == str(tmp_path.resolve())
     assert config["sandbox_enabled"] is False
     assert config["interaction_profile"] == "headless"
+    assert config["auto_title"] is False
+    assert backend.client.chat.create_chat.await_args.args[0]["config"] == config
     assert "permission_mode" not in config
     assert backend.payloads[0]["message"] == "Say hello"
 

@@ -158,6 +158,8 @@ async def _chat_config(
         "sandbox_enabled": sandboxed,
         # Without this the question tool waits for an answer nobody can give.
         "interaction_profile": "headless",
+        # The run names its own chat, so it skips the model call for a title.
+        "auto_title": False,
     }
     if model:
         config["model"] = model
