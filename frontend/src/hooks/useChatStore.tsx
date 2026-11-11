@@ -176,7 +176,7 @@ const defaultConfig: ChatConfig = {
   mcp_urls: [],
   mcp_enabled: {},
   sandbox_enabled: true, // Default to true to match backend
-  permission_mode: 'default',
+  permission_mode: 'auto',
 };
 
 const UNSAVED_CHAT_KEY = '__unsaved__';
@@ -237,7 +237,7 @@ const buildConfigFromPreferences = (
   thinking: normalizeThinkingEffort(prefs?.thinking),
   sandbox_enabled: prefs?.sandbox_enabled ?? backendDefaults.sandboxEnabled ?? true,
   sandbox_volumes: prefs?.sandbox_volumes || [],
-  permission_mode: backendDefaults.defaultPermissionMode ?? 'default',
+  permission_mode: backendDefaults.defaultPermissionMode ?? 'auto',
   mcp_urls: [],
   mcp_enabled: {},
 });
@@ -521,7 +521,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
             return {
               ...stripReusableConfig(parsed),
               tools: withBuiltinTools(parsed.tools, backendConfig),
-              permission_mode: backendConfig.defaultPermissionMode ?? 'default',
+              permission_mode: backendConfig.defaultPermissionMode ?? 'auto',
             };
           }
         }
@@ -537,7 +537,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
         agent: backendConfig.agents[0] || '',
         tools: withBuiltinTools(backendConfig.defaultTools, backendConfig),
         sandbox_enabled: backendConfig.sandboxEnabled ?? true,
-        permission_mode: backendConfig.defaultPermissionMode ?? 'default',
+        permission_mode: backendConfig.defaultPermissionMode ?? 'auto',
         mcp_urls: [],
         mcp_enabled: {},
       };

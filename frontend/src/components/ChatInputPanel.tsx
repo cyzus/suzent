@@ -210,7 +210,7 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
     inputSuggestion !== dismissedSuggestion
       ? ghostRemainder(input, inputSuggestion)
       : null;
-  const permissionMode = normalizePermissionMode(config.permission_mode);
+  const permissionMode = normalizePermissionMode(config.permission_mode ?? 'auto');
   const thinkingEffort = normalizeThinkingEffort(config.thinking);
   const isAcpRuntime = config.runtime === 'acp' || Boolean(config.acp_agent_id);
   const acpAgents = useAcpAgents();
@@ -332,7 +332,7 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
   const changePermissionMode = React.useCallback(
     (nextMode: PermissionMode) => {
       if (isSavingPermissionMode || nextMode === permissionMode) return;
-      if (nextMode === 'auto' || nextMode === 'full_access') {
+      if (nextMode === 'full_access') {
         setPendingPermissionMode(nextMode);
         return;
       }
@@ -1028,6 +1028,7 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
               options={PERMISSION_MODES.map((option) => ({
                 value: option,
                 label: t(`chatWindow.permissionModeInputLabels.${option}`),
+                hint: t(`chatWindow.permissionModeDescriptions.${option}`),
               }))}
               dropUp={true}
               hideChevron={true}
@@ -1035,7 +1036,7 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
               disabled={!configReady || streamingForCurrentChat || isSavingPermissionMode}
               className="inline-block w-auto"
               buttonClassName={FOOTER_SELECT_BUTTON_CLASS}
-              dropdownClassName="min-w-[220px] font-mono text-[10px]"
+              dropdownClassName="!w-[196px] border-2 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] [&_button]:px-2.5 [&_button]:py-1 [&_button]:text-xs [&_button]:font-semibold [&_button]:normal-case [&_button]:border-b [&_button:last-child]:border-b-0"
             />
           </div>
         )}
@@ -1053,17 +1054,9 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
       </div>
 
       <BrutalDialog
-        open={pendingPermissionMode !== null}
-        title={
-          pendingPermissionMode === 'full_access'
-            ? t('chatWindow.fullAccessModeDialogTitle')
-            : t('chatWindow.autoModeDialogTitle')
-        }
-        message={
-          pendingPermissionMode === 'full_access'
-            ? t('chatWindow.fullAccessModeConfirmation')
-            : t('chatWindow.autoModeConfirmation')
-        }
+        open={pendingPermissionMode === 'full_access'}
+        title={t('chatWindow.fullAccessModeDialogTitle')}
+        message={t('chatWindow.fullAccessModeConfirmation')}
         onClose={() => setPendingPermissionMode(null)}
         actions={[
           {
@@ -1071,10 +1064,7 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
             tone: 'default',
           },
           {
-            label:
-              pendingPermissionMode === 'full_access'
-                ? t('chatWindow.fullAccessModeEnable')
-                : t('chatWindow.autoModeEnable'),
+            label: t('chatWindow.fullAccessModeEnable'),
             tone: 'primary',
             onClick: () => {
               if (pendingPermissionMode) {
