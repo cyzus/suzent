@@ -1227,11 +1227,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                     }`}
                   >
                     {tab.id === 'overview' ? (
-                      <SidebarToggleIcon
-                        side="right"
-                        open={isActive}
-                        className="h-4 w-4"
-                      />
+                      <SidebarToggleIcon side="right" open={isActive} className="h-4 w-4" />
                     ) : (
                       <Icon className="h-4 w-4" />
                     )}
