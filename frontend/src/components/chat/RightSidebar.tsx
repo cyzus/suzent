@@ -13,6 +13,8 @@ import { BackgroundTaskView } from '../sidebar/BackgroundTaskView';
 import { useBackgroundTasks } from '../../hooks/useBackgroundTasks';
 import { BackgroundTaskList } from '../sidebar/BackgroundTaskList';
 import { RepositoryContextView } from '../sidebar/RepositoryContextView';
+import { ARTIFACT_KIND_ICONS, ArtifactsPreview, ArtifactsView } from '../sidebar/ArtifactsView';
+import { collectChatArtifacts } from '../../lib/chatArtifacts';
 import type { Message, Goal, Task } from '../../types/api';
 import type { KanbanData } from '../../hooks/useGoalTasks';
 import type { CanvasState } from '../../hooks/useCanvas';
@@ -36,6 +38,7 @@ import {
   ServerStackIcon,
   CircleStackIcon,
   EllipsisHorizontalIcon,
+  SparklesIcon,
 } from '@heroicons/react/24/outline';
 import { PanelResizeHandle } from '../PanelResizeHandle';
 import { ToolsPanel } from './ToolsPanel';
@@ -73,6 +76,7 @@ import { isSubAgentActive } from './subAgentStatus';
 export type TabId =
   | 'overview'
   | 'files'
+  | 'artifacts'
   | 'context'
   | 'browser'
   | 'canvas'
@@ -197,6 +201,8 @@ interface RightSidebarProps {
   /** This chat has spawned sub-agents at some point, live stream or not. */
   hasSubAgentHistory?: boolean;
   messages?: Message[];
+  /** Opens a file the agent produced in the Files panel. */
+  onOpenFile?: (path: string, name: string) => void;
   forcedWebContextId?: string | null;
   canvasRequestNonce?: number;
   canvasExpandNonce?: number;
@@ -248,6 +254,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
   hasSubAgents = false,
   hasSubAgentHistory = false,
   messages = [],
+  onOpenFile,
   forcedWebContextId,
   canvasRequestNonce,
   canvasExpandNonce,
@@ -331,6 +338,8 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
     [messages, shouldBuildWebHistory]
   );
   const webHistory = useWebHistory(webHistoryMessages);
+  const artifacts = useMemo(() => collectChatArtifacts(messages), [messages]);
+  const hasArtifacts = Boolean(currentChatId) && artifacts.length > 0;
   const hasWebActivity =
     webHistory.length > 0 ||
     (!shouldBuildWebHistory &&
@@ -373,6 +382,15 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
       hasActivity: !!fileToPreview,
       activityClass: 'bg-brutal-yellow',
       pinned: true,
+    },
+    {
+      id: 'artifacts',
+      icon: SparklesIcon,
+      labelKey: 'sidebar.tabs.artifacts',
+      fallbackLabel: 'Artifacts',
+      hasContent: hasArtifacts,
+      hasActivity: false,
+      pinned: hasArtifacts,
     },
     {
       id: 'browser',
@@ -577,6 +595,8 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
     2
   );
   const contextStats = useContextUsageStats(currentChatId);
+  // The Files panel takes over once the file is confirmed to exist.
+  const openArtifact = (path: string, name: string): void => onOpenFile?.(path, name);
   const overviewContent: Partial<
     Record<TabId, Pick<OverviewSection, 'summary' | 'detail' | 'preview' | 'body' | 'fullView'>>
   > = {
@@ -667,6 +687,23 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
         />
       ),
     },
+    artifacts: {
+      summary: artifacts.length,
+      preview: <ArtifactsPreview artifacts={artifacts} />,
+      body: (
+        <OverviewList
+          items={artifacts.slice(0, 6)}
+          empty={t('artifacts.empty')}
+          getKey={(artifact) => artifact.path}
+          renderMarker={(artifact) => {
+            const KindIcon = ARTIFACT_KIND_ICONS[artifact.kind];
+            return <KindIcon className="h-3 w-3 text-neutral-400" />;
+          }}
+          renderLabel={(artifact) => artifact.name}
+          onSelect={(artifact) => openArtifact(artifact.path, artifact.name)}
+        />
+      ),
+    },
     context: {
       summary:
         contextStats.measuredPercent != null
@@ -696,7 +733,12 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
   };
   // Sections stay listed even when empty: the overview is the only way into their full panels.
   const overviewSections: OverviewSection[] = tabs
-    .filter((tab) => (!tab.pinned || tab.id === 'plan') && tab.hasContent && !isTabLocked(tab.id))
+    .filter(
+      (tab) =>
+        (!tab.pinned || tab.id === 'plan' || tab.id === 'artifacts') &&
+        tab.hasContent &&
+        !isTabLocked(tab.id)
+    )
     .map((tab) => ({
       id: tab.id,
       icon: tab.icon,
@@ -930,6 +972,14 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                   />
                 </div>
                 <div
+                  className={`flex-1 h-full flex-col min-h-0 ${activeTab === 'artifacts' ? 'flex' : 'hidden'}`}
+                >
+                  {backToOverview}
+                  <div className="flex-1 min-h-0 overflow-y-auto">
+                    <ArtifactsView artifacts={artifacts} onOpen={openArtifact} />
+                  </div>
+                </div>
+                <div
                   className={`flex-1 h-full flex-col min-h-0 ${activeTab === 'context' ? 'flex' : 'hidden'}`}
                 >
                   {backToOverview}
@@ -1028,6 +1078,14 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                     externalFileNonce={fileToPreview?.nonce ?? null}
                     onMaximize={onMaximizeFile}
                   />
+                </div>
+                <div
+                  className={`flex-1 h-full flex-col min-h-0 ${activeTab === 'artifacts' ? 'flex' : 'hidden'}`}
+                >
+                  {backToOverview}
+                  <div className="flex-1 min-h-0 overflow-y-auto">
+                    <ArtifactsView artifacts={artifacts} onOpen={openArtifact} />
+                  </div>
                 </div>
                 <div
                   className={`flex-1 h-full flex-col min-h-0 ${activeTab === 'context' ? 'flex' : 'hidden'}`}

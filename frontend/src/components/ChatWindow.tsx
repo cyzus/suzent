@@ -3739,6 +3739,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
           }
           hasSubAgentHistory={transcriptHasSubAgentCall}
           messages={safeMessages}
+          onOpenFile={handleFileClick}
           forcedWebContextId={forcedWebContextId}
           canvasRequestNonce={canvasRequestNonce}
           canvasExpandNonce={canvasExpandNonce}
