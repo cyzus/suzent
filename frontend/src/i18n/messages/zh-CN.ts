@@ -2070,9 +2070,9 @@ export const zhCN = {
       full_access: '完全访问',
     },
     permissionModeDescriptions: {
-      default: '执行会改变状态的工具操作前先询问。',
-      auto: '自动分类未决操作，强制安全规则仍然生效。',
-      full_access: '执行工具操作时不请求批准，但显式拒绝规则仍然生效。',
+      default: '执行改动前先确认',
+      auto: '自动放行低风险操作',
+      full_access: '直接执行所有操作',
     },
     heartbeatRunning: '心跳运行中',
     heartbeatHealthy: '心跳健康',
