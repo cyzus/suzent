@@ -1,3 +1,5 @@
+import re
+
 from starlette.applications import Starlette
 from starlette.routing import Route
 from starlette.testclient import TestClient
@@ -64,18 +66,28 @@ def test_nested_html_is_sandboxed() -> None:
 
 
 def test_file_name_is_stable_and_safe() -> None:
-    assert (
-        canvas_file_name(_surface({"type": "divider"}, "../Q4 / 销售"))
-        == "q4-销售.html"
+    name = canvas_file_name(_surface({"type": "divider"}, "../Q4 / 销售"), "chat-a")
+    assert re.fullmatch(r"q4-销售-[0-9a-f]{6}\.html", name)
+    assert name == canvas_file_name(
+        _surface({"type": "text", "content": "x"}, "../Q4 / 销售"), "chat-a"
     )
-    assert canvas_file_name(_surface({"type": "divider"}, None)) == "sales.html"
+    assert canvas_file_name(_surface({"type": "divider"}, None), "chat-a").startswith(
+        "sales-"
+    )
+
+
+def test_same_title_from_another_chat_gets_its_own_file() -> None:
+    surface = _surface({"type": "divider"})
+    assert canvas_file_name(surface, "chat-a") != canvas_file_name(surface, "chat-b")
 
 
 def test_saving_again_replaces_the_file(tmp_path) -> None:
-    first = save_surface(_surface({"type": "text", "content": "v1"}), tmp_path)
-    second = save_surface(_surface({"type": "text", "content": "v2"}), tmp_path)
+    first = save_surface(_surface({"type": "text", "content": "v1"}), "c", tmp_path)
+    second = save_surface(_surface({"type": "text", "content": "v2"}), "c", tmp_path)
 
-    assert first == second == tmp_path / "artifacts" / "canvas" / "q4-sales.html"
+    assert first == second
+    assert first.parent == tmp_path / "artifacts" / "canvas"
+    assert first.name.startswith("q4-sales-")
     assert "v2" in second.read_text(encoding="utf-8")
 
 
@@ -100,11 +112,10 @@ def test_save_route_writes_into_the_chats_project(
     missing = client.post("/canvas/nope/save", json={"surface": surface})
 
     assert saved.status_code == 200
+    name = canvas_file_name(A2UISurface.model_validate(surface), chat_id)
     assert saved.json() == {
-        "path": str(
-            tmp_path / "projects" / "sales" / "artifacts" / "canvas" / "q4.html"
-        ),
-        "workspace_path": "/workspace/artifacts/canvas/q4.html",
+        "path": str(tmp_path / "projects" / "sales" / "artifacts" / "canvas" / name),
+        "workspace_path": f"/workspace/artifacts/canvas/{name}",
     }
     assert invalid.status_code == 400
     assert missing.status_code == 404

@@ -1401,6 +1401,19 @@ class ChatOperationsMixin:
                 for row in session.exec(statement).all()
             ]
 
+    def project_chat_ids(self, project_ids: list[str]) -> dict[str, str]:
+        """One chat id per project in *project_ids*, archived chats included."""
+        if not project_ids:
+            return {}
+        with self._session() as session:
+            statement = select(ChatModel.project_id, ChatModel.id).where(
+                ChatModel.project_id.in_(project_ids)
+            )
+            return {
+                project_id: chat_id
+                for project_id, chat_id in session.exec(statement).all()
+            }
+
     def get_chat_navigation(
         self, chat_ids: list[str]
     ) -> dict[str, dict[str, str | int | None]]:

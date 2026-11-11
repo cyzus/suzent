@@ -4,6 +4,7 @@ A saved canvas is a snapshot for reading, so buttons and forms, which only
 talk back to the chat that drew them, are left out.
 """
 
+import hashlib
 import re
 from html import escape
 from pathlib import Path
@@ -132,18 +133,22 @@ def surface_to_html(surface: A2UISurface) -> str:
     )
 
 
-def canvas_file_name(surface: A2UISurface) -> str:
-    """A stable file name, so saving the same surface again replaces its file."""
+def canvas_file_name(surface: A2UISurface, chat_id: str) -> str:
+    """Stable per chat and surface, so saving again replaces only that surface's file."""
     stem = re.sub(r"[^\w-]+", "-", (surface.title or surface.id).strip().lower()).strip(
         "-"
     )
-    return f"{stem[:80] or 'canvas'}.html"
+    tag = hashlib.sha1(f"{chat_id}:{surface.id}".encode()).hexdigest()[:6]
+    return f"{stem[:80] or 'canvas'}-{tag}.html"
 
 
-def save_surface(surface: A2UISurface, project_dir: Path) -> Path:
+def save_surface(surface: A2UISurface, chat_id: str, project_dir: Path) -> Path:
     """Write *surface* under the project library's ``artifacts/canvas/``."""
     target = (
-        project_dir / ARTIFACTS_DIRNAME / CANVAS_DIRNAME / canvas_file_name(surface)
+        project_dir
+        / ARTIFACTS_DIRNAME
+        / CANVAS_DIRNAME
+        / canvas_file_name(surface, chat_id)
     )
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(surface_to_html(surface), encoding="utf-8")

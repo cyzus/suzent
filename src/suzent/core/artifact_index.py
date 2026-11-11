@@ -166,10 +166,11 @@ def build_artifact_index() -> ArtifactIndex:
     transcripts = db.list_chat_transcripts(list(project_dirs))
 
     origin: dict[Path, tuple[str, str]] = {}
-    serve_chat: dict[str, str] = {}
+    # Archived chats still exist, so they can serve a library whose chats are all archived.
+    serve_chat: dict[str, str] = db.project_chat_ids(list(project_dirs))
     delivered: dict[Path, str] = {}
     for chat_id, title, project_id, messages in transcripts:
-        serve_chat.setdefault(project_id, chat_id)
+        serve_chat[project_id] = chat_id
         outputs = transcript_outputs(messages)
         if not outputs:
             continue

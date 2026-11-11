@@ -89,3 +89,21 @@ def test_index_groups_files_by_project_and_links_their_chat(
     assert by_name["notes.md"].chat_id is None
     assert by_name["notes.md"].serve_chat_id == chat_id
     assert {p.id: p.count for p in index.projects}[poster_id] == 3
+
+
+def test_library_of_a_project_with_only_archived_chats_stays_previewable(
+    temp_db, tmp_path, monkeypatch
+) -> None:
+    monkeypatch.setattr(CONFIG, "sandbox_data_path", str(tmp_path))
+    monkeypatch.setattr("suzent.database.get_database", lambda: temp_db)
+    project_id = temp_db.create_project("Old", "old")
+    library = tmp_path / "projects" / "old" / "artifacts"
+    library.mkdir(parents=True)
+    (library / "plan.md").write_text("plan")
+    chat_id = temp_db.create_chat("Done", {}, project_id=project_id)
+    temp_db.update_chat(chat_id, archived=True)
+
+    (item,) = artifact_index.build_artifact_index().items
+
+    assert item.chat_id is None
+    assert item.serve_chat_id == chat_id

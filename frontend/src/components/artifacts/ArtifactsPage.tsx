@@ -79,7 +79,7 @@ const AUDIO_BARS = [40, 75, 55, 95, 65, 30, 80, 50, 70, 35, 60, 45];
 const TEXT_LINES = [100, 85, 92, 60, 78];
 
 const Cover: React.FC<{ item: IndexedArtifact }> = ({ item }) => {
-  const [failed, setFailed] = useState(false);
+  const [failed, setFailed] = useState(!item.serve_chat_id);
   const ext = extension(item.name);
 
   if (item.kind === 'image' && !failed) {
@@ -219,13 +219,14 @@ export const ArtifactsPage: React.FC<ArtifactsPageProps> = ({ onOpenChat }) => {
   }, [visible, projects]);
 
   const imageUrls = useMemo(
-    () => visible.filter((item) => item.kind === 'image').map(serveUrl),
+    () => visible.filter((item) => item.kind === 'image' && item.serve_chat_id).map(serveUrl),
     [visible]
   );
 
   const open = (item: IndexedArtifact): void => {
-    if (item.kind === 'image') setViewingImage(serveUrl(item));
-    else if (item.serve_chat_id) setPreviewing(item);
+    if (!item.serve_chat_id) reveal(item);
+    else if (item.kind === 'image') setViewingImage(serveUrl(item));
+    else setPreviewing(item);
   };
 
   const reveal = (item: IndexedArtifact): void => {
@@ -468,6 +469,7 @@ export const ArtifactsPage: React.FC<ArtifactsPageProps> = ({ onOpenChat }) => {
         fileName={previewing?.name ?? null}
         chatId={previewing?.serve_chat_id ?? null}
         onClose={() => setPreviewing(null)}
+        inheritChatVolumes={false}
       />
     </div>
   );

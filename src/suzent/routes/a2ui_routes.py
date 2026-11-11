@@ -162,7 +162,7 @@ async def a2ui_save(request: Request) -> JSONResponse:
     project_dir = (
         Path(CONFIG.sandbox_data_path) / "projects" / db.get_chat_project_slug(chat_id)
     )
-    path = save_surface(surface, project_dir)
+    path = save_surface(surface, chat_id, project_dir)
     logger.info("Saved canvas {} to {}", surface.id, path)
     return JSONResponse(
         {
