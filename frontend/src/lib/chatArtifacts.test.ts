@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { artifactKind, collectChatArtifacts } from './chatArtifacts';
-import type { Message } from '../types/api';
+import type { Message, MessageFileChange } from '../types/api';
 
 const toolResult = (savedPaths: string[], success = true): string =>
   JSON.stringify({ success, message: 'ok', metadata: { saved_paths: savedPaths } });
@@ -11,8 +11,19 @@ const assistant = (overrides: Partial<Message>): Message => ({
   ...overrides,
 });
 
+const PROJECT = '/home/u/.suzent/sandbox/projects/p1';
+
+const change = (path: string, overrides: Partial<MessageFileChange> = {}): MessageFileChange => ({
+  path,
+  display_path: path.split('/').pop(),
+  diff: `--- a/x\n+++ b/x\n@@ -0,0 +1 @@\n+x`,
+  additions: 1,
+  deletions: 0,
+  ...overrides,
+});
+
 describe('collectChatArtifacts', () => {
-  it('lists generated media and written files, newest first', () => {
+  it('lists media, sent files and library files, newest first', () => {
     const messages: Message[] = [
       { role: 'user', content: 'draw a cat' },
       assistant({
@@ -33,23 +44,29 @@ describe('collectChatArtifacts', () => {
             state: 'completed',
             output: toolResult(['/workspace/artifacts/videos/clip.mp4']),
           },
-        ],
-        file_changes: [
           {
-            path: '/home/u/.suzent/sandbox/projects/p1/notes/report.md',
-            diff: '--- /dev/null\n+++ b/notes/report.md\n@@ -0,0 +1 @@\n+hi',
-            additions: 1,
-            deletions: 0,
+            type: 'tool',
+            toolName: 'send_file',
+            state: 'completed',
+            output: toolResult(['/repo/dist/report.pdf']),
           },
         ],
+        file_changes: [change(`${PROJECT}/artifacts/docs/brief.md`)],
       }),
     ];
 
     expect(collectChatArtifacts(messages)).toEqual([
       {
-        path: '/home/u/.suzent/sandbox/projects/p1/notes/report.md',
-        displayPath: 'notes/report.md',
-        name: 'report.md',
+        path: `${PROJECT}/artifacts/docs/brief.md`,
+        displayPath: 'artifacts/docs/brief.md',
+        name: 'brief.md',
+        kind: 'file',
+        messageIndex: 2,
+      },
+      {
+        path: '/repo/dist/report.pdf',
+        displayPath: '/repo/dist/report.pdf',
+        name: 'report.pdf',
         kind: 'file',
         messageIndex: 2,
       },
@@ -67,6 +84,23 @@ describe('collectChatArtifacts', () => {
         kind: 'image',
         messageIndex: 1,
       },
+    ]);
+  });
+
+  it('leaves working edits outside artifacts/ on the changed-files card', () => {
+    const messages: Message[] = [
+      assistant({
+        file_changes: [
+          change(`${PROJECT}/notes/plan.md`),
+          change('/home/u/code/app/src/main.py'),
+          change('/home/u/code/app/build/artifacts/out.bin'),
+          change('C:\\Users\\u\\.suzent\\sandbox\\projects\\p1\\artifacts\\report.md'),
+        ],
+      }),
+    ];
+
+    expect(collectChatArtifacts(messages).map((artifact) => artifact.displayPath)).toEqual([
+      'artifacts/report.md',
     ]);
   });
 
@@ -93,22 +127,16 @@ describe('collectChatArtifacts', () => {
             output: toolResult(['/workspace/denied.png']),
           },
         ],
-        file_changes: [{ path: '/workspace/a.txt', diff: '+x', additions: 1, deletions: 0 }],
+        file_changes: [change(`${PROJECT}/artifacts/a.txt`)],
       }),
       assistant({
         file_changes: [
-          {
-            path: '/workspace/a.txt',
-            diff: '--- a/a.txt\n+++ b/a.txt\n@@ -1 +0,0 @@\n-x',
-            additions: 0,
-            deletions: 1,
-            after_exists: false,
-          },
+          change(`${PROJECT}/artifacts/a.txt`, { additions: 0, deletions: 1, after_exists: false }),
         ],
       }),
       assistant({
         file_changes_undone: true,
-        file_changes: [{ path: '/workspace/b.txt', diff: '+y', additions: 1, deletions: 0 }],
+        file_changes: [change(`${PROJECT}/artifacts/b.txt`)],
       }),
     ];
 
@@ -116,13 +144,11 @@ describe('collectChatArtifacts', () => {
   });
 
   it('keeps one entry per path at its latest turn', () => {
-    const change = { path: '/workspace/plan.md', diff: '+a', additions: 1, deletions: 0 };
+    const plan = change(`${PROJECT}/artifacts/plan.md`);
     const messages: Message[] = [
-      assistant({ file_changes: [change] }),
-      assistant({
-        file_changes: [{ path: '/workspace/other.md', diff: '+b', additions: 1, deletions: 0 }],
-      }),
-      assistant({ file_changes: [change] }),
+      assistant({ file_changes: [plan] }),
+      assistant({ file_changes: [change(`${PROJECT}/artifacts/other.md`)] }),
+      assistant({ file_changes: [plan] }),
     ];
 
     expect(

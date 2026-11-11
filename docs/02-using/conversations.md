@@ -90,13 +90,17 @@ same way, from its box in the chat.
 
 ## Find what it made
 
-Everything the agent produced in a chat is collected under **Artifacts** in the
-side panel: images it generated or edited, videos and speech it made, and every
-file it wrote or changed. Newest comes first, and a file it changed several
-times is listed once. Images show as thumbnails you can open full size, videos
-and audio play right in the panel, and clicking a file opens it under **Files**.
-Files it only read or looked at are not listed, and neither are changes you
-undid. The **Overview** shows how many there are and the latest few images.
+What the agent delivered in a chat is collected under **Artifacts** in the side
+panel: images it generated or edited, videos and speech it made, files it sent
+you, and files it saved into the project library's `artifacts/` folder. Newest
+comes first, and a file saved several times is listed once. Images show as
+thumbnails you can open full size, videos and audio play right in the panel,
+and clicking a file opens it under **Files**.
+
+Ordinary edits, such as code or notes it changed while working, stay on the
+**Edited files** card under each reply instead. Files it only read are not
+listed, and neither are changes you undid. The **Overview** shows how many
+artifacts there are and the latest few images.
 
 ## Talk instead of typing
 
