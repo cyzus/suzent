@@ -290,6 +290,7 @@ class UserPreferencesModel(SQLModel):
     thinking: Optional[str] = None
     sandbox_enabled: bool = Field(default=True)
     sandbox_volumes: Optional[list] = Field(default=None, sa_column=Column(JSON))
+    code_mode: bool = Field(default=False)
     updated_at: datetime = Field(serialization_alias="updatedAt")
 
 

@@ -9,7 +9,16 @@ data class MessagePart(
     val type: String, val text: String = "", val toolName: String = "",
     val args: String = "", val output: String = "", val toolCallId: String = "",
     val state: String = "", val messageId: String = "", val citationSources: List<CitationSource> = emptyList(), val outcome: String = "", val regentBubble: Boolean = false,
+    val surface: A2UISurface? = null,
+    val media: List<MediaItem> = emptyList(),
 )
+
+/** An image, video or audio file a tool made, fetched from the desktop by its opaque id. */
+data class MediaItem(val id: String, val kind: String, val name: String) {
+    val extension: String get() = name.substringAfterLast('.', "").lowercase().filter { it.isLetterOrDigit() }.take(5)
+    val safeName: String get() = name.replace(Regex("[/\\\\:\u0000]"), "_").trim('.', ' ').take(120)
+        .ifEmpty { "file.${extension.ifEmpty { "bin" }}" }
+}
 
 data class DisplayMessage(val role: String, val parts: List<MessagePart>, val citationSources: List<CitationSource> = emptyList(),
     val model: String? = null, val timestamp: String? = null, val messageIndex: Int = 0, val files: List<FileAttachment> = emptyList(), val reaction: String? = null, val workedSeconds: Int? = null, val firstMessageIndex: Int? = null) {
@@ -29,19 +38,31 @@ fun systemReminder(text: String): SystemReminder? {
     return SystemReminder(clean, title, lines.drop(1).joinToString("\n").trim())
 }
 
+private class CitationPattern(val regex: Regex, val needsKnownIds: Boolean = false)
+
+// Models that skip the marker write a joined `citet0_src_1` or copy the `[t0_src_1]`
+// label tools print, so those count only when every id resolves. They run first so
+// their links are never re-read as brackets. ASCII lookarounds stand in for \b, which
+// ICU treats as Unicode-aware and would reject `\u8bf4\u660ecitet0_src_1`.
 private val citationPatterns = listOf(
-    Regex("\\[\\[cite:\\s*([^\\]\\n]+?)\\s*]]", RegexOption.IGNORE_CASE),
-    Regex("\ue200cite\ue202([^\ue201]+)\ue201", RegexOption.IGNORE_CASE),
-    Regex("\ufffccite\ufffc([A-Za-z0-9_,\\s\ufffc]+)\ufffc", RegexOption.IGNORE_CASE),
-    Regex("\\bcite[-:]((?:t\\d+_src_\\d+)(?:\\s*,\\s*t\\d+_src_\\d+)*)\\b", RegexOption.IGNORE_CASE),
+    CitationPattern(Regex("""(?<![A-Za-z0-9_])cite((?:t\d+_src_\d+)(?:\s*,\s*t\d+_src_\d+)*)(?![A-Za-z0-9_])"""), needsKnownIds = true),
+    CitationPattern(Regex("""\[((?:[A-Za-z0-9_]+_src_\d+)(?:\s*,\s*[A-Za-z0-9_]+_src_\d+)*)]"""), needsKnownIds = true),
+    CitationPattern(Regex("\\[\\[cite:\\s*([^\\]\\n]+?)\\s*]]", RegexOption.IGNORE_CASE)),
+    CitationPattern(Regex("\ue200cite\ue202([^\ue201]+)\ue201", RegexOption.IGNORE_CASE)),
+    CitationPattern(Regex("\ufffccite\ufffc([A-Za-z0-9_,\\s\ufffc]+)\ufffc", RegexOption.IGNORE_CASE)),
+    CitationPattern(Regex("\\bcite[-:]((?:t\\d+_src_\\d+)(?:\\s*,\\s*t\\d+_src_\\d+)*)\\b", RegexOption.IGNORE_CASE)),
 )
+
+private fun citationIds(match: MatchResult): List<String> =
+    match.groupValues[1].split(',', '\ue202', '\ufffc').map(String::trim).filter(String::isNotEmpty)
 
 fun markdownWithCitationLinks(text: String, sources: List<CitationSource>, badges: Boolean = false): String {
     val byId = sources.associateBy { it.id }
     var occurrence = 0
     return citationPatterns.fold(text) { current, pattern ->
-        pattern.replace(current) { match ->
-            val ids = match.groupValues[1].split(',', '\ue202', '\ufffc').map { it.trim() }.filter { it.isNotEmpty() }
+        pattern.regex.replace(current) { match ->
+            val ids = citationIds(match)
+            if (pattern.needsKnownIds && !ids.all(byId::containsKey)) return@replace match.value
             val primary = ids.firstNotNullOfOrNull(byId::get) ?: return@replace ""
             val suffix = if (ids.size > 1) " +${ids.size - 1}" else ""
             val host = runCatching { java.net.URI(primary.url).host?.removePrefix("www.") }.getOrNull()
@@ -56,9 +77,7 @@ fun markdownWithCitationLinks(text: String, sources: List<CitationSource>, badge
 }
 
 private fun citationSourceIds(text: String): Set<String> = citationPatterns.flatMap { pattern ->
-    pattern.findAll(text).flatMap { match ->
-        match.groupValues[1].split(',', '\ue202', '\ufffc').map(String::trim).filter(String::isNotEmpty)
-    }.toList()
+    pattern.regex.findAll(text).flatMap(::citationIds).toList()
 }.toSet()
 
 fun presentMessages(messages: List<ChatMessage>, liveToolIds: Set<String> = emptySet()): List<DisplayMessage> {
@@ -123,12 +142,15 @@ fun normalizeParts(parts: List<MessagePart>): List<MessagePart> {
     return result
 }
 
+private val blockTypes = setOf("text", "a2ui")
+
 // Parts are normalized at the history or live-publication boundary.
 fun activityChunks(parts: List<MessagePart>): List<List<MessagePart>> {
     val chunks = mutableListOf<MutableList<MessagePart>>()
     parts.forEach { part ->
         if (part.type == "citation-sources" || (part.type in listOf("text", "reasoning") && part.text.isBlank())) return@forEach
-        if (part.type == "text" || chunks.isEmpty() || chunks.last().last().type == "text") chunks.add(mutableListOf(part))
+        // A surface is a block of its own, like text; tools and reasoning around it keep their own rails.
+        if (part.type in blockTypes || chunks.isEmpty() || chunks.last().last().type in blockTypes) chunks.add(mutableListOf(part))
         else chunks.last().add(part)
     }
     return chunks
@@ -252,6 +274,13 @@ class LiveActivityBuffer {
             "CUSTOM" -> {
                 val value = event.optJSONObject("value") ?: return
                 when (event.optString("name")) {
+                    "a2ui.render" -> {
+                        val surface = A2UISurface.parse(value)
+                        // A later render of the same id replaces the earlier one in place.
+                        val index = parts.indexOfFirst { it.type == "a2ui" && it.surface?.id == surface.id }
+                        if (index >= 0) parts[index] = parts[index].copy(surface = surface) else parts.add(MessagePart("a2ui", surface = surface))
+                    }
+                    "a2ui.resolved" -> parts.removeAll { it.type == "a2ui" && it.surface?.deferred == true && it.surface.id == value.optString("surfaceId") }
                     "tool_approval_request" -> {
                         val toolId = value.optString("toolCallId")
                         val index = parts.indexOfFirst { it.type == "tool" && it.toolCallId == toolId }
@@ -273,3 +302,11 @@ class LiveActivityBuffer {
 
 fun showAssemblyBadge(parts: List<MessagePart>, streaming: Boolean): Boolean =
     streaming && parts.none { it.type != "text" || it.text.isNotBlank() }
+
+/** Who a turn introduces itself as. Regent's own chat already does that in the header. */
+enum class TurnAuthorMark { Assembly, Assistant }
+
+fun turnAuthorMark(regentChat: Boolean, live: Boolean, compact: Boolean, pendingApproval: Boolean): TurnAuthorMark? {
+    if (regentChat) return null
+    return if (live || !compact || pendingApproval) TurnAuthorMark.Assembly else TurnAuthorMark.Assistant
+}

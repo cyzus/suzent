@@ -607,7 +607,12 @@ def _part_tokens(part: Any) -> int:
     only content made the largest thing an agent ever sends invisible.
     """
     if isinstance(part, ToolReturnPart):
-        content: Any = part.model_response_str_and_user_content()[0]
+        from suzent.tools.capability import without_model_excluded_metadata
+
+        # Metadata the model never receives would otherwise count as context.
+        content: Any = without_model_excluded_metadata(
+            part
+        ).model_response_str_and_user_content()[0]
     else:
         content = getattr(part, "content", "") or ""
     if isinstance(content, (list, tuple)):

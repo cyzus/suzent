@@ -34,7 +34,10 @@ for letting others in, and for choosing which model and tools chat apps use.
 **Conversations persist.** Each chat becomes a regular Suzent conversation that
 remembers its history, even after a restart. Photos are read by the model if it
 supports images. Files you send are saved to the project library's
-`uploads` folder, where the agent can open them.
+`uploads` folder, where the agent can open them. Files the agent makes for you
+come back to the same conversation (see
+[Receiving files](../03-features/tools/interaction.md#receiving-files)); WeChat
+can't receive them yet.
 
 ## Commands in a chat app
 
@@ -54,5 +57,7 @@ Send these as messages to the bot:
 
 ## Keep it online
 
-Chat apps only work while Suzent is running. To keep them available after you
-close the window, turn on the [background service](../03-features/automation.md#keep-suzent-running-in-the-background).
+Chat apps only work while Suzent is running. On Windows and macOS, closing
+the window leaves Suzent in the notification area or the menu bar. To keep
+chat apps available after you quit, turn on the
+[background service](../03-features/automation.md#keep-suzent-running-in-the-background).

@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "suzent"
-version = "0.23.0"
+version = "0.25.0"
 description = "Suzent is a sovereign AI agent: own its memory, govern its actions, choose its intelligence, and keep its continuity."
 readme = "README.md"
 requires-python = ">=3.12"
@@ -73,7 +73,9 @@ dependencies = [
     "prompt_toolkit>=3.0.0",
     "keyring>=25.0.0",
     "cryptography>=42.0.0",
-    "pydantic-ai-harness>=0.64,<0.65",
+    "pydantic-ai-harness[codemode]>=0.64,<0.65",
+    # Code mode's sandbox. Pinned exactly: upgrades are vetted by hand.
+    "pydantic-monty==1.4.0",
     "websockets>=15",
 ]
 

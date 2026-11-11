@@ -1,0 +1,1 @@
+{"products": {"mobile": "patch"}, "summary": "Android: inline code shows as a readable yellow chip in dark mode again, instead of a dark box with faint text or a whole line painted yellow."}

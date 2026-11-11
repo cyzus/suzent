@@ -107,7 +107,7 @@ def _installer_env(tmp_path: Path, commands: Path, log: Path) -> dict[str, str]:
         "CALL_LOG": str(log),
         "MACOS_INSTALLER_APP": str(app),
         "MACOS_INSTALLER_BINARY": str(tmp_path / "suzent-installer"),
-        "MACOS_INSTALLER_DMG": str(tmp_path / "suzent-installer-macos-aarch64.dmg"),
+        "MACOS_INSTALLER_DMG": str(tmp_path / "suzent-installer-macos.dmg"),
         "MACOS_SIGNED_ARCHIVE": str(tmp_path / "candidate.tar.gz"),
     }
 
@@ -175,7 +175,7 @@ def test_installer_disk_image_is_stapled_only_after_acceptance(
     submissions = [call for call in calls if call.startswith("xcrun notarytool submit")]
     assert sorted(call.split()[3].rsplit("/", 1)[-1] for call in submissions) == [
         "assets.zip",
-        "suzent-installer-macos-aarch64.dmg",
+        "suzent-installer-macos.dmg",
     ]
     stapling = [
         "xcrun stapler staple",
@@ -194,7 +194,7 @@ def test_installer_disk_image_is_stapled_only_after_acceptance(
         for call in calls
     )
     with tarfile.open(tmp_path / "candidate.tar.gz") as archive:
-        assert {"./suzent-installer", "suzent-installer-macos-aarch64.dmg"} <= set(
+        assert {"./suzent-installer", "suzent-installer-macos.dmg"} <= set(
             archive.getnames()
         )
     assert "security delete-keychain" in "\n".join(calls)

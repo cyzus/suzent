@@ -349,6 +349,20 @@ export function processEvent(
             permissionDecision: decision,
           });
         }
+      } else if (name === 'code_mode_call') {
+        // Sent just before the call starts, so the part exists and its
+        // TOOL_CALL_START keeps the link.
+        const link = value as { toolCallId?: string; parentToolCallId?: string };
+        if (link.toolCallId && findLastToolPartIndex(next, link.toolCallId) < 0) {
+          next.push({
+            type: 'tool',
+            toolCallId: link.toolCallId,
+            toolName: 'unknown',
+            args: '',
+            state: 'running',
+            parentToolCallId: link.parentToolCallId,
+          });
+        }
       } else if (name === 'tool_call_outcome') {
         const outcome = value as { toolCallId?: string; outcome?: AGUIPart['outcome'] };
         const existingIndex = outcome.toolCallId

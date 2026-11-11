@@ -13,6 +13,8 @@ import { BackgroundTaskView } from '../sidebar/BackgroundTaskView';
 import { useBackgroundTasks } from '../../hooks/useBackgroundTasks';
 import { BackgroundTaskList } from '../sidebar/BackgroundTaskList';
 import { RepositoryContextView } from '../sidebar/RepositoryContextView';
+import { ARTIFACT_KIND_ICONS, ArtifactsPreview, ArtifactsView } from '../sidebar/ArtifactsView';
+import { collectChatArtifacts } from '../../lib/chatArtifacts';
 import type { Message, Goal, Task } from '../../types/api';
 import type { KanbanData } from '../../hooks/useGoalTasks';
 import type { CanvasState } from '../../hooks/useCanvas';
@@ -36,8 +38,10 @@ import {
   ServerStackIcon,
   CircleStackIcon,
   EllipsisHorizontalIcon,
+  SparklesIcon,
 } from '@heroicons/react/24/outline';
 import { PanelResizeHandle } from '../PanelResizeHandle';
+import { SidebarToggleIcon } from '../SidebarToggleIcon';
 import { ToolsPanel } from './ToolsPanel';
 import { FocalToolsPanel } from './FocalToolsPanel';
 import {
@@ -73,6 +77,7 @@ import { isSubAgentActive } from './subAgentStatus';
 export type TabId =
   | 'overview'
   | 'files'
+  | 'artifacts'
   | 'context'
   | 'browser'
   | 'canvas'
@@ -197,6 +202,8 @@ interface RightSidebarProps {
   /** This chat has spawned sub-agents at some point, live stream or not. */
   hasSubAgentHistory?: boolean;
   messages?: Message[];
+  /** Opens a file the agent produced in the Files panel. */
+  onOpenFile?: (path: string, name: string) => void;
   forcedWebContextId?: string | null;
   canvasRequestNonce?: number;
   canvasExpandNonce?: number;
@@ -248,6 +255,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
   hasSubAgents = false,
   hasSubAgentHistory = false,
   messages = [],
+  onOpenFile,
   forcedWebContextId,
   canvasRequestNonce,
   canvasExpandNonce,
@@ -331,6 +339,8 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
     [messages, shouldBuildWebHistory]
   );
   const webHistory = useWebHistory(webHistoryMessages);
+  const artifacts = useMemo(() => collectChatArtifacts(messages), [messages]);
+  const hasArtifacts = Boolean(currentChatId) && artifacts.length > 0;
   const hasWebActivity =
     webHistory.length > 0 ||
     (!shouldBuildWebHistory &&
@@ -375,6 +385,15 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
       pinned: true,
     },
     {
+      id: 'artifacts',
+      icon: SparklesIcon,
+      labelKey: 'sidebar.tabs.artifacts',
+      fallbackLabel: 'Artifacts',
+      hasContent: hasArtifacts,
+      hasActivity: false,
+      pinned: hasArtifacts,
+    },
+    {
       id: 'browser',
       icon: GlobeAltIcon,
       labelKey: 'sidebar.tabs.browser',
@@ -410,7 +429,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
       icon: CpuChipIcon,
       labelKey: 'sidebar.tabs.agents',
       fallbackLabel: 'Background tasks',
-      hasContent: hasAgentContent,
+      hasContent: Boolean(currentChatId) || hasAgentContent,
       hasActivity: hasBackgroundActivity,
       activityClass: 'bg-brutal-blue animate-pulse',
       pinned: false,
@@ -577,6 +596,8 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
     2
   );
   const contextStats = useContextUsageStats(currentChatId);
+  // The Files panel takes over once the file is confirmed to exist.
+  const openArtifact = (path: string, name: string): void => onOpenFile?.(path, name);
   const overviewContent: Partial<
     Record<TabId, Pick<OverviewSection, 'summary' | 'detail' | 'preview' | 'body' | 'fullView'>>
   > = {
@@ -623,28 +644,31 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
     agents: {
       summary: runningAgentCount
         ? t('sidebar.overview.running', { count: runningAgentCount })
-        : undefined,
-      preview: (
-        <ul className="mt-1.5 space-y-0.5">
-          {previewAgents.map((task) => (
-            <li
-              key={task.task_id}
-              className="flex items-center gap-2 text-xs text-neutral-500 dark:text-neutral-400"
-            >
-              <span
-                className={`h-1.5 w-1.5 shrink-0 rounded-full ${
-                  isSubAgentActive(task.status)
-                    ? 'bg-brutal-blue animate-pulse'
-                    : task.status === 'failed'
-                      ? 'bg-brutal-red'
-                      : 'bg-neutral-300 dark:bg-zinc-600'
-                }`}
-              />
-              <span className="truncate">{task.description}</span>
-            </li>
-          ))}
-        </ul>
-      ),
+        : backgroundTasks.length > 0
+          ? String(backgroundTasks.length)
+          : undefined,
+      preview:
+        previewAgents.length > 0 ? (
+          <ul className="mt-1.5 space-y-0.5">
+            {previewAgents.map((task) => (
+              <li
+                key={task.task_id}
+                className="flex items-center gap-2 text-xs text-neutral-500 dark:text-neutral-400"
+              >
+                <span
+                  className={`h-1.5 w-1.5 shrink-0 rounded-full ${
+                    isSubAgentActive(task.status)
+                      ? 'bg-brutal-blue animate-pulse'
+                      : task.status === 'failed'
+                        ? 'bg-brutal-red'
+                        : 'bg-neutral-300 dark:bg-zinc-600'
+                  }`}
+                />
+                <span className="truncate">{task.description}</span>
+              </li>
+            ))}
+          </ul>
+        ) : undefined,
       body: (
         <OverviewList
           items={backgroundTasks}
@@ -664,6 +688,23 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
           )}
           renderLabel={(task) => task.description}
           onSelect={(task) => onSelectSubAgent?.(task.task_id)}
+        />
+      ),
+    },
+    artifacts: {
+      summary: artifacts.length > 0 ? artifacts.length : undefined,
+      preview: artifacts.length > 0 ? <ArtifactsPreview artifacts={artifacts} /> : undefined,
+      body: (
+        <OverviewList
+          items={artifacts.slice(0, 6)}
+          empty={t('artifacts.empty')}
+          getKey={(artifact) => artifact.path}
+          renderMarker={(artifact) => {
+            const KindIcon = ARTIFACT_KIND_ICONS[artifact.kind];
+            return <KindIcon className="h-3 w-3 text-neutral-400" />;
+          }}
+          renderLabel={(artifact) => artifact.name}
+          onSelect={(artifact) => openArtifact(artifact.path, artifact.name)}
         />
       ),
     },
@@ -696,7 +737,12 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
   };
   // Sections stay listed even when empty: the overview is the only way into their full panels.
   const overviewSections: OverviewSection[] = tabs
-    .filter((tab) => (!tab.pinned || tab.id === 'plan') && tab.hasContent && !isTabLocked(tab.id))
+    .filter(
+      (tab) =>
+        (!tab.pinned || tab.id === 'plan' || tab.id === 'artifacts') &&
+        tab.hasContent &&
+        !isTabLocked(tab.id)
+    )
     .map((tab) => ({
       id: tab.id,
       icon: tab.icon,
@@ -822,10 +868,10 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
     setCoverWidth(null);
     onClose();
   };
-  // The overview blends into the chat; content panels keep the brutalist edge.
+  // The overview uses a subtle 1px divider and tray background; content panels keep the brutalist edge.
   const sidebarLeftBorder =
     activeTab === 'overview'
-      ? ''
+      ? 'border-l border-neutral-200 dark:border-zinc-800'
       : coveringChat
         ? 'border-l border-neutral-300 dark:border-zinc-700'
         : 'border-l-3 border-brutal-black';
@@ -930,6 +976,14 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                   />
                 </div>
                 <div
+                  className={`flex-1 h-full flex-col min-h-0 ${activeTab === 'artifacts' ? 'flex' : 'hidden'}`}
+                >
+                  {backToOverview}
+                  <div className="flex-1 min-h-0 overflow-y-auto">
+                    <ArtifactsView artifacts={artifacts} onOpen={openArtifact} />
+                  </div>
+                </div>
+                <div
                   className={`flex-1 h-full flex-col min-h-0 ${activeTab === 'context' ? 'flex' : 'hidden'}`}
                 >
                   {backToOverview}
@@ -1028,6 +1082,14 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                     externalFileNonce={fileToPreview?.nonce ?? null}
                     onMaximize={onMaximizeFile}
                   />
+                </div>
+                <div
+                  className={`flex-1 h-full flex-col min-h-0 ${activeTab === 'artifacts' ? 'flex' : 'hidden'}`}
+                >
+                  {backToOverview}
+                  <div className="flex-1 min-h-0 overflow-y-auto">
+                    <ArtifactsView artifacts={artifacts} onOpen={openArtifact} />
+                  </div>
                 </div>
                 <div
                   className={`flex-1 h-full flex-col min-h-0 ${activeTab === 'context' ? 'flex' : 'hidden'}`}
@@ -1164,19 +1226,21 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                         : 'text-neutral-500 hover:bg-neutral-100 hover:text-brutal-black dark:text-neutral-400 dark:hover:bg-zinc-700 dark:hover:text-white'
                     }`}
                   >
-                    <Icon className="h-4 w-4" />
+                    {tab.id === 'overview' ? (
+                      <SidebarToggleIcon
+                        side="right"
+                        open={isActive}
+                        className="h-4 w-4"
+                      />
+                    ) : (
+                      <Icon className="h-4 w-4" />
+                    )}
                     {tab.hasActivity && !isActive && (
                       <span
                         className={`absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full border border-brutal-black ${tab.activityClass ?? 'bg-brutal-yellow'}`}
                       />
                     )}
                   </button>
-                  {tab.id === 'overview' && visibleHeaderTabs.length > 1 && (
-                    <span
-                      className="mx-1 h-4 w-px bg-neutral-300 dark:bg-zinc-600"
-                      aria-hidden="true"
-                    />
-                  )}
                 </React.Fragment>
               );
             })}

@@ -12,6 +12,8 @@ Manual runs can choose `android`, `ios`, or `both`; Android is the default.
 An iOS-only retry can use the same tag with `platforms=ios`, without
 rebuilding Android or modifying its published assets. `submit_for_review`
 (default on) controls whether the uploaded iOS build is submitted to App Review.
+`publish_to_play` (default on) and `play_track` (default `alpha`, closed
+testing) control the Google Play rollout.
 Tag pushes alone do not publish: the explicit dispatch also works with GitHub's
 built-in token, whose tag pushes do not trigger another workflow.
 
@@ -37,6 +39,7 @@ Environment secrets:
 | `APP_STORE_CONNECT_KEY_BASE64` | Base64 of the App Store Connect team API key P8 |
 | `APP_STORE_CONNECT_KEY_ID` | API key ID |
 | `APP_STORE_CONNECT_ISSUER_ID` | API key issuer ID |
+| `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON` | JSON key of a Google Cloud service account with release permissions for the app in Play Console |
 
 Environment variable `APPLE_TEAM_ID` holds the Apple developer team ID. Create the
 `com.suzent.mobile` app in App Store Connect before the first upload and give the
@@ -76,9 +79,31 @@ rerunning the job is safe. A rejected submission still open in App Store Connect
 stops the job: resolve or cancel it there, then rerun the job. Turn off
 `submit_for_review` when dispatching manually to stop at the upload.
 
+## Google Play
+
+The Google Play Android Developer API must be enabled in the service account's
+Google Cloud project. Invite the service account's email under **Users and
+permissions** in Play Console and give it, for Suzent, permission to release to
+testing tracks, release to production, and manage testing tracks. The first
+bundle for a new app must be uploaded by hand in Play Console.
+
+After the signed build, the `google-play` job (`scripts/mobile/play_publish.py`)
+opens a Play edit, uploads the AAB, writes the changelog's `### Release notes`
+(cut to Play's 500 characters) for every store listing language, replaces the
+`play_track` release with this version at full rollout, and commits the edit.
+Google then reviews the update and makes it available to that track's testers.
+A version already live on the track is left alone, and a bundle uploaded by an
+earlier failed attempt is reused, so rerunning the job is safe; a failed attempt
+discards its edit.
+
+Production needs Google's production access first (for newer personal developer
+accounts, after the closed-testing requirement is met). Once granted, dispatch
+with `play_track=production`, or change the workflow default.
+
 ## Outputs and numbering
 
-- Android: release APK, AAB, and SHA256SUMS in the versioned GitHub Release.
+- Android: release APK, AAB, and SHA256SUMS in the versioned GitHub Release,
+  and the AAB rolled out to the selected Google Play track.
 - iOS: a build uploaded to App Store Connect and submitted for review with
   automatic release; dSYMs retained as Actions artifacts.
 - GitHub publication requires Android success and, when selected, iOS success.
@@ -87,7 +112,7 @@ stops the job: resolve or cancel it there, then rerun the job. Turn off
   `--latest=false` and do not replace the desktop latest release.
 - Submission is not approval: Apple review can still reject the version. Configure
   TestFlight testing groups and required review information in App Store
-  Connect. Play Store upload/submission remains manual using the AAB.
+  Connect. Google Play also reviews each update before testers receive it.
 
 Release build numbers are `100000 + packages/mobile-contract/version.json.build`.
 Release planning increments that source counter. Both platforms get the same
@@ -105,8 +130,8 @@ by an ordinary in-place update.
 
 ## Recovery
 
-For a failed run, use **Re-run failed jobs**. A failed `ios-submit` job reruns
-without uploading again. Successful jobs and their outputs are
+For a failed run, use **Re-run failed jobs**. A failed `ios-submit` or `google-play`
+job reruns without rebuilding. Successful jobs and their outputs are
 reused, avoiding another upload of an already accepted iOS build. If Apple accepted
 an upload but the job failed afterward, check App Store Connect before retrying;
 do not blindly rerun the upload or increment build numbers outside release planning.
@@ -128,7 +153,7 @@ Use the signed Release builds, not the debug builds, for acceptance:
 - Pair over local trusted HTTPS and a remote HTTPS address; reject changed trust.
 - Cancel/timeout on wrong Wi-Fi, desktop shutdown, or rejected permissions.
 - Re-pair the same installation and revoke credentials from desktop.
-- Send, stop, approve tools, background/foreground, and recover a running stream.
+- Send, stop, redirect and queue mid-turn, approve tools, background/foreground, and recover a running stream.
 - Upgrade a signed Android release and a TestFlight build without losing pairing.
 - Check iOS selection overlay, long names, large text, dark mode, and VoiceOver.
 - Confirm the privacy/support pages, permission explanations, store screenshots,

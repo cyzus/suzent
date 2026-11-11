@@ -5,16 +5,24 @@ import android.os.Bundle
 import androidx.activity.compose.PredictiveBackHandler
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.activity.ComponentActivity
+import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.background
@@ -48,6 +56,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
@@ -63,7 +72,9 @@ import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.text.input.ImeAction
@@ -77,8 +88,19 @@ class MainActivity : ComponentActivity() {
     private val model: MobileModel by viewModels()
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        AppPreferences.load(this)
         enableEdgeToEdge()
-        setContent { SuzentTheme { MobileScreen(model) } }
+        setContent {
+            AppPreferencesProvider {
+                // System bar icons follow the in-app appearance, not only the system one.
+                val dark = isSystemInDarkTheme()
+                LaunchedEffect(dark) {
+                    val style = SystemBarStyle.auto(android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT) { dark }
+                    enableEdgeToEdge(style, style)
+                }
+                SuzentTheme { MobileScreen(model) }
+            }
+        }
     }
     override fun onStart() { super.onStart(); model.setForeground(true) }
     override fun onStop() { model.setForeground(false); super.onStop() }
@@ -112,6 +134,7 @@ private fun MobileScreen(model: MobileModel) {
         val wide = maxWidth >= WideLayoutWidth
         LaunchedEffect(showHome, showSettings, model.selected?.id, wide) {
             model.regentVisible = (wide || !showHome) && !showSettings && model.selected?.isRegent == true
+            model.chatVisible = (wide || !showHome) && !showSettings
         }
         val openChat: (Chat) -> Unit = { chat -> focus.clearFocus(); model.open(chat); showSettings = false; showHome = false }
         val sidebar: @Composable () -> Unit = {
@@ -191,8 +214,10 @@ private fun CompactStack(showHome: Boolean, back: () -> Unit, home: @Composable 
     }
     BoxWithConstraints(Modifier.fillMaxSize().clipToBounds()) {
         val width = constraints.maxWidth.toFloat()
-        if (showHome || reveal.value > 0f) Box(Modifier.fillMaxSize().graphicsLayer { translationX = -(1f - reveal.value) * width * .25f }) { home() }
-        if (!showHome || reveal.value < 1f) Box(Modifier.fillMaxSize().graphicsLayer { translationX = reveal.value * width }) { detail() }
+        val homeVisible by remember(showHome) { derivedStateOf { showHome || reveal.value > 0f } }
+        val detailVisible by remember(showHome) { derivedStateOf { !showHome || reveal.value < 1f } }
+        if (homeVisible) Box(Modifier.fillMaxSize().graphicsLayer { translationX = -(1f - reveal.value) * width * .25f }) { home() }
+        if (detailVisible) Box(Modifier.fillMaxSize().graphicsLayer { translationX = reveal.value * width }) { detail() }
     }
 }
 
@@ -200,6 +225,16 @@ private fun CompactStack(showHome: Boolean, back: () -> Unit, home: @Composable 
 @Composable
 private fun DetailPane(model: MobileModel, showSettings: Boolean, desktopsOpen: Boolean, openDesktops: (Boolean) -> Unit,
                        back: (() -> Unit)?, newChat: () -> Unit, repair: () -> Unit) {
+    val selected = model.selected
+    // Regent's plan is the desktop board across conversations, so only ordinary saved chats get the panel.
+    val infoAvailable = model.connected && !showSettings && model.overviewSupported &&
+        selected != null && selected.id.isNotEmpty() && !selected.isRegent
+    var infoOpen by rememberSaveable { mutableStateOf(false) }
+    val wide = back == null
+    if (infoOpen && infoAvailable && !wide && selected != null) ModalBottomSheet(onDismissRequest = { infoOpen = false },
+        shape = RectangleShape, containerColor = MaterialTheme.colorScheme.surface) {
+        ChatInfoPanel(model, selected.id, Modifier.fillMaxWidth())
+    }
     Scaffold(topBar = {
         Column(Modifier.statusBarsPadding()) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -225,6 +260,10 @@ private fun DetailPane(model: MobileModel, showSettings: Boolean, desktopsOpen: 
                             fontSize = 13.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 2.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     } else SuzentWordmark()
                 }
+                if (infoAvailable) SuzentIconButton(onClick = { infoOpen = !infoOpen }, label = stringResource(R.string.chat_info),
+                    modifier = Modifier.semantics { this.selected = infoOpen }) {
+                    PanelToggleIcon(infoOpen, bottom = !wide, Modifier.size(22.dp))
+                }
                 if (model.connected) SuzentIconButton(onClick = newChat, label = stringResource(R.string.new_chat),
                     enabled = !model.busy && model.device?.permissions?.createChats == true) {
                     Icon(painterResource(R.drawable.ic_new_chat), contentDescription = null, modifier = Modifier.size(20.dp))
@@ -239,7 +278,11 @@ private fun DetailPane(model: MobileModel, showSettings: Boolean, desktopsOpen: 
                 !model.connected -> Box(Modifier.padding(horizontal = 16.dp)) { PairingView(model) }
                 showSettings && desktopsOpen -> DesktopsView(model, back = { openDesktops(false) })
                 showSettings -> SettingsView(model, openDesktops = { openDesktops(true) })
-                model.selected != null -> Conversation(model)
+                selected != null && wide && infoOpen && infoAvailable -> Row(Modifier.weight(1f)) {
+                    Column(Modifier.weight(1f).fillMaxHeight()) { ProvideSurfaceHandler(surfaceHandler(model, selected)) { Conversation(model) } }
+                    ChatInfoColumn(model, selected.id)
+                }
+                selected != null -> ProvideSurfaceHandler(surfaceHandler(model, selected)) { Conversation(model) }
                 else -> Box(Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
                     if (model.busy) CircularProgressIndicator() else Text(stringResource(R.string.select_conversation), color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
@@ -258,11 +301,17 @@ private fun ReconnectView(model: MobileModel, repair: () -> Unit) {
     Column(Modifier.fillMaxSize().padding(horizontal = 24.dp).padding(bottom = 20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         Spacer(Modifier.weight(1f))
         Column(verticalArrangement = Arrangement.spacedBy(21.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            ReconnectIndicator(active = model.busy)
+            ReconnectIndicator(active = model.busy, stage = model.reconnectStage)
             Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text(stringResource(if (model.busy) R.string.connecting_suzent else R.string.reconnect),
                     fontSize = 21.sp, fontWeight = FontWeight.Medium, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
                 ActiveDesktopLabel(model)
+                val status = model.reconnectStatus
+                Box(Modifier.fillMaxWidth().heightIn(min = 16.dp), contentAlignment = Alignment.Center) {
+                    Text(if (model.busy) status.orEmpty() else "", fontSize = PresentationTokens.typeCaption.sp, fontFamily = FontFamily.Monospace,
+                        fontWeight = FontWeight.SemiBold, letterSpacing = 0.8.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                }
             }
             Box(Modifier.heightIn(min = 44.dp)) {
                 if (model.busy) {
@@ -487,7 +536,7 @@ private fun Sidebar(model: MobileModel, hideSelection: Boolean, tabs: Boolean, o
         if (openSearch == null) Button(onClick = { create(null) },
             enabled = !model.busy && model.device?.permissions?.createChats == true,
             shape = RectangleShape,
-            colors = ButtonDefaults.buttonColors(containerColor = Color(PresentationTokens.yellow), contentColor = Color.Black),
+            colors = ButtonDefaults.buttonColors(containerColor = suzentYellow(), contentColor = Color.Black),
             modifier = Modifier.padding(horizontal = 16.dp).padding(top = 12.dp).fillMaxWidth().heightIn(min = 48.dp)) {
             Icon(painterResource(R.drawable.ic_new_chat), contentDescription = null, modifier = Modifier.size(20.dp))
             Spacer(Modifier.width(10.dp))
@@ -549,8 +598,9 @@ private fun Sidebar(model: MobileModel, hideSelection: Boolean, tabs: Boolean, o
                         verticalAlignment = Alignment.CenterVertically) {
                         Icon(painterResource(R.drawable.ic_chat_folder), null, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(10.dp))
-                        Text(project.name, fontWeight = FontWeight.Medium,
+                        Text(project.name, fontWeight = if (!isOpen && project.unread) FontWeight.ExtraBold else FontWeight.Medium,
                             fontSize = PresentationTokens.typeCaption.sp, modifier = Modifier.weight(1f), color = MaterialTheme.colorScheme.onSurface)
+                        if (!isOpen && (project.running || projectRows.any { it.chat.running })) Box(Modifier.padding(end = 8.dp)) { StreamingPulse() }
                         Text("${project.chatCount ?: projectRows.size}", fontSize = PresentationTokens.typeLabel.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         SuzentChevron(isOpen, Modifier.padding(start = 12.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
@@ -682,6 +732,8 @@ private fun ScheduledTaskRow(task: ScheduledTask, model: MobileModel, selected: 
 private fun SidebarChat(chat: Chat, selected: Boolean, model: MobileModel, open: (Chat) -> Unit,
                         childCount: Int, expanded: Boolean, toggle: () -> Unit, nested: Boolean) {
     var menu by remember { mutableStateOf(false) }
+    var menuAnchor by remember { mutableStateOf<Offset?>(null) }
+    var pressAt by remember { mutableLongStateOf(0L) }
     var moving by remember { mutableStateOf(false) }
     var renaming by remember { mutableStateOf(false) }
     var deleting by remember { mutableStateOf(false) }
@@ -706,7 +758,7 @@ private fun SidebarChat(chat: Chat, selected: Boolean, model: MobileModel, open:
         val direction = swipe.dismissDirection
         val delete = direction == SwipeToDismissBoxValue.EndToStart
         Row(Modifier.fillMaxSize().background(when (direction) {
-            SwipeToDismissBoxValue.StartToEnd -> if (chat.pinned) selection else Color(PresentationTokens.yellow)
+            SwipeToDismissBoxValue.StartToEnd -> if (chat.pinned) selection else suzentYellow()
             SwipeToDismissBoxValue.EndToStart -> MaterialTheme.colorScheme.error
             SwipeToDismissBoxValue.Settled -> Color.Transparent
         }).padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically,
@@ -728,17 +780,28 @@ private fun SidebarChat(chat: Chat, selected: Boolean, model: MobileModel, open:
             if (value == SwipeToDismissBoxValue.EndToStart) { view.suzentHaptic(SuzentHaptic.Reject); deleting = true }
             scope.launch { swipe.reset() }
         }) {
-    Row(Modifier.fillMaxWidth().background(if (pressed) Color(PresentationTokens.yellow) else if (selected) selection else MaterialTheme.colorScheme.surface)
+    Row(Modifier.fillMaxWidth().background(if (pressed) suzentYellow() else if (selected) selection else MaterialTheme.colorScheme.surface)
+        .recordPressInWindow {
+            menuAnchor = it
+            pressAt = android.os.SystemClock.uptimeMillis()
+        }
         .combinedClickable(interactionSource = interaction, indication = null, enabled = !model.busy,
             onLongClickLabel = stringResource(R.string.conversation_actions),
-            onLongClick = { view.suzentHaptic(SuzentHaptic.LongPress); moving = false; menu = true }, onClick = { open(chat) })
+            onLongClick = {
+                // TalkBack has no finger. A press older than the long-press window anchors to the row.
+                if (android.os.SystemClock.uptimeMillis() - pressAt > 1_500L) menuAnchor = null
+                view.suzentHaptic(SuzentHaptic.LongPress)
+                moving = false
+                menu = true
+            }, onClick = { open(chat) })
         .heightIn(min = 44.dp).padding(start = if (nested) 32.dp else 12.dp, end = 12.dp,
             top = PresentationTokens.spaceRow.dp, bottom = PresentationTokens.spaceRow.dp),
         verticalAlignment = Alignment.CenterVertically) {
         if (chat.pinned) Icon(painterResource(R.drawable.ic_chat_pin), null, tint = foreground, modifier = Modifier.padding(end = 6.dp).size(12.dp))
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            val unread = chat.unread > 0 && !(model.chatVisible && chat.id == model.selected?.id)
             Text(chat.title, color = foreground, fontSize = PresentationTokens.typeCaption.sp, lineHeight = 18.sp,
-                fontWeight = FontWeight.Medium, maxLines = 1,
+                fontWeight = if (unread) FontWeight.ExtraBold else FontWeight.Medium, maxLines = 1,
                 overflow = TextOverflow.Ellipsis)
             val muted = if (pressed) Color.Black else MaterialTheme.colorScheme.onSurfaceVariant
             val meta = when {
@@ -759,24 +822,24 @@ private fun SidebarChat(chat: Chat, selected: Boolean, model: MobileModel, open:
         if (chat.running) Box(Modifier.padding(start = 8.dp)) { StreamingPulse() }
     }
     }
-    SuzentMenu(expanded = menu, onDismissRequest = { menu = false }) {
+    SuzentMenu(expanded = menu, onDismissRequest = { menu = false }, anchorInWindow = menuAnchor) {
         if (!canManage) {
             Text(stringResource(R.string.manage_permission_hint), modifier = Modifier.padding(16.dp), fontSize = 13.sp)
         } else if (moving) {
             SuzentMenuItem(stringResource(R.string.move_to_project), R.drawable.ic_chat_back) { moving = false }
-            HorizontalDivider(thickness = 2.dp, color = outline)
+            SuzentMenuDivider()
             model.projects.forEach { project ->
                 val current = project.id == chat.projectId
-                DropdownMenuItem(text = { Text(project.name, fontWeight = FontWeight.Bold, fontSize = 13.sp) },
-                    trailingIcon = if (current) ({ Icon(painterResource(R.drawable.ic_message_check), null, Modifier.size(18.dp)) }) else null,
-                    enabled = !current && !model.busy,
-                    onClick = { menu = false; model.manageChat(chat, "move", project.id) })
+                SuzentMenuItem(project.name, R.drawable.ic_chat_folder,
+                    enabled = !current && !model.busy, selected = current) {
+                    menu = false; model.manageChat(chat, "move", project.id)
+                }
             }
         } else {
             SuzentMenuItem(stringResource(if (chat.pinned) R.string.unpin_chat else R.string.pin_chat), R.drawable.ic_chat_pin) { menu = false; togglePin() }
             SuzentMenuItem(stringResource(R.string.rename_chat), R.drawable.ic_chat_rename) { menu = false; title = chat.title; renaming = true }
             SuzentMenuItem(stringResource(R.string.move_to_project), R.drawable.ic_chat_folder, enabled = !chat.running && model.projects.isNotEmpty()) { moving = true }
-            HorizontalDivider(thickness = 2.dp, color = outline)
+            SuzentMenuDivider()
             SuzentMenuItem(stringResource(R.string.delete_chat), R.drawable.ic_chat_delete, enabled = !chat.running, danger = true) { menu = false; deleting = true }
         }
     }
@@ -849,6 +912,7 @@ private fun SettingsView(model: MobileModel, openDesktops: () -> Unit) {
             SettingsRow(stringResource(R.string.forget_this_desktop), { forgetting = true }, enabled = !model.busy, danger = true)
             SettingsFooter(stringResource(R.string.revoke_help))
         }
+        PreferencesSection()
         SettingsSection(stringResource(R.string.about))
         if (!model.isDemo) {
             SettingsRow(stringResource(R.string.demo_enter), model::startDemo, enabled = !model.busy && !model.streaming)
@@ -857,6 +921,56 @@ private fun SettingsView(model: MobileModel, openDesktops: () -> Unit) {
         val uriHandler = LocalUriHandler.current
         SettingsRow(stringResource(R.string.privacy_policy), { uriHandler.openUri(PRIVACY_POLICY_URL) })
     }
+}
+
+@Composable
+private fun PreferencesSection() {
+    val context = LocalContext.current
+    var picking by remember { mutableStateOf<String?>(null) }
+    var language by remember { mutableStateOf(AppPreferences.language(context)) }
+    val appearanceLabels = mapOf(AppearancePreference.SYSTEM to R.string.match_system, AppearancePreference.LIGHT to R.string.appearance_light,
+        AppearancePreference.DARK to R.string.appearance_dark).mapValues { stringResource(it.value) }
+    val textSizeLabels = mapOf(TextSizePreference.SYSTEM to R.string.match_system, TextSizePreference.SMALL to R.string.text_size_small,
+        TextSizePreference.LARGE to R.string.text_size_large, TextSizePreference.EXTRA_LARGE to R.string.text_size_extra_large)
+        .mapValues { stringResource(it.value) }
+    // Language names stay in their own language so they can be found from either one.
+    val languageLabels = mapOf(LanguagePreference.SYSTEM to stringResource(R.string.match_system),
+        LanguagePreference.ENGLISH to "English", LanguagePreference.CHINESE to "简体中文")
+    SettingsSection(stringResource(R.string.preferences))
+    PreferenceRow(stringResource(R.string.appearance), appearanceLabels.getValue(AppPreferences.appearance)) { picking = "appearance" }
+    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+    PreferenceRow(stringResource(R.string.text_size), textSizeLabels.getValue(AppPreferences.textSize)) { picking = "text" }
+    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+    ListItem(headlineContent = { Text(stringResource(R.string.haptics), fontWeight = FontWeight.SemiBold) },
+        trailingContent = { Switch(checked = AppPreferences.haptics, onCheckedChange = null) },
+        modifier = Modifier.toggleable(value = AppPreferences.haptics, role = Role.Switch, onValueChange = { AppPreferences.haptics = it }))
+    if (AppPreferences.supportsLanguage) {
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        PreferenceRow(stringResource(R.string.language), languageLabels.getValue(language)) { picking = "language" }
+    }
+    SettingsFooter(stringResource(R.string.preferences_footer))
+    when (picking) {
+        "appearance" -> SuzentSelectionPanel(stringResource(R.string.appearance), appearanceLabels.map { it.key.name to it.value },
+            AppPreferences.appearance.name, dismiss = { picking = null }) { picked ->
+            AppPreferences.appearance = AppearancePreference.valueOf(picked); picking = null
+        }
+        "text" -> SuzentSelectionPanel(stringResource(R.string.text_size), textSizeLabels.map { it.key.name to it.value },
+            AppPreferences.textSize.name, dismiss = { picking = null }) { picked ->
+            AppPreferences.textSize = TextSizePreference.valueOf(picked); picking = null
+        }
+        "language" -> SuzentSelectionPanel(stringResource(R.string.language), languageLabels.map { it.key.name to it.value },
+            language.name, dismiss = { picking = null }) { picked ->
+            // The platform recreates the activity in the new language.
+            picking = null; language = LanguagePreference.valueOf(picked); AppPreferences.setLanguage(context, language)
+        }
+    }
+}
+
+@Composable
+private fun PreferenceRow(label: String, value: String, onClick: () -> Unit) {
+    ListItem(headlineContent = { Text(label, fontWeight = FontWeight.SemiBold) },
+        trailingContent = { Text(value, color = MaterialTheme.colorScheme.onSurfaceVariant) },
+        modifier = Modifier.clickable(role = Role.Button, onClickLabel = label, onClick = onClick))
 }
 
 @Composable
@@ -879,14 +993,44 @@ private fun SettingsFooter(text: String) {
         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
 }
 
+/** Question forms the user has replied to since, which are not offered again (desktop `isAnsweredQuestion`). */
+private fun answeredQuestions(chat: Chat): Set<String> {
+    val lastUser = chat.messages.indexOfLast { it.role == "user" }
+    if (lastUser < 0) return emptySet()
+    return chat.messages.take(lastUser).flatMap { it.parts }.mapNotNull { part ->
+        part.surface?.takeIf { (it.component as? A2UIComponent.Form)?.action == "submit_question" }?.id
+    }.toSet()
+}
+
+private fun surfaceHandler(model: MobileModel, chat: Chat): SurfaceHandler {
+    val answered = answeredQuestions(chat)
+    val idle = !model.busy && !model.streaming && !chat.running
+    val canSend = model.device?.permissions?.send == true && chat.id.isNotEmpty()
+    // A blocked question is answered while the run waits; anything else starts a new turn.
+    return SurfaceHandler(
+        interactive = { surface -> canSend && if (surface.deferred) model.surfacesSupported else idle && surface.id !in answered },
+        act = { surface, action, context, done -> model.act(surface, action, context, done) })
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ColumnScope.Conversation(model: MobileModel) {
     DisposableEffect(model) { onDispose { model.voice.stop() } }
     val chat = model.selected ?: return
+    val railChoices = remember(chat.id) { RailChoices() }
+    var streamGeneration by remember(chat.id) { mutableIntStateOf(0) }
+    var sawStreaming by remember(chat.id) { mutableStateOf(false) }
+    val streamStep = nextStreamGeneration(streamGeneration, sawStreaming, model.streaming)
+    if (streamStep.first != streamGeneration || streamStep.second != sawStreaming) {
+        streamGeneration = streamStep.first
+        sawStreaming = streamStep.second
+    }
     var attachmentsExpanded by remember(chat.id) { mutableStateOf(false) }
     val keyboardVisible = WindowInsets.ime.getBottom(LocalDensity.current) > 0
     val expanded = keyboardVisible && !attachmentsExpanded
+    val loadingHistory = model.openingChatId == chat.id && chat.messages.isEmpty()
+    val historyAlpha = animateFloatAsState(if (loadingHistory) 0f else 1f,
+        animationSpec = tween(160, easing = FastOutSlowInEasing), label = "history reveal")
     LaunchedEffect(keyboardVisible) { if (keyboardVisible) attachmentsExpanded = false }
     androidx.activity.compose.BackHandler(enabled = attachmentsExpanded) { attachmentsExpanded = false }
     val keyboard = LocalSoftwareKeyboardController.current
@@ -964,6 +1108,8 @@ private fun ColumnScope.Conversation(model: MobileModel) {
             }
         }
     }
+    val mediaLoader: suspend (MediaItem) -> java.io.File? = remember(chat.id) { { item -> model.mediaFile(chat.id, item) } }
+    CompositionLocalProvider(LocalRailChoices provides railChoices, LocalMediaLoader provides mediaLoader) {
     BoxWithConstraints(Modifier.weight(1f).fillMaxWidth().clipToBounds()) {
     val viewportHeight = maxHeight
     Column(Modifier.fillMaxWidth().requiredHeight(viewportHeight).offset(y = -trayHeight)) {
@@ -973,9 +1119,18 @@ private fun ColumnScope.Conversation(model: MobileModel) {
     val live = model.streaming || model.liveParts.isNotEmpty()
     lastItem = (if (chat.id.isEmpty()) 1 else 0) + (if (chat.isRegent && messages.isEmpty() && !model.streaming) 1 else 0) +
         messages.size + (if (live) 1 else 0) - 1
+    var positionedVersion by remember(chat.id) { mutableIntStateOf(-1) }
+    if (!loadingHistory && positionedVersion != model.openedVersion && lastItem >= 0) {
+        SideEffect {
+            scroll.requestScrollToItem(lastItem)
+            positionedVersion = model.openedVersion
+        }
+    }
     // Follow a streaming reply, and the hand-off from the live turn to the saved message, while at the end.
     LaunchedEffect(model.liveParts, messages.size) { if (following && chat.id.isNotEmpty()) toEnd() }
-    LazyColumn(Modifier.weight(1f).fillMaxWidth().pointerInput(attachmentsExpanded) {
+    LazyColumn(Modifier.weight(1f).fillMaxWidth().graphicsLayer {
+        alpha = if (loadingHistory) 1f else historyAlpha.value
+    }.pointerInput(attachmentsExpanded) {
         if (attachmentsExpanded) awaitEachGesture {
             // Observe before selectable text and message controls consume the touch.
             awaitFirstDown(requireUnconsumed = false, pass = androidx.compose.ui.input.pointer.PointerEventPass.Initial)
@@ -987,22 +1142,29 @@ private fun ColumnScope.Conversation(model: MobileModel) {
         // Short conversations sit at the bottom, as they did when the list was reversed.
         verticalArrangement = Arrangement.spacedBy(PresentationTokens.spaceLarge.dp, if (chat.id.isEmpty()) Alignment.Top else Alignment.Bottom)) {
         if (chat.id.isEmpty()) item { StartPage(model, chat, expanded) }
-        if (chat.isRegent && messages.isEmpty() && !model.streaming) item { RegentGreeting() }
+        if (loadingHistory) item(key = "loading-history") {
+            HistoryLoadingIndicator()
+        }
+        if (!loadingHistory && chat.isRegent && messages.isEmpty() && !model.streaming) item { RegentGreeting() }
         itemsIndexed(messages, key = { index, _ -> "message-$index" }) { index, message ->
             val idle = !model.busy && !model.streaming && !chat.running
             val lastUser = chat.messages.indexOfLast { it.role == "user" }
             val newest = index == messages.lastIndex
             val canReplay = !chat.isRegent && idle && chat.models.isNotEmpty() && lastUser >= 0 && model.device?.permissions?.send == true && model.device?.permissions?.manageChats == true
+            CompositionLocalProvider(LocalRailScope provides railScope(chat.id, "m${message.messageIndex}")) {
             MessageView(message, regent = chat.isRegent, isLatest = newest && !model.streaming && model.liveParts.isEmpty(), fallbackModel = chat.model,
                 canRetry = canReplay && (message.messageIndex == lastUser || (newest && message.role == "assistant")),
                 canEdit = canReplay && message.role == "user" && message.messageIndex == lastUser,
                 canFork = !chat.isRegent && idle && message.role == "assistant" && model.device?.permissions?.createChats == true,
                 onAction = { action, text -> model.messageAction(message, action, text) })
+            }
         }
         if (live) item(key = "live") {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                CompositionLocalProvider(LocalRailScope provides railScope(chat.id, "live$streamGeneration")) {
                 ActivityTurn(if (chat.isRegent) regentDisplayParts(model.liveParts, model.streaming) else model.liveParts,
                     live = model.streaming, regent = chat.isRegent)
+                }
             }
         }
     }
@@ -1017,7 +1179,11 @@ private fun ColumnScope.Conversation(model: MobileModel) {
     }.padding(end = PresentationTokens.shadowOffset.dp, bottom = PresentationTokens.shadowOffset.dp)) {
     Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface)
         .border(PresentationTokens.borderWidth.dp, composerOutline)
-        .animateContentSize(animationSpec = androidx.compose.animation.core.tween(180)).padding(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        .animateContentSize(
+            animationSpec = spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMediumLow),
+            alignment = Alignment.BottomCenter
+        ).padding(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        QueuedMessages(model)
         if (model.voice.active) {
             VoiceCubeView(model.voice.animationState, model.voice.working, model.voice.micLevel, Modifier.fillMaxWidth().height(112.dp))
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -1043,9 +1209,12 @@ private fun ColumnScope.Conversation(model: MobileModel) {
             textStyle = MaterialTheme.typography.bodyMedium.copy(fontSize = PresentationTokens.typeChat.sp, color = MaterialTheme.colorScheme.onSurface),
             cursorBrush = androidx.compose.ui.graphics.SolidColor(suzentLink),
             decorationBox = { inner -> Box { if (model.draft.isEmpty()) Text(stringResource(R.string.message), fontSize = PresentationTokens.typeChat.sp, color = MaterialTheme.colorScheme.onSurfaceVariant); inner() } })
-        if (!expanded) SendAction(model, chat, startVoice) else Spacer(Modifier.width(44.dp))
+        Spacer(Modifier.width(if (composerAction(model, chat) == ComposerAction.REDIRECT) 88.dp else 44.dp))
         }
-        if (expanded) Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        AnimatedVisibility(visible = expanded,
+            enter = fadeIn(tween(160, delayMillis = 40)),
+            exit = fadeOut(tween(90))) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.weight(1f)) {
                 SuzentTextButton(onClick = { modelsExpanded = true; focus.clearFocus(); keyboard?.hide() },
                     enabled = !model.busy && !model.streaming && chat.models.isNotEmpty() && model.device?.permissions?.send == true) {
@@ -1057,8 +1226,13 @@ private fun ColumnScope.Conversation(model: MobileModel) {
                 }
 
             }
-            SendAction(model, chat, startVoice)
+            Spacer(Modifier.size(if (composerAction(model, chat) == ComposerAction.REDIRECT) 88.dp else 44.dp))
         }
+        }
+    }
+    // One persistent action stays at the animated panel's bottom edge in both layouts.
+    Box(Modifier.align(Alignment.BottomEnd).padding(10.dp)) {
+        SendAction(model, chat, startVoice)
     }
     }
     }
@@ -1075,11 +1249,43 @@ private fun ColumnScope.Conversation(model: MobileModel) {
     ) { model.selectModel(it.ifEmpty { null }); modelsExpanded = false }
 
 }
+}
+
+@Composable
+private fun HistoryLoadingIndicator() {
+    var visible by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        kotlinx.coroutines.delay(180)
+        visible = true
+    }
+    Box(Modifier.fillMaxWidth().height(68.dp), contentAlignment = Alignment.Center) {
+        AnimatedVisibility(visible, enter = fadeIn(tween(140)), exit = fadeOut(tween(90))) {
+            CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+private fun composerAction(model: MobileModel, chat: Chat) = ComposerAction.resolve(model.draft.isNotBlank() || model.attachments.isNotEmpty(),
+    model.busy, model.streaming || chat.running, model.voice.active, model.voice.animationState == "connecting",
+    canRedirect = model.draft.isNotBlank() && model.redirectSupported)
 
 @Composable
 private fun SendAction(model: MobileModel, chat: Chat, startVoice: () -> Unit) {
-    val action = ComposerAction.resolve(model.draft.isNotBlank() || model.attachments.isNotEmpty(),
-        model.busy, model.streaming || chat.running, model.voice.active, model.voice.animationState == "connecting")
+    val action = composerAction(model, chat)
+    val queued = model.queued
+    LaunchedEffect(chat.id, queued, model.busy, model.streaming, chat.running, model.pendingApprovals.isEmpty(), model.approvalBusy) {
+        model.releaseQueued()
+    }
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        // Redirect is the main action mid-turn, as Enter is on desktop; waiting for the turn to end sits beside it.
+        if (action == ComposerAction.REDIRECT) ComposerButton(ComposerAction.QUEUE, model, chat, startVoice)
+        ComposerButton(action, model, chat, startVoice)
+    }
+}
+
+@Composable
+private fun ComposerButton(action: ComposerAction, model: MobileModel, chat: Chat, startVoice: () -> Unit) {
     val view = LocalView.current
     val context = androidx.compose.ui.platform.LocalContext.current
     val loading = action == ComposerAction.LOADING || (action == ComposerAction.STOP && model.stopInFlight)
@@ -1090,6 +1296,8 @@ private fun SendAction(model: MobileModel, chat: Chat, startVoice: () -> Unit) {
         ComposerAction.HANG_UP -> R.string.voice_end
         ComposerAction.STOP -> if (model.stopInFlight) R.string.composer_stopping else R.string.stop
         ComposerAction.LOADING -> R.string.composer_processing
+        ComposerAction.QUEUE -> R.string.composer_queue
+        ComposerAction.REDIRECT -> R.string.composer_redirect
     })
     Box(Modifier.size(44.dp).clickable(enabled = !loading, role = Role.Button, onClickLabel = label) {
         when (action) {
@@ -1102,19 +1310,35 @@ private fun SendAction(model: MobileModel, chat: Chat, startVoice: () -> Unit) {
                 chat.id.isEmpty() && model.device?.permissions?.createChats != true -> model.error = context.getString(R.string.composer_create_required)
                 else -> { view.suzentHaptic(SuzentHaptic.Light); model.send() }
             }
+            ComposerAction.QUEUE, ComposerAction.REDIRECT -> when {
+                model.device?.permissions?.send != true -> model.error = context.getString(R.string.composer_grant_required)
+                else -> { view.suzentHaptic(SuzentHaptic.Light); if (action == ComposerAction.QUEUE) model.queue() else model.redirect() }
+            }
             ComposerAction.LOADING -> Unit
         }
     }.semantics { contentDescription = label }, contentAlignment = Alignment.Center) {
-        val danger = action == ComposerAction.STOP || action == ComposerAction.HANG_UP
-        Box(Modifier.size(36.dp).background(if (danger) Color(PresentationTokens.danger) else MaterialTheme.colorScheme.primary)
+        val fill = when (action) {
+            ComposerAction.STOP, ComposerAction.HANG_UP -> Color(PresentationTokens.danger)
+            ComposerAction.REDIRECT -> Color(PresentationTokens.yellow)
+            ComposerAction.QUEUE -> MaterialTheme.colorScheme.surface
+            else -> MaterialTheme.colorScheme.primary
+        }
+        val tint = when (action) {
+            ComposerAction.REDIRECT -> Color.Black
+            ComposerAction.QUEUE -> MaterialTheme.colorScheme.onSurface
+            else -> Color.White
+        }
+        Box(Modifier.size(36.dp).background(fill)
             .border(2.dp, MaterialTheme.colorScheme.outline), contentAlignment = Alignment.Center) {
-            if (loading || action == ComposerAction.CONNECTING) CircularProgressIndicator(Modifier.size(18.dp), color = Color.White, strokeWidth = 2.dp)
+            if (loading || action == ComposerAction.CONNECTING) CircularProgressIndicator(Modifier.size(18.dp), color = tint, strokeWidth = 2.dp)
             else Icon(painterResource(when (action) {
                 ComposerAction.STOP -> R.drawable.ic_stop
                 ComposerAction.HANG_UP -> R.drawable.ic_hang_up
                 ComposerAction.VOICE -> R.drawable.ic_voice
+                ComposerAction.QUEUE -> R.drawable.ic_clock
+                ComposerAction.REDIRECT -> R.drawable.ic_redirect
                 else -> R.drawable.ic_send
-            }), contentDescription = null, tint = Color.White, modifier = Modifier.size(20.dp))
+            }), contentDescription = null, tint = tint, modifier = Modifier.size(20.dp))
         }
     }
 }
@@ -1166,7 +1390,7 @@ private enum class HomeListMode(val label: Int) { RECENT(R.string.recent_chats),
 @Composable
 private fun HomeListPicker(selection: HomeListMode, select: (HomeListMode) -> Unit, modifier: Modifier = Modifier) {
     val dark = isSystemInDarkTheme()
-    val block = Color(if (dark) PresentationTokens.yellow else PresentationTokens.black)
+    val block = if (dark) suzentYellow() else Color(PresentationTokens.black)
     val blockText = if (dark) Color.Black else Color.White
     BoxWithConstraints(modifier.fillMaxWidth()
         .background(Color(if (dark) PresentationTokens.code_header_dark else PresentationTokens.code_bg))

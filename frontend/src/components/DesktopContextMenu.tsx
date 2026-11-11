@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { ContextMenu } from './ContextMenu';
 import { itemBase, itemDefault } from './contextMenuStyles';
 import { useI18n } from '../i18n';
+import { isNativeLinkTarget, isNativeMediaTarget } from '../lib/contextMenuClaim';
 
 interface MenuState {
   x: number;
@@ -25,6 +26,9 @@ export function DesktopContextMenu({
   useEffect(() => {
     const open = (event: MouseEvent): void => {
       if (event.defaultPrevented || !(event.target instanceof HTMLElement)) return;
+      // Links keep the webview menu (open, copy link). The shell menu has no
+      // equivalent, and message menus defer links here on purpose.
+      if (isNativeLinkTarget(event.target) || isNativeMediaTarget(event.target)) return;
       event.preventDefault();
       const target =
         event.target.closest<HTMLElement>('input, textarea, [contenteditable="true"]') ??

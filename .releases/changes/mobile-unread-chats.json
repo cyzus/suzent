@@ -1,0 +1,4 @@
+{
+  "products": {"desktop": "patch", "mobile": "patch"},
+  "summary": "On the phone, conversations and collapsed projects show when something is running or has replies you have not seen, like on desktop; opening a conversation marks it read on both."
+}

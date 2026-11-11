@@ -1,0 +1,1 @@
+{"products": {"desktop": "patch"}, "summary": "Videos (MP4, MOV, WebM) in the workspace file panel now play in place instead of opening as text, and video and audio players in the installed app are no longer blocked by its content security policy."}

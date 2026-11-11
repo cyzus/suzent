@@ -11,6 +11,8 @@ interface ProjectRowMenuProps {
   rootDataAttrs?: Record<string, string>;
   /** Omitted for rows that have no settings (e.g. scheduled tasks). */
   onSettings?: () => void;
+  /** Start a chat that will be created in this project on the first message. */
+  onNewChat?: () => void;
   /** Omitted for system projects, which can't be renamed or deleted. */
   onRename?: () => void;
   onDelete?: () => void;
@@ -26,6 +28,7 @@ export const ProjectRowMenu: React.FC<ProjectRowMenuProps> = ({
   boundary,
   rootDataAttrs,
   onSettings,
+  onNewChat,
   onRename,
   onDelete,
   onClose,
@@ -39,6 +42,29 @@ export const ProjectRowMenu: React.FC<ProjectRowMenuProps> = ({
       boundary={boundary}
       rootDataAttrs={rootDataAttrs}
     >
+      {onNewChat && (
+        <button
+          type="button"
+          role="menuitem"
+          className={`${itemBase} ${itemDefault}`}
+          onClick={() => {
+            onNewChat();
+            onClose();
+          }}
+        >
+          <svg
+            className="w-3.5 h-3.5"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+            strokeWidth={3}
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+          </svg>
+          {t('chatList.newChat')}
+        </button>
+      )}
+
       {onSettings && (
         <button
           type="button"

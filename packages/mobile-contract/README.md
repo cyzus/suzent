@@ -10,6 +10,9 @@ fragment. Clients reject redirects to keep credentials bound to the selected hos
 | Create | POST /chats | `{title}` → `{id,title,messages}` |
 | Load | GET /chats/{id} | `{id,title,messages:[{role,content}]}` |
 | Scheduled tasks | GET /mobile/client/scheduled-tasks | `{tasks:[{id,name,chatId,active,isRunning,nextRunAt,lastRunAt,hasError}]}`; requires session capability `scheduled_tasks: 1` |
+| Chat overview | GET /mobile/client/chats/{id}/overview | `{goal:{objective,status,turnsElapsed,maxTurns}|null, tasks:[{id,title,activeForm,status}], context:{usedTokens,limit,percent,reserveTokens,categories:[{id,tokens}]}}`; scoped like the chat; task descriptions, results and paths stay on the desktop; requires session capability `chat_overview: 1` |
+| Tool media | GET /mobile/client/chats/{id}/media/{media_id} | the file's bytes, with Range support; `media_id` comes from a loaded transcript, where a finished media tool part (`generate_image`, `edit_image`, `check_video`, `speak`, `analyze_visual`, `send_file`) carries `media:[{id,kind:"image"\|"video"\|"audio"\|"file",name}]`; only `send_file` produces `file`; ids are opaque, so desktop paths never reach the phone; scoped like the chat; 404 once the file is gone; requires session capability `media: 1` |
+| Surface answer | POST /mobile/client/surface-answer | `{chat_id, surface_id, answer}` → `{ok:true}`; resolves a waiting `ask_question`; needs `send`; 404 when nothing waits; requires session capability `surfaces: 1`. Ordinary surface actions are sends; see `surface-fixtures.json` |
 | Send once | POST /chat/send | `{chat_id,message}` → 202 |
 | Observe | POST /chat/live | `{chat_id,wait_ms:1000,protocol:1}` → SSE or 204 |
 | Stop | POST /chat/stop | `{chat_id}` |
@@ -82,7 +85,10 @@ cases are in `activity-timing-fixtures.json`.
 Session capability `chat_pagination: 1` enables these read-only navigation routes:
 
 - `GET /mobile/client/navigation`: independent Regent presence plus authorized
-  projects with `chatCount` (non-pinned, non-cron, non-archived chats).
+  projects with `chatCount` (non-pinned, non-cron, non-archived chats), plus
+  `running` and `unread` flags covering every authorized chat in the project, so a
+  collapsed project can show activity without loading its pages. Native clients
+  refresh this with each status poll.
 - `POST /mobile/client/chat-page`: `{kind, value, offset, limit}` returns
   `{chats, total, nextOffset}`. Kinds are `recent`, `pinned`, `project` (value is
   project ID) and `search` (value is a title substring). Default page size is 30,
@@ -91,6 +97,11 @@ Session capability `chat_pagination: 1` enables these read-only navigation route
 - `POST /mobile/client/chat-status`: `{ids: [...]}` accepts at most 100 IDs and
   returns authorized, existing, non-archived summaries only. Omitted IDs must be
   evicted, while summaries loaded concurrently outside that request are retained.
+
+Chat summaries carry `unreadCount`, the number of finished turns nobody has viewed
+yet (absent on older desktops, read as 0). Clients show unread rows in bold, the way
+the desktop sidebar does, and clear the count with `POST /mobile/client/chats/{id}/read`
+when they open the conversation or while it stays on screen.
 
 Authorization is applied before paging and counting. Regent never consumes a page
 slot and still requires all-conversation access. The legacy chat index remains for

@@ -86,6 +86,11 @@ export interface SystemVersionResponse {
   apiVersion: number;
   buildCommit: string;
   developmentMode: boolean;
+  buildSource?: string;
+  runtime?: string;
+  installationId?: string | null;
+  dataDir?: string | null;
+  sourceRoot?: string | null;
 }
 
 export const UNKNOWN_COMMIT = 'unknown';
@@ -156,6 +161,11 @@ export async function fetchSystemVersion(
     api_version?: unknown;
     build_commit?: unknown;
     development_mode?: unknown;
+    build_source?: unknown;
+    runtime?: unknown;
+    installation_id?: unknown;
+    data_dir?: unknown;
+    source_root?: unknown;
   };
   return {
     backendVersion:
@@ -163,6 +173,11 @@ export async function fetchSystemVersion(
     apiVersion: typeof payload.api_version === 'number' ? payload.api_version : 0,
     buildCommit: typeof payload.build_commit === 'string' ? payload.build_commit : 'unknown',
     developmentMode: payload.development_mode === true,
+    buildSource: typeof payload.build_source === 'string' ? payload.build_source : 'unknown',
+    runtime: typeof payload.runtime === 'string' ? payload.runtime : 'unknown',
+    installationId: typeof payload.installation_id === 'string' ? payload.installation_id : null,
+    dataDir: typeof payload.data_dir === 'string' ? payload.data_dir : null,
+    sourceRoot: typeof payload.source_root === 'string' ? payload.source_root : null,
   };
 }
 
@@ -1163,6 +1178,7 @@ export async function saveUserPreferences(preferences: {
   memory_enabled?: boolean;
   thinking?: ThinkingEffort;
   sandbox_enabled?: boolean;
+  code_mode?: boolean;
   embedding_model?: string;
   extraction_model?: string;
   EXTRACTION_MODEL?: string;

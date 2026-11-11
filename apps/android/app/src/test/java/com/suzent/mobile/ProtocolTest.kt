@@ -33,6 +33,17 @@ class ProtocolTest {
         assertNull(NodeProtocol.reply(JSONObject().put("type", "invoke"), "android"))
     }
 
+    @Test fun toolMediaIsParsedAndValidated() {
+        val id = "0123456789abcdef0123456789abcdef"
+        val chat = Chat.parse(JSONObject("""{"id":"c","messages":[{"role":"assistant","parts":[{"type":"tool","toolName":"check_video",
+            "media":[{"id":"$id","kind":"video","name":"clip.MP4"},{"id":"../x","kind":"video","name":"bad.mp4"},{"id":"$id","kind":"script","name":"x.js"}]}]}]}"""))
+        val media = chat.messages.single().parts.single().media
+        assertEquals(listOf(MediaItem(id, "video", "clip.MP4")), media)
+        assertEquals("mp4", media.single().extension)
+        assertEquals("a_b.pdf", MediaItem(id, "file", "a/b.pdf").safeName)
+        assertEquals("file.bin", MediaItem(id, "file", "..").safeName)
+    }
+
     private fun normalize(value: Any?): Any? = when (value) {
         is JSONObject -> value.keys().asSequence().associateWith { normalize(value.get(it)) }
         is JSONArray -> (0 until value.length()).map { normalize(value.get(it)) }

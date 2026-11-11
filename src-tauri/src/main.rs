@@ -3,8 +3,11 @@
 
 mod auto_update;
 mod backend;
+mod close_action;
 mod notifications;
 mod packaged;
+mod tray;
+mod tray_status;
 
 use backend::BackendProcess;
 use serde::{Deserialize, Serialize};
@@ -198,38 +201,26 @@ fn start_update_and_restart(
     Ok(())
 }
 
-#[tauri::command]
-fn set_startup_window_controls(window: tauri::WebviewWindow, enabled: bool) -> Result<(), String> {
-    window
-        .set_decorations(enabled)
-        .map_err(|error| error.to_string())?;
+/// The config marks the main window `create: false` so macOS can build it
+/// with a titled style mask: a borderless window ignores minimize, so the
+/// yellow traffic light did nothing. The native lights sit over the web
+/// content, which leaves room for them in its header.
+fn create_main_window(app: &tauri::App) -> tauri::Result<()> {
+    let config = app
+        .config()
+        .app
+        .windows
+        .iter()
+        .find(|window| window.label == "main")
+        .ok_or_else(|| tauri::Error::WindowNotFound)?;
+    let builder = tauri::WebviewWindowBuilder::from_config(app.handle(), config)?;
     #[cfg(target_os = "macos")]
-    {
-        let style = if enabled {
-            tauri::TitleBarStyle::Overlay
-        } else {
-            tauri::TitleBarStyle::Visible
-        };
-        // On macOS the decorations change lands asynchronously and rebuilds
-        // the style mask without the full-size content flag. Set straight
-        // away, the title bar style is applied first and then wiped, and the
-        // web content sits a title bar lower than the page thinks, so every
-        // click lands off the pointer (tauri#10225). Apply it afterwards.
-        let styled = window.clone();
-        std::thread::spawn(move || {
-            std::thread::sleep(Duration::from_millis(150));
-            if let Err(error) = styled.set_title_bar_style(style) {
-                eprintln!("Could not restore the title bar style: {error}");
-            }
-        });
-        window
-            .set_title(if enabled {
-                ""
-            } else {
-                "SUZENT - Your Personal Agent"
-            })
-            .map_err(|error| error.to_string())?;
-    }
+    let builder = builder
+        .decorations(true)
+        .title_bar_style(tauri::TitleBarStyle::Overlay)
+        .hidden_title(true)
+        .traffic_light_position(tauri::LogicalPosition::new(16.0, 25.0));
+    builder.build()?;
     Ok(())
 }
 
@@ -605,6 +596,52 @@ fn get_service_log_path() -> Result<String, String> {
         .join("server.log")
         .display()
         .to_string())
+}
+
+#[derive(Clone, Serialize)]
+struct DesktopAbout {
+    packaged: bool,
+    /// `microsoft_store` | `github` | `development`
+    distribution: String,
+    /// `bundled` | `source`
+    runtime: String,
+    install_path: String,
+    data_dir: String,
+    app_version: String,
+}
+
+#[tauri::command]
+fn get_desktop_about() -> DesktopAbout {
+    let packaged = packaged::is_packaged();
+    let distribution = if packaged {
+        "microsoft_store"
+    } else if cfg!(debug_assertions) {
+        "development"
+    } else {
+        "github"
+    };
+    let install_path = if packaged {
+        std::env::current_exe()
+            .ok()
+            .and_then(|exe| exe.parent().map(|dir| dir.display().to_string()))
+            .unwrap_or_default()
+    } else {
+        backend::find_install_workspace_dir()
+            .display()
+            .to_string()
+    };
+    DesktopAbout {
+        packaged,
+        distribution: distribution.to_string(),
+        runtime: if packaged {
+            "bundled".to_string()
+        } else {
+            "source".to_string()
+        },
+        install_path,
+        data_dir: backend::find_data_dir().display().to_string(),
+        app_version: env!("CARGO_PKG_VERSION").to_string(),
+    }
 }
 
 fn publish_backend_port(app_handle: &tauri::AppHandle, port: u16) -> Result<(), String> {
@@ -1035,17 +1072,23 @@ fn main() {
             spawn_backend_start(app.clone());
         }))
         .setup(|app| {
+            create_main_window(app)?;
             app.manage(AppState {
                 backend: Mutex::new(None),
                 backend_startup: Mutex::new(()),
                 backend_startup_error: Mutex::new(None),
             });
+            app.manage(tray::TrayState::default());
 
             let status = build_bootstrap_status(Some(app.handle()));
             if !status.required && apply_staged_update_on_start() {
                 auto_update::skip_on_exit();
                 app.handle().exit(0);
                 return Ok(());
+            }
+            // After the staged-update exit, so a handover does not flash a tray icon.
+            if let Err(error) = tray::install(app.handle()) {
+                eprintln!("System tray unavailable; closing the window will quit Suzent: {error}");
             }
             if status.required {
                 let app_handle = app.handle().clone();
@@ -1058,13 +1101,17 @@ fn main() {
 
             Ok(())
         })
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                tray::on_close_requested(window, &api);
+            }
+        })
         .invoke_handler(tauri::generate_handler![
             get_backend_port,
             get_backend_startup_error,
             check_for_update,
             start_update_and_restart,
             restart_app,
-            set_startup_window_controls,
             bootstrap_status,
             bootstrap_manifest,
             run_bootstrap_stage,
@@ -1076,11 +1123,17 @@ fn main() {
             set_service_enabled,
             restart_background_service,
             get_service_log_path,
+            get_desktop_about,
             get_auto_update_enabled,
             set_auto_update_enabled,
             get_staged_update,
             apply_staged_update_now,
-            notifications::show_notification
+            notifications::show_notification,
+            tray::set_tray_language,
+            close_action::ack_close_prompt,
+            close_action::get_close_action,
+            close_action::set_close_action,
+            close_action::resolve_close
         ])
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
@@ -1089,17 +1142,42 @@ fn main() {
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
-        .run(|_app, event| {
-            if let tauri::RunEvent::Exit = event {
-                if auto_update::skipped_on_exit() {
-                    return;
+        .run(|app, event| {
+            // Dock reopen and deep links are macOS-only readers of `app`.
+            #[cfg(not(target_os = "macos"))]
+            let _ = &app;
+            match event {
+                tauri::RunEvent::ExitRequested { .. } => {
+                    // Restart, the updater, and a system quit all arrive here.
+                    // Mark it before any close they provoke so the window is not
+                    // hidden out from under the exit.
+                    tray::mark_exiting();
                 }
-                let root = backend::find_install_workspace_dir();
-                if let Some(tag) = auto_update::pending(&root) {
-                    if let Err(error) = auto_update::spawn(&root, &tag, None) {
-                        eprintln!("Could not install staged update {tag}: {error}");
+                tauri::RunEvent::Ready => {
+                    tray::install_quit_hook_if_needed();
+                }
+                #[cfg(target_os = "macos")]
+                tauri::RunEvent::Reopen { .. } => {
+                    tray::reveal_main(app);
+                }
+                #[cfg(target_os = "macos")]
+                tauri::RunEvent::Opened { urls } => {
+                    if !urls.is_empty() {
+                        tray::reveal_main(app);
                     }
                 }
+                tauri::RunEvent::Exit => {
+                    if auto_update::skipped_on_exit() {
+                        return;
+                    }
+                    let root = backend::find_install_workspace_dir();
+                    if let Some(tag) = auto_update::pending(&root) {
+                        if let Err(error) = auto_update::spawn(&root, &tag, None) {
+                            eprintln!("Could not install staged update {tag}: {error}");
+                        }
+                    }
+                }
+                _ => {}
             }
         });
 }

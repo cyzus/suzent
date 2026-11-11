@@ -114,6 +114,7 @@ See [Canvas (A2UI)](./canvas.md) for full documentation.
 
 | Tool | Function | Context | HITL | Description |
 |------|----------|---------|------|-------------|
+| SendFileTool | `send_file` | ChannelManager, PathResolver | — | Builtin. Deliver workspace files to the user in the current conversation |
 | SocialMessageTool | `social_message` | ChannelManager | **Yes** (sends only) | Send messages to Telegram, Discord, Slack, Feishu |
 | SpeakTool | `speak` | — | — | Text-to-speech output |
 | SkillTool | `skill_execute` | SkillManager | — | Execute user-defined skills |
@@ -256,6 +257,26 @@ Long-term memory tools. See [Memory](../../03-features/memory/README.md) for the
 - `memory_search(query, limit)`: Semantic similarity search over archived memories
 - `memory_update(fact, retract, retract_as, kind, outcome, source, category, horizon)`: Record what the user states directly. `fact` writes a candidate for the dream; `retract` takes a claim back (`retract_as=wrong` also adds it to the rejected list, `outdated` only hides it); both together are a correction. `kind=experience` needs `outcome` and `kind=world` needs `source`. See [Memory Architecture](./memory-architecture.md#memory_update-the-explicit-path).
 
+### `send_file`
+
+Hands up to 10 finished files to the user in the current conversation. Each path goes
+through the chat's `PathResolver`, so only files the conversation may read can be sent.
+In a social conversation (`deps.social_context` has `platform` and `target_id`) every file
+is sent with `ChannelManager.send_file`, dispatched onto the channel's event loop, with the
+caption on the first file only. Each channel driver owns its platform's differences: the
+tool checks the driver's `max_file_bytes` before uploading and reports a driver with
+`supports_files = False` (WeChat today) as unsupported, and the driver's `send_file` does
+the upload itself (Slack threads, Feishu image and file keys, and so on). A new channel
+needs no change to the tool.
+Elsewhere nothing is sent. `saved_paths` holds virtual paths (`to_virtual_path`, falling
+back to the host path), because the desktop and phone load them back through the
+resolver. It is what the desktop chat renders
+(images and video in the gallery, other files as `SentFileCard`) and what the mobile chat
+load turns into media ids. The result also carries `delivered_paths` and, for channels,
+`failed` with a reason per file. It is builtin and needs no approval because it never
+reaches anyone but the person already in the conversation; sending elsewhere is
+`social_message`.
+
 ### `social_message`
 
 Send messages to social platforms or list available contacts.
@@ -364,6 +385,48 @@ TOOL_FUNCTIONS = {
 - If the tool is dangerous (writes, executes, sends), add HITL approval — see [Human-in-the-Loop](../../03-features/tools/human-in-the-loop.md)
 - Return informative error messages as strings (don't raise exceptions)
 - Set `deferrable = False` on the tool class if it should never appear in the `tool_search` catalog (e.g. always-on internals like MemorySearchTool)
+
+### Structured results
+
+A tool that returns a list the caller may want to loop over (paths, matches, search hits, tasks) should also return it as typed metadata, so calling code does not have to parse the message:
+
+- Declare the metadata as a `TypedDict` and subclass `ToolResult` with `metadata: <YourMetadata>`, then annotate `forward()` with the subclass. pydantic-ai turns that annotation into the tool's return schema. Decorate the `TypedDict` with `@with_config(ConfigDict(extra="allow", use_attribute_docstrings=True))`: without `extra="allow"` pydantic silently drops any key the type does not declare.
+- When the message already shows the same data, list the key in `model_excluded_metadata`. The model then reads it once, in the message; the stored result keeps it, and the context estimate leaves it out.
+- Bound the list. The message is capped by `output_char_limit`, metadata is not, and it is stored with the chat.
+- Text written by someone other than the user (mail, web pages) reaches the model fenced in the message. Keep its structured copy in an excluded key and pass strings through `sanitize_untrusted_text`.
+
+`glob_search`, `grep_search`, `read_file`, `web_search`, `webpage_fetch`, `memory_search`, `session_search`, `list_tasks`, `mail_search` and `mail_read` follow this pattern.
+
+## Code mode
+
+Code mode (`src/suzent/core/code_mode.py`, off unless `code_mode` is set in
+the user's preferences) adds pydantic-ai-harness's `CodeMode` capability.
+The model gets one `run_code` tool whose Python snippet calls tools as async
+functions inside the Monty sandbox (`pydantic-monty`, pinned exactly).
+
+- **Which tools.** `CODE_MODE_TOOLS` lists the tools a snippet may call. Only
+  read-only tools that never ask for approval belong there. Suzent approves a
+  call by ending the run with `DeferredToolRequests` and resuming it, which a
+  running snippet cannot do, and the shell would make the sandbox pointless.
+  Every other tool stays a direct call. Tools with typed results (see
+  [Structured results](#structured-results)) are what make snippets useful,
+  since the code reads fields instead of parsing text.
+- **Live display.** Nested calls go through `ToolManager.handle_call`, so
+  capability hooks fire, but they emit no events on the run stream.
+  `CodeModeEventsCapability.wrap_tool_execute` sees each one (its id is
+  `<run_code id>__<n>`) and puts a `code_mode_call` custom event and the usual
+  `TOOL_CALL_START`/`ARGS`/`END`/`RESULT` events on `deps.ui_event_queue`.
+  `streaming.py` drains that queue on every loop tick and right after each
+  stream event, so a snippet's calls reach the client before its `run_code`
+  result. The frontend indents parts that carry `parentToolCallId`.
+- **Reload.** The draft accumulator keeps `parentToolCallId` on streamed
+  parts. When a display is rebuilt from history, `_rebuild_display_messages`
+  expands each `run_code` return's `tool_calls`/`tool_returns` metadata into
+  the same nested parts.
+- **Timeout.** The stream waits `RUN_CODE_STREAM_TIMEOUT_SECONDS` for a
+  `run_code` result, since a snippet may call several slow tools in turn.
+- **Cost.** The harness puts the signatures of the sandboxed tools, including
+  their return types, in the instructions on every request.
 
 ## Tool Registry
 

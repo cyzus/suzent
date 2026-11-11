@@ -28,6 +28,8 @@ export interface MessageFileChange {
   diff: string;
   additions: number;
   deletions: number;
+  /** False when the turn deleted the file. */
+  after_exists?: boolean;
 }
 
 export interface RunTiming {
@@ -252,6 +254,7 @@ export interface ConfigOptions {
     thinking?: ThinkingEffort;
     sandbox_enabled?: boolean;
     sandbox_volumes?: string[];
+    code_mode?: boolean;
     embedding_model?: string;
     extraction_model?: string;
   };

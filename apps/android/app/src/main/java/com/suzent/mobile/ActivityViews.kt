@@ -68,24 +68,30 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.repeatOnLifecycle
 import kotlin.math.sin
 
+val LocalRailChoices = staticCompositionLocalOf<RailChoices?> { null }
+val LocalRailScope = staticCompositionLocalOf { "" }
+
 
 @Composable
 fun ActivityTurn(parts: List<MessagePart>, live: Boolean = false, regent: Boolean = false, compact: Boolean = false,
-                 workedSeconds: Int? = null, citationSources: List<CitationSource> = emptyList(), onBubbleLongPress: (() -> Unit)? = null) {
+                 workedSeconds: Int? = null, citationSources: List<CitationSource> = emptyList(), onBubbleLongPress: ((Offset) -> Unit)? = null) {
     var expanded by remember { mutableStateOf(false) }
     LaunchedEffect(live) { if (!live) expanded = false }
     val start = activityFinalStart(parts)
-    val work = parts.take(start).filterNot { it.regentBubble }
-    val persistent = parts.take(start).filter { it.regentBubble }
+    // Regent's bubbles and surfaces stay visible when the work above them folds away.
+    val work = parts.take(start).filterNot { it.regentBubble || it.type == "a2ui" }
+    val persistent = parts.take(start).filter { it.regentBubble || it.type == "a2ui" }
     val pending = work.any { it.state == "approval-requested" && it.output.isEmpty() }
+    val author = turnAuthorMark(regent, live, compact, pending)
+    val showDisclosure = !live && work.isNotEmpty()
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Box(Modifier.weight(1f, fill = false)) {
-                if (regent) RegentIdentity(working = live, showStatus = false)
-                else if (live || !compact || pending) AssemblyBadge(thinking = showAssemblyBadge(parts, live), parts = parts, streaming = live)
+        if (author != null || showDisclosure) Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            if (author == null) Spacer(Modifier.weight(1f))
+            else Box(Modifier.weight(1f, fill = false)) {
+                if (author == TurnAuthorMark.Assembly) AssemblyBadge(thinking = showAssemblyBadge(parts, live), parts = parts, streaming = live)
                 else SuzentAssistantBadge(compact = compact)
             }
-            if (!live && work.isNotEmpty()) {
+            if (showDisclosure) {
                 val visible = expanded || pending
                 val label = stringResource(if (visible) R.string.reminder_expanded else R.string.reminder_collapsed)
                 SuzentTextButton(onClick = { expanded = !expanded }, modifier = Modifier.semantics { stateDescription = label }, contentPadding = PaddingValues(0.dp)) {
@@ -102,6 +108,8 @@ fun ActivityTurn(parts: List<MessagePart>, live: Boolean = false, regent: Boolea
             ActivityDisclosure(expanded || pending) {
                 Box(Modifier.padding(bottom = 10.dp)) { ActivityContent(work, false, citationSources, regent) }
             }
+            val media = remember(parts) { parts.flatMap { it.media } }
+            if (media.isNotEmpty()) Box(Modifier.padding(bottom = 10.dp)) { MediaGallery(media) }
             ActivityContent(persistent + parts.drop(start), false, citationSources, regent, onBubbleLongPress)
         }
     }
@@ -118,6 +126,14 @@ private fun ActivityDisclosure(visible: Boolean, content: @Composable () -> Unit
 }
 
 @Composable
+private fun activityToneColor(tone: ActivityTone): Color = when (tone) {
+    ActivityTone.Idle -> MaterialTheme.colorScheme.onSurfaceVariant
+    ActivityTone.Streaming -> MaterialTheme.colorScheme.onSurface
+    ActivityTone.Waiting -> Color(0xFFF59E0B)
+    ActivityTone.Failed -> MaterialTheme.colorScheme.error
+}
+
+@Composable
 private fun ActivityChevron(expanded: Boolean) {
     val rotation by animateFloatAsState(if (expanded) 90f else 0f,
         if (ValueAnimator.areAnimatorsEnabled()) spring(stiffness = Spring.StiffnessMediumLow) else snap(), label = "activity disclosure")
@@ -126,14 +142,22 @@ private fun ActivityChevron(expanded: Boolean) {
 }
 
 @Composable
-fun ActivityRail(parts: List<MessagePart>, live: Boolean, current: Boolean) {
-    var userExpanded by remember { mutableStateOf<Boolean?>(null) }
+fun ActivityRail(parts: List<MessagePart>, live: Boolean, current: Boolean, expansionKey: String = "") {
+    val store = LocalRailChoices.current
+    val scope = LocalRailScope.current
+    val storedKey = if (store != null && scope.isNotEmpty()) "$scope:$expansionKey" else ""
+    // Local state repaints the row immediately. The conversation store is what survives the row leaving the list.
+    // Read the local choice even when the store already has one: skipping it lets Compose stop
+    // watching the state the tap writes, so the next tap does not repaint.
+    var localChoice by remember(storedKey) { mutableStateOf<Boolean?>(null) }
+    val local = localChoice
+    val stored = if (storedKey.isNotEmpty()) store?.choice(storedKey) else null
+    val choice = stored ?: local
     val waiting = parts.any { it.state == "approval-requested" && it.output.isEmpty() }
-    val expanded = waiting || (userExpanded ?: (live && current))
+    val expanded = railExpanded(choice, live, current, waiting)
     val running = live && current && parts.any { it.state == "running" || it.type == "reasoning" }
-    val failed = parts.any(::activityFailed)
     val ink = MaterialTheme.colorScheme.onSurface
-    val accent = if (waiting) Color(0xFFF59E0B) else if (failed) MaterialTheme.colorScheme.error else if (running) suzentLink else MaterialTheme.colorScheme.onSurfaceVariant
+    val accent = activityToneColor(activityHeaderTone(parts, live, current))
     val totals = activitySummary(parts, live).map { (kind, count) ->
         stringResource(when (kind) {
             "running" -> R.string.rail_summary_running
@@ -170,7 +194,11 @@ fun ActivityRail(parts: List<MessagePart>, live: Boolean, current: Boolean) {
             parts.none { it.type == "tool" } -> "mono"
             else -> null
         }
-        SuzentTextButton(onClick = { userExpanded = !expanded }, modifier = Modifier.fillMaxWidth().runningSurface(headerSurface, ink).semantics { stateDescription = expandedLabel }, contentPadding = PaddingValues(horizontal = 2.dp)) {
+        SuzentTextButton(onClick = {
+            val next = !expanded
+            if (storedKey.isNotEmpty()) store?.set(storedKey, next)
+            localChoice = next
+        }, modifier = Modifier.fillMaxWidth().runningSurface(headerSurface, ink).semantics { stateDescription = expandedLabel }, contentPadding = PaddingValues(horizontal = 2.dp)) {
             parts.lastOrNull { it.type == "tool" }?.let { tool -> ActivityToolIcon(tool, tool.state == "running" && running, accent); Spacer(Modifier.width(8.dp)) }
             // Desktop's collapsed header carries a streaming thought on the word itself.
             if (running && !expanded && !waiting && latest?.type == "reasoning") ThinkingLabel(status, accent, PresentationTokens.typeLabel.sp, FontWeight.Medium, Modifier.weight(1f))
@@ -196,7 +224,7 @@ fun ToolActivityBlock(part: MessagePart, live: Boolean, last: Boolean = true, cu
     val failed = activityFailed(part)
     val pending = part.state == "approval-requested" && part.output.isEmpty()
     val active = !failed && !pending && live && current && (part.state == "running" || last && part.type == "reasoning")
-    val color = if (failed) MaterialTheme.colorScheme.error else if (pending) Color(0xFFF59E0B) else if (active) suzentLink else MaterialTheme.colorScheme.onSurfaceVariant
+    val color = activityToneColor(activityItemTone(failed, pending, active))
     val ink = MaterialTheme.colorScheme.onSurface
     val status = stringResource(if (failed) R.string.activity_failed else if (pending) R.string.approval_required else if (active) R.string.activity_running else R.string.activity_completed)
     val dot = color.copy(alpha = if (active || pending || failed) 1f else .35f)

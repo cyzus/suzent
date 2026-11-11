@@ -27,7 +27,7 @@ data class ChatMessage(val role: String, val content: String, val parts: List<Me
 data class RegentStatus(val waiting: Int = 0, val unread: Int = 0, val lastMessageAt: String? = null)
 
 data class Chat(val id: String, val title: String, val running: Boolean, val messages: List<ChatMessage>,
-    val projectId: String? = null, val projectName: String? = null, val model: String? = null, val models: List<String> = emptyList(), val pinned: Boolean = false, val platform: String? = null, val parentChatId: String? = null, val regent: RegentStatus? = null) {
+    val projectId: String? = null, val projectName: String? = null, val model: String? = null, val models: List<String> = emptyList(), val pinned: Boolean = false, val platform: String? = null, val parentChatId: String? = null, val regent: RegentStatus? = null, val unread: Int = 0) {
     val isRegent: Boolean get() = platform == "focal"
     companion object {
         fun parse(json: JSONObject): Chat {
@@ -44,6 +44,11 @@ data class Chat(val id: String, val title: String, val running: Boolean, val mes
                             MessagePart(part.optString("type"), part.optString("text"), part.optString("toolName"),
                                 part.optString("args"), part.optString("output"), part.optString("toolCallId"), part.optString("state"),
                                 outcome = part.opt("outcome") as? String ?: "",
+                                surface = part.optJSONObject("surface")?.let(A2UISurface::parse),
+                                media = part.optJSONArray("media")?.let { items -> (0 until items.length()).mapNotNull { mediaIndex ->
+                                    items.optJSONObject(mediaIndex)?.let { item -> MediaItem(item.optString("id"), item.optString("kind"), item.optString("name")) }
+                                        ?.takeIf { it.id.matches(Regex("^[0-9a-f]{32}$")) && it.kind in setOf("image", "video", "audio", "file") }
+                                } } ?: emptyList(),
                                 citationSources = (0 until sources.length()).mapNotNull { sourceIndex ->
                                     sources.optJSONObject(sourceIndex)?.let { source -> CitationSource(
                                         source.optString("id"), source.optString("type"), source.optString("title"),
@@ -59,7 +64,7 @@ data class Chat(val id: String, val title: String, val running: Boolean, val mes
                 }, projectId = json.opt("projectId") as? String, projectName = json.opt("projectName") as? String,
                 regent = json.optJSONObject("regent")?.let { RegentStatus(it.optInt("waiting"), it.optInt("unread"), it.opt("lastMessageAt") as? String) },
                 platform = json.opt("platform") as? String, parentChatId = json.opt("parentChatId") as? String,
-                pinned = json.optBoolean("pinned"), model = json.opt("model") as? String, models = json.optJSONArray("models")?.let { a -> (0 until a.length()).map { a.getString(it) } } ?: emptyList())
+                pinned = json.optBoolean("pinned"), unread = json.optInt("unreadCount"), model = json.opt("model") as? String, models = json.optJSONArray("models")?.let { a -> (0 until a.length()).map { a.getString(it) } } ?: emptyList())
         }
     }
 }
@@ -75,7 +80,43 @@ data class ScheduledTask(val id: String, val name: String, val chatId: String?, 
     }
 }
 
-data class Project(val id: String, val name: String, val chatCount: Int? = null)
+/** A conversation's plan and context headline, as the desktop sidebar overview shows them. */
+data class ChatOverview(val goal: Goal?, val tasks: List<PlanTask>, val context: Context) {
+    data class Goal(val objective: String, val status: String, val turnsElapsed: Int?, val maxTurns: Int?)
+    data class PlanTask(val id: String, val title: String, val activeForm: String?, val status: String) {
+        val isDone: Boolean get() = status == "completed" || status == "cancelled"
+    }
+    data class Category(val id: String, val tokens: Int)
+    data class Context(val usedTokens: Int?, val limit: Int?, val percent: Double?, val reserveTokens: Int?, val categories: List<Category>)
+
+    val completedCount: Int get() = tasks.count { it.status == "completed" }
+
+    companion object {
+        private fun JSONObject.optIntOrNull(key: String): Int? = if (isNull(key)) null else optInt(key)
+
+        fun parse(json: JSONObject): ChatOverview {
+            val goal = json.optJSONObject("goal")?.let {
+                Goal(it.getString("objective"), it.getString("status"), it.optIntOrNull("turnsElapsed"), it.optIntOrNull("maxTurns"))
+            }
+            val taskArray = json.optJSONArray("tasks") ?: JSONArray()
+            val tasks = (0 until taskArray.length()).map {
+                val task = taskArray.getJSONObject(it)
+                PlanTask(task.getString("id"), task.getString("title"), task.opt("activeForm") as? String, task.optString("status", "pending"))
+            }
+            val context = json.optJSONObject("context") ?: JSONObject()
+            val categoryArray = context.optJSONArray("categories") ?: JSONArray()
+            val categories = (0 until categoryArray.length()).map {
+                val category = categoryArray.getJSONObject(it)
+                Category(category.getString("id"), category.getInt("tokens"))
+            }
+            return ChatOverview(goal, tasks, Context(context.optIntOrNull("usedTokens"), context.optIntOrNull("limit"),
+                if (context.isNull("percent")) null else context.optDouble("percent"), context.optIntOrNull("reserveTokens"), categories))
+        }
+    }
+}
+
+/** [running] and [unread] cover the whole project, so a collapsed one still shows activity. */
+data class Project(val id: String, val name: String, val chatCount: Int? = null, val running: Boolean = false, val unread: Boolean = false)
 
 class SSEDecoder {
     private val lines = mutableListOf<String>()

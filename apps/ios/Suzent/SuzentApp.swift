@@ -9,6 +9,7 @@ import MarkdownUI
     var body: some Scene {
         WindowGroup {
             ContentView(model: model)
+                .appPreferences()
                 .onChange(of: phase) { _, phase in
                     if phase == .background { model.voice.stop() }
                     Task { await model.setForeground(phase == .active) }
@@ -107,6 +108,7 @@ private struct ChatSidebarRow: View {
     @State private var swipedDelete = 0
     private var pinned: Bool { chat.pinned == true }
     private var running: Bool { chat.isRunning == true }
+    private var unread: Bool { (chat.unreadCount ?? 0) > 0 && !selected }
     private var swipeable: Bool { enabled && canManage && !running }
 
     private var meta: Text? {
@@ -120,7 +122,7 @@ private struct ChatSidebarRow: View {
             HStack(spacing: 6) {
                 if pinned { Image(systemName: "pin.fill").font(.system(size: 10)) }
                 VStack(alignment: .leading, spacing: 0) {
-                    Text(chat.title).suzentFont(PresentationTokens.typeCaption, weight: .medium)
+                    Text(chat.title).suzentFont(PresentationTokens.typeCaption, weight: unread ? .heavy : .medium)
                         .lineLimit(1).truncationMode(.tail)
                     HStack(spacing: 0) {
                         if let meta { meta.lineLimit(1).truncationMode(.tail) }
@@ -166,8 +168,8 @@ private struct ChatSidebarRow: View {
                         .tint(Color.suzentDanger)
                 }
             }
-            .sensoryFeedback(.success, trigger: swipedPin)
-            .sensoryFeedback(.warning, trigger: swipedDelete)
+            .suzentFeedback(.success, trigger: swipedPin)
+            .suzentFeedback(.warning, trigger: swipedDelete)
             .accessibilityActions {
                 if enabled && canManage {
                     Button("Rename") { startRename() }
@@ -232,8 +234,12 @@ struct ContentView: View {
     @FocusState private var composing: Bool
     @State private var keyboardVisible = false
     @State private var attachmentsExpanded = false
+    @State private var railChoices = RailChoices()
+    @State private var streamGeneration = 0
+    @State private var sawStreaming = false
     @State private var showModelPicker = false
     @State private var showProjectPicker = false
+    @State private var showInfo = false
     @State private var sends = 0
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.horizontalSizeClass) private var sizeClass
@@ -322,6 +328,7 @@ struct ContentView: View {
         .onChange(of: model.selected?.isRegent == true && conversationVisible, initial: true) { _, visible in
             model.regentVisible = visible
         }
+        .onChange(of: conversationVisible, initial: true) { _, visible in model.chatVisible = visible }
         .onChange(of: model.connected) { _, connected in
             showModelPicker = false; showProjectPicker = false; path = []
             if !connected { showSettings = false }
@@ -329,6 +336,7 @@ struct ContentView: View {
         .onChange(of: path) { _, path in
             if path.isEmpty { composing = false; attachmentsExpanded = false }
             if !path.contains(.search) { searchText = "" }
+            if path.last != .conversation { showInfo = false }
         }
         .onChange(of: model.activeDesktopId) { _, _ in
             search = ""; searchText = ""; expandedProject = nil; expandedAgents = []
@@ -363,7 +371,7 @@ struct ContentView: View {
                     model.selected?.projectName = model.projects.first { $0.id == id }?.name
                 }
         }
-        .sensoryFeedback(.impact(weight: .light), trigger: sends)
+        .suzentFeedback(.impact(weight: .light), trigger: sends)
         .onChange(of: model.isDemo) { _, _ in
             showSettings = false; path = []; tab = .chats; showModelPicker = false; showProjectPicker = false; composing = false
         }
@@ -413,14 +421,22 @@ struct ContentView: View {
                 VStack {
                     Spacer(minLength: 20)
                     VStack(spacing: 21) {
-                        ReconnectIndicator(active: model.busy)
+                        ReconnectIndicator(active: model.busy, stage: model.reconnectStage)
                         Text(model.busy ? String(localized: "Connecting to Suzent") : String(localized: "Reconnect to desktop"))
                             .suzentFont(21, weight: .medium).multilineTextAlignment(.center)
-                        if let desktop = model.desktops.first(where: { $0.id == (model.checkingDesktopId ?? model.activeDesktopId) }) {
-                            HStack(spacing: 6) {
-                                Image(systemName: "desktopcomputer").font(.system(size: 12, weight: .medium))
-                                Text(desktop.name).lineLimit(1)
-                            }.suzentFont(PresentationTokens.typeCaption, weight: .medium).foregroundStyle(Color.suzentMuted)
+                        VStack(spacing: 6) {
+                            if let desktop = model.desktops.first(where: { $0.id == (model.checkingDesktopId ?? model.activeDesktopId) }) {
+                                HStack(spacing: 6) {
+                                    Image(systemName: "desktopcomputer").font(.system(size: 12, weight: .medium))
+                                    Text(desktop.name).lineLimit(1)
+                                }.suzentFont(PresentationTokens.typeCaption, weight: .medium).foregroundStyle(Color.suzentMuted)
+                            }
+                            Group {
+                                Text(model.busy ? (model.reconnectStatus ?? "") : "").suzentFont(PresentationTokens.typeCaption, weight: .semibold, design: .monospaced)
+                                    .tracking(0.8).foregroundStyle(Color.suzentMuted)
+                                    .multilineTextAlignment(.center)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }.frame(minHeight: 16)
                         }
                         Group {
                             if model.busy {
@@ -503,6 +519,15 @@ struct ContentView: View {
             }
         }
         .background(Color.suzentBackground)
+        // A trailing column on iPad and a resizable sheet on iPhone, from the same panel.
+        .inspector(isPresented: Binding(get: { showInfo && infoAvailable }, set: { showInfo = $0 })) {
+            if let id = model.selected?.id {
+                ChatInfoPanel(model: model, chatID: id)
+                    .presentationDetents([.medium, .large])
+                    .presentationDragIndicator(.visible)
+                    .inspectorColumnWidth(min: 280, ideal: PresentationTokens.sidebarWidth, max: 420)
+            }
+        }
         .navigationBarTitleDisplayMode(.inline)
         .toolbarRole(.editor)
         .toolbar {
@@ -515,6 +540,11 @@ struct ContentView: View {
             }
             if !showSettings {
                 ToolbarItem(placement: .principal) { conversationTitle.dynamicTypeSize(...DynamicTypeSize.accessibility3) }
+                if infoAvailable { ToolbarItem(placement: .topBarTrailing) {
+                    Button { showInfo.toggle() } label: { PanelToggleIcon(open: showInfo, edge: wide ? .trailing : .bottom) }
+                        .accessibilityLabel("Conversation info")
+                        .accessibilityAddTraits(showInfo ? .isSelected : [])
+                } }
                 if !sidebarShown { ToolbarItem(placement: .topBarTrailing) {
                     Button(action: newConversation) { Image(systemName: "square.and.pencil") }
                         .accessibilityLabel("New conversation")
@@ -522,6 +552,12 @@ struct ContentView: View {
                 } }
             }
         }
+    }
+
+    /// Regent's plan is the desktop board across conversations, so only ordinary saved chats get the panel.
+    private var infoAvailable: Bool {
+        guard let chat = model.selected, !showSettings else { return false }
+        return model.overviewSupported && !chat.id.isEmpty && !chat.isRegent
     }
 
     /// The iPad sidebar already carries the wordmark and the create button.
@@ -731,7 +767,9 @@ struct ContentView: View {
             HStack(spacing: 6) {
                 Image(systemName: "folder").font(.system(size: 18)).padding(.trailing, 6)
                 Text(project.name).lineLimit(1).truncationMode(.tail)
+                    .fontWeight(!isOpen && project.unread == true ? .heavy : nil)
                 Spacer()
+                if !isOpen && (project.running == true || rows.contains { $0.chat.isRunning == true }) { Image(systemName: "ellipsis") }
                 Text("\(project.chatCount ?? rows.count)").font(.caption).foregroundStyle(Color.suzentMuted)
                 Image(systemName: isOpen ? "chevron.down" : "chevron.right").font(.system(size: 10)).foregroundStyle(Color.suzentMuted)
             }
@@ -904,6 +942,7 @@ struct ContentView: View {
                     Text("To revoke access, also remove its credentials on the desktop.").foregroundStyle(Color.suzentMuted)
                 }
             }
+            PreferencesSection(header: AnyView(settingsHeader("Preferences")))
             Section {
                 if !model.isDemo {
                     Button("Try offline demo") { Task { await model.startDemo() } }.disabled(model.busy || model.streaming)
@@ -973,7 +1012,8 @@ struct ContentView: View {
     }
 
     private func conversation(_ chat: Chat) -> some View {
-        GeometryReader { viewport in
+        let loadingHistory = model.openingChatID == chat.id && (chat.messages ?? []).isEmpty
+        return GeometryReader { viewport in
         ZStack(alignment: .bottom) {
         VStack(spacing: 0) {
             if chat.isRegent {
@@ -998,7 +1038,8 @@ struct ContentView: View {
                         if chat.id.isEmpty { startPage(chat) }
                         let savedMessages = transcriptCache.content(chat.messages ?? [], liveToolIDs: Set(model.liveParts.filter { $0.type == "tool" }.compactMap(\.toolCallId)))
                         let messages = chat.isRegent ? regentMessages(savedMessages, liveParts: model.liveParts) : savedMessages
-                        if chat.isRegent && messages.isEmpty && !model.streaming { RegentGreeting() }
+                        if loadingHistory { HistoryLoadingIndicator() }
+                        if !loadingHistory && chat.isRegent && messages.isEmpty && !model.streaming { RegentGreeting() }
                         let hasLiveMessage = model.streaming || !model.liveParts.isEmpty
                         let idle = !model.busy && !hasLiveMessage && chat.isRunning != true
                         let lastUser = (chat.messages ?? []).lastIndex { $0.role == "user" }
@@ -1009,16 +1050,20 @@ struct ContentView: View {
                                 canEdit: canReplay && message.role == "user" && message.messageIndex == lastUser,
                                 canFork: !chat.isRegent && idle && message.role == "assistant" && model.device?.permissions.createChats == true,
                                 onAction: { action, text in Task { await model.messageAction(message, action: action, text: text) } })
+                                .environment(\.railScope, railScope(chatId: chat.id, messageKey: "m\(message.messageIndex)"))
                         }
                         if hasLiveMessage {
                             VStack(alignment: .leading, spacing: 10) {
                                 ActivityTurn(parts: chat.isRegent ? regentDisplayParts(model.liveParts, live: model.streaming) : model.liveParts,
                                              live: model.streaming, regent: chat.isRegent)
                             }
+                            .environment(\.railScope, railScope(chatId: chat.id, messageKey: "live\(streamGeneration)"))
                         }
                         Color.clear.frame(height: 1).id("bottom")
                     }.padding(16).readingWidth()
-            }.id(chat.id)
+                    .environment(\.surfaceHandler, surfaceHandler(chat))
+            }.id(chat.id).environment(\.railChoices, railChoices)
+                .environment(\.mediaLoader, MediaLoader { [model, chatID = chat.id] item in await model.mediaFile(chatID, item: item) })
             if !model.pendingApprovals.isEmpty {
                 // Pinned above the composer so a pending decision never scrolls out of reach.
                 ViewThatFits(in: .vertical) {
@@ -1037,13 +1082,48 @@ struct ContentView: View {
         }.clipped()
             .animation(reduceMotion ? nil : .easeInOut(duration: 0.22), value: attachmentsExpanded)
         }.onChange(of: composing) { _, focused in if focused { attachmentsExpanded = false } }
-            .onChange(of: chat.id) { _, _ in attachmentsExpanded = false }
+            .onChange(of: chat.id) { _, _ in
+                attachmentsExpanded = false
+                railChoices.clear()
+                let step = nextStreamGeneration(0, wasStreaming: false, streaming: model.streaming)
+                streamGeneration = step.generation
+                sawStreaming = step.streaming
+            }
+            .onChange(of: model.streaming, initial: true) { _, streaming in
+                let step = nextStreamGeneration(streamGeneration, wasStreaming: sawStreaming, streaming: streaming)
+                streamGeneration = step.generation
+                sawStreaming = step.streaming
+            }
             .task(id: "\(chat.id):\(model.openedVersion)") { await model.watchApprovals(chat.id) }
             .onDisappear { model.voice.stop() }
     }
 
+    /// Question forms the user has replied to since, which are not offered again (desktop `isAnsweredQuestion`).
+    private func answeredQuestions(_ chat: Chat) -> Set<String> {
+        let messages = chat.messages ?? []
+        guard let lastUser = messages.lastIndex(where: { $0.role == "user" }) else { return [] }
+        return Set(messages.prefix(lastUser).flatMap(\.parts).compactMap { part -> String? in
+            guard let surface = part.surface, case .form(_, _, "submit_question") = surface.component else { return nil }
+            return surface.id
+        })
+    }
+
+    private func surfaceHandler(_ chat: Chat) -> SurfaceHandler {
+        let answered = answeredQuestions(chat)
+        let idle = !model.busy && !model.streaming && chat.isRunning != true
+        let canSend = model.device?.permissions.send == true && !chat.id.isEmpty
+        return SurfaceHandler(
+            // A blocked question is answered while the run waits; anything else starts a new turn.
+            interactive: { surface in
+                canSend && (surface.isDeferred ? model.surfacesSupported : idle && !answered.contains(surface.id))
+            },
+            act: { surface, action, context in await model.act(on: surface, action: action, context: context) })
+    }
+
     private func composer(_ chat: Chat) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+        let actionWidth: CGFloat = composerAction(chat) == .redirect ? 88 : 44
+        return VStack(alignment: .leading, spacing: 8) {
+            QueuedMessagesView(model: model)
             if model.voice.active {
                 VoiceCubeView(voice: model.voice).frame(height: 112).accessibilityHidden(true)
                 HStack(spacing: 10) {
@@ -1072,7 +1152,7 @@ struct ContentView: View {
                 TextField("Message", text: $model.draft, axis: .vertical).lineLimit(composing ? 1...6 : 1...1).focused($composing)
                     .tint(Color.suzentLink)
                     .suzentFont(PresentationTokens.typeChat).padding(.horizontal, 4).padding(.vertical, 12).frame(minHeight: 44).disabled(model.busy)
-                if !composing { sendAction(chat) } else { Color.clear.frame(width: 44, height: 44) }
+                Color.clear.frame(width: actionWidth, height: 44)
             }
             if composing { HStack(spacing: 8) {
                 Button {
@@ -1085,11 +1165,22 @@ struct ContentView: View {
                 }.buttonStyle(.plain)
                 .disabled(model.busy || model.streaming || (chat.models ?? []).isEmpty || model.device?.permissions.send != true)
                 Spacer(minLength: 8)
-                sendAction(chat)
-            } }
+                Color.clear.frame(width: actionWidth, height: 44)
+            }.transition(.opacity) }
         }.padding(10).background(Color.suzentSurface)
             .dynamicTypeSize(...DynamicTypeSize.accessibility3)
-            .animation(reduceMotion ? nil : .easeInOut(duration: 0.18), value: composing)
+            .animation(reduceMotion ? nil : .smooth(duration: 0.28, extraBounce: 0), value: composing)
+            .overlay(alignment: .bottomTrailing) {
+                HStack(spacing: 0) {
+                    // Redirect is the main action mid-turn, as Enter is on desktop; waiting for the turn to end sits beside it.
+                    if composerAction(chat) == .redirect { sendAction(chat, action: .queue) }
+                    sendAction(chat, action: composerAction(chat))
+                }.padding(10)
+            }
+            .task(id: QueueRelease(chat: chat.id, queued: model.queued.map(\.id), busy: model.busy || model.approvalBusy,
+                                   running: model.streaming || chat.isRunning == true, waiting: !model.pendingApprovals.isEmpty)) {
+                model.releaseQueued()
+            }
             .overlay(Rectangle().stroke(Color.suzentOutline, lineWidth: PresentationTokens.borderWidth))
             .background { Rectangle().fill(Color.suzentShadow).offset(x: 2, y: 2) }
             .padding(.trailing, 2).padding(.bottom, 2)
@@ -1117,11 +1208,16 @@ struct ContentView: View {
         }.frame(maxWidth: .infinity).padding(.horizontal, 8).padding(.vertical, keyboardVisible ? 12 : 40)
     }
 
-    private func sendAction(_ chat: Chat) -> some View {
-        let action = ComposerAction.resolve(
-            hasContent: !model.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !model.attachments.isEmpty,
+    private func composerAction(_ chat: Chat) -> ComposerAction {
+        let text = !model.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        return ComposerAction.resolve(
+            hasContent: text || !model.attachments.isEmpty,
             busy: model.busy, running: model.streaming || chat.isRunning == true,
-            voiceActive: model.voice.active, voiceConnecting: model.voice.animationState == "connecting")
+            voiceActive: model.voice.active, voiceConnecting: model.voice.animationState == "connecting",
+            canRedirect: text && model.redirectSupported)
+    }
+
+    private func sendAction(_ chat: Chat, action: ComposerAction) -> some View {
         let loading = action == .loading || (action == .stop && model.stopInFlight)
         let label: String = switch action {
         case .voice: String(localized: "Start voice conversation")
@@ -1130,8 +1226,24 @@ struct ContentView: View {
         case .connecting: String(localized: "Cancel voice connection")
         case .hangUp: String(localized: "End voice conversation")
         case .stop: model.stopInFlight ? String(localized: "Stopping…") : String(localized: "Stop")
+        case .queue: String(localized: "Queue until this turn ends")
+        case .redirect: String(localized: "Redirect the agent")
         }
-        let symbol = action == .stop ? "stop.fill" : action == .hangUp ? "phone.down.fill" : action == .voice ? "waveform" : "arrow.up"
+        let symbol: String = switch action {
+        case .stop: "stop.fill"
+        case .hangUp: "phone.down.fill"
+        case .voice: "waveform"
+        case .queue: "clock"
+        case .redirect: "arrow.uturn.right"
+        default: "arrow.up"
+        }
+        let fill: Color = switch action {
+        case .stop, .hangUp: Color(presentation: PresentationTokens.danger)
+        case .redirect: Color(presentation: PresentationTokens.yellow)
+        case .queue: Color.suzentSurface
+        default: Color(presentation: PresentationTokens.blue)
+        }
+        let tint: Color = action == .redirect ? .black : action == .queue ? Color.suzentText : .white
         return Button {
             switch action {
             case .voice: composing = false; model.startVoice()
@@ -1151,18 +1263,32 @@ struct ContentView: View {
                 }
                 sends += 1
                 Task { await model.send() }
+            case .queue, .redirect:
+                guard model.device?.permissions.send == true else {
+                    model.error = String(localized: "Change this phone’s permissions in desktop Settings → Devices to use this action."); return
+                }
+                if action == .queue { model.queue() } else { Task { await model.redirect() } }
             }
         } label: {
             Group {
-                if loading || action == .connecting { ProgressView().tint(.white) }
+                if loading || action == .connecting { ProgressView().tint(tint) }
                 else { Image(systemName: symbol).font(.system(size: action == .stop ? 14 : 20, weight: .bold)) }
-            }.foregroundStyle(.white).frame(width: 36, height: 36)
-                .background(Color(presentation: action == .stop || action == .hangUp ? PresentationTokens.danger : PresentationTokens.blue))
+            }.foregroundStyle(tint).frame(width: 36, height: 36)
+                .background(fill)
                 .overlay(Rectangle().stroke(Color.suzentOutline, lineWidth: 2))
                 .padding(4).contentShape(Rectangle())
         }.buttonStyle(.plain).disabled(loading).accessibilityLabel(label)
     }
 
+}
+
+/// What decides whether the next queued message can go out; any change re-checks it.
+private struct QueueRelease: Equatable {
+    let chat: String
+    let queued: [UUID]
+    let busy: Bool
+    let running: Bool
+    let waiting: Bool
 }
 
 private extension View {
@@ -1194,6 +1320,24 @@ private struct SearchPageField: View {
                 guard text.isEmpty else { return }
                 try? await Task.sleep(for: .milliseconds(450))
                 focused = true
+            }
+    }
+}
+
+private struct HistoryLoadingIndicator: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var visible = false
+
+    var body: some View {
+        ProgressView().tint(Color.suzentMuted)
+            .opacity(visible ? 1 : 0)
+            .frame(maxWidth: .infinity, minHeight: 68)
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.14), value: visible)
+            .accessibilityHidden(!visible)
+            .task {
+                try? await Task.sleep(for: .milliseconds(180))
+                guard !Task.isCancelled else { return }
+                visible = true
             }
     }
 }

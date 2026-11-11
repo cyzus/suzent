@@ -12,7 +12,7 @@ struct PairingView: View {
 
     var body: some View {
         Group {
-            if model.pairingCode == nil && model.pairingInvitation == nil && (!model.busy || model.startingDemo) { welcome } else { progress }
+            if !model.awaitingDesktop && model.pairingInvitation == nil && (!model.busy || model.startingDemo) { welcome } else { progress }
         }
         .font(.system(size: bodySize))
         .fullScreenCover(isPresented: $scanner) { PairingScanner(model: model) }
@@ -76,13 +76,12 @@ struct PairingView: View {
                 .padding(PresentationTokens.spaceLarge)
                 .foregroundStyle(.black)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color(presentation: PresentationTokens.yellow))
+                .background(Color.suzentYellow)
                 .overlay(Rectangle().stroke(.black, lineWidth: PresentationTokens.borderWidth))
 
-                if let code = model.pairingCode {
+                if model.awaitingDesktop {
                     ProgressView("Waiting for desktop approval")
-                    Text(code).font(.system(.largeTitle, design: .monospaced).bold()).textSelection(.enabled)
-                    Text("Check this code on your desktop, then choose which conversations and actions to share.")
+                    Text("Click Allow on your computer to finish connecting.")
                     Button("Cancel pairing", action: model.cancelPairing).buttonStyle(SuzentButtonStyle())
                 } else if let invitation = model.pairingInvitation {
                     Text("Connect to this desktop?").font(.title2.bold())

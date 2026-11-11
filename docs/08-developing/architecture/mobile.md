@@ -143,6 +143,18 @@ Tokens are encrypted with an Android Keystore AES-GCM key; app backup is disable
    retransmissions and replace transient text when a fresh snapshot arrives.
    `STREAM_END` confirms persistence; the received response stays visible until
    saved history has loaded. See [Stream recovery](stream-recovery-protocol.md).
+While a turn runs, the composer offers redirect and queue in place of Stop once
+there is typed content, matching desktop's Enter and Cmd/Ctrl+Enter.
+`POST /mobile/client/steer` (session capability `steer: 1`, requires both `send`
+and `stop`) forwards text and an optional model to `/chat/steer-send`, or to
+`/chat/send` when the turn already ended. On acceptance the client cancels its
+current live stream, keeps the partial reply on screen (running or
+approval-pending tools end as errors, as on desktop) and subscribes again. Queued
+messages live only in the phone's memory, per conversation; the open
+conversation releases the next one through the normal send path once it is
+idle (not streaming, not running, no pending approvals). A failed release or
+redirect returns its text and attachments to the composer instead of the queue,
+so a failing desktop is not retried in a loop.
 The native clients subscribe immediately after send acknowledgment, showing the
 accepted user message locally while the backend remains authoritative. Live text
 is published in 50 ms batches, with a final flush on completion or failure.
@@ -177,8 +189,7 @@ web links open a native source-preview sheet with title, snippet, copy-link and
 external-browser actions. Reading a source uses Safari View Controller on iOS
 and Custom Tabs on Android. Inline citation capsules display source favicons
 with a fixed-size fallback; repeated references have independent selection.
-Multi-source citations list each resolved source in the sheet. Attachments, A2UI and some
-legacy inline tool formats still require desktop. Shared palette and filtering
+Multi-source citations list each resolved source in the sheet. Some legacy inline tool formats still require desktop; A2UI surfaces render natively (see [Inline surfaces](#inline-surfaces)). Shared palette and filtering
 rules live in `packages/presentation`; regenerate platform files with
 `uv run python scripts/generate_presentation.py` after editing their source.
 Mobile logo geometry is generated from `frontend/public/favicon.svg`, including
@@ -254,6 +265,95 @@ Only the latest message shows its action row; every message offers the same acti
 (copy, share, edit, retry, branch, sources) from a long-press menu on its footer or
 bubble, so message text keeps native selection. Send, copy, long press and approval
 choices give haptic feedback, and iOS text follows Dynamic Type.
+
+### Tool media
+
+The mobile chat load (`src/suzent/mobile/media.py`) adds `media:[{id,kind,name}]` to each
+finished, successful tool part that produced or read media: `saved_paths` of
+`generate_image`, `edit_image`, `check_video`, `speak` and `send_file`, and
+`visual_path` of `analyze_visual`. Only `send_file` may hand over any file type (kind
+`file`, served with a content type guessed from its name); the others are limited to
+image, video and audio extensions. A `send_file` whose chat-app upload failed still
+counts, because its `saved_paths` are files that exist on the desktop (the desktop
+gallery and the Artifacts panel show them too); a call rejected before that carries no
+`saved_paths`. The id is the first 32
+hex digits of the path's SHA-256, so the phone never learns desktop paths.
+`GET /mobile/client/chats/{id}/media/{media_id}` re-scans the stored transcript for a
+matching path, resolves it with the same `PathResolver` the desktop's `/sandbox/serve`
+uses, and returns a `FileResponse` (Range requests work, which the relay streams).
+Anything not reported by a media tool in that chat is a 404.
+
+Clients render the items under a turn's activity summary, outside the collapsed rail.
+Each item is downloaded once into the app's cache (`cacheDir/media/<desktop>/` on
+Android, `Caches/media/<desktop>/` on iOS) and played from the local file: Android uses
+`VideoView` with `MediaController` for video and `MediaPlayer` for audio, iOS uses
+AVKit's `VideoPlayer` for both. Downloading first keeps playback independent of the
+transport, since neither system player can speak the relay tunnel. Items of kind
+`file` download only when tapped, keep their original name under `<id>/`, and open the
+system share sheet (Android through the existing `FileProvider`). Images are decoded
+at most 1600 px on the long side. Live turns show media once the saved transcript loads.
+
+### Conversation info and phone preferences
+
+`GET /mobile/client/chats/{id}/overview` (session capability `chat_overview: 1`) returns
+the desktop sidebar's plan and context sections for one permitted chat: the chat's goal,
+its tasks with status only (`blocked` is derived from `blocked_by`, as on the desktop),
+and a context headline. The headline uses the stored `context_usage` (provider count,
+else total tokens) against `resolve_context_limit` for the chat's model, plus the
+breakdown's non-empty categories and reserve. Unlike the desktop chat load it never
+deserializes agent state to estimate a missing count, so a chat with no usage reports
+`usedTokens: null`. Clients skip the panel on older backends and in Regent's chat.
+
+A header button opens the panel. iOS uses `.inspector`, which is a medium/large sheet
+on compact width and a trailing column on regular width; Android uses a
+`ModalBottomSheet` on phones and a `sidebarWidth` column beside the conversation from
+840 dp. The panel polls every 4 s while the chat runs and every 15 s otherwise. The
+offline demo returns a sample plan for its trip conversation from `demo.json`.
+
+Settings → Preferences is local to the phone. iOS stores appearance, text size and
+haptics in `@AppStorage` and applies them at the root with `preferredColorScheme` and
+`dynamicTypeSize`; `suzentFeedback` gates every `sensoryFeedback`. Language opens the
+app's page in iOS Settings. Android keeps them in the `app_preferences` file through
+`AppPreferences`; `AppPreferencesProvider` overrides `LocalConfiguration.uiMode` (so
+each `isSystemInDarkTheme` follows it) and scales `LocalDensity.fontScale`, and
+`suzentHaptic` returns early when haptics are off. Language uses `LocaleManager`
+per-app locales on Android 13+ with `res/xml/locales_config.xml`.
+
+### Inline surfaces
+
+Agent-rendered A2UI surfaces (`render_ui`, `ask_question`) arrive in saved messages as
+`{"type": "a2ui", "surface": …}` parts and live as `CUSTOM` `a2ui.render` events on the
+same `/mobile/client/live` stream; `a2ui.resolved` removes an answered deferred question.
+Both clients decode the component tree (`A2UI.swift`, `A2UI.kt`) leniently: an unknown or
+malformed component becomes `unknown` and renders nothing, so a newer desktop never breaks
+a transcript. A surface is its own chunk in the reply, counts as part of the final reply
+rather than the folded activity, and a later render of the same id replaces the earlier
+one in the live buffer. Every desktop component has a native view: text (markdown through
+the chat renderer), badge, button, table (scrolls sideways), form (text, number, select
+with optional free text, multiselect chips, checkbox, textarea; required fields gate
+submit), list, progress, divider, card, stack and columns (side by side only when each
+column gets at least 140 pt/dp, otherwise stacked). HTML runs in a `WKWebView` with a
+non-persistent data store or a `WebView` without file, content or DOM storage access,
+gets a phone viewport and standards mode when it has none, opens followed links in the
+browser, and bridges `postMessage({type: 'a2ui:action'})` back as an action. It always
+sizes to its content with the desktop's auto-size shim (body height, re-measured on
+resize, DOM changes, image loads and fonts, capped at 5000 pt/dp); an agent-given
+`height` is only the first guess, because scrolling inside the page would fight the
+chat's own scroll. Surfaces with `target: "canvas"`
+also render inline until the conversation panel shows them.
+
+Actions follow the desktop dispatcher. An ordinary button or form is sent through
+`/mobile/client/send` as the desktop's `[canvas: action] "label" {context}` message
+(sorted keys, with `surface_id` added); `submit_question` forms send the
+"question: answer" text; a deferred `ask_question` posts to
+`POST /mobile/client/surface-answer` (session capability `surfaces: 1`, `send`
+permission, chat scope, answers up to 100 KB), which resolves the waiting tool call and
+emits `a2ui.resolved`. Controls are enabled only with the send permission; ordinary
+surfaces also need an idle conversation, deferred ones need the capability, and a
+question form the user has since replied to stays disabled. User messages that came
+from an action render as a "↳ label" line. Shared expectations live in
+`packages/mobile-contract/surface-fixtures.json`; the offline demo's trip conversation
+carries a sample surface.
 
 ### Mobile tool approvals and activity rail
 

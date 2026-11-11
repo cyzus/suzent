@@ -12,9 +12,9 @@ import os
 import json
 import httpx
 from urllib.parse import urlparse
-from typing import Annotated, Optional, List, Dict, Any, Literal
+from typing import Annotated, Optional, List, Dict, Any, Literal, TypedDict
 
-from pydantic import Field
+from pydantic import ConfigDict, Field, with_config
 from pydantic_ai import RunContext
 
 from suzent.core.agent_deps import AgentDeps
@@ -23,6 +23,30 @@ from suzent.tools.base import Tool, ToolGroup, ToolResult, ToolErrorCode
 from suzent.logger import get_logger
 
 logger = get_logger(__name__)
+
+
+@with_config(ConfigDict(extra="allow", use_attribute_docstrings=True))
+class WebSearchHit(TypedDict, total=False):
+    title: str
+    url: str
+    description: str
+    sources: Optional[str]
+    """The search engines that returned this result, comma separated."""
+    source_id: str
+    """The citation id to cite this result by."""
+
+
+@with_config(ConfigDict(extra="allow"))
+class WebSearchMetadata(TypedDict, total=False):
+    source: str
+    query: str
+    category: Optional[str]
+    result_count: int
+    results: list[WebSearchHit]
+
+
+class WebSearchResult(ToolResult):
+    metadata: WebSearchMetadata = Field(default_factory=dict)
 
 
 class WebSearchTool(Tool):
@@ -36,6 +60,8 @@ class WebSearchTool(Tool):
     name: str = "WebSearchTool"
     tool_name: str = "web_search"
     group: ToolGroup = ToolGroup.WEB
+    # The message is the same results as JSON, which the model already reads.
+    model_excluded_metadata = frozenset({"results"})
 
     # Constants
     TIME_RANGE_MAPPING = {
@@ -117,7 +143,7 @@ class WebSearchTool(Tool):
                 description="Page number for paginated search providers.",
             ),
         ] = 1,
-    ) -> ToolResult:
+    ) -> WebSearchResult:
         """Perform a web search using SearXNG or DuckDuckGo.
 
         Args:
@@ -137,7 +163,7 @@ class WebSearchTool(Tool):
             )
 
         self._register_citations(ctx, result)
-        return result
+        return _with_structured_results(result)
 
     def _register_citations(
         self, ctx: "RunContext[AgentDeps]", result: ToolResult
@@ -470,3 +496,14 @@ class WebSearchTool(Tool):
                 self.client.close()
             except Exception:
                 pass
+
+
+def _with_structured_results(result: ToolResult) -> WebSearchResult:
+    """Copy the results the message carries as JSON into the metadata."""
+    metadata = dict(result.metadata)
+    if result.success:
+        try:
+            metadata["results"] = json.loads(result.message).get("results", [])
+        except (json.JSONDecodeError, TypeError, AttributeError):
+            logger.debug("web_search message not JSON; no structured results")
+    return WebSearchResult.model_validate({**result.model_dump(), "metadata": metadata})

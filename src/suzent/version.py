@@ -157,3 +157,27 @@ def get_backend_commit(start: Path | None = None) -> str:
 def short_commit(commit: str) -> str:
     """Abbreviate a commit for display, passing through the unknown marker."""
     return commit if commit == UNKNOWN else commit[:SHORT_COMMIT_LENGTH]
+
+
+def get_build_source() -> str:
+    """How this backend binary/tree was produced: CI, development, source, or unknown."""
+
+    if os.getenv("SUZENT_BUILD_COMMIT", "").strip():
+        return "ci"
+    if os.getenv("SUZENT_DEV_MODE") == "1":
+        return "development"
+    if get_backend_commit() != UNKNOWN:
+        return "source"
+    return UNKNOWN
+
+
+def get_runtime_kind() -> str:
+    """How the backend is running: bundled (packaged), source checkout, or installed wheel."""
+
+    if os.getenv("SUZENT_PACKAGED", "").strip() == "1":
+        return "bundled"
+    if os.getenv("SUZENT_PROJECT_DIR", "").strip():
+        return "bundled"
+    if get_backend_source_root():
+        return "source"
+    return "installed"

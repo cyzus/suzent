@@ -85,10 +85,15 @@ const button = (html: string, label: string): string => {
 };
 
 describe('composer with voice mode', () => {
-  it('shows no voice bar when voice is off', () => {
-    const html = render(makeVoice('idle'));
-    expect(html).not.toContain('voice.states.');
-    expect(button(html, 'voice.micButton')).not.toMatch(DISABLED);
+  it('shows the voice button when input is empty and switches to send when text is entered', () => {
+    const emptyHtml = render(makeVoice('idle'), '');
+    expect(emptyHtml).not.toContain('voice.states.');
+    expect(button(emptyHtml, 'voice.micButton')).not.toMatch(DISABLED);
+    expect(emptyHtml).not.toContain('chatInput.sendMessage');
+
+    const typedHtml = render(makeVoice('idle'), 'typed draft');
+    expect(button(typedHtml, 'chatInput.sendMessage')).not.toMatch(DISABLED);
+    expect(typedHtml).not.toMatch(/<button[^>]*aria-label="voice\.micButton"/);
   });
 
   it.each<VoiceSessionStatus>(['connecting', 'listening', 'user_speaking', 'thinking', 'speaking'])(
@@ -135,16 +140,21 @@ describe('composer with voice mode', () => {
   });
 
   it('offers exactly one way to end a live call: the bar, not the mic button', () => {
-    const html = render(makeVoice('listening'));
+    const html = render(makeVoice('listening'), '');
     expect(html.split('aria-label="voice.end"').length - 1).toBe(1);
     expect(html).not.toMatch(/<button[^>]*aria-label="voice\.micButton"/);
+    expect(button(html, 'chatInput.sendMessage')).toMatch(DISABLED);
   });
 
-  it('marks the mic button while the wake phrase is listened for', () => {
-    expect(render(makeVoice('idle'))).not.toContain('data-testid="wake-listening"');
-    const html = render(makeVoice('idle', { wakeListening: true }));
-    expect(html).toContain('data-testid="wake-listening"');
-    expect(html).toContain('title="voice.wake.listening"');
+  it('marks the primary action while the wake phrase is listened for', () => {
+    expect(render(makeVoice('idle'), '')).not.toContain('data-testid="wake-listening"');
+    const mic = render(makeVoice('idle', { wakeListening: true }), '');
+    expect(mic).toContain('data-testid="wake-listening"');
+    expect(mic).toContain('title="voice.wake.listening"');
+    // Still shown while typing, when send replaces the mic.
+    expect(render(makeVoice('idle', { wakeListening: true }))).toContain(
+      'data-testid="wake-listening"'
+    );
   });
 
   it('draws the mic meter once the mic is live, not while connecting', () => {
@@ -161,8 +171,8 @@ describe('composer with voice mode', () => {
     expect(editorBox).toBeGreaterThan(bar);
   });
 
-  it('shows the error in the bar and hands the mic back', () => {
-    const html = render(makeVoice('error', { errorKey: 'voice.errors.no_api_key' }));
+  it('shows the error in the bar and hands the mic back when input is empty', () => {
+    const html = render(makeVoice('error', { errorKey: 'voice.errors.no_api_key' }), '');
     expect(html).toContain('voice.errors.no_api_key');
     expect(html).toContain('data-disabled="false"');
     expect(button(html, 'voice.micButton')).not.toMatch(DISABLED);

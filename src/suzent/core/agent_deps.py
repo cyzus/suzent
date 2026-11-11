@@ -109,6 +109,9 @@ class AgentDeps:
         None  # surface events queued by render_ui tool
     )
     inline_a2ui_surfaces: dict[str, dict[str, Any]] = field(default_factory=dict)
+    # AG-UI events produced outside the run's event stream, such as the tool
+    # calls a code mode snippet makes. The stream forwards them as they arrive.
+    ui_event_queue: Optional[asyncio.Queue] = None
 
     # --- Inline citations ---
     # CitationManager instance for this run; tools register citable sources on it

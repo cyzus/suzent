@@ -7,16 +7,39 @@ list capture uses. Curated files and vault pages are still edited with the ordin
 file tools.
 """
 
-from typing import Annotated, Literal, Optional
+from typing import Annotated, Literal, Optional, TypedDict
 from datetime import datetime
 
-from pydantic import Field
+from pydantic import ConfigDict, Field, with_config
 from pydantic_ai import RunContext
 from suzent.core.agent_deps import AgentDeps
 from suzent.tools.base import Tool, ToolErrorCode, ToolGroup, ToolResult
 from suzent.logger import get_logger
 
 logger = get_logger(__name__)
+
+
+@with_config(ConfigDict(extra="allow", use_attribute_docstrings=True))
+class MemoryHit(TypedDict, total=False):
+    content: str
+    stored: str
+    """The date the memory was stored, as YYYY-MM-DD."""
+    relevance: float
+    importance: float
+    tags: list[str]
+    kind: Optional[str]
+
+
+@with_config(ConfigDict(extra="allow"))
+class MemorySearchMetadata(TypedDict, total=False):
+    query: str
+    match_count: int
+    limit: int
+    memories: list[MemoryHit]
+
+
+class MemorySearchResult(ToolResult):
+    metadata: MemorySearchMetadata = Field(default_factory=dict)
 
 
 class MemorySearchTool(Tool):
@@ -27,6 +50,8 @@ class MemorySearchTool(Tool):
     name = "MemorySearchTool"
     tool_name = "memory_search"
     group = ToolGroup.MEMORY
+    # The message already lists the memories the model reads.
+    model_excluded_metadata = frozenset({"memories"})
 
     def __init__(self):
         super().__init__()
@@ -64,14 +89,27 @@ class MemorySearchTool(Tool):
                 description="Maximum number of memories to return.",
             ),
         ] = 10,
-    ) -> ToolResult:
+        kind: Annotated[
+            Optional[Literal["user", "experience", "world"]],
+            Field(
+                description=(
+                    "Only return memories of this kind. user: about the user. "
+                    "experience: lessons from past failures and their fixes. "
+                    "world: knowledge. Omit to search everything."
+                )
+            ),
+        ] = None,
+    ) -> MemorySearchResult:
         """Search long-term archival memory for relevant information.
 
         Uses semantic similarity to find relevant memories even if the exact words differ.
+        When a tool call or command fails, search with kind="experience" and the tool
+        name plus the error text before retrying: a past lesson may already hold the fix.
 
         Args:
             query: What to search for in memory (use natural language).
             limit: Maximum number of results to return (default 10).
+            kind: Only return memories of this kind.
         """
         mm = ctx.deps.memory_manager
         if not mm:
@@ -81,7 +119,7 @@ class MemorySearchTool(Tool):
             # and lazily run init if it hasn't completed yet. init is idempotent.
             mm = await self._resolve_manager()
         if not mm:
-            return ToolResult.error_result(
+            return MemorySearchResult.error_result(
                 ToolErrorCode.EXECUTION_FAILED,
                 "Memory system is still initializing. Please try again in a moment.",
             )
@@ -93,16 +131,23 @@ class MemorySearchTool(Tool):
                 limit=limit,
                 chat_id=None,  # Always search user-level memories
                 user_id=user_id,
+                kinds=[kind] if kind else None,
             )
 
             if not memories:
-                return ToolResult.success_result(
+                return MemorySearchResult.success_result(
                     "No relevant memories found.",
-                    metadata={"query": query, "match_count": 0, "limit": limit},
+                    metadata={
+                        "query": query,
+                        "match_count": 0,
+                        "limit": limit,
+                        "memories": [],
+                    },
                 )
 
             # Format results for agent
             formatted = ["Found relevant memories:\n"]
+            hits: list[MemoryHit] = []
             for i, mem in enumerate(memories, 1):
                 # Handle datetime formatting
                 created_at = mem.get("created_at")
@@ -137,19 +182,36 @@ class MemorySearchTool(Tool):
                     f"{i}. {mem['content']}\n"
                     f"   (Stored: {date_str}, Relevance: {similarity:.2f}, Importance: {mem['importance']:.2f}{tag_str})"
                 )
+                hits.append(
+                    {
+                        "content": mem["content"],
+                        "stored": date_str,
+                        "relevance": float(similarity),
+                        "importance": float(mem["importance"]),
+                        "tags": [str(tag) for tag in tags]
+                        if isinstance(tags, list)
+                        else [],
+                        "kind": mem.get("kind") or metadata.get("kind"),
+                    }
+                )
 
             result = "\n\n".join(formatted)
             logger.info(
                 f"Memory search returned {len(memories)} results for query: {query}"
             )
-            return ToolResult.success_result(
+            return MemorySearchResult.success_result(
                 result,
-                metadata={"query": query, "match_count": len(memories), "limit": limit},
+                metadata={
+                    "query": query,
+                    "match_count": len(memories),
+                    "limit": limit,
+                    "memories": hits,
+                },
             )
 
         except Exception as e:
             logger.error(f"Memory search failed: {e}")
-            return ToolResult.error_result(
+            return MemorySearchResult.error_result(
                 ToolErrorCode.EXECUTION_FAILED,
                 f"Error searching memories: {str(e)}",
                 metadata={"query": query, "limit": limit},
@@ -297,7 +359,7 @@ class MemoryUpdateTool(Tool):
                 evidence = self._user_words(ctx)
         mm = ctx.deps.memory_manager or await MemorySearchTool._resolve_manager()
         if not mm:
-            return ToolResult.error_result(
+            return MemorySearchResult.error_result(
                 ToolErrorCode.EXECUTION_FAILED,
                 "Memory system is still initializing. Please try again in a moment.",
             )

@@ -7,7 +7,7 @@ description: Drive native desktop apps with Suzent's desktop plugin and the agen
 
 Use the `desktop` tool. Do not shell out to `agent-desktop`, and do not expect it to run inside the chat sandbox. The sandbox has no display. Every call runs on the host computer and can see and change the real desktop. There is no isolation.
 
-Do not download or install agent-desktop yourself from a tool call. If it is missing, stop and tell the user to confirm the install in **Settings → Plugins** (Install agent-desktop on the Desktop plugin) or to run `suzent plugin install desktop`. That downloads the pinned 1.0.x release only after they agree. On macOS they also need Accessibility permission; the installer opens `agent-desktop permissions --guide`.
+Do not download or install agent-desktop yourself from a tool call. If it is missing, stop and tell the user to confirm the install in **Settings → Plugins** (Install agent-desktop on the Desktop plugin) or to run `suzent plugin install desktop`. That downloads the pinned 1.x release only after they agree. On macOS they also need Accessibility permission; the installer opens `agent-desktop permissions --guide`.
 
 ## Before the first action
 

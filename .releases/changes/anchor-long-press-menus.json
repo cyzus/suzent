@@ -1,0 +1,4 @@
+{
+  "products": {"desktop": "patch", "mobile": "patch"},
+  "summary": "Long-press menus open beside the finger and stay inside the screen, including in the Android app."
+}

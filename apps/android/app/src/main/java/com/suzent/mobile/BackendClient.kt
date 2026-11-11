@@ -1,5 +1,6 @@
 package com.suzent.mobile
 
+import java.io.File
 import java.io.IOException
 import java.util.concurrent.TimeUnit
 import java.util.UUID
@@ -25,6 +26,8 @@ import okhttp3.MultipartBody
 import okhttp3.RequestBody.Companion.asRequestBody
 import okhttp3.WebSocket
 import okhttp3.WebSocketListener
+import okio.buffer
+import okio.sink
 import org.json.JSONObject
 
 /**
@@ -108,6 +111,15 @@ class BackendClient(val backend: Backend, private val token: String, probeOnly: 
     override var supportsScheduledTasks = false
         private set
 
+    override var supportsChatOverview = false
+        private set
+
+    override var supportsSurfaces = false
+        private set
+
+    override var supportsSteer = false
+        private set
+
     var supportsVoice = false
         private set
 
@@ -130,6 +142,9 @@ class BackendClient(val backend: Backend, private val token: String, probeOnly: 
         supportsScheduledTasks = value.optInt("scheduled_tasks") == 1
         supportsPagination = value.optInt("chat_pagination") == 1
         supportsVoice = value.optInt("voice") == 1
+        supportsChatOverview = value.optInt("chat_overview") == 1
+        supportsSurfaces = value.optInt("surfaces") == 1
+        supportsSteer = value.optInt("steer") == 1
         sessionRelay = RelayRoute.parse(value.optJSONObject("relay"), BuildConfig.DEBUG)
         return ClientDevice.parse(value.getJSONObject("device"))
             .copy(desktopName = value.optString("desktop_name").take(100).ifBlank { null })
@@ -157,7 +172,7 @@ class BackendClient(val backend: Backend, private val token: String, probeOnly: 
         val array = value.getJSONArray("projects")
         return NavigationMetadata(value.optJSONObject("regent")?.let(Chat::parse), (0 until array.length()).map {
             val project = array.getJSONObject(it)
-            Project(project.getString("id"), project.getString("name"), project.getInt("chatCount"))
+            Project(project.getString("id"), project.getString("name"), project.getInt("chatCount"), project.optBoolean("running"), project.optBoolean("unread"))
         })
     }
     override suspend fun chatStatuses(ids: List<String>): List<Chat> {
@@ -201,9 +216,34 @@ class BackendClient(val backend: Backend, private val token: String, probeOnly: 
         require(!id.contains('/') && id != "." && id != "..")
         json("mobile/client/chats/$id/read", JSONObject())
     }
+    override suspend fun answerSurface(id: String, surfaceId: String, answer: Map<String, Any?>) {
+        json("mobile/client/surface-answer", JSONObject().put("chat_id", id).put("surface_id", surfaceId)
+            .put("answer", JSONObject(compactJson(answer))))
+    }
+    override suspend fun overview(id: String): ChatOverview {
+        require(!id.contains('/') && id != "." && id != "..")
+        return ChatOverview.parse(json("mobile/client/chats/$id/overview"))
+    }
     override suspend fun chat(id: String): Chat {
         require(!id.contains('/') && id != "." && id != "..")
         return Chat.parse(json("mobile/client/chats/$id"))
+    }
+    override suspend fun media(chatId: String, mediaId: String, destination: File) = withContext(Dispatchers.IO) {
+        require(!chatId.contains('/') && chatId != "." && chatId != "..")
+        require(mediaId.matches(Regex("^[0-9a-f]{32}$")))
+        val call = reads.newCall(request("mobile/client/chats/$chatId/media/$mediaId"))
+        val partial = File(destination.parentFile, destination.name + ".part")
+        try {
+            currentCoroutineContext()[kotlinx.coroutines.Job]?.invokeOnCompletion { if (it != null) call.cancel() }
+            call.execute().use { response ->
+                if (!response.isSuccessful) throw HttpFailure(response.code)
+                val body = response.body ?: throw IOException("Empty response")
+                partial.sink().buffer().use { it.writeAll(body.source()) }
+            }
+            if (!partial.renameTo(destination)) throw IOException("Could not keep downloaded media")
+        } finally {
+            partial.delete()
+        }
     }
     override suspend fun upload(id: String, attachments: List<PendingAttachment>): List<String> {
         require(!id.contains('/') && id != "." && id != "..")
@@ -241,6 +281,9 @@ class BackendClient(val backend: Backend, private val token: String, probeOnly: 
         json("mobile/client/approvals", JSONObject().put("chat_id", id).put("decisions", decisions))
     }
     override suspend fun stop(id: String) { json("mobile/client/stop", JSONObject().put("chat_id", id)) }
+    override suspend fun steer(id: String, text: String, model: String?) {
+        json("mobile/client/steer", JSONObject().put("chat_id", id).put("message", text).apply { if (model != null) put("model", model) })
+    }
 
     override suspend fun observe(id: String, event: suspend (JSONObject) -> Unit) = withContext(Dispatchers.IO) {
         var recovery = StreamRecovery()

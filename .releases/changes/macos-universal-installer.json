@@ -1,0 +1,6 @@
+{
+  "products": {
+    "desktop": "patch"
+  },
+  "summary": "Package a universal macOS installer disk image for both Apple Silicon and Intel Macs."
+}

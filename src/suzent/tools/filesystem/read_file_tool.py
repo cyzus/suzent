@@ -6,9 +6,9 @@ PPTX, XLSX, ...) to markdown via :mod:`suzent.tools.filesystem.doc_convert`.
 """
 
 from pathlib import Path
-from typing import Annotated, Optional
+from typing import Annotated, Optional, TypedDict
 
-from pydantic import Field
+from pydantic import ConfigDict, Field, with_config
 from pydantic_ai import RunContext
 
 from suzent.core.agent_deps import AgentDeps
@@ -26,6 +26,22 @@ logger = get_logger(__name__)
 
 
 MAX_READ_FILE_SIZE = 50 * 1024 * 1024  # 50 MiB
+
+
+@with_config(ConfigDict(extra="allow", use_attribute_docstrings=True))
+class ReadFileMetadata(TypedDict, total=False):
+    total_lines: int
+    start_line: int
+    end_line: int
+    truncated: bool
+    """True when lines after end_line were not returned; read on with offset=end_line + 1."""
+    format: str
+    """The extension of a converted document, such as '.pdf'."""
+    content_length: int
+
+
+class ReadFileResult(ToolResult):
+    metadata: ReadFileMetadata = Field(default_factory=dict)
 
 
 class ReadFileTool(Tool):
@@ -73,14 +89,14 @@ class ReadFileTool(Tool):
                 ge=1,
             ),
         ] = None,
-    ) -> ToolResult:
+    ) -> ReadFileResult:
         """Read a file from the filesystem. You can access any file directly with this tool.
         Assume this tool is able to read all files. If the user provides a path, assume it is valid.
 
         Reads up to 2000 lines by default. Results include line numbers (cat -n format).
         For large files use offset+limit to read in chunks.
         Supports text files and documents (PDF, DOCX, PPTX, XLSX → markdown).
-        This tool reads files only; to list a directory use bash.
+        This tool reads files only; to list a directory use glob_search.
 
         Args:
             ctx: The run context with agent dependencies.
@@ -95,7 +111,7 @@ class ReadFileTool(Tool):
 
         try:
             if is_windows_unc_path(file_path):
-                return ToolResult.error_result(
+                return ReadFileResult.error_result(
                     ToolErrorCode.UNC_PATH_NOT_SUPPORTED,
                     "UNC paths are not supported by read_file",
                 )
@@ -105,18 +121,18 @@ class ReadFileTool(Tool):
 
             # Check if file exists
             if not resolved_path.exists():
-                return ToolResult.error_result(
+                return ReadFileResult.error_result(
                     ToolErrorCode.FILE_NOT_FOUND, f"File not found: {file_path}"
                 )
 
             if not resolved_path.is_file():
-                return ToolResult.error_result(
+                return ReadFileResult.error_result(
                     ToolErrorCode.FILE_REQUIRED, f"Path is not a file: {file_path}"
                 )
 
             file_stat = resolved_path.stat()
             if file_stat.st_size > MAX_READ_FILE_SIZE:
-                return ToolResult.error_result(
+                return ReadFileResult.error_result(
                     ToolErrorCode.FILE_TOO_LARGE,
                     f"File too large to read ({file_stat.st_size} bytes). "
                     f"Max size is {MAX_READ_FILE_SIZE} bytes",
@@ -162,18 +178,18 @@ class ReadFileTool(Tool):
             return self._read_text_file(resolved_path, offset, limit)
 
         except ValueError as e:
-            return ToolResult.error_result(
+            return ReadFileResult.error_result(
                 ToolErrorCode.INVALID_ARGUMENT, f"Invalid argument: {str(e)}"
             )
         except Exception as e:
             logger.error(f"Error reading file {file_path}: {e}")
-            return ToolResult.error_result(
+            return ReadFileResult.error_result(
                 ToolErrorCode.EXECUTION_FAILED, f"Error reading file: {str(e)}"
             )
 
     def _read_text_file(
         self, path: Path, offset: Optional[int], limit: Optional[int]
-    ) -> ToolResult:
+    ) -> ReadFileResult:
         """Read a text file with offset/limit support."""
         try:
             raw = path.read_bytes()
@@ -192,9 +208,9 @@ class ReadFileTool(Tool):
             return self._binary_error(path)
 
     @staticmethod
-    def _binary_error(path: Path) -> ToolResult:
+    def _binary_error(path: Path) -> ReadFileResult:
         supported = ", ".join(sorted(doc_convert.CONVERTERS))
-        return ToolResult.error_result(
+        return ReadFileResult.error_result(
             ToolErrorCode.BINARY_FILE,
             f"File appears to be binary, cannot read as text: {path.name}. "
             f"Documents read_file converts: {supported}. "
@@ -207,7 +223,7 @@ class ReadFileTool(Tool):
         offset: Optional[int],
         limit: Optional[int],
         extra_metadata: Optional[dict] = None,
-    ) -> ToolResult:
+    ) -> ReadFileResult:
         """Return ``content`` as numbered lines (cat -n style, 1-based)."""
         lines = content.splitlines(keepends=True)
         total_lines = len(lines)
@@ -215,7 +231,7 @@ class ReadFileTool(Tool):
         # offset is 1-based; default to line 1
         start = max((offset or 1) - 1, 0)
         if start >= total_lines:
-            return ToolResult.success_result(
+            return ReadFileResult.success_result(
                 f"(File has {total_lines} lines, offset {offset} is beyond end)",
                 metadata={"total_lines": total_lines, **(extra_metadata or {})},
             )
@@ -234,7 +250,7 @@ class ReadFileTool(Tool):
             header += f" — use offset={end + 1} to read more"
         header += "\n"
 
-        return ToolResult.success_result(
+        return ReadFileResult.success_result(
             header + numbered,
             metadata={
                 "total_lines": total_lines,
@@ -247,24 +263,24 @@ class ReadFileTool(Tool):
 
     def _convert_file(
         self, path: Path, offset: Optional[int], limit: Optional[int]
-    ) -> ToolResult:
+    ) -> ReadFileResult:
         """Convert a document (PDF, DOCX, XLSX, ...) to markdown, then paginate."""
         try:
             logger.info(f"Converting file to markdown: {path}")
             content = doc_convert.convert(path)
         except ImportError as e:
-            return ToolResult.error_result(
+            return ReadFileResult.error_result(
                 ToolErrorCode.EXECUTION_FAILED,
                 f"Cannot convert {path.suffix} files: missing library ({e.name}).",
             )
         except Exception as e:
             logger.error(f"Error converting file {path}: {e}")
-            return ToolResult.error_result(
+            return ReadFileResult.error_result(
                 ToolErrorCode.EXECUTION_FAILED, f"Error converting file: {str(e)}"
             )
 
         if not content or not content.strip():
-            return ToolResult.success_result(
+            return ReadFileResult.success_result(
                 f"Warning: File converted but appears empty: {path.name}",
                 metadata={"format": path.suffix, "content_length": 0},
             )

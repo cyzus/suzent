@@ -208,6 +208,7 @@ async def get_config(request: Request) -> JSONResponse:
             "thinking": user_prefs.thinking,
             "sandbox_enabled": user_prefs.sandbox_enabled,
             "sandbox_volumes": user_prefs.sandbox_volumes,
+            "code_mode": user_prefs.code_mode,
             "embedding_model": embedding_model,
             "extraction_model": extraction_model,
         }
@@ -244,6 +245,7 @@ async def save_preferences(request: Request) -> JSONResponse:
         thinking=data.get("thinking"),
         sandbox_enabled=data.get("sandbox_enabled"),
         sandbox_volumes=data.get("sandbox_volumes"),
+        code_mode=data.get("code_mode"),
     )
     if success and data.get("sandbox_volumes") is not None:
         _schedule_volume_metadata_refresh(data.get("sandbox_volumes") or [])

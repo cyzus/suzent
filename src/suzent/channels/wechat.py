@@ -251,6 +251,8 @@ class WeChatChannel(SocialChannel):
     conversation target after each received message.
     """
 
+    supports_files = False
+
     def __init__(self, config: dict[str, Any]):
         super().__init__("wechat", config)
         self.bot_token = config.get("bot_token") or config.get("token")
@@ -448,12 +450,12 @@ class WeChatChannel(SocialChannel):
     async def send_file(
         self, target_id: str, file_path: str, caption: str = None, **kwargs
     ) -> bool:
-        """WeChat media upload is intentionally left for a later, encrypted CDN pass."""
-        file_name = file_path.rsplit("\\", 1)[-1].rsplit("/", 1)[-1]
-        notice = f"WeChat file sending is not yet implemented. (File: {file_name})"
-        if caption:
-            notice = f"{caption}\n\n{notice}"
-        return await self.send_message(target_id, notice)
+        """WeChat media upload is left for a later, encrypted CDN pass.
+
+        Reports failure so callers say so instead of believing the file arrived.
+        """
+        logger.info("WeChat file sending is not supported yet")
+        return False
 
     def _start_polling(self) -> None:
         self._polling_task = asyncio.create_task(self._poll_updates())

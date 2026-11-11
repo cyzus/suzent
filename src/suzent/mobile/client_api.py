@@ -19,7 +19,12 @@ from pydantic import (
 )
 from starlette.exceptions import HTTPException
 from starlette.requests import HTTPConnection, Request
-from starlette.responses import JSONResponse, Response, StreamingResponse
+from starlette.responses import (
+    FileResponse,
+    JSONResponse,
+    Response,
+    StreamingResponse,
+)
 from starlette.routing import Route, WebSocketRoute
 from starlette.websockets import WebSocket
 
@@ -27,6 +32,7 @@ from suzent.auth_boundary import extract_token
 from suzent.core.focal_agent import FOCAL_CHAT_ID, FOCAL_TITLE, focal_status
 from suzent.database import get_database
 from suzent.mobile.attachments import attachment_registry
+from suzent.mobile.media import find_media, with_media
 from suzent.mobile.pairing import ClientGrant, PairingStore
 from suzent.routes.mobile_routes import get_mobile_store, reply
 
@@ -61,6 +67,11 @@ class SendRequest(ChatRequest):
         return self
 
 
+class SteerRequest(ChatRequest):
+    message: str = Field(min_length=1, max_length=100000, pattern=r"\S")
+    model: str | None = Field(default=None, min_length=1, max_length=300)
+
+
 class ManageRequest(ChatRequest):
     action: Literal["pin", "unpin", "rename", "move", "delete"]
     value: str | None = Field(default=None, min_length=1, max_length=200)
@@ -71,6 +82,17 @@ class MessageActionRequest(ChatRequest):
     message_index: Annotated[StrictInt, Field(ge=0)]
     text: str | None = Field(default=None, min_length=1, max_length=100000)
     model: str | None = Field(default=None, min_length=1, max_length=300)
+
+
+class SurfaceAnswerRequest(ChatRequest):
+    surface_id: str = Field(min_length=1, max_length=200)
+    answer: dict[str, object] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def bounded(self) -> SurfaceAnswerRequest:
+        if len(json.dumps(self.answer, default=str)) > 100_000:
+            raise ValueError("Answer too large")
+        return self
 
 
 class ObserveRequest(ChatRequest):
@@ -167,7 +189,11 @@ async def session(request: Request) -> JSONResponse:
             "attachments": 1,
             "scheduled_tasks": 1,
             "chat_pagination": 1,
+            "chat_overview": 1,
+            "surfaces": 1,
             "voice": 1,
+            "steer": 1,
+            "media": 1,
             **relay_field(request),
         }
     )
@@ -233,6 +259,7 @@ def chat_summaries(
             "projectId": projects_by_chat.get(chat_id, (None, None))[0],
             "projectName": projects_by_chat.get(chat_id, (None, None))[1],
             "platform": navigation.get(chat_id, {}).get("platform"),
+            "unreadCount": navigation.get(chat_id, {}).get("unreadCount", 0),
             "parentChatId": parent
             if (parent := navigation.get(chat_id, {}).get("parentChatId"))
             and grant.permissions.permits_chat(parent)
@@ -276,14 +303,37 @@ async def chat_page(request: Request) -> JSONResponse:
 
 async def navigation(request: Request) -> JSONResponse:
     grant = authorize(request)
-    counts = get_database().mobile_project_counts(
+    db = get_database()
+    counts = db.mobile_project_counts(
         None if grant.permissions.all_chats else grant.permissions.chat_ids
     )
+    from suzent.core.stream_registry import running_chat_ids
+
+    running = [
+        chat_id
+        for chat_id in running_chat_ids()
+        if chat_id != FOCAL_CHAT_ID and grant.permissions.permits_chat(chat_id)
+    ]
+    running_projects = {
+        project_id
+        for project_id, _ in db.get_chat_projects(running).values()
+        if project_id
+    }
+    unread_projects = {
+        project_id
+        for project_id, unread in db.get_project_unread_counts().items()
+        if any(grant.permissions.permits_chat(chat_id) for chat_id in unread)
+    }
     return reply(
         {
             "regent": regent_summary() if grant.permissions.all_chats else None,
             "projects": [
-                {**project, "chatCount": counts.get(project["id"], 0)}
+                {
+                    **project,
+                    "chatCount": counts.get(project["id"], 0),
+                    "running": project["id"] in running_projects,
+                    "unread": project["id"] in unread_projects,
+                }
                 for project in allowed_projects(grant)
             ],
         }
@@ -330,11 +380,8 @@ async def chat(request: Request) -> JSONResponse:
     metadata = get_database().get_chat_projects([chat_id]).get(chat_id, (None, None))
     return reply(
         {
-            **{
-                key: data[key]
-                for key in ("id", "title", "messages", "isRunning")
-                if key in data
-            },
+            **{key: data[key] for key in ("id", "title", "isRunning") if key in data},
+            "messages": with_media(data.get("messages") or []),
             **({"regent": regent_summary()["regent"]} if regent else {}),
             "projectId": None if regent else metadata[0],
             "projectName": None if regent else metadata[1],
@@ -354,6 +401,122 @@ async def chat(request: Request) -> JSONResponse:
             if native
             else None,
             "models": get_enabled_models_from_db() if native else [],
+        }
+    )
+
+
+async def media(request: Request) -> Response:
+    chat_id = request.path_params["chat_id"]
+    authorize(request, chat_id)
+    stored_chat = get_database().get_chat(chat_id)
+    if stored_chat is None:
+        raise HTTPException(404, "Conversation unavailable")
+    found = find_media(
+        list(getattr(stored_chat, "messages", None) or []),
+        request.path_params["media_id"],
+    )
+    if found is None:
+        raise HTTPException(404, "Media unavailable")
+    path, content_type = found
+    from suzent.routes.sandbox_routes import _get_resolver_for_request
+
+    try:
+        host_path = _get_resolver_for_request(chat_id).resolve(path)
+    except ValueError:
+        raise HTTPException(404, "Media unavailable") from None
+    if not host_path.is_file():
+        raise HTTPException(404, "Media unavailable")
+    return FileResponse(
+        host_path,
+        media_type=content_type,
+        headers={"Cache-Control": "private, max-age=86400"},
+    )
+
+
+PLAN_STATUSES = {"pending", "in_progress", "completed", "cancelled", "blocked"}
+
+
+def plan_status(task: object) -> str:
+    status = getattr(task, "status", "pending")
+    if getattr(task, "blocked_by", None) and status == "pending":
+        return "blocked"
+    return status if status in PLAN_STATUSES else "pending"
+
+
+def context_summary(stored_chat: object) -> dict[str, object]:
+    """The desktop context headline, without re-estimating the saved agent state."""
+    from suzent.core.context_compressor import resolve_context_limit
+    from suzent.core.providers import get_default_chat_model
+
+    usage = dict(getattr(stored_chat, "context_usage", None) or {})
+    config = getattr(stored_chat, "config", None) or {}
+    try:
+        limit = resolve_context_limit(config.get("model") or get_default_chat_model())
+    except Exception:
+        limit = usage.get("context_limit")
+    measured = usage.get("context_tokens")
+    if measured is None:
+        measured = usage.get("total_tokens")
+    breakdown = usage.get("context_breakdown") or {}
+    categories = sorted(
+        (
+            {"id": str(category["id"]), "tokens": int(category["tokens"])}
+            for category in breakdown.get("categories", [])
+            if isinstance(category, dict) and category.get("tokens", 0) > 0
+        ),
+        key=lambda category: -category["tokens"],
+    )
+    return {
+        "usedTokens": measured,
+        "limit": limit or None,
+        "percent": min(100.0, measured * 100 / limit)
+        if measured is not None and limit
+        else None,
+        "reserveTokens": breakdown.get("reserve_tokens"),
+        "categories": categories,
+    }
+
+
+async def overview(request: Request) -> JSONResponse:
+    chat_id = request.path_params["chat_id"]
+    authorize(request, chat_id)
+    db = get_database()
+    stored_chat = db.get_chat(chat_id)
+    if stored_chat is None:
+        raise HTTPException(404, "Conversation unavailable")
+    project_id = db.get_chat_projects([chat_id]).get(chat_id, (None, None))[0]
+    goal = db.get_goal(project_id, chat_id=chat_id) if project_id else None
+    tasks = (
+        db.list_tasks(
+            project_id=project_id,
+            chat_id=chat_id,
+            include_completed=True,
+            include_cancelled=True,
+        )
+        if project_id
+        else []
+    )
+    # Descriptions, results and file paths stay on the desktop; the phone shows status.
+    return reply(
+        {
+            "goal": {
+                "objective": goal.objective,
+                "status": goal.status,
+                "turnsElapsed": goal.turns_elapsed,
+                "maxTurns": goal.max_turns,
+            }
+            if goal
+            else None,
+            "tasks": [
+                {
+                    "id": str(task.id),
+                    "title": task.title,
+                    "activeForm": task.active_form,
+                    "status": plan_status(task),
+                }
+                for task in tasks
+            ],
+            "context": context_summary(stored_chat),
         }
     )
 
@@ -502,20 +665,38 @@ async def upload(request: Request) -> JSONResponse:
     )
 
 
+def turn_config(chat_id: str, model: str | None) -> tuple[dict, bool]:
+    """The stored chat config with the phone's model choice applied, and whether the chat runs natively."""
+    from suzent.core.providers import get_default_chat_model, get_enabled_models_from_db
+
+    chat = get_database().get_chat(chat_id)
+    if chat is None:
+        raise HTTPException(404, "Conversation unavailable")
+    config = dict(chat.config or {})
+    native = str(config.get("runtime", "native")).lower() != "acp"
+    if model is not None:
+        if not native or model not in get_enabled_models_from_db():
+            raise HTTPException(400, "Model unavailable for this conversation")
+        config["model"] = model
+    elif native and not config.get("model"):
+        config["model"] = config.get("subagent_model") or get_default_chat_model()
+    return config, native
+
+
+def remember_model(chat_id: str, config: dict, native: bool) -> None:
+    if native and config.get("model"):
+        get_database().merge_chat_config(chat_id, {"model": config["model"]})
+
+
 async def send(request: Request) -> JSONResponse:
     body = await parse(request, SendRequest)
     grant = authorize(request, body.chat_id, "send")
     if body.message.lstrip().startswith("/"):
         raise HTTPException(403, "Desktop commands are not available to mobile clients")
     from suzent.routes.chat_routes import chat_send
-    from suzent.core.providers import get_default_chat_model, get_enabled_models_from_db
 
     db = get_database()
-    chat = db.get_chat(body.chat_id)
-    if chat is None:
-        raise HTTPException(404, "Conversation unavailable")
-    config = dict(chat.config or {})
-    native = str(config.get("runtime", "native")).lower() != "acp"
+    config, native = turn_config(body.chat_id, body.model)
     payload = body.model_dump(exclude={"model", "attachments"}, exclude_none=True)
     if body.attachments and body.chat_id == FOCAL_CHAT_ID:
         raise HTTPException(400, "Regent does not accept attachments")
@@ -526,24 +707,34 @@ async def send(request: Request) -> JSONResponse:
         if files is None:
             raise HTTPException(400, "Attachment expired; attach it again")
         payload["files"] = files
-    if body.model is not None:
-        if not native or body.model not in get_enabled_models_from_db():
-            raise HTTPException(400, "Model unavailable for this conversation")
-        config["model"] = body.model
-    elif native and not config.get("model"):
-        config["model"] = config.get("subagent_model") or get_default_chat_model()
     payload["config"] = config
     already_sent = body.client_message_id is not None and db.has_client_message(
         body.chat_id, body.client_message_id
     )
     response = await chat_send(forwarded(request, payload))
-    if (
-        response.status_code == 202
-        and native
-        and not already_sent
-        and config.get("model")
-    ):
-        db.merge_chat_config(body.chat_id, {"model": config["model"]})
+    if response.status_code == 202 and not already_sent:
+        remember_model(body.chat_id, config, native)
+    return response
+
+
+async def steer(request: Request) -> JSONResponse:
+    """Interrupt the running turn and continue it with a new message, like Enter mid-turn on desktop."""
+    body = await parse(request, SteerRequest)
+    authorize(request, body.chat_id, "send")
+    authorize(request, body.chat_id, "stop")
+    if body.message.lstrip().startswith("/"):
+        raise HTTPException(403, "Desktop commands are not available to mobile clients")
+    from suzent.core.stream_registry import is_background_streaming
+    from suzent.routes.chat_routes import chat_send, steer_chat_send
+
+    config, native = turn_config(body.chat_id, body.model)
+    payload = {"chat_id": body.chat_id, "message": body.message, "config": config}
+    # The turn may have ended while the phone was deciding; then the message
+    # simply starts the next one.
+    route = steer_chat_send if is_background_streaming(body.chat_id) else chat_send
+    response = await route(forwarded(request, payload))
+    if response.status_code == 202:
+        remember_model(body.chat_id, config, native)
     return response
 
 
@@ -778,6 +969,21 @@ async def decide_approvals(request: Request) -> JSONResponse:
     return await decide(request)
 
 
+async def surface_answer(request: Request) -> JSONResponse:
+    """Answers a question form the agent is blocked on; other surface actions are ordinary sends."""
+    body = await parse(request, SurfaceAnswerRequest)
+    authorize(request, body.chat_id, "send")
+    from suzent.a2ui import pending as pending_questions
+    from suzent.core.stream_registry import push_custom_event
+
+    if not pending_questions.resolve(body.chat_id, body.surface_id, body.answer):
+        raise HTTPException(404, "No pending question for this surface")
+    await push_custom_event(
+        body.chat_id, "a2ui.resolved", {"surfaceId": body.surface_id}
+    )
+    return reply({"ok": True})
+
+
 async def confirm_pairing(request: Request) -> JSONResponse:
     token = extract_token(request.scope.get("headers", []))
     if not get_mobile_store(request).confirm(token):
@@ -801,6 +1007,7 @@ client_routes = [
     Route("/mobile/client/scheduled-tasks", scheduled_tasks, methods=["GET"]),
     Route("/mobile/client/chats/{chat_id}/approvals", list_approvals, methods=["GET"]),
     Route("/mobile/client/approvals", decide_approvals, methods=["POST"]),
+    Route("/mobile/client/surface-answer", surface_answer, methods=["POST"]),
     Route("/mobile/client/session", session, methods=["GET"]),
     Route("/mobile/client/chats", chats, methods=["GET"]),
     Route("/mobile/client/chat-page", chat_page, methods=["POST"]),
@@ -809,10 +1016,13 @@ client_routes = [
     Route("/mobile/client/chats", create, methods=["POST"]),
     Route("/mobile/client/chats/{chat_id}", chat, methods=["GET"]),
     Route("/mobile/client/chats/{chat_id}/read", mark_read, methods=["POST"]),
+    Route("/mobile/client/chats/{chat_id}/overview", overview, methods=["GET"]),
+    Route("/mobile/client/chats/{chat_id}/media/{media_id}", media, methods=["GET"]),
     Route("/mobile/client/upload", upload, methods=["POST"]),
     Route("/mobile/client/send", send, methods=["POST"]),
     Route("/mobile/client/message-action", message_action, methods=["POST"]),
     Route("/mobile/client/stop", stop, methods=["POST"]),
+    Route("/mobile/client/steer", steer, methods=["POST"]),
     Route("/mobile/client/manage", manage, methods=["POST"]),
     Route("/mobile/client/live", observe, methods=["POST"]),
 ]

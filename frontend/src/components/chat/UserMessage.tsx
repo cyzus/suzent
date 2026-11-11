@@ -17,6 +17,8 @@ import { formatMessageTime } from '../../lib/chatUtils';
 import { useChatStore } from '../../hooks/useChatStore';
 import { useI18n } from '../../i18n';
 import { CopyButton } from './CopyButton';
+import { MessageActionMenu } from './MessageActionMenu';
+import { copyMessageText, openOwnedMenu, type MessageMenuAction } from './messageMenuActions';
 import { BrutalButton } from '../BrutalButton';
 import { isImeComposing } from '../../lib/ime';
 
@@ -297,6 +299,7 @@ const UserMessageComponent: React.FC<UserMessageProps> = ({
   const { config } = useChatStore();
   const { t } = useI18n();
   const [isEditing, setIsEditing] = useState(false);
+  const [menuAnchor, setMenuAnchor] = useState<{ x: number; y: number } | null>(null);
   const [draft, setDraft] = useState('');
   const editTextareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -370,9 +373,38 @@ const UserMessageComponent: React.FC<UserMessageProps> = ({
     return null;
   }
 
+  const userMenuActions: MessageMenuAction[] = [];
+  if (canEdit && content && !isEditing) {
+    userMenuActions.push({
+      key: 'copy',
+      label: t('chatMessage.copy'),
+      onSelect: () => copyMessageText(content),
+    });
+    if (onEdit) {
+      userMenuActions.push({
+        key: 'edit',
+        label: t('chatMessage.edit'),
+        onSelect: startEditing,
+      });
+    }
+    if (onRerun) {
+      userMenuActions.push({
+        key: 'rerun',
+        label: t('chatMessage.rerun'),
+        onSelect: () => onRerun(),
+      });
+    }
+  }
+
   return (
     <div
       className={`w-full max-w-3xl space-y-3 pl-8 md:pl-16 ${chatId === FOCAL_CHAT_ID ? 'regent-user-message' : ''}`}
+      onContextMenu={
+        userMenuActions.length > 0 ? (event) => openOwnedMenu(event, setMenuAnchor) : undefined
+      }
+      onKeyDown={
+        userMenuActions.length > 0 ? (event) => openOwnedMenu(event, setMenuAnchor) : undefined
+      }
     >
       <div
         className={
@@ -547,7 +579,7 @@ const UserMessageComponent: React.FC<UserMessageProps> = ({
               )}
             </div>
           )}
-          <div className="text-[10px] font-bold text-neutral-400 uppercase select-none flex items-center gap-2 opacity-0 group-hover/message:opacity-100 transition-opacity">
+          <div className="text-[10px] font-bold text-neutral-400 uppercase select-none flex items-center gap-2 opacity-0 group-hover/message:opacity-100 focus-within:opacity-100 transition-opacity">
             {chatId !== FOCAL_CHAT_ID && message.timestamp && (
               <span className="normal-case font-normal">
                 {formatMessageTime(message.timestamp)}
@@ -556,6 +588,13 @@ const UserMessageComponent: React.FC<UserMessageProps> = ({
             <span>{t('chatMessage.userLabel')}</span>
           </div>
         </div>
+      )}
+      {menuAnchor && userMenuActions.length > 0 && (
+        <MessageActionMenu
+          anchor={menuAnchor}
+          actions={userMenuActions}
+          onClose={() => setMenuAnchor(null)}
+        />
       )}
     </div>
   );

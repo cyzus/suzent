@@ -19,6 +19,31 @@ function isWebKitEngine(): boolean {
   return /AppleWebKit/.test(ua) && !/Chrome|Chromium|Edg\/|OPR\//.test(ua);
 }
 
+// Block elements whose text is distinctive enough to find again after the
+// message holding them is re-rendered from scratch.
+const ANCHOR_TEXT_TAGS = new Set([
+  'P',
+  'LI',
+  'PRE',
+  'H1',
+  'H2',
+  'H3',
+  'H4',
+  'H5',
+  'H6',
+  'BLOCKQUOTE',
+  'TD',
+  'TH',
+]);
+
+// A sticky header pinned to the viewport top never moves, so anchoring to it
+// would never correct anything; out-of-flow boxes do not track the text either.
+function isInFlow(node: Element): boolean {
+  if (typeof getComputedStyle !== 'function') return true;
+  const { position } = getComputedStyle(node);
+  return position !== 'sticky' && position !== 'fixed' && position !== 'absolute';
+}
+
 export function useAutoScroll(dependencies: unknown[], options: UseAutoScrollOptions = {}) {
   const { tolerance = 50, resetKey, smooth = true } = options;
 
@@ -94,10 +119,14 @@ export function useAutoScroll(dependencies: unknown[], options: UseAutoScrollOpt
     };
 
     const onWheel = (event: WheelEvent) => {
-      markUserIntent();
       // Pause before the browser scrolls: streaming resizes can otherwise
       // pull a small upward gesture back into the bottom tolerance zone.
-      if (event.deltaY < 0) pauseFollowing();
+      if (event.deltaY < 0) {
+        markUserIntent();
+        pauseFollowing();
+      } else if (event.deltaY > 0 && !autoScrollEnabledRef.current) {
+        markUserIntent();
+      }
     };
 
     let touchY: number | undefined;
@@ -156,10 +185,23 @@ export function useAutoScroll(dependencies: unknown[], options: UseAutoScrollOpt
       }
     };
 
+    let lastTop = el.scrollTop;
+    let lastHeight = el.scrollHeight;
     const onUserScroll = () => {
+      const movedUp = el.scrollTop < lastTop - 1 && el.scrollHeight >= lastHeight;
+      lastTop = el.scrollTop;
+      lastHeight = el.scrollHeight;
+      // A held pointer (scrollbar drag) outlives the short intent window.
+      const hasIntent = userScrollIntentRef.current || isPointerSelectingRef.current;
+      if (hasIntent && movedUp && autoScrollEnabledRef.current) {
+        // Within the bottom tolerance a small upward drag would otherwise be
+        // pulled straight back down by the next streamed token.
+        pauseFollowing();
+        return;
+      }
       // A deliberate user scroll wins even mid-animation: our own programmatic
       // scrolls never set the intent flag, so this cannot swallow itself.
-      if (!userScrollIntentRef.current && autoScrollEnabledRef.current && !smooth) {
+      if (!hasIntent && autoScrollEnabledRef.current && !smooth) {
         // Layout/anchoring can move scrollTop without resizing an observed
         // box. Streaming must repair that drift too, not wait for another token.
         if (!isSelectionDragActive() && el.scrollHeight - el.scrollTop - el.clientHeight > 1) {
@@ -167,13 +209,14 @@ export function useAutoScroll(dependencies: unknown[], options: UseAutoScrollOpt
         }
         return;
       }
-      if (autoScrollInProgress.current && !userScrollIntentRef.current) return;
+      if (autoScrollInProgress.current && !hasIntent) return;
       const atBottom = autoScrollEnabledRef.current
         ? isAtBottom(el)
         : el.scrollHeight - el.scrollTop - el.clientHeight <= 1;
 
-      // Always re-enable autoscroll once we are back at bottom.
-      if (atBottom) {
+      // Collapsing completed activity can clamp a paused viewport to the end.
+      // That is not a request to follow the tail when content grows again.
+      if (atBottom && (autoScrollEnabledRef.current || hasIntent)) {
         autoScrollInProgress.current = false;
         autoScrollEnabledRef.current = true;
         setShowScrollButton(false);
@@ -182,7 +225,7 @@ export function useAutoScroll(dependencies: unknown[], options: UseAutoScrollOpt
 
       // Ignore layout-induced scroll shifts (resize/text reflow/transition).
       // Only disable autoscroll when there is clear user scroll intent.
-      if (!userScrollIntentRef.current) {
+      if (!hasIntent) {
         return;
       }
 
@@ -290,7 +333,9 @@ export function useAutoScroll(dependencies: unknown[], options: UseAutoScrollOpt
         return;
       }
 
-      performAutoScroll(smooth ? 'smooth' : 'auto');
+      // Content updates must not start an animation toward a soon-stale height.
+      // In particular, finishing a stream can still reflow its final message.
+      performAutoScroll('auto');
 
       // Re-apply after layout transitions (e.g. sidebar width animation)
       // to avoid being left slightly above bottom after rapid toggle/resizes.
@@ -334,11 +379,23 @@ export function useAutoScroll(dependencies: unknown[], options: UseAutoScrollOpt
     // it resyncs the layer. Not scrollable (a short chat that now fits): there
     // is nothing to scroll, so a throwaway compositing layer forces the repaint.
     const forceRepaint = () => {
+      if (userScrollIntentRef.current || isSelectionDragActive()) return;
       if (el.scrollHeight > el.clientHeight) {
         const top = el.scrollTop;
         autoScrollInProgress.current = true;
         el.scrollTop = top > 0 ? top - 1 : top + 1;
+        const nudgedTop = el.scrollTop;
         finishRepaint = () => {
+          // Momentum scrolling or a new layout can move the viewport between
+          // frames. Never restore a stale position over that newer movement.
+          if (
+            el.scrollTop !== nudgedTop ||
+            userScrollIntentRef.current ||
+            isSelectionDragActive()
+          ) {
+            autoScrollInProgress.current = false;
+            return;
+          }
           el.scrollTop = top;
           if (autoScrollEnabledRef.current) {
             performAutoScroll('auto');
@@ -376,6 +433,89 @@ export function useAutoScroll(dependencies: unknown[], options: UseAutoScrollOpt
     };
     const needsResizeRepaint = el.closest('.macos-tauri-webview') !== null || isWebKitEngine();
 
+    // WebKit has no native scroll anchoring, so while the user reads above the
+    // tail, any height change above the viewport (activity folding when a turn
+    // finishes, a streamed block re-rendering) slides the text out from under
+    // them. Track the deepest element at the viewport top and hold it in place.
+    // The stylesheet disables native anchoring so Chromium does not correct twice.
+    let anchor: { node: Element; top: number }[] = [];
+    // A finished turn swaps the live message for the saved one, so every node
+    // above can disappear at once. The same paragraph exists in the saved copy:
+    // remember a text block to find it again.
+    let textAnchor: { tag: string; text: string; top: number } | null = null;
+    const viewportTop = () => el.getBoundingClientRect().top;
+    const captureAnchor = () => {
+      anchor = [];
+      textAnchor = null;
+      if (autoScrollEnabledRef.current || typeof el.getBoundingClientRect !== 'function') return;
+      const viewTop = viewportTop();
+      let parent: Element = el;
+      for (let depth = 0; depth < 16; depth++) {
+        let next: Element | undefined;
+        for (const child of parent.children) {
+          const rect = child.getBoundingClientRect();
+          if (rect.height > 0 && rect.bottom > viewTop && isInFlow(child)) {
+            next = child;
+            anchor.push({ node: child, top: rect.top - viewTop });
+            break;
+          }
+        }
+        if (!next) break;
+        parent = next;
+      }
+      for (let i = anchor.length - 1; i >= 0; i--) {
+        const { node, top } = anchor[i];
+        if (!ANCHOR_TEXT_TAGS.has(node.tagName)) continue;
+        const text = node.textContent?.trim() ?? '';
+        if (text.length >= 8) {
+          textAnchor = { tag: node.tagName, text, top };
+          break;
+        }
+      }
+    };
+    const findByText = (): Element | null => {
+      if (!textAnchor || typeof el.querySelectorAll !== 'function') return null;
+      const { tag, text } = textAnchor;
+      const matches = Array.from(el.querySelectorAll(tag)).filter(
+        (node) => node.textContent?.trim() === text
+      );
+      // The newest copy is the one that replaced what the user was reading.
+      return matches[matches.length - 1] ?? null;
+    };
+    const restoreAnchor = () => {
+      const alignTo = (node: Element, top: number) => {
+        const delta = node.getBoundingClientRect().top - viewportTop() - top;
+        if (Math.abs(delta) >= 1) el.scrollTop += delta;
+      };
+      const isLive = (node: Element) => node.isConnected && el.contains(node);
+      const deepest = anchor[anchor.length - 1];
+      if (deepest && !isLive(deepest.node)) {
+        const match = findByText();
+        if (match && textAnchor) {
+          alignTo(match, textAnchor.top);
+          captureAnchor();
+          return;
+        }
+      }
+      // Skip the scroller's direct children: a wrapper spanning the whole
+      // transcript keeps its top no matter what moved inside it.
+      for (let i = anchor.length - 1; i >= 1; i--) {
+        if (!isLive(anchor[i].node)) continue;
+        alignTo(anchor[i].node, anchor[i].top);
+        captureAnchor();
+        return;
+      }
+      if (deepest && !isLive(deepest.node) && typeof el.querySelectorAll === 'function') {
+        // Nothing survived (the user was inside activity that has now folded):
+        // land on the start of the newest message rather than a clamped tail.
+        const rows = el.querySelectorAll('[data-message-index]');
+        const last = rows[rows.length - 1];
+        if (last) alignTo(last, 0);
+      }
+      captureAnchor();
+    };
+    el.addEventListener('scroll', captureAnchor, { passive: true });
+
     const resizeObserver = new ResizeObserver(() => {
       if (needsResizeRepaint) {
         const widthChanged = el.clientWidth !== lastWidth;
@@ -387,6 +527,7 @@ export function useAutoScroll(dependencies: unknown[], options: UseAutoScrollOpt
         }
       }
       cancelAnimationFrame(settleFrame);
+      if (!autoScrollEnabledRef.current) restoreAnchor();
       if (autoScrollEnabledRef.current) {
         performAutoScroll('auto');
         // Sidebar drags can reflow descendants after this resize notification.
@@ -409,12 +550,13 @@ export function useAutoScroll(dependencies: unknown[], options: UseAutoScrollOpt
     mutationObserver.observe(el, { childList: true });
 
     return () => {
+      el.removeEventListener('scroll', captureAnchor);
       cancelAnimationFrame(settleFrame);
       cancelPendingRepaint();
       mutationObserver.disconnect();
       resizeObserver.disconnect();
     };
-  }, [performAutoScroll, scrollContainer]);
+  }, [performAutoScroll, scrollContainer, isSelectionDragActive]);
 
   useEffect(() => {
     return () => {
@@ -427,11 +569,14 @@ export function useAutoScroll(dependencies: unknown[], options: UseAutoScrollOpt
     };
   }, []);
 
-  // Manual scroll to bottom
+  // Always a jump: callers fire this right before content arrives (a send, an
+  // approval), and WKWebView leaves its scroll layer blank when the layout
+  // changes under a smooth scroll, until the user scrolls by hand.
   const scrollToBottom = useCallback(() => {
     autoScrollEnabledRef.current = true;
     setShowScrollButton(false);
-    performAutoScroll('smooth', { force: true });
+    userScrollIntentRef.current = false;
+    performAutoScroll('auto', { force: true });
   }, [performAutoScroll]);
 
   return {

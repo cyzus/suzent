@@ -58,7 +58,7 @@ import Foundation
         let permissions = ClientPermissions(chatIds: [], allChats: true, createChats: true, manageChats: true,
                                             send: true, stop: true, approveTools: true)
         return ClientSession(device: ClientDevice(deviceId: "offline-demo", displayName: "Suzent Demo", platform: "demo", permissions: permissions),
-                             clientProtocol: 1, streamProtocols: [1], pairingRepair: nil, attachments: 1, scheduledTasks: 1)
+                             clientProtocol: 1, streamProtocols: [1], pairingRepair: nil, attachments: 1, scheduledTasks: 1, chatOverview: 1, surfaces: 1, steer: 1)
     }
 
     public func projects() async throws -> [Project] { try decode([Project].self, strings["projects"]!) }
@@ -87,8 +87,21 @@ import Foundation
         return try decode(Chat.self, item)
     }
 
+    /// The demo never asks a blocking question, so there is nothing to answer.
+    public func answerSurface(_ chatID: String, surfaceID: String, answer: [String: JSONValue]) async throws {}
+
+    /// Only the trip conversation carries a sample plan; the rest show an empty one.
+    public func overview(_ id: String) async throws -> ChatOverview {
+        let sample = strings["overview"] as! [String: Any]
+        guard id == "demo-trip" else {
+            return try decode(ChatOverview.self, ["tasks": [], "context": ["categories": []]])
+        }
+        return try decode(ChatOverview.self, sample)
+    }
+
     public func markRead(_ id: String) async throws {
         let i = try index(id)
+        records[i]["unreadCount"] = 0
         if var status = records[i]["regent"] as? [String: Any] { status["unread"] = 0; records[i]["regent"] = status; try save() }
     }
 
@@ -173,6 +186,11 @@ import Foundation
         run.text = String(run.text.prefix(run.visible)) + label("stopped")
         runs[chatID] = run
         try finish(chatID)
+    }
+
+    public func steer(_ text: String, chatID: String, model: String? = nil) async throws {
+        try await stop(chatID)
+        try await send(text, chatID: chatID, model: model, attachments: [])
     }
 
     public func messageAction(_ id: String, index messageIndex: Int, action: String, text: String? = nil, model: String? = nil) async throws -> String {

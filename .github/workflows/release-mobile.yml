@@ -16,6 +16,14 @@ on:
         description: Submit the iOS build for App Store review and release it on approval
         type: boolean
         default: true
+      publish_to_play:
+        description: Upload the Android bundle to Google Play and roll it out on the Play track
+        type: boolean
+        default: true
+      play_track:
+        description: Google Play track (alpha is closed testing; production once access is granted)
+        type: string
+        default: alpha
 permissions:
   contents: read
 concurrency:
@@ -106,6 +114,33 @@ jobs:
           name: mobile-android-release
           path: mobile-assets/
           if-no-files-found: error
+  google-play:
+    if: inputs.platforms != 'ios' && inputs.publish_to_play
+    needs: [prepare, android]
+    environment: mobile-release
+    runs-on: ubuntu-latest
+    steps:
+      # Publishing scripts come from the workflow revision; the release only supplies artifacts.
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7.1.0
+        with:
+          python-version: '3.12'
+      - uses: actions/download-artifact@v8
+        with:
+          name: mobile-release-metadata
+          path: release-metadata
+      - uses: actions/download-artifact@v8
+        with:
+          name: mobile-android-release
+          path: android-release
+      - name: Publish to Google Play
+        run: >-
+          python3 scripts/mobile/play_publish.py --metadata release-metadata
+          --bundle "android-release/suzent-$VERSION-android.aab" --track "$PLAY_TRACK"
+        env:
+          GOOGLE_PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
+          PLAY_TRACK: ${{ inputs.play_track }}
+          VERSION: ${{ needs.prepare.outputs.version }}
   ios:
     if: inputs.platforms != 'android'
     needs: prepare
@@ -144,9 +179,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 90
     steps:
+      # Publishing scripts come from the workflow revision; the release only supplies artifacts.
       - uses: actions/checkout@v7
-        with:
-          ref: ${{ needs.prepare.outputs.sha }}
       - uses: actions/setup-python@v7.1.0
         with:
           python-version: '3.12'

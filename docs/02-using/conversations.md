@@ -88,10 +88,27 @@ is sent when the turn ends. You can cancel it, or click **Steer** to send it
 right away as a redirect. You can redirect or stop a single sub-agent the
 same way, from its box in the chat.
 
+## Find what it made
+
+What the agent delivered in a chat is collected under **Artifacts** in the side
+panel: images it generated or edited, videos and speech it made, files it sent
+you, and files it saved into the project library's `artifacts/` folder. Newest
+comes first, and a file saved several times is listed once. Images show as
+thumbnails you can open full size, videos and audio play right in the panel,
+and clicking a file opens it under **Files**. Above a file open there, the
+folder button shows it in Finder or File Explorer, and the clipboard button
+copies where it is saved on your computer.
+
+Ordinary edits, such as code or notes it changed while working, stay on the
+**Edited files** card under each reply instead. Files it only read are not
+listed, and neither are changes you undid. The **Overview** shows how many
+artifacts there are and the latest few images.
+
 ## Talk instead of typing
 
-Click the microphone next to the paperclip in the message box to start voice
-mode, and just speak. A fast voice model answers you out loud and hands
+When the message box is empty, its send button shows a microphone. Click it to
+start voice mode, and just speak. As soon as you type, it turns back into the
+send button. A fast voice model answers you out loud and hands
 anything that needs real work to your agent, which does it in the chat as
 usual, with its tools, memory, and the chat's permission mode. While it works
 you can keep talking: add to the request, correct it, or say "stop". When it's

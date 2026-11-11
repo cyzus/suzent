@@ -12,7 +12,7 @@ import {
 } from '../../lib/chatUtils';
 import { ThinkingAnimation, AgentBadge, RobotIcon } from './ThinkingAnimation';
 import { MarkdownRenderer } from './MarkdownRenderer';
-import { ImageResultGallery, hasVisualMediaResults } from './ImageResultGallery';
+import { ImageResultGallery, hasVisualMediaResults, getRailImagePaths } from './ImageResultGallery';
 import { ImageWithFallback } from './ImageWithFallback';
 import { ToolCallBlock } from './ToolCallBlock';
 import { toolCallFailed } from './toolSummary';
@@ -26,6 +26,8 @@ import { IncomingMessage } from './IncomingMessage';
 import { splitLeadingTriggers } from '../../lib/streamingDrafts';
 import type { SubAgentStatus } from './SubAgentCallBlock';
 import { CopyButton } from './CopyButton';
+import { MessageActionMenu } from './MessageActionMenu';
+import { copyMessageText, openOwnedMenu, type MessageMenuAction } from './messageMenuActions';
 import { FileChangeSummary } from './FileChangeSummary';
 import { InlineSurface } from '../a2ui/InlineSurface';
 import type { A2UISurface } from '../../types/a2ui';
@@ -50,6 +52,7 @@ import {
   getReasoningHeader,
   groupActivityChunks,
   hasAguiPendingApproval,
+  hasAguiUserResolution,
   hasLegacyPendingApproval,
 } from './ActivityRail';
 import { useTypewriter } from '../../hooks/useTypewriter';
@@ -244,6 +247,7 @@ const AGUIPartsContent: React.FC<{
   );
   // Only the turn's final rail is live. Earlier ones are finished work: they
   // must not animate, and must not each start their own worked-for clock.
+  const seenRailImages = new Set<string>();
   const currentActivityGroupIndex = findLastActivityGroupIndex(renderGroups);
 
   return (
@@ -266,6 +270,10 @@ const AGUIPartsContent: React.FC<{
           return (
             <React.Fragment key={`activity-${gi}`}>
               <ActivityRail
+                imagePaths={getRailImagePaths(
+                  group.chunks.flatMap(({ chunk }) => (chunk.type === 'tool' ? chunk.items : [])),
+                  seenRailImages
+                )}
                 itemCount={countActivityItems(group.chunks)}
                 summaryTools={group.chunks.flatMap(({ chunk }) =>
                   chunk.type === 'tool'
@@ -279,7 +287,10 @@ const AGUIPartsContent: React.FC<{
                       }))
                     : []
                 )}
-                defaultExpanded={hasAguiPendingApproval(group.chunks)}
+                defaultExpanded={
+                  hasAguiPendingApproval(group.chunks) ||
+                  (isCurrentGroup && hasAguiUserResolution(group.chunks))
+                }
                 isActive={Boolean(isStreaming)}
                 isCurrent={isCurrentGroup}
                 isThinking={
@@ -329,6 +340,7 @@ const AGUIPartsContent: React.FC<{
                       permissionDecision: tp.permissionDecision,
                       permissionResolution: tp.permissionResolution,
                       outcome: tp.outcome,
+                      parentToolCallId: tp.parentToolCallId,
                       onApprove:
                         isActionablyPending && tp.approvalId && onToolApproval
                           ? (
@@ -414,31 +426,35 @@ const AGUIPartsContent: React.FC<{
                         state={itemState}
                         toolName={t.toolName}
                       >
-                        <ToolCallBlock
-                          toolName={t.toolName}
-                          toolArgs={t.toolArgs}
-                          output={t.output}
-                          defaultCollapsed={t.approvalState !== 'pending'}
-                          approvalState={t.approvalState}
-                          isStreaming={isStreaming && t.state === 'running'}
-                          onApprove={t.onApprove}
-                          onDeny={t.onDeny}
-                          permission={t.permission}
-                          permissionDecision={t.permissionDecision}
-                          permissionResolution={t.permissionResolution}
-                          outcome={t.outcome}
-                          isAutoApproved={isAutoApproved}
-                          onRemovePolicy={onRemoveApprovalPolicy}
-                          onForceWebContext={onForceWebContext}
-                          toolCallId={t.toolCallId}
-                          inActivityRail
-                        />
+                        {/* A call a code mode snippet made sits under its run_code. */}
+                        <div className={t.parentToolCallId ? 'pl-4' : undefined}>
+                          <ToolCallBlock
+                            toolName={t.toolName}
+                            toolArgs={t.toolArgs}
+                            output={t.output}
+                            defaultCollapsed={t.approvalState !== 'pending'}
+                            approvalState={t.approvalState}
+                            isStreaming={isStreaming && t.state === 'running'}
+                            onApprove={t.onApprove}
+                            onDeny={t.onDeny}
+                            permission={t.permission}
+                            permissionDecision={t.permissionDecision}
+                            permissionResolution={t.permissionResolution}
+                            outcome={t.outcome}
+                            isAutoApproved={isAutoApproved}
+                            onRemovePolicy={onRemoveApprovalPolicy}
+                            onForceWebContext={onForceWebContext}
+                            toolCallId={t.toolCallId}
+                            inActivityRail
+                          />
+                        </div>
                       </ActivityRailItem>
                     );
                   });
                 })}
               </ActivityRail>
               <ImageResultGallery
+                showImages={false}
                 calls={group.chunks.flatMap(({ chunk }) =>
                   chunk.type === 'tool' ? chunk.items : []
                 )}
@@ -812,6 +828,7 @@ const AssistantMessageComponent: React.FC<AssistantMessageProps> = ({
   fileChangeChatId,
 }) => {
   const { t } = useI18n();
+  const [menuAnchor, setMenuAnchor] = useState<{ x: number; y: number } | null>(null);
   const isStreamingThis = isStreaming && isLastMessage;
   const rawParts = aguiParts ?? message.parts;
   const effectiveParts = useMemo(
@@ -903,6 +920,46 @@ const AssistantMessageComponent: React.FC<AssistantMessageProps> = ({
     }
   }, [effectiveParts, legacyBlocks, citationSourcesMap]);
 
+  const assistantMenuActions: MessageMenuAction[] = [];
+  if (fullMessageText && !isThinking) {
+    assistantMenuActions.push({
+      key: 'copy',
+      label: t('chatMessage.copy'),
+      onSelect: () => copyMessageText(fullMessageText),
+    });
+  }
+  if (!conversational && onRetry && !isStreamingThis && !isThinking) {
+    assistantMenuActions.push({
+      key: 'retry',
+      label: t('common.retry'),
+      onSelect: onRetry,
+    });
+  }
+  if (!conversational && onFork && !isStreamingThis && !isThinking) {
+    assistantMenuActions.push({
+      key: 'fork',
+      label: t('conversationFork.button'),
+      onSelect: onFork,
+    });
+  }
+  const messageMenuProps =
+    assistantMenuActions.length > 0
+      ? {
+          onContextMenu: (event: React.MouseEvent<HTMLDivElement>) =>
+            openOwnedMenu(event, setMenuAnchor),
+          onKeyDown: (event: React.KeyboardEvent<HTMLDivElement>) =>
+            openOwnedMenu(event, setMenuAnchor),
+        }
+      : {};
+  const messageMenu =
+    menuAnchor && assistantMenuActions.length > 0 ? (
+      <MessageActionMenu
+        anchor={menuAnchor}
+        actions={assistantMenuActions}
+        onClose={() => setMenuAnchor(null)}
+      />
+    ) : null;
+
   const modelSignature = signature;
 
   // 1. 抓取当前正在跑的 Tool 和 错误状态
@@ -942,7 +999,7 @@ const AssistantMessageComponent: React.FC<AssistantMessageProps> = ({
   //  • Active (streaming / thinking / awaiting approval): the animated robot
   //    card. It's `sticky` so it pins to the top of the chat viewport while a
   //    long reply scrolls past — you always see what the agent is doing. It's
-  //    wide (400×80) only while thinking, so the assembly-line / conveyor
+  //    wide (320×108) only while thinking, so the assembly-line / conveyor
   //    animation has room; otherwise the compact 90×40 single-robot card.
   //  • History (finished, previous turns): a small, static "Suzent" pill in
   //    normal flow — no animation, not sticky — so old turns stay quiet and we
@@ -993,7 +1050,7 @@ const AssistantMessageComponent: React.FC<AssistantMessageProps> = ({
       sticky top-2 z-20 isolate transform-gpu ml-0 mr-auto mb-3 overflow-hidden
       transition-[width,height] duration-500 ease-[cubic-bezier(0.4,0,0.2,1)] max-w-full
       bg-white dark:bg-zinc-800 border-3 border-brutal-black shadow-brutal-lg
-      ${isThinking ? 'w-[400px] h-[80px]' : 'w-[90px] h-[40px]'}
+      ${isThinking ? 'w-[320px] max-w-full h-[108px]' : 'w-[90px] h-[40px]'}
     `}
     >
       <div className="absolute inset-0 opacity-100 scale-100">
@@ -1039,20 +1096,12 @@ const AssistantMessageComponent: React.FC<AssistantMessageProps> = ({
       </div>
     ) : null;
 
-  const conversationCopy = conversational && fullMessageText && !isThinking && (
-    <CopyButton
-      text={fullMessageText}
-      className="conversation-copy relative shrink-0 !w-8 !h-8 focus-visible:outline focus-visible:outline-2 focus-visible:outline-neutral-500"
-    />
-  );
-
   const messageFooter = conversational ? (
-    <div className="flex min-w-0 flex-wrap items-center gap-2 pt-1">
-      {conversationCopy}
-      {!isThinking && citationSourcesList.length > 0 && (
+    !isThinking && citationSourcesList.length > 0 ? (
+      <div className="conversation-message-actions flex min-w-0 flex-wrap items-center gap-2">
         <SourcesPanel sources={citationSourcesList} />
-      )}
-    </div>
+      </div>
+    ) : null
   ) : (
     <div className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1 px-1 pt-0.5 pb-1 text-[10px] leading-5">
       <div className="flex shrink-0 items-center gap-0.5 [&>button]:h-6 [&>button]:w-6 [&>button]:text-neutral-500 [&>button:hover]:bg-neutral-200/60 [&>button:focus-visible]:outline [&>button:focus-visible]:outline-2 [&>button:focus-visible]:outline-neutral-500 dark:[&>button]:text-neutral-400 dark:[&>button:hover]:bg-white/10">
@@ -1103,7 +1152,9 @@ const AssistantMessageComponent: React.FC<AssistantMessageProps> = ({
       <CitationProvider sources={citationSourcesMap}>
         <div
           className={`group w-full max-w-4xl break-all text-sm leading-relaxed relative animate-brutal-pop ${conversational ? 'conversation-message' : 'pr-4 md:pr-12'}`}
+          {...messageMenuProps}
         >
+          {messageMenu}
           {triggers.map((part, index) => (
             <div key={`trigger-${index}`} className="mb-6">
               <IncomingMessage text={part.text || ''} />
@@ -1206,6 +1257,7 @@ const AssistantMessageComponent: React.FC<AssistantMessageProps> = ({
     return null;
   }
 
+  const seenRailImages = new Set<string>();
   const legacyRenderGroups = groupActivityChunks(
     validChunks.flatMap((chunk) =>
       chunk.type === 'toolCall'
@@ -1225,7 +1277,9 @@ const AssistantMessageComponent: React.FC<AssistantMessageProps> = ({
     <CitationProvider sources={citationSourcesMap}>
       <div
         className={`group w-full max-w-4xl break-all text-sm leading-relaxed relative animate-brutal-pop ${conversational ? 'conversation-message' : 'pr-4 md:pr-12'}`}
+        {...messageMenuProps}
       >
+        {messageMenu}
         {/* Badge/Assembly Container is rendered at the top of the entire message timeline */}
         {badgeContainer}
 
@@ -1255,6 +1309,18 @@ const AssistantMessageComponent: React.FC<AssistantMessageProps> = ({
                   return (
                     <React.Fragment key={`legacy-activity-${groupIndex}`}>
                       <ActivityRail
+                        imagePaths={getRailImagePaths(
+                          group.chunks.flatMap(({ chunk }) =>
+                            chunk.type === 'toolCall'
+                              ? chunk.blocks.map((block) => ({
+                                  toolName: block.toolName,
+                                  output: block.content,
+                                  args: block.toolArgs,
+                                }))
+                              : []
+                          ),
+                          seenRailImages
+                        )}
                         itemCount={countActivityItems(group.chunks)}
                         summaryTools={group.chunks.flatMap(({ chunk }) =>
                           chunk.type === 'toolCall'
@@ -1336,6 +1402,7 @@ const AssistantMessageComponent: React.FC<AssistantMessageProps> = ({
                         })}
                       </ActivityRail>
                       <ImageResultGallery
+                        showImages={false}
                         calls={group.chunks.flatMap(({ chunk }) =>
                           chunk.type === 'toolCall'
                             ? chunk.blocks.map((block) => ({

@@ -6,6 +6,7 @@ import android.graphics.Paint
 import android.graphics.Picture
 import android.text.SpannableString
 import android.text.Spanned
+import android.view.MotionEvent
 import android.widget.TextView
 import io.noties.markwon.core.spans.TextLayoutSpan
 import io.noties.markwon.core.spans.TextViewSpan
@@ -15,6 +16,8 @@ import io.noties.markwon.ext.tables.TableRowSpan
 /** Measures the original Markwon rows before the first visible frame, without changing their theme. */
 internal class StableTableTextView(context: Context) : TextView(context) {
     var tablePlugin: TablePlugin? = null
+    var pressInWindowX = 0f
+    var pressInWindowY = 0f
     private var preparedRows = emptyList<TableRowSpan>()
     private var preparedWidth = 0
     private var preparedTextSize = 0f
@@ -24,6 +27,16 @@ internal class StableTableTextView(context: Context) : TextView(context) {
     fun prepareMarkdown(content: Spanned): Spanned {
         prepareRows(content, width - compoundPaddingLeft - compoundPaddingRight)
         return content
+    }
+
+    override fun onTouchEvent(event: MotionEvent): Boolean {
+        if (event.actionMasked == MotionEvent.ACTION_DOWN) {
+            val location = IntArray(2)
+            getLocationInWindow(location)
+            pressInWindowX = location[0] + event.x
+            pressInWindowY = location[1] + event.y
+        }
+        return super.onTouchEvent(event)
     }
 
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {

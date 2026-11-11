@@ -219,13 +219,19 @@ Change the 20-turn limit with `goals_max_turns` in
 ## Keep Suzent running in the background
 
 Scheduled tasks, heartbeats, chat apps, and paired devices only work while
-Suzent is running. To keep them going after you close the window, turn on
-**Settings → Background Service**.
+Suzent is running.
 
-Suzent then starts when you sign in and keeps running without the window. The
-desktop app connects to it when you open it, and closing the window doesn't
-stop it. It needs no administrator access, and it restarts itself if it
-crashes or uses too much memory. Updates stop and restart it for you.
+On Windows and macOS, closing the window can leave Suzent in the notification
+area or the menu bar, where it keeps going until you choose **Quit**. Windows
+asks each time until you tick **Remember my choice**; macOS minimizes to the
+menu bar. Change it under **Settings → Background Service → When you close the
+window** (**Ask every time**, **Minimize to tray**, or **Quit Suzent**). On
+Linux, closing the window quits.
+
+To keep Suzent running after you quit, and to start it when you sign in, turn
+on **Settings → Background Service**. It needs no administrator access, and it
+restarts itself if it crashes or uses too much memory. Updates stop and
+restart it for you. The desktop app connects to it when you open it.
 
 The same thing from the command line:
 
@@ -262,7 +268,7 @@ suzent heartbeat run -c <chat_id>
 ## Troubleshooting
 
 **A task never runs.** Check that it is switched on and that its next run time
-is in the future. If you closed the app, turn on the background service.
+is in the future. If you quit Suzent, turn on the background service.
 
 **A task keeps failing.** Read its last error in **Settings → Automation** and
 fix the cause; the next scheduled run uses the fix. A one-time task that failed

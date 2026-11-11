@@ -12,6 +12,11 @@ import android.widget.TextView
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.animation.core.*
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.ui.graphics.graphicsLayer
@@ -54,8 +59,25 @@ import androidx.compose.ui.text.font.FontWeight
 import android.os.Build
 import android.view.HapticFeedbackConstants
 import android.view.View
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInWindow
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.unit.IntOffset
+import kotlin.math.roundToInt
+import androidx.compose.ui.unit.IntRect
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupPositionProvider
+import androidx.compose.ui.window.PopupProperties
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.input.pointer.pointerInput
@@ -74,11 +96,16 @@ import io.noties.markwon.LinkResolver
 import io.noties.markwon.ext.tables.TablePlugin
 import io.noties.markwon.ext.strikethrough.StrikethroughPlugin
 
+fun suzentYellow(dark: Boolean): Color = Color(if (dark) PresentationTokens.yellow_dark else PresentationTokens.yellow)
+
+@Composable
+fun suzentYellow(): Color = suzentYellow(isSystemInDarkTheme())
+
 @Composable
 fun SuzentTheme(content: @Composable () -> Unit) {
     val colors = if (isSystemInDarkTheme()) darkColorScheme(
         primary = Color(PresentationTokens.blue), onPrimary = Color.White,
-        secondaryContainer = Color(PresentationTokens.yellow), onSecondaryContainer = Color.Black,
+        secondaryContainer = suzentYellow(), onSecondaryContainer = Color.Black,
         surface = Color(PresentationTokens.surface_dark), background = Color(PresentationTokens.background_dark),
         surfaceVariant = Color(PresentationTokens.code_header_dark),
         surfaceDim = Color(PresentationTokens.background_dark), surfaceBright = Color(PresentationTokens.code_header_dark),
@@ -91,7 +118,7 @@ fun SuzentTheme(content: @Composable () -> Unit) {
         error = Color(PresentationTokens.danger_dark), onError = Color.Black
     ) else lightColorScheme(
         primary = Color(PresentationTokens.blue), onPrimary = Color.White,
-        secondaryContainer = Color(PresentationTokens.yellow), onSecondaryContainer = Color.Black,
+        secondaryContainer = suzentYellow(), onSecondaryContainer = Color.Black,
         surface = Color.White, background = Color.White, outline = Color.Black,
         onSurface = Color.Black, onBackground = Color.Black, onSurfaceVariant = Color(PresentationTokens.muted_light),
         outlineVariant = Color(0xFFE0E0E0),
@@ -130,6 +157,7 @@ val DisabledAlpha = PresentationTokens.disabledAlpha.toFloat()
 enum class SuzentHaptic { Light, LongPress, Confirm, Reject }
 
 fun View.suzentHaptic(kind: SuzentHaptic) {
+    if (!AppPreferences.haptics) return
     performHapticFeedback(when (kind) {
         SuzentHaptic.Light -> HapticFeedbackConstants.VIRTUAL_KEY
         SuzentHaptic.LongPress -> HapticFeedbackConstants.LONG_PRESS
@@ -162,7 +190,7 @@ fun SuzentChevron(expanded: Boolean, modifier: Modifier = Modifier, size: Dp = 1
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MarkdownText(text: String, citationSources: List<CitationSource> = emptyList(), textSize: Float = PresentationTokens.typeChat.toFloat(),
-                 onLongPress: (() -> Unit)? = null) {
+                 onLongPress: ((Offset) -> Unit)? = null) {
     val context = LocalContext.current
     var pendingLink by remember { mutableStateOf<String?>(null) }
     val renderedText = remember(text, citationSources) { markdownWithCitationLinks(text, citationSources, badges = true) }
@@ -190,7 +218,9 @@ fun MarkdownText(text: String, citationSources: List<CitationSource> = emptyList
         })
         .usePlugin(object : AbstractMarkwonPlugin() {
             override fun configureTheme(builder: MarkwonTheme.Builder) {
-                builder.codeBackgroundColor(Color(PresentationTokens.yellow).toArgb())
+                // The bordered chip draws the fill. Markwon treats 0 as "use the default tint", which paints a
+                // translucent box over the chip, so pass a fully transparent colour that is not 0.
+                builder.codeBackgroundColor(0x00FFFFFF)
                     .codeTextColor(Color.Black.toArgb())
                     .codeBlockBackgroundColor(codeBackground.toArgb())
                     .codeBlockTextColor(codeForeground.toArgb())
@@ -279,12 +309,17 @@ fun MarkdownText(text: String, citationSources: List<CitationSource> = emptyList
 
 @Composable
 private fun MarkdownProse(binding: MarkdownBinding, renderer: Markwon, tablePlugin: TablePlugin, modifier: Modifier,
-                          onLongPress: (() -> Unit)? = null) {
+                          onLongPress: ((Offset) -> Unit)? = null) {
     AndroidView(modifier = modifier, factory = { ctx ->
         StableTableTextView(ctx).apply { setTextIsSelectable(onLongPress == null); setLineSpacing(0f, 1.2f) }
     }, update = update@ { view ->
         // Set on every update so the listener sees the current menu callback; selection stays off when it is set.
-        view.setOnLongClickListener(onLongPress?.let { action -> android.view.View.OnLongClickListener { action(); true } })
+        view.setOnLongClickListener(onLongPress?.let { action ->
+            android.view.View.OnLongClickListener {
+                action(Offset((view as? StableTableTextView)?.pressInWindowX ?: 0f, (view as? StableTableTextView)?.pressInWindowY ?: 0f))
+                true
+            }
+        })
         if (view.tag == binding) return@update
         view.tag = binding
         view.textSize = binding.textSize
@@ -302,6 +337,7 @@ private fun MarkdownProse(binding: MarkdownBinding, renderer: Markwon, tablePlug
             }
         }
         renderer.setParsedMarkdown(view, view.prepareMarkdown(styled))
+        view.text = inlineCodeBordered(view.text, suzentYellow(binding.dark).toArgb(), 2f * view.resources.displayMetrics.density, view)
         view.movementMethod = io.noties.markwon.ext.tables.TableAwareMovementMethod.create()
         view.highlightColor = android.graphics.Color.TRANSPARENT
     })
@@ -388,10 +424,14 @@ fun MessageView(message: DisplayMessage, regent: Boolean = false, isLatest: Bool
     val shadowColor = suzentShadow
     val view = LocalView.current
     var menu by remember { mutableStateOf(false) }
+    var menuAnchor by remember { mutableStateOf<Offset?>(null) }
     val actionsLabel = stringResource(R.string.message_actions)
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
     if (message.role in listOf("system_triggered", "trigger")) {
         systemReminder(message.text)?.let { SystemReminderView(it, message.citationSources) }
+    } else if (message.role == "user" && message.files.isEmpty() && canvasActionLabel(message.text) != null) {
+        // A surface action reads as what was pressed, like the desktop's canvas pill.
+        CanvasActionPill(canvasActionLabel(message.text) ?: "")
     } else if (message.role == "user") Box(Modifier.fillMaxWidth().padding(start = 40.dp), contentAlignment = androidx.compose.ui.Alignment.CenterEnd) {
         val dark = isSystemInDarkTheme()
         val bubbleShape = RoundedCornerShape(PresentationTokens.radiusBubble.dp)
@@ -400,13 +440,22 @@ fun MessageView(message: DisplayMessage, regent: Boolean = false, isLatest: Bool
             .border(1.dp, (if (dark) Color.White else Color.Black).copy(alpha = if (dark) .14f else .18f), bubbleShape)
         else Modifier.drawBehind {
             drawRect(shadowColor, topLeft = Offset(PresentationTokens.shadowOffset.dp.toPx(), PresentationTokens.shadowOffset.dp.toPx()), size = size)
-        }.background(Color(PresentationTokens.yellow)).border(PresentationTokens.borderWidth.dp, outline)
+        }.background(suzentYellow()).border(PresentationTokens.borderWidth.dp, outline)
         // The text inside keeps long-press for selection; the bubble's padding opens the actions menu.
+        var bubbleCoords by remember { mutableStateOf<LayoutCoordinates?>(null) }
+        val bubbleCoordsState = rememberUpdatedState(bubbleCoords)
         Box(Modifier.padding(end = if (regent) 0.dp else PresentationTokens.shadowOffset.dp,
             bottom = if (regent) 0.dp else PresentationTokens.shadowOffset.dp)
             .widthIn(max = 320.dp).then(bubble)
-            .pointerInput(Unit) { detectTapGestures(onLongPress = { view.suzentHaptic(SuzentHaptic.LongPress); menu = true }) }
-            .semantics { onLongClick(actionsLabel) { menu = true; true } }
+            .onGloballyPositioned { bubbleCoords = it }
+            .pointerInput(Unit) {
+                detectTapGestures(onLongPress = { local ->
+                    menuAnchor = bubbleCoordsState.value?.localToWindow(local)
+                    view.suzentHaptic(SuzentHaptic.LongPress)
+                    menu = true
+                })
+            }
+            .semantics { onLongClick(actionsLabel) { menuAnchor = bubbleCoords?.positionInWindow(); menu = true; true } }
             .padding(PresentationTokens.spaceMedium.dp)) {
             Column(verticalArrangement = Arrangement.spacedBy(PresentationTokens.spaceSmall.dp)) {
                 message.files.forEach { AttachmentChip(it.filename, it.mimeType, color = Color.Black) }
@@ -416,7 +465,7 @@ fun MessageView(message: DisplayMessage, regent: Boolean = false, isLatest: Bool
     } else Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         // Regent's bubbles open the reply actions on a long press, like the user's own messages.
         ActivityTurn(message.parts, regent = regent, compact = !isLatest, workedSeconds = message.workedSeconds, citationSources = message.citationSources,
-            onBubbleLongPress = if (regent) ({ view.suzentHaptic(SuzentHaptic.LongPress); menu = true }) else null)
+            onBubbleLongPress = if (regent) ({ point -> menuAnchor = point; view.suzentHaptic(SuzentHaptic.LongPress); menu = true }) else null)
     }
     message.reaction?.takeIf { it.isNotEmpty() }?.let { reaction ->
         val label = stringResource(R.string.regent_reaction, reaction)
@@ -435,7 +484,8 @@ fun MessageView(message: DisplayMessage, regent: Boolean = false, isLatest: Bool
             .semantics { contentDescription = label })
     }
     if (message.role in listOf("user", "assistant")) MessageFooter(message, fallbackModel, canRetry, canEdit, canFork,
-        showActions = isLatest, menu = menu, onMenu = { menu = it }, onAction = onAction)
+        showActions = isLatest, menu = menu, menuAnchor = menuAnchor, onMenu = { menu = it },
+        onAnchor = { menuAnchor = it }, onAction = onAction)
     }
 }
 
@@ -465,7 +515,8 @@ private fun SystemReminderView(reminder: SystemReminder, sources: List<CitationS
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun MessageFooter(message: DisplayMessage, fallbackModel: String?, canRetry: Boolean, canEdit: Boolean,
-                          canFork: Boolean, showActions: Boolean, menu: Boolean, onMenu: (Boolean) -> Unit,
+                          canFork: Boolean, showActions: Boolean, menu: Boolean, menuAnchor: Offset?,
+                          onMenu: (Boolean) -> Unit, onAnchor: (Offset?) -> Unit,
                           onAction: (String, String?) -> Unit) {
     val context = LocalContext.current
     val view = LocalView.current
@@ -487,9 +538,19 @@ private fun MessageFooter(message: DisplayMessage, fallbackModel: String?, canRe
         view.suzentHaptic(SuzentHaptic.Light)
     }
     Box(Modifier.fillMaxWidth()) {
+        var footerCoords by remember { mutableStateOf<LayoutCoordinates?>(null) }
+        val footerCoordsState = rememberUpdatedState(footerCoords)
         Row(Modifier.fillMaxWidth()
-            .pointerInput(hasMenu) { if (hasMenu) detectTapGestures(onLongPress = { view.suzentHaptic(SuzentHaptic.LongPress); onMenu(true) }) }
-            .semantics { if (hasMenu) onLongClick(actionsLabel) { onMenu(true); true } },
+            .onGloballyPositioned { footerCoords = it }
+            .pointerInput(hasMenu) {
+                if (!hasMenu) return@pointerInput
+                detectTapGestures(onLongPress = { local ->
+                    onAnchor(footerCoordsState.value?.localToWindow(local))
+                    view.suzentHaptic(SuzentHaptic.LongPress)
+                    onMenu(true)
+                })
+            }
+            .semantics { if (hasMenu) onLongClick(actionsLabel) { onAnchor(footerCoords?.positionInWindow()); onMenu(true); true } },
             verticalAlignment = androidx.compose.ui.Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             if (user) Spacer(Modifier.weight(1f))
             if (showActions) {
@@ -526,7 +587,7 @@ private fun MessageFooter(message: DisplayMessage, fallbackModel: String?, canRe
             }
             if (showActions && user) Text(stringResource(R.string.you), fontSize = PresentationTokens.typeMeta.sp, color = ink, maxLines = 1)
         }
-        SuzentMenu(expanded = menu && hasMenu, onDismissRequest = { onMenu(false) }) {
+        SuzentMenu(expanded = menu && hasMenu, onDismissRequest = { onMenu(false) }, anchorInWindow = menuAnchor) {
             if (hasText) {
                 SuzentMenuItem(stringResource(R.string.message_copy), R.drawable.ic_message_copy) { onMenu(false); copy() }
                 SuzentMenuItem(stringResource(R.string.message_share), R.drawable.ic_share) { onMenu(false); shareText(context, message.text) }
@@ -570,40 +631,119 @@ private fun MessageFooter(message: DisplayMessage, fallbackModel: String?, canRe
     }
 }
 
-/** Long-press menu in the Suzent style: square panel, 2 px rule, hard offset shadow. */
+/**
+ * Long-press menu with a lighter rounded panel and Suzent's offset shadow.
+ *
+ * Material's dropdown anchors to the composable it is called from. On a full-width
+ * row that is always the same corner, wherever the finger was. [anchorInWindow] is
+ * the press in window pixels; without one (TalkBack) the menu sits on the element
+ * that opened it. Either way it is shifted to stay inside the safe area.
+ */
 @Composable
-fun SuzentMenu(expanded: Boolean, onDismissRequest: () -> Unit, content: @Composable ColumnScope.() -> Unit) {
-    val outline = MaterialTheme.colorScheme.outline
-    val menuShadow = suzentShadow
-    val menuSurface = MaterialTheme.colorScheme.surface
-    val menuShadowSize = PresentationTokens.shadowOffsetOverlay.dp
-    DropdownMenu(expanded = expanded, onDismissRequest = onDismissRequest, shape = RectangleShape,
-        containerColor = Color.Transparent, tonalElevation = 0.dp, shadowElevation = 0.dp,
-        modifier = Modifier.width(260.dp)) {
-        // The popup's scroll container clips anything drawn outside its bounds, so the offset is
-        // reserved inside the content: shadow first, opaque panel over it.
-        Box(Modifier.fillMaxWidth().drawBehind {
-            val offset = menuShadowSize.toPx()
-            drawRect(menuShadow, topLeft = Offset(offset, offset), size = size)
-        }.padding(end = menuShadowSize, bottom = menuShadowSize)) {
-            Column(Modifier.fillMaxWidth().background(menuSurface).border(PresentationTokens.borderWidth.dp, outline), content = content)
+fun SuzentMenu(expanded: Boolean, onDismissRequest: () -> Unit, anchorInWindow: Offset? = null,
+               content: @Composable ColumnScope.() -> Unit) {
+    val density = LocalDensity.current
+    val direction = LocalLayoutDirection.current
+    val configuration = LocalConfiguration.current
+    val scroll = rememberScrollState()
+    LaunchedEffect(expanded) { if (expanded) scroll.scrollTo(0) }
+    val safe = WindowInsets.safeDrawing
+    val insetLeft = safe.getLeft(density, direction)
+    val insetTop = safe.getTop(density)
+    val insetRight = safe.getRight(density, direction)
+    val insetBottom = safe.getBottom(density)
+    val margin = with(density) { 8.dp.roundToPx() }
+    val windowWidth = with(density) { configuration.screenWidthDp.dp.roundToPx() }
+    val windowHeight = with(density) { configuration.screenHeightDp.dp.roundToPx() }
+    val maxWidth = with(density) { (windowWidth - insetLeft - insetRight - margin * 2).coerceAtLeast(0).toDp() }
+    val maxHeight = with(density) { (windowHeight - insetTop - insetBottom - margin * 2).coerceAtLeast(0).toDp() }
+    val pressX = anchorInWindow?.x?.roundToInt()
+    val pressY = anchorInWindow?.y?.roundToInt()
+    val provider = remember(pressX, pressY, insetLeft, insetTop, insetRight, insetBottom, margin) {
+        PressMenuPositionProvider(pressX, pressY, insetLeft, insetTop, insetRight, insetBottom, margin)
+    }
+    val visibility = remember { MutableTransitionState(false) }
+    visibility.targetState = expanded
+    if (visibility.currentState || visibility.targetState) Popup(popupPositionProvider = provider, onDismissRequest = onDismissRequest,
+        properties = PopupProperties(focusable = true, dismissOnBackPress = true, dismissOnClickOutside = true)) {
+        AnimatedVisibility(visibleState = visibility,
+            enter = fadeIn(tween(140)) + scaleIn(tween(180, easing = FastOutSlowInEasing), initialScale = .94f),
+            exit = fadeOut(tween(100)) + scaleOut(tween(100), targetScale = .97f)) {
+            val outline = MaterialTheme.colorScheme.outline
+            val menuShadow = suzentShadow
+            val menuSurface = MaterialTheme.colorScheme.surface
+            val menuShadowSize = PresentationTokens.shadowOffsetOverlay.dp
+            val shape = RoundedCornerShape(12.dp)
+            Box(Modifier.width(minOf(244.dp, maxWidth)).heightIn(max = maxHeight).drawBehind {
+                val offset = menuShadowSize.toPx()
+                drawRoundRect(menuShadow, topLeft = Offset(offset, offset),
+                    size = androidx.compose.ui.geometry.Size(size.width - offset, size.height - offset),
+                    cornerRadius = androidx.compose.ui.geometry.CornerRadius(12.dp.toPx()))
+            }.padding(end = menuShadowSize, bottom = menuShadowSize)) {
+                Column(Modifier.fillMaxWidth().heightIn(max = (maxHeight - menuShadowSize).coerceAtLeast(0.dp))
+                    .verticalScroll(scroll).background(menuSurface, shape).border(1.dp, outline, shape)
+                    .padding(6.dp), verticalArrangement = Arrangement.spacedBy(2.dp), content = content)
+            }
+        }
+    }
+}
+
+private class PressMenuPositionProvider(private val pressX: Int?, private val pressY: Int?,
+                                       private val insetLeft: Int, private val insetTop: Int,
+                                       private val insetRight: Int, private val insetBottom: Int,
+                                       private val margin: Int) : PopupPositionProvider {
+    override fun calculatePosition(anchorBounds: IntRect, windowSize: IntSize, layoutDirection: LayoutDirection,
+                                   popupContentSize: IntSize): IntOffset {
+        val anchorX = pressX ?: if (layoutDirection == LayoutDirection.Ltr) anchorBounds.left else anchorBounds.right - popupContentSize.width
+        val anchorY = pressY ?: anchorBounds.top
+        val placed = placeMenu(anchorX, anchorY, popupContentSize.width, popupContentSize.height,
+            windowSize.width, windowSize.height, insetLeft, insetTop, insetRight, insetBottom, margin,
+            touchGap = if (pressY != null) margin else 0)
+        return IntOffset(placed.x, placed.y)
+    }
+}
+
+/** Remember a press in window pixels without consuming it, so clicks, swipes and scrolling still run. */
+@Composable
+internal fun Modifier.recordPressInWindow(onPress: (Offset) -> Unit): Modifier {
+    val callback = rememberUpdatedState(onPress)
+    val coordinates = remember { mutableStateOf<LayoutCoordinates?>(null) }
+    val coordinatesState = rememberUpdatedState(coordinates.value)
+    return this.onGloballyPositioned { coordinates.value = it }.pointerInput(Unit) {
+        awaitEachGesture {
+            val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+            val point = coordinatesState.value?.localToWindow(down.position) ?: return@awaitEachGesture
+            callback.value(point)
         }
     }
 }
 
 @Composable
-fun SuzentMenuItem(label: String, icon: Int, enabled: Boolean = true, danger: Boolean = false, action: () -> Unit) {
+fun SuzentMenuItem(label: String, icon: Int, enabled: Boolean = true, danger: Boolean = false,
+                   selected: Boolean = false, action: () -> Unit) {
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
     val error = MaterialTheme.colorScheme.error
-    val background = if (pressed) { if (danger) error else Color(PresentationTokens.yellow) } else Color.Transparent
-    val foreground = (if (pressed) { if (danger) MaterialTheme.colorScheme.onError else Color.Black } else if (danger) error else MaterialTheme.colorScheme.onSurface)
+    val background = if (pressed && enabled) {
+        if (danger) error else suzentYellow()
+    } else if (danger) error.copy(alpha = .07f) else Color.Transparent
+    val foreground = (if (pressed && enabled) { if (danger) MaterialTheme.colorScheme.onError else Color.Black } else if (danger) error else MaterialTheme.colorScheme.onSurface)
         .copy(alpha = if (enabled) 1f else DisabledAlpha)
-    Row(Modifier.fillMaxWidth().background(background).clickable(interactionSource = interaction, indication = null, enabled = enabled, onClick = action)
-        .heightIn(min = 44.dp).padding(horizontal = 12.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-        Icon(painterResource(icon), null, tint = foreground, modifier = Modifier.padding(end = 10.dp).size(18.dp))
-        Text(label, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = foreground)
+    Row(Modifier.fillMaxWidth().background(background, RoundedCornerShape(7.dp))
+        .clickable(interactionSource = interaction, indication = null, enabled = enabled, onClick = action)
+        .heightIn(min = 48.dp).padding(horizontal = 12.dp, vertical = 10.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+        Icon(painterResource(icon), null, tint = foreground, modifier = Modifier.size(20.dp))
+        Spacer(Modifier.width(12.dp))
+        Text(label, modifier = Modifier.weight(1f), fontSize = 14.sp, fontWeight = FontWeight.Medium, color = foreground)
+        if (selected) Icon(painterResource(R.drawable.ic_message_check), null, tint = foreground,
+            modifier = Modifier.padding(start = 12.dp).size(18.dp))
     }
+}
+
+@Composable
+fun SuzentMenuDivider() {
+    HorizontalDivider(modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+        thickness = 1.dp, color = MaterialTheme.colorScheme.outlineVariant)
 }
 
 /** Text-input flow (rename, edit and resend): square sheet with title, field and Cancel/Save. */
@@ -782,21 +922,37 @@ fun SuzentAssistantBadge(compact: Boolean = false) {
 }
 
 @Composable
+private fun ActivityText(text: String, citationSources: List<CitationSource>, regent: Boolean,
+                         onBubbleLongPress: ((Offset) -> Unit)?) {
+    val bubbleMenu = onBubbleLongPress.takeIf { regent }
+    val bubbleMenuState = rememberUpdatedState(bubbleMenu)
+    var bubbleCoords by remember { mutableStateOf<LayoutCoordinates?>(null) }
+    val bubbleCoordsState = rememberUpdatedState(bubbleCoords)
+    Box(if (regent) Modifier.background(MaterialTheme.colorScheme.onSurface.copy(alpha = .045f), RoundedCornerShape(PresentationTokens.radiusBubble.dp))
+        .onGloballyPositioned { bubbleCoords = it }
+        .then(if (bubbleMenu != null) Modifier.pointerInput(Unit) {
+            detectTapGestures(onLongPress = { local ->
+                val menu = bubbleMenuState.value ?: return@detectTapGestures
+                menu(bubbleCoordsState.value?.localToWindow(local) ?: return@detectTapGestures)
+            })
+        } else Modifier)
+        .padding(12.dp) else Modifier) {
+        MarkdownText(text, citationSources, onLongPress = bubbleMenu)
+    }
+}
+
+@Composable
 fun ActivityContent(parts: List<MessagePart>, live: Boolean, citationSources: List<CitationSource> = emptyList(), regent: Boolean = false,
-                    onBubbleLongPress: (() -> Unit)? = null) {
+                    onBubbleLongPress: ((Offset) -> Unit)? = null) {
     val chunks = remember(parts) { activityChunks(parts) }
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         chunks.forEachIndexed { index, chunk ->
             key(index) {
                 if (chunk.first().type == "text") {
-                    val bubbleMenu = onBubbleLongPress.takeIf { regent }
-                    Box(if (regent) Modifier.background(MaterialTheme.colorScheme.onSurface.copy(alpha = .045f), RoundedCornerShape(PresentationTokens.radiusBubble.dp))
-                        .then(if (bubbleMenu != null) Modifier.pointerInput(Unit) { detectTapGestures(onLongPress = { bubbleMenu() }) } else Modifier)
-                        .padding(12.dp) else Modifier) {
-                        MarkdownText(chunk.first().text, citationSources, onLongPress = bubbleMenu)
-                    }
+                    ActivityText(chunk.first().text, citationSources, regent, onBubbleLongPress)
                 }
-                else ActivityRail(chunk, live, index == chunks.lastIndex)
+                else if (chunk.first().type == "a2ui") chunk.first().surface?.let { SurfaceBlock(it) }
+                else ActivityRail(chunk, live, index == chunks.lastIndex, expansionKey = railChunkKey(chunk, index))
             }
         }
     }
@@ -812,7 +968,7 @@ fun ApprovalCards(model: MobileModel) {
             var overflowing by remember { mutableStateOf(false) }
             Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface)
                 .border(PresentationTokens.borderWidth.dp, MaterialTheme.colorScheme.outline)) {
-                Text(stringResource(R.string.approval_required), Modifier.fillMaxWidth().background(Color(PresentationTokens.yellow)).padding(12.dp), color = Color.Black, fontWeight = FontWeight.Bold)
+                Text(stringResource(R.string.approval_required), Modifier.fillMaxWidth().background(suzentYellow()).padding(12.dp), color = Color.Black, fontWeight = FontWeight.Bold)
                 Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(request.toolName, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
                     Text(stringResource(R.string.approval_backend), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -918,7 +1074,7 @@ fun SuzentSelectionPanel(title: String, options: List<Pair<String, String>>, sel
                 items(options.size) { index ->
                     val (id, label) = options[index]
                     val active = id == selected
-                    Row(Modifier.fillMaxWidth().background(if (active) Color(PresentationTokens.yellow) else MaterialTheme.colorScheme.surface)
+                    Row(Modifier.fillMaxWidth().background(if (active) suzentYellow() else MaterialTheme.colorScheme.surface)
                         .selectable(selected = active, onClick = { choose(id) }, role = androidx.compose.ui.semantics.Role.RadioButton)
                         .heightIn(min = 48.dp).padding(16.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
                         Text(label, Modifier.weight(1f), fontSize = 15.sp, fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal,
@@ -945,45 +1101,219 @@ private fun reconnectSample(phase: Float, vararg frames: Pair<Float, Float>): Fl
     return frames.last().second
 }
 
+private class DampedSpring(value: Float, private val k: Float = 130f, private val d: Float = 15f) {
+    var x = value
+    var target = value
+    var v = 0f
+    fun step(dt: Float): Float {
+        val f = -k * (x - target) - d * v
+        v += f * dt
+        x += v * dt
+        return x
+    }
+    fun impulse(dv: Float) { v += dv }
+}
+
+private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawReconnectNode(
+    cx: Float, cy: Float, boxSize: Float, gaze: Float, eyeY: Float, blink: Float,
+    tiltDeg: Float, liftPx: Float, scaleX: Float, scaleY: Float, hollow: Boolean,
+    ink: Color, surface: Color
+) {
+    val pivot = Offset(cx, cy + liftPx + boxSize * 0.32f)
+    rotate(degrees = tiltDeg, pivot = pivot) {
+        scale(scaleX = scaleX, scaleY = scaleY, pivot = pivot) {
+            val s = boxSize / 24f
+            val x0 = cx - boxSize / 2f
+            val y0 = cy + liftPx - boxSize / 2f
+            val bodyRadius = androidx.compose.ui.geometry.CornerRadius(4.2f * s)
+            drawRoundRect(if (hollow) surface else ink, topLeft = Offset(x0, y0),
+                size = androidx.compose.ui.geometry.Size(24f * s, 24f * s), cornerRadius = bodyRadius)
+            if (hollow) {
+                drawRoundRect(ink, topLeft = Offset(x0, y0),
+                    size = androidx.compose.ui.geometry.Size(24f * s, 24f * s),
+                    cornerRadius = bodyRadius, style = Stroke(width = 1.6f * s))
+            }
+            for (index in 1 until SuzentLogoGeometry.rectangles.size) {
+                val rect = SuzentLogoGeometry.rectangles[index]
+                val eh = maxOf(0.35f, rect[3] * blink)
+                val ew = rect[2] * (1f + (1f - blink) * 0.12f)
+                val ex = x0 + (rect[0] + gaze - (ew - rect[2]) / 2f) * s
+                val ey = y0 + (rect[1] + eyeY + (rect[3] - eh) / 2f) * s
+                val er = androidx.compose.ui.geometry.CornerRadius(minOf(rect[4], eh / 2f) * s)
+                drawRoundRect(if (hollow) ink else surface, topLeft = Offset(ex, ey),
+                    size = androidx.compose.ui.geometry.Size(ew * s, eh * s), cornerRadius = er)
+            }
+        }
+    }
+}
+
 @Composable
-fun ReconnectIndicator(active: Boolean) {
+fun ReconnectIndicator(active: Boolean, stage: Int = 0) {
     val owner = androidx.lifecycle.compose.LocalLifecycleOwner.current
     val lifecycle by owner.lifecycle.currentStateFlow.collectAsState()
     val animated = active && android.animation.ValueAnimator.areAnimatorsEnabled() &&
         lifecycle.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)
-    val p = if (animated) {
-        val transition = rememberInfiniteTransition(label = "reconnect")
-        val value by transition.animateFloat(0f, 1f,
-            infiniteRepeatable(tween(7800, easing = LinearEasing)), label = "curious logo")
-        value
-    } else 0f
-    val gaze = reconnectSample(p, 0f to 0f, .09f to 0f, .15f to -1.5f, .28f to -1.5f, .34f to 0f, .40f to 1.33f, .53f to 1.33f, .60f to 0f, 1f to 0f)
-    val eyeY = reconnectSample(p, 0f to 0f, .15f to -.33f, .28f to -.33f, .34f to 0f, .40f to -.67f, .53f to -.67f, .60f to -1f, .68f to -1f, .76f to 0f, 1f to 0f)
-    val lift = reconnectSample(p, 0f to 0f, .09f to 0f, .18f to -3f, .27f to -3f, .35f to 1f, .43f to -5f, .51f to -5f, .57f to 2f, .64f to -7f, .72f to 1f, .76f to 0f, 1f to 0f)
-    val tilt = reconnectSample(p, 0f to 0f, .09f to 0f, .18f to -7f, .27f to -7f, .35f to 2f, .43f to 6f, .51f to 6f, .57f to -2f, .64f to 0f, 1f to 0f)
-    val blink = reconnectSample(p, 0f to 1f, .12f to 1f, .145f to .12f, .17f to 1f, .31f to 1f, .335f to .12f, .36f to 1f, .55f to 1f, .575f to .12f, .60f to 1f, .71f to 1f, .735f to .12f, .76f to 1f, 1f to 1f)
-    val ink = MaterialTheme.colorScheme.onSurface
-    Box(Modifier.size(210.dp, 130.dp).semantics { contentDescription = "Suzent" }, contentAlignment = androidx.compose.ui.Alignment.Center) {
-        Canvas(Modifier.size(72.dp).graphicsLayer {
-            rotationZ = tilt; translationY = lift * density
-            transformOrigin = androidx.compose.ui.graphics.TransformOrigin(.5f, .8f)
-        }) {
-            val scale = size.width / 24f
-            SuzentLogoGeometry.rectangles.forEachIndexed { index, rect ->
-                val eye = index > 0
-                val height = rect[3] * if (eye) blink else 1f
-                drawRoundRect(if (eye) Color.White else Color.Black,
-                    topLeft = Offset((rect[0] + if (eye) gaze else 0f) * scale,
-                        (rect[1] + if (eye) eyeY + (rect[3] - height) / 2f else 0f) * scale),
-                    size = androidx.compose.ui.geometry.Size(rect[2] * scale, height * scale),
-                    cornerRadius = androidx.compose.ui.geometry.CornerRadius(minOf(rect[4], height / 2f) * scale))
+    val seconds = remember { mutableDoubleStateOf(0.0) }
+    val spStage = remember { DampedSpring(0f, 95f, 15f) }
+    val spAmp = remember { DampedSpring(10f, 90f, 14f) }
+    val spLeftSX = remember { DampedSpring(1f, 220f, 14f) }
+    val spLeftSY = remember { DampedSpring(1f, 220f, 14f) }
+    val spRightSX = remember { DampedSpring(1f, 220f, 14f) }
+    val spRightSY = remember { DampedSpring(1f, 220f, 14f) }
+    val spLeftLift = remember { DampedSpring(0f, 130f, 14f) }
+    val spRightLift = remember { DampedSpring(0f, 130f, 14f) }
+    val spLeftTilt = remember { DampedSpring(0f, 90f, 12f) }
+    val spRightTilt = remember { DampedSpring(0f, 90f, 12f) }
+    val spEyeY = remember { DampedSpring(0f, 140f, 16f) }
+
+    LaunchedEffect(stage, animated) {
+        if (!animated) return@LaunchedEffect
+        when (stage) {
+            1 -> { spLeftSX.impulse(-1.3f); spLeftSY.impulse(1.5f); spLeftLift.impulse(-40f) }
+            2 -> {
+                spLeftSX.impulse(1.6f); spLeftSY.impulse(-1.6f)
+                spRightSX.impulse(1.8f); spRightSY.impulse(-1.8f); spRightLift.impulse(-45f)
+            }
+            3 -> { spLeftSX.impulse(-1.8f); spLeftSY.impulse(2.0f); spLeftLift.impulse(-65f) }
+        }
+    }
+
+    LaunchedEffect(animated) {
+        if (!animated) return@LaunchedEffect
+        var previous = 0L
+        while (true) withFrameNanos { now ->
+            val dt = if (previous == 0L) 0f else minOf((now - previous) / 1_000_000_000f, 0.05f)
+            previous = now
+            seconds.doubleValue += dt.toDouble()
+            val t = seconds.doubleValue.toFloat()
+            val st = spStage.target.toInt()
+            spAmp.target = when (st) { 0 -> 10f; 1 -> 14f; 2 -> 1.4f; else -> 4f }
+            spEyeY.target = when (st) { 1 -> -0.9f; 3 -> -0.35f; else -> 0f }
+            val floatWave = sin(t * 3.4f)
+            spLeftLift.target = if (st == 3) -kotlin.math.abs(sin(t * 6f)) * 7f else floatWave * 2.5f
+            spRightLift.target = if (st >= 2) -floatWave * 2.5f else 0f
+            spLeftTilt.target = when (st) { 0 -> sin(t * 2.5f) * 4.5f; 1 -> -4f; else -> 0f }
+            spRightTilt.target = if (st >= 2) sin(t * 2.5f) * -3f else 0f
+            spLeftSX.target = 1f; spLeftSY.target = 1f
+            spRightSX.target = 1f; spRightSY.target = 1f
+            if (dt > 0f) {
+                spStage.step(dt); spAmp.step(dt); spEyeY.step(dt)
+                spLeftLift.step(dt); spRightLift.step(dt)
+                spLeftTilt.step(dt); spRightTilt.step(dt)
+                spLeftSX.step(dt); spLeftSY.step(dt); spRightSX.step(dt); spRightSY.step(dt)
             }
         }
-        if (animated) Canvas(Modifier.fillMaxSize()) {
-            val opacity = reconnectSample(p, 0f to 0f, .05f to 0f, .12f to 1f, .21f to 0f, 1f to 0f)
-            val x = size.width / 2f + (-92f + reconnectSample(p, 0f to -8f, .21f to 13f, 1f to 13f)).dp.toPx()
-            drawRect(androidx.compose.ui.graphics.Brush.horizontalGradient(listOf(Color.Transparent, ink.copy(alpha = .65f * opacity)), x, x + 44.dp.toPx()),
-                topLeft = Offset(x, size.height / 2f - 10.dp.toPx()), size = androidx.compose.ui.geometry.Size(44.dp.toPx(), 1.dp.toPx()))
+    }
+    spStage.target = stage.toFloat()
+
+    val ink = MaterialTheme.colorScheme.onSurface
+    val surface = MaterialTheme.colorScheme.surface
+    val outlineSubtle = MaterialTheme.colorScheme.outlineVariant
+    val yellow = suzentYellow()
+    Box(Modifier.size(260.dp, 136.dp).semantics { contentDescription = "Suzent" }, contentAlignment = androidx.compose.ui.Alignment.Center) {
+        Canvas(Modifier.fillMaxSize()) {
+            val t = if (animated) seconds.doubleValue.toFloat() else 0f
+            val stSmooth = if (animated) spStage.x else stage.toFloat()
+            val amp = (if (animated) spAmp.x else 6f).dp.toPx()
+            val eyeY = if (animated) spEyeY.x else 0f
+            val lLift = (if (animated) spLeftLift.x else 0f).dp.toPx()
+            val rLift = (if (animated) spRightLift.x else 0f).dp.toPx()
+            val lTilt = if (animated) spLeftTilt.x else 0f
+            val rTilt = if (animated) spRightTilt.x else 0f
+            val lSX = if (animated) spLeftSX.x else 1f
+            val lSY = if (animated) spLeftSY.x else 1f
+            val rSX = if (animated) spRightSX.x else 1f
+            val rSY = if (animated) spRightSY.x else 1f
+
+            val blinkCycle = t % (if (stage == 2) 1.2f else 2.7f)
+            val blink = when {
+                !animated -> 1f
+                blinkCycle < 0.14f -> 1f - 0.88f * sin((blinkCycle / 0.14f) * Math.PI.toFloat())
+                stage == 2 && blinkCycle in 0.22f..0.36f -> 1f - 0.88f * sin(((blinkCycle - 0.22f) / 0.14f) * Math.PI.toFloat())
+                else -> 1f
+            }
+
+            val cy = size.height / 2f - 10.dp.toPx()
+            val leftX = 48.dp.toPx()
+            val rightX = size.width - 48.dp.toPx()
+            val span = rightX - leftX
+            val freq = if (stage == 1) 2.5f else 1.5f
+            val phaseSpeed = if (stage == 3) -7.5f else 5.2f
+
+            // 1. Dual silk sine waves
+            for (w in 0..1) {
+                val path = androidx.compose.ui.graphics.Path()
+                val steps = 56
+                for (i in 0..steps) {
+                    val u = i / steps.toFloat()
+                    val x = leftX + u * span
+                    val env = sin(u * Math.PI.toFloat())
+                    val yOff = (1f - u) * lLift * 0.4f + u * rLift * 0.4f
+                    val y = cy + yOff + sin(u * Math.PI.toFloat() * 2f * freq - t * phaseSpeed + w * Math.PI.toFloat()) * amp * env
+                    if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
+                }
+                drawPath(path, ink.copy(alpha = if (w == 0) 0.88f else 0.20f),
+                    style = Stroke(width = (if (w == 0) 1.8f else 1.2f).dp.toPx()))
+            }
+
+            // 2. Flowing energy beads
+            if (animated) {
+                val beadCount = if (stage >= 2) 3 else 2
+                for (b in 0 until beadCount) {
+                    var u = ((t * (if (stage == 3) 0.95f else 0.58f)) + b / beadCount.toFloat()) % 1f
+                    if (stage == 3) u = 1f - u
+                    val x = leftX + u * span
+                    val env = sin(u * Math.PI.toFloat())
+                    val yOff = (1f - u) * lLift * 0.4f + u * rLift * 0.4f
+                    val y = cy + yOff + sin(u * Math.PI.toFloat() * 2f * freq - t * phaseSpeed) * amp * env
+                    val r = 3.8.dp.toPx()
+                    drawCircle(yellow, radius = r, center = Offset(x, y))
+                    drawCircle(ink, radius = r, center = Offset(x, y), style = Stroke(width = 1.4.dp.toPx()))
+                }
+            }
+
+            // 3. Left Node (Phone) & Right Node (Desktop)
+            val nodeSize = 44.dp.toPx()
+            drawReconnectNode(leftX, cy, nodeSize, 1.25f, eyeY, blink, lTilt, lLift, lSX, lSY, false, ink, surface)
+            drawReconnectNode(rightX, cy, nodeSize, if (stage >= 2) -1.25f else 0f, 0f,
+                if (stage >= 2) blink else 1f, rTilt, rLift, rSX, rSY, stage < 2, ink, surface)
+
+            // Direct and relay probes share the connection stage.
+            if (active) {
+                val pillY = size.height - 10.dp.toPx()
+                val gap = 5.dp.toPx()
+                val baseW = 8.dp.toPx()
+                val activeW = 24.dp.toPx()
+                val h = 4.5.dp.toPx()
+                val widths = FloatArray(3)
+                val factors = FloatArray(3)
+                var totalW = gap * 2f
+                for (i in 0..2) {
+                    val dist = kotlin.math.abs((stSmooth - 1f).coerceAtLeast(0f) - i)
+                    val af = (1f - dist).coerceIn(0f, 1f)
+                    val s = af * af * (3f - 2f * af)
+                    val w = baseW + (activeW - baseW) * s
+                    widths[i] = w; factors[i] = s; totalW += w
+                }
+                var px = (size.width - totalW) / 2f
+                val cr = androidx.compose.ui.geometry.CornerRadius(h / 2f)
+                for (i in 0..2) {
+                    val w = widths[i]
+                    val s = factors[i]
+                    val done = i < (stSmooth - 1f).coerceAtLeast(0f) - 0.1f
+                    val fill = when {
+                        s > 0.5f -> yellow
+                        done -> ink
+                        else -> outlineSubtle
+                    }
+                    drawRoundRect(fill, topLeft = Offset(px, pillY - h / 2f),
+                        size = androidx.compose.ui.geometry.Size(w, h), cornerRadius = cr)
+                    drawRoundRect(ink, topLeft = Offset(px, pillY - h / 2f),
+                        size = androidx.compose.ui.geometry.Size(w, h), cornerRadius = cr,
+                        style = Stroke(width = 1.dp.toPx()))
+                    px += w + gap
+                }
+            }
         }
     }
 }

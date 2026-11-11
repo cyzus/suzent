@@ -1,5 +1,4 @@
 import React from 'react';
-import { invoke } from '@tauri-apps/api/core';
 
 import { getInitialLocale, tForLocale } from '../i18n';
 import { isDesktop } from '../lib/runtime';
@@ -66,15 +65,6 @@ export function BackendLoadingScreen({
   }
 
   React.useEffect(() => {
-    if (!isDesktop()) return;
-    if (detectDesktopPlatform(navigator.userAgent, navigator.platform) !== 'macos') return;
-    void invoke('set_startup_window_controls', { enabled: true }).catch(console.error);
-    return () => {
-      void invoke('set_startup_window_controls', { enabled: false }).catch(console.error);
-    };
-  }, []);
-
-  React.useEffect(() => {
     if (error) return;
     const interval = setInterval(() => {
       const step = (window as any).__SUZENT_SETUP_STEP__;
@@ -118,6 +108,10 @@ export function BackendLoadingScreen({
           45% { left: 38%; width: 34%; }
           100% { left: 106%; width: 22%; }
         }
+        @keyframes suzentProgressBreathe {
+          0%, 100% { opacity: .25; }
+          50% { opacity: .7; }
+        }
         .suzent-cube-scene {
           perspective: 520px;
           transform-style: preserve-3d;
@@ -136,13 +130,13 @@ export function BackendLoadingScreen({
         @media (prefers-reduced-motion: reduce) {
           .suzent-cube,
           .suzent-orbit,
-          .suzent-orbit-reverse,
-          .suzent-indeterminate-progress {
+          .suzent-orbit-reverse {
             animation: none !important;
           }
           .suzent-indeterminate-progress {
+            animation: suzentProgressBreathe 2s ease-in-out infinite !important;
             left: 0;
-            width: 32%;
+            width: 100%;
           }
         }
       `}</style>

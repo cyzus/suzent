@@ -14,7 +14,9 @@ so they keep working when you change models or providers. See
 A **tool** lets the agent *do* something, like run a command. A **skill**
 teaches it *how* to do something well: a workflow, a house style, the steps for
 a particular system. The agent sees a one-line description of each enabled
-skill and reads the full instructions only when a task calls for them.
+skill and reads the full instructions only when a task calls for them. To pick
+a skill yourself, type `/skill <name>` followed by your task; see
+[Slash commands](../07-reference/slash-commands.md#skills).
 
 ## Built-in skills
 

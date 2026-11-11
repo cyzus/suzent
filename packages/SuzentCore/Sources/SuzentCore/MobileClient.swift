@@ -14,14 +14,24 @@ public protocol MobileClient: Sendable {
     func createChat(title: String, projectID: String?) async throws -> Chat
     func chat(_ id: String) async throws -> Chat
     func markRead(_ id: String) async throws
+    func overview(_ id: String) async throws -> ChatOverview
     func manageChat(_ id: String, action: String, value: String?) async throws
     func messageAction(_ id: String, index: Int, action: String, text: String?, model: String?) async throws -> String
     func upload(_ attachments: [PendingAttachment], chatID: String) async throws -> [String]
     func send(_ text: String, chatID: String, model: String?, attachments: [String]) async throws
     func stop(_ chatID: String) async throws
+    /// Interrupts the running turn and continues it with `text`; a turn that already ended simply gets `text` next.
+    func steer(_ text: String, chatID: String, model: String?) async throws
     func approvals(_ id: String) async throws -> ApprovalState
+    func answerSurface(_ chatID: String, surfaceID: String, answer: [String: JSONValue]) async throws
     func decideApprovals(_ id: String, pending: [ApprovalRequest], choices: [String: String]) async throws
     func observe(_ chatID: String, onEvent: @Sendable (StreamEvent) async -> Void) async throws
+    /// Downloads a tool's image, video or audio to `destination`.
+    func media(_ chatID: String, mediaID: String, to destination: URL) async throws
+}
+
+public extension MobileClient {
+    func media(_ chatID: String, mediaID: String, to destination: URL) async throws { throw ClientError.invalidResponse }
 }
 
 extension SuzentClient: MobileClient {}

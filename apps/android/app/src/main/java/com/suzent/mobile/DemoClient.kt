@@ -22,6 +22,9 @@ class DemoClient(fixture: String, private val storage: File? = null, language: S
     private val uploads = mutableMapOf<String, Pair<String, JSONObject>>()
     override val supportsAttachments = true
     override val supportsScheduledTasks = true
+    override val supportsChatOverview = true
+    override val supportsSurfaces = true
+    override val supportsSteer = true
     val prompts: List<String> get() = listOf(label("prompt"), label("tool_prompt"))
 
     init {
@@ -67,8 +70,13 @@ class DemoClient(fixture: String, private val storage: File? = null, language: S
         records = JSONArray(listOf(item) + objects(records)); save()
         return Chat.parse(item)
     }
-    override suspend fun markRead(id: String) { record(id).optJSONObject("regent")?.put("unread", 0); save() }
+    override suspend fun markRead(id: String) { record(id).put("unreadCount", 0).optJSONObject("regent")?.put("unread", 0); save() }
     override suspend fun chat(id: String): Chat { advance(id); return Chat.parse(record(id)) }
+    /** The demo never asks a blocking question, so there is nothing to answer. */
+    override suspend fun answerSurface(id: String, surfaceId: String, answer: Map<String, Any?>) {}
+    /** Only the trip conversation carries a sample plan; the rest show an empty one. */
+    override suspend fun overview(id: String): ChatOverview =
+        ChatOverview.parse(if (id == "demo-trip") strings.getJSONObject("overview") else JSONObject())
 
     override suspend fun manageChat(id: String, action: String, value: String?) {
         advance(id)
@@ -133,6 +141,11 @@ class DemoClient(fixture: String, private val storage: File? = null, language: S
         val run = runs[id] ?: return
         run.text = run.text.take(run.visible) + label("stopped")
         finish(id)
+    }
+
+    override suspend fun steer(id: String, text: String, model: String?) {
+        stop(id)
+        send(id, text, model, emptyList())
     }
 
     override suspend fun messageAction(id: String, index: Int, action: String, text: String?, model: String?): String {

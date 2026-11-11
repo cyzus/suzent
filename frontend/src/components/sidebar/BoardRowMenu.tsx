@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { isImeComposing } from '../../lib/ime';
+import { menuFrame, placeMenu } from '../../lib/menuPlacement';
 
 export interface BoardRowMenuItem {
   key: string;
@@ -31,13 +32,17 @@ export function BoardRowMenu({
 
   useEffect(() => {
     if (!menuRef.current) return;
-    const margin = 8;
-    const maxLeft = window.innerWidth - menuRef.current.offsetWidth - margin;
-    const maxTop = window.innerHeight - menuRef.current.offsetHeight - margin;
-    setPosition({
-      left: Math.max(margin, Math.min(anchor.x, maxLeft)),
-      top: Math.max(margin, Math.min(anchor.y, maxTop)),
-    });
+    const frame = menuFrame(8);
+    menuRef.current.style.maxWidth = `${Math.max(0, frame.right - frame.left)}px`;
+    menuRef.current.style.maxHeight = `${Math.max(0, frame.bottom - frame.top)}px`;
+    const placed = placeMenu(
+      anchor.x,
+      anchor.y,
+      menuRef.current.offsetWidth,
+      menuRef.current.offsetHeight,
+      frame
+    );
+    setPosition({ left: placed.left, top: placed.top });
     menuRef.current.querySelector<HTMLButtonElement>('button')?.focus();
   }, [anchor]);
 

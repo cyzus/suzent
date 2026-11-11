@@ -141,6 +141,13 @@ anything; it only lowers how strongly an unconfirmed fact shows up in search.
 When nothing new needs consolidating, the organizer audits the notebook instead,
 looking for contradictions, broken links, orphaned pages, and stale knowledge.
 
+**It tells Regent what deserves attention.** When a run turns up something worth
+knowing now, the organizer sends [Regent](../../02-using/regent.md) one short
+message: several lessons about one tool that could become a skill, the same
+failure coming back, a project that has gone quiet, or something notable it saw.
+It can't message anyone else, and most runs send nothing. Regent decides whether
+to tell you, and if you agree, it can start a session to act on it.
+
 ## Settings
 
 Turn memory on or off in **Settings → Memory System**. Its models are set in

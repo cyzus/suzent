@@ -161,6 +161,7 @@ class ConfigModel(BaseModel):
         "GlobTool",
         "GrepTool",
         "MemorySearchTool",
+        "RegentSendTool",
     ]
     # Lint phase: a periodic editorial audit of the vault (contradictions, broken
     # links, orphans, decay) run by the same dream runner AFTER ingest catches up.
@@ -190,7 +191,7 @@ class ConfigModel(BaseModel):
     permission_policies: Dict[str, Dict[str, Any]] = {}
     permission_rules: List[Dict[str, Any]] = []
     # Permission mode new chats inherit when the client does not pin one.
-    default_permission_mode: str = "default"
+    default_permission_mode: str = "auto"
 
     nodes_enabled: bool = True
     # Advertise this server over mDNS and allow LAN/Tailscale peer discovery.

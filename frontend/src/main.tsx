@@ -7,6 +7,7 @@ import './robot-animations.css';
 import { ThemeProvider } from './hooks/useTheme';
 import { I18nProvider } from './i18n';
 import { captureAuthTokenFromUrl, installAuthenticatedFetch } from './lib/authToken';
+import { DesktopTrayLanguage } from './lib/desktopTray';
 import { isWeb } from './lib/runtime';
 
 // Before anything renders or fetches: a remote browser arrives carrying its
@@ -17,6 +18,7 @@ installAuthenticatedFetch();
 createRoot(document.getElementById('root')!).render(
   <ThemeProvider>
     <I18nProvider>
+      <DesktopTrayLanguage />
       {/* Two shells, one build. The desktop window is a chat app; a browser is
           reaching a headless host, and gets the console that puts the
           operational surfaces on equal footing with chat. */}

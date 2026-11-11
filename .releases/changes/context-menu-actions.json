@@ -1,0 +1,5 @@
+{
+  "products": {"desktop": "patch", "mobile": "none"},
+  "summary": "Context menus can start a chat in a project, upload into a folder, save a sandbox file from the browser, and pause or run scheduled tasks and heartbeats.",
+  "reason": "The native iOS and Android apps do not use these desktop and web menus."
+}

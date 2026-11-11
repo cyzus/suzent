@@ -33,7 +33,10 @@ fragment is saved.
 
 This budget belongs to `build_combined_reminder`, not to
 `wrap_in_system_reminder`. Directly wrapped live inbox injections do not use the
-assembly budget. Inbox background turns do, on both runtimes, so long messages
+assembly budget, and neither does a `/skill <name>` turn: the chat processor
+wraps the named skill's full `SKILL.md` content (from `skill_invocation_context`)
+in a block of its own after the combined reminder, so a long skill is not
+truncated. The model does not call `skill_execute` for it. Inbox background turns do, on both runtimes, so long messages
 can be truncated there; their visible trigger reflects the budgeted text.
 
 ACP turns take `system_reminders` like native ones and assemble them with

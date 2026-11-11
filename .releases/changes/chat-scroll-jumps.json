@@ -1,0 +1,1 @@
+{"products": {"desktop": "patch"}, "summary": "The chat no longer jumps while a reply streams or when it finishes, keeps your reading position, and no longer shows a blank area on macOS after you send a message."}

@@ -1,13 +1,17 @@
 import { useSidebarExpansion } from './SidebarExpansionContext';
 import { FullscreenButton } from '../FullscreenButton';
 import { isImeComposing } from '../../lib/ime';
-import React, { useState, useEffect, useCallback } from 'react';
-import { getApiBase } from '../../lib/api';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { getApiBase, getSandboxParams } from '../../lib/api';
+import { isWeb } from '../../lib/runtime';
+import { fileContextExtras } from '../../lib/fileContextActions';
+import { freshPointerPoint } from '../../lib/menuPlacement';
 import { useI18n } from '../../i18n';
-import { BrutalButton } from '../BrutalButton';
+import { BrutalButton, BrutalIconButton } from '../BrutalButton';
 import { RefreshButton } from '../RefreshButton';
 import { BrutalSegmentedTabs } from '../BrutalSegmentedTabs';
 import { useChatStore } from '../../hooks/useChatStore';
+import { ImageViewer } from '../ImageViewer';
 import { FilePreview } from './FilePreview';
 import { FileTreeContextMenu } from './FileTreeContextMenu';
 import { isBinaryServedFile, isImageFile, isMarkdownFile, isCodeFile } from '../../lib/fileUtils';
@@ -23,6 +27,8 @@ import {
   PhotoIcon,
   ArrowUpTrayIcon,
   ArrowTopRightOnSquareIcon,
+  CheckIcon,
+  ClipboardDocumentIcon,
 } from '@heroicons/react/24/outline';
 
 interface FileItem {
@@ -214,6 +220,7 @@ export const SandboxFiles: React.FC<SandboxFilesProps> = ({
   const [fileContent, setFileContent] = useState<string | null>(null);
   const [loadingFile, setLoadingFile] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const uploadDirectoryRef = useRef(activeRoot);
   const [contextMenu, setContextMenu] = useState<{
     x: number;
     y: number;
@@ -356,7 +363,7 @@ export const SandboxFiles: React.FC<SandboxFilesProps> = ({
       setFileContent(null);
       setLoadingFile(false);
       setPreviewRevision((revision) => revision + 1);
-      onViewModeChange?.(true);
+      onViewModeChange?.(!isImageFile(path));
     },
     [onViewModeChange]
   );
@@ -370,36 +377,78 @@ export const SandboxFiles: React.FC<SandboxFilesProps> = ({
 
   useEffect(() => {
     if (externalFilePath && externalFileName) {
-      setSelectedFile(externalFilePath);
-      setError(null);
-      setFileContent(null);
-      setLoadingFile(false);
-      setPreviewRevision((revision) => revision + 1);
-      onViewModeChange?.(true);
+      handleSelectFile(externalFilePath);
     }
     // externalFileNonce is included so re-clicking the same file (which keeps
     // path/name identical) still re-opens it after a "back".
-  }, [externalFilePath, externalFileName, externalFileNonce, onViewModeChange]);
+  }, [externalFilePath, externalFileName, externalFileNonce, handleSelectFile]);
 
-  const openPathInExplorer = useCallback(
-    async (path: string) => {
-      if (!currentChatId) return;
+  /** Asks the backend to show a path in the system file manager; returns an error, if any. */
+  const revealPath = useCallback(
+    async (path: string): Promise<string | null> => {
+      if (!currentChatId) return t('sandbox.contextMenu.revealFailed');
       try {
         const response = await fetch(`${getApiBase()}/system/open_explorer`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ path, chat_id: currentChatId }),
         });
-        if (!response.ok) {
-          const data = await response.json().catch(() => null);
-          setError(data?.error || t('sandbox.contextMenu.revealFailed'));
-        }
+        if (response.ok) return null;
+        const data = await response.json().catch(() => null);
+        return data?.error || t('sandbox.contextMenu.revealFailed');
       } catch {
-        setError(t('sandbox.contextMenu.revealFailed'));
+        return t('sandbox.contextMenu.revealFailed');
       }
     },
     [currentChatId, t]
   );
+
+  const openPathInExplorer = useCallback(
+    async (path: string) => {
+      const failure = await revealPath(path);
+      if (failure) setError(failure);
+    },
+    [revealPath]
+  );
+
+  const [previewAction, setPreviewAction] = useState<{
+    kind: 'copied' | 'failed';
+    message?: string;
+  } | null>(null);
+  useEffect(() => {
+    setPreviewAction(null);
+  }, [selectedFile]);
+  useEffect(() => {
+    if (previewAction?.kind !== 'copied') return;
+    const timer = window.setTimeout(() => setPreviewAction(null), 1500);
+    return () => window.clearTimeout(timer);
+  }, [previewAction]);
+
+  const revealPreviewedFile = async (path: string): Promise<void> => {
+    const failure = await revealPath(path);
+    setPreviewAction(failure ? { kind: 'failed', message: failure } : null);
+  };
+
+  /** Copies where the file lives on this computer, not its path inside the workspace. */
+  const copyFileLocation = async (path: string): Promise<void> => {
+    const failed = { kind: 'failed' as const, message: t('sandbox.contextMenu.copyFailed') };
+    try {
+      const response = await fetch(`${getApiBase()}/system/host_path`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path, chat_id: currentChatId }),
+      });
+      const data = response.ok ? await response.json() : null;
+      if (!data?.path || !navigator.clipboard) {
+        setPreviewAction(failed);
+        return;
+      }
+      await navigator.clipboard.writeText(data.path);
+      setPreviewAction({ kind: 'copied' });
+    } catch {
+      setPreviewAction(failed);
+    }
+  };
 
   const openRootInExplorer = () => openPathInExplorer(activeRoot);
 
@@ -411,9 +460,12 @@ export const SandboxFiles: React.FC<SandboxFilesProps> = ({
       event.preventDefault();
       event.stopPropagation();
       const rect = event.currentTarget.getBoundingClientRect();
-      const x = 'clientX' in event && event.clientX > 0 ? event.clientX : rect.left + 16;
-      const y = 'clientY' in event && event.clientY > 0 ? event.clientY : rect.bottom;
-      setContextMenu({ ...item, x, y });
+      const point = 'clientX' in event ? freshPointerPoint(event) : null;
+      setContextMenu({
+        ...item,
+        x: point?.x ?? rect.left + 16,
+        y: point?.y ?? rect.bottom,
+      });
     },
     []
   );
@@ -467,9 +519,12 @@ export const SandboxFiles: React.FC<SandboxFilesProps> = ({
     [activeRoot, config.sandbox_volumes, currentChatId, fetchDirContents, t]
   );
 
-  const handleUploadClick = () => {
+  const openUpload = (directory: string) => {
+    uploadDirectoryRef.current = directory;
     document.getElementById('sandbox-file-upload')?.click();
   };
+
+  const handleUploadClick = () => openUpload(activeRoot);
 
   const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
@@ -480,7 +535,8 @@ export const SandboxFiles: React.FC<SandboxFilesProps> = ({
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
         const cleanName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
-        const targetPath = `${activeRoot}/${cleanName}`;
+        const directory = uploadDirectoryRef.current.replace(/\/$/, '');
+        const targetPath = `${directory}/${cleanName}`;
         const text = await file.text();
         const base = getApiBase();
         const volumesParam = JSON.stringify(config.sandbox_volumes || []);
@@ -497,7 +553,10 @@ export const SandboxFiles: React.FC<SandboxFilesProps> = ({
           throw new Error(data.error || `Failed to upload ${file.name}`);
         }
       }
-      fetchDirContents(activeRoot);
+      fetchDirContents(uploadDirectoryRef.current);
+      if (uploadDirectoryRef.current !== activeRoot) {
+        setExpandedDirs((previous) => new Set(previous).add(uploadDirectoryRef.current));
+      }
     } catch (err) {
       setError(String(err));
     } finally {
@@ -522,7 +581,7 @@ export const SandboxFiles: React.FC<SandboxFilesProps> = ({
   }
 
   // File Content View
-  if (selectedFile) {
+  if (selectedFile && !isImageFile(selectedFile)) {
     const filename = selectedFile.split('/').pop() || selectedFile;
 
     return (
@@ -548,6 +607,28 @@ export const SandboxFiles: React.FC<SandboxFilesProps> = ({
               {filename}
             </span>
           </div>
+          <BrutalIconButton
+            type="button"
+            onClick={() => void revealPreviewedFile(selectedFile)}
+            label={t('sandbox.contextMenu.reveal')}
+            className="shrink-0 self-start"
+          >
+            <FolderOpenIcon className="h-4 w-4 stroke-2" />
+          </BrutalIconButton>
+          <BrutalIconButton
+            type="button"
+            onClick={() => void copyFileLocation(selectedFile)}
+            label={t(
+              previewAction?.kind === 'copied' ? 'sandbox.locationCopied' : 'sandbox.copyLocation'
+            )}
+            className="shrink-0 self-start"
+          >
+            {previewAction?.kind === 'copied' ? (
+              <CheckIcon className="h-4 w-4 stroke-2" />
+            ) : (
+              <ClipboardDocumentIcon className="h-4 w-4 stroke-2" />
+            )}
+          </BrutalIconButton>
           {(onMaximize || sidebarExpansion) && (
             <FullscreenButton
               expanded={sidebarExpansion?.expanded}
@@ -564,6 +645,11 @@ export const SandboxFiles: React.FC<SandboxFilesProps> = ({
           )}
         </div>
 
+        {previewAction?.kind === 'failed' && (
+          <p role="alert" className="shrink-0 px-3 py-1.5 text-xs text-red-700 dark:text-red-400">
+            {previewAction.message}
+          </p>
+        )}
         <div
           className={
             sidebarExpansion?.expanded
@@ -602,8 +688,28 @@ export const SandboxFiles: React.FC<SandboxFilesProps> = ({
   const isRootLoading = loadingDirs.has(activeRoot);
   const totalItems = Array.from(dirContents.values()).reduce((acc, items) => acc + items.length, 0);
 
+  const imageUrl = (path: string): string =>
+    `${getApiBase()}/sandbox/serve?${getSandboxParams(currentChatId, path, config.sandbox_volumes)}`;
+  const imageDirectory = selectedFile?.slice(0, selectedFile.lastIndexOf('/')) || activeRoot;
+  const imagePaths = (dirContents.get(imageDirectory) || [])
+    .filter((item) => !item.is_dir && isImageFile(item.name))
+    .map((item) => `${imageDirectory}/${item.name}`);
+  if (selectedFile && isImageFile(selectedFile) && !imagePaths.includes(selectedFile)) {
+    imagePaths.push(selectedFile);
+  }
+  const imageUrls = imagePaths.map(imageUrl);
+
   return (
     <div className="flex flex-col h-full bg-white dark:bg-zinc-900">
+      <ImageViewer
+        src={selectedFile && isImageFile(selectedFile) ? imageUrl(selectedFile) : null}
+        images={imageUrls}
+        onNavigate={(src) => {
+          const index = imageUrls.indexOf(src);
+          if (index >= 0) setSelectedFile(imagePaths[index]);
+        }}
+        onClose={handleBack}
+      />
       {/* Toolbar */}
       <div
         className={
@@ -716,6 +822,38 @@ export const SandboxFiles: React.FC<SandboxFilesProps> = ({
               setError(t('sandbox.contextMenu.copyFailed'));
             });
           }}
+          onDownload={
+            fileContextExtras({
+              isDirectory: contextMenu.isDir,
+              web: isWeb(),
+              canMutate: !isMountsRoot,
+            }).download
+              ? () => {
+                  try {
+                    const filename = contextMenu.name || 'download';
+                    const href = `${getApiBase()}/sandbox/serve?${getSandboxParams(currentChatId, contextMenu.path, config.sandbox_volumes)}`;
+                    const anchor = document.createElement('a');
+                    anchor.href = href;
+                    anchor.download = filename;
+                    anchor.rel = 'noopener';
+                    document.body.appendChild(anchor);
+                    anchor.click();
+                    anchor.remove();
+                  } catch {
+                    setError(t('sandbox.contextMenu.downloadFailed'));
+                  }
+                }
+              : undefined
+          }
+          onUpload={
+            fileContextExtras({
+              isDirectory: contextMenu.isDir,
+              web: isWeb(),
+              canMutate: !isMountsRoot,
+            }).upload
+              ? () => openUpload(contextMenu.path)
+              : undefined
+          }
           onDelete={() => handleDeletePath(contextMenu.path, contextMenu.name, contextMenu.isDir)}
           onClose={() => setContextMenu(null)}
         />

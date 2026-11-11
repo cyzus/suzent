@@ -37,9 +37,11 @@ import {
   groupMentionSuggestions,
   type MentionCategory,
 } from '../lib/mentionGroups';
+import { useComposerEditorMaxHeight } from '../lib/composerHeight';
 import { isImeComposing } from '../lib/ime';
 import type { VoiceSession } from '../hooks/useVoiceSession';
 import { VoiceBar } from './chat/VoiceBar';
+import { StreamingPeekButton } from './chat/StreamingPeekButton';
 
 interface ChatInputPanelProps {
   input: string;
@@ -73,6 +75,9 @@ interface ChatInputPanelProps {
   inputSuggestion?: string | null;
   /** Realtime voice session, owned by ChatWindow so it outlives view swaps. */
   voice: VoiceSession;
+  showScrollToBottom?: boolean;
+  scrollContainerRef?: React.RefObject<HTMLDivElement | null>;
+  onScrollToBottom?: () => void;
 }
 
 export interface FileMentionSelection {
@@ -152,8 +157,18 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
   onFileMentionSelected,
   inputSuggestion = null,
   voice,
+  showScrollToBottom = false,
+  scrollContainerRef,
+  onScrollToBottom,
 }) => {
   const isFocal = currentChatId === FOCAL_CHAT_ID;
+  // The mic is open for the wake phrase: shown on whichever primary action is up.
+  const wakeDot = voice.wakeListening ? (
+    <span
+      data-testid="wake-listening"
+      className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full bg-emerald-500 ring-2 ring-white dark:ring-zinc-900"
+    />
+  ) : null;
   // --- Volume Mounting Logic ---
   const { t } = useI18n();
   const queueKey = React.useMemo(
@@ -185,9 +200,10 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
     null
   );
   const editorRef = React.useRef<MentionTextAreaHandle | null>(null);
+  const editorMaxHeight = useComposerEditorMaxHeight();
   const isComposingRef = React.useRef(false);
   const mentionActive = mentionQuery !== null;
-  const suggestions = useSlashCommands(input);
+  const suggestions = useSlashCommands(input, currentChatId);
   const ghostOverlayRef = React.useRef<HTMLDivElement | null>(null);
   const [dismissedSuggestion, setDismissedSuggestion] = React.useState<string | null>(null);
   // Every new turn clears the suggestion before predicting again, so an Esc
@@ -201,7 +217,7 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
     inputSuggestion !== dismissedSuggestion
       ? ghostRemainder(input, inputSuggestion)
       : null;
-  const permissionMode = normalizePermissionMode(config.permission_mode);
+  const permissionMode = normalizePermissionMode(config.permission_mode ?? 'auto');
   const thinkingEffort = normalizeThinkingEffort(config.thinking);
   const isAcpRuntime = config.runtime === 'acp' || Boolean(config.acp_agent_id);
   const acpAgents = useAcpAgents();
@@ -267,6 +283,12 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
   React.useEffect(() => {
     setSelectedSuggestion(0);
   }, [suggestions.length]);
+  const suggestionListRef = React.useRef<HTMLDivElement>(null);
+  React.useEffect(() => {
+    suggestionListRef.current
+      ?.querySelector('[data-selected="true"]')
+      ?.scrollIntoView({ block: 'nearest' });
+  }, [selectedSuggestion]);
   React.useEffect(() => {
     setSelectedMentionSuggestion(0);
   }, [visibleMentions]);
@@ -317,7 +339,7 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
   const changePermissionMode = React.useCallback(
     (nextMode: PermissionMode) => {
       if (isSavingPermissionMode || nextMode === permissionMode) return;
-      if (nextMode === 'auto' || nextMode === 'full_access') {
+      if (nextMode === 'full_access') {
         setPendingPermissionMode(nextMode);
         return;
       }
@@ -443,7 +465,19 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
   };
 
   return (
-    <div className="chat-composer min-w-0 flex flex-col gap-1">
+    <div className="chat-composer min-w-0 flex flex-col gap-1 relative">
+      {onScrollToBottom && (
+        <StreamingPeekButton
+          visible={
+            showScrollToBottom &&
+            streamingForCurrentChat &&
+            !mentionActive &&
+            suggestions.length === 0
+          }
+          scrollContainerRef={scrollContainerRef}
+          onClick={onScrollToBottom}
+        />
+      )}
       <form
         onSubmit={(e) => {
           e.preventDefault();
@@ -534,7 +568,10 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
 
         {/* Slash command suggestions */}
         {suggestions.length > 0 && (
-          <div className="absolute left-2 right-2 bottom-[calc(100%-0.5rem)] border-2 border-brutal-black bg-white dark:bg-zinc-800 shadow-brutal-sm overflow-hidden z-30">
+          <div
+            ref={suggestionListRef}
+            className="absolute -left-px -right-px bottom-[calc(100%+0.5rem)] border-2 border-brutal-black dark:border-zinc-500 bg-white dark:bg-zinc-800 max-h-72 overflow-y-auto z-30"
+          >
             {suggestions.map((cmd, i) => {
               const showHeader = i === 0 || suggestions[i - 1].category !== cmd.category;
               return (
@@ -545,7 +582,8 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
                     </div>
                   )}
                   <div
-                    className={`flex items-baseline gap-3 px-3 py-2 text-sm ${!input.includes(' ') || cmd.isOption ? 'cursor-pointer ' : ''}${i === selectedSuggestion && (!input.includes(' ') || cmd.isOption) ? 'bg-brutal-yellow dark:bg-yellow-600 text-brutal-black' : 'hover:bg-neutral-100 dark:hover:bg-zinc-700 text-brutal-black dark:text-white'}`}
+                    data-selected={i === selectedSuggestion}
+                    className={`group flex items-baseline gap-3 px-3 py-2 text-sm ${!input.includes(' ') || cmd.isOption ? 'cursor-pointer ' : ''}${i === selectedSuggestion && (!input.includes(' ') || cmd.isOption) ? 'is-active bg-brutal-yellow dark:bg-yellow-600 text-brutal-black' : 'hover:bg-neutral-100 dark:hover:bg-zinc-700 text-brutal-black dark:text-white'}`}
                     onMouseDown={(e) => {
                       e.preventDefault();
                       if (!input.includes(' ') || cmd.isOption) {
@@ -558,10 +596,10 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
                     }}
                   >
                     <span className="font-bold font-mono shrink-0">{cmd.aliases[0]}</span>
-                    <span className="text-neutral-500 dark:text-neutral-400 truncate">
+                    <span className="text-neutral-500 dark:text-neutral-400 group-[.is-active]:text-brutal-black/70 truncate">
                       {cmd.description}
                     </span>
-                    <span className="ml-auto font-mono text-xs text-neutral-400 dark:text-neutral-500 shrink-0">
+                    <span className="ml-auto font-mono text-xs text-neutral-400 dark:text-neutral-500 group-[.is-active]:text-brutal-black/60 shrink-0">
                       {cmd.usage}
                     </span>
                   </div>
@@ -712,7 +750,8 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
               }
             }}
             disabled={!configReady}
-            className={`mention-editor block w-full overflow-y-auto min-h-[40px] max-h-[120px] bg-transparent focus:outline-none caret-brutal-black dark:caret-white border-none px-2 py-1.5 whitespace-pre-wrap break-words selection:bg-brutal-blue/30 text-left text-brutal-black dark:text-white ${INPUT_TEXT_METRIC_CLASS}`}
+            style={{ maxHeight: editorMaxHeight }}
+            className={`mention-editor block w-full overflow-y-auto min-h-[40px] bg-transparent focus:outline-none caret-brutal-black dark:caret-white border-none px-2 py-1.5 whitespace-pre-wrap break-words selection:bg-brutal-blue/30 text-left text-brutal-black dark:text-white ${INPUT_TEXT_METRIC_CLASS}`}
             placeholder={
               ghost
                 ? ''
@@ -907,36 +946,6 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
           >
             <PaperClipIcon className="w-5 h-5" />
           </button>
-          {/* Starts a call only. While one is live, the voice bar's ✕ is the
-              single way to end it; a second "stop" here sat next to the
-              agent's stop button and the two were easy to confuse. */}
-          {!voice.active && (
-            <button
-              type="button"
-              onClick={() => voice.start(currentChatId ?? null)}
-              className="w-9 h-9 flex items-center justify-center bg-transparent text-brutal-black dark:text-white hover:bg-neutral-200 dark:hover:bg-zinc-700 hover:text-brutal-blue transition-colors disabled:opacity-40 shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-brutal-blue"
-              title={
-                !voice.supported
-                  ? t('voice.errors.micUnavailable')
-                  : voice.wakeListening
-                    ? t('voice.wake.listening')
-                    : t('voice.micButton')
-              }
-              aria-label={voice.supported ? t('voice.micButton') : t('voice.errors.micUnavailable')}
-              disabled={!configReady || !voice.supported}
-            >
-              <span className="relative">
-                <MicrophoneIcon className="w-5 h-5" />
-                {/* The mic is open for the wake phrase: always shown while it is. */}
-                {voice.wakeListening && (
-                  <span
-                    data-testid="wake-listening"
-                    className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-emerald-500 ring-1 ring-white dark:ring-zinc-900"
-                  />
-                )}
-              </span>
-            </button>
-          )}
 
           {/* Spacer */}
           <div className="flex-1" />
@@ -957,16 +966,18 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
                 variant="ghost"
                 className="h-9 text-sm max-w-[220px]"
                 buttonClassName="!h-9 !gap-1.5 !font-bold [&>svg]:!w-3.5 [&>svg]:!h-3.5 [&>svg]:shrink-0 [&>svg]:stroke-2 [&>svg]:text-neutral-400 dark:[&>svg]:text-neutral-500 !px-2 !py-1.5 hover:!bg-neutral-200 dark:hover:!bg-zinc-600 focus-visible:!ring-2 focus-visible:!ring-brutal-blue"
-                dropdownClassName="min-w-[240px] right-0"
+                dropdownClassName="min-w-[min(240px,calc(100vw-16px))]"
               />
             </div>
           )}
 
-          {/* Redirect button (shown when streaming and user has typed) */}
+          {/* Action button: redirect (streaming + text) → stop (streaming) →
+              send (has text or active voice call) → voice (empty input).
+              While a call is live, the voice bar's ✕ is the single way to end it. */}
           {stopStreaming && streamingForCurrentChat && input.trim() ? (
             <button
               type="submit"
-              className="w-9 h-9 inline-flex items-center justify-center border-2 border-brutal-black duration-100 p-0 text-sm font-bold disabled:opacity-50 disabled:cursor-not-allowed uppercase shrink-0 bg-brutal-yellow hover:bg-yellow-300 text-brutal-black focus:outline-none focus-visible:ring-2 focus-visible:ring-brutal-blue"
+              className="w-9 h-9 inline-flex items-center justify-center border-2 border-brutal-black duration-100 p-0 text-sm font-bold disabled:opacity-50 disabled:cursor-not-allowed uppercase shrink-0 bg-brutal-yellow hover:brightness-95 text-brutal-black focus:outline-none focus-visible:ring-2 focus-visible:ring-brutal-blue"
               disabled={!configReady}
               title={t('chatInput.redirectAgent')}
               aria-label={t('chatInput.redirectAgent')}
@@ -988,15 +999,34 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
             >
               <StopIcon className="w-5 h-5 fill-current" aria-hidden="true" />
             </button>
-          ) : (
+          ) : input.trim() || voice.active ? (
             <button
               type="submit"
-              className="w-9 h-9 inline-flex items-center justify-center border-2 border-brutal-black duration-100 p-0 text-sm font-bold disabled:opacity-50 disabled:cursor-not-allowed text-white uppercase shrink-0 bg-brutal-blue hover:bg-blue-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-brutal-blue"
-              disabled={streamingForCurrentChat || !configReady}
+              className="relative w-9 h-9 inline-flex items-center justify-center border-2 border-brutal-black duration-100 p-0 text-sm font-bold disabled:opacity-50 disabled:cursor-not-allowed text-white uppercase shrink-0 bg-brutal-blue hover:bg-blue-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-brutal-blue"
+              disabled={streamingForCurrentChat || !configReady || !input.trim()}
               title={t('chatInput.sendMessage')}
               aria-label={t('chatInput.sendMessage')}
             >
               <ArrowUpIcon className="w-5 h-5 stroke-[2.5]" aria-hidden="true" />
+              {wakeDot}
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => voice.start(currentChatId ?? null)}
+              className="relative w-9 h-9 inline-flex items-center justify-center border-2 border-brutal-black duration-100 p-0 text-sm font-bold disabled:opacity-50 disabled:cursor-not-allowed text-white uppercase shrink-0 bg-brutal-blue hover:bg-blue-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-brutal-blue"
+              disabled={streamingForCurrentChat || !configReady || !voice.supported}
+              title={
+                !voice.supported
+                  ? t('voice.errors.micUnavailable')
+                  : voice.wakeListening
+                    ? t('voice.wake.listening')
+                    : t('voice.micButton')
+              }
+              aria-label={voice.supported ? t('voice.micButton') : t('voice.errors.micUnavailable')}
+            >
+              <MicrophoneIcon className="w-5 h-5 stroke-2" aria-hidden="true" />
+              {wakeDot}
             </button>
           )}
         </div>
@@ -1013,6 +1043,7 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
               options={PERMISSION_MODES.map((option) => ({
                 value: option,
                 label: t(`chatWindow.permissionModeInputLabels.${option}`),
+                hint: t(`chatWindow.permissionModeDescriptions.${option}`),
               }))}
               dropUp={true}
               hideChevron={true}
@@ -1020,7 +1051,7 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
               disabled={!configReady || streamingForCurrentChat || isSavingPermissionMode}
               className="inline-block w-auto"
               buttonClassName={FOOTER_SELECT_BUTTON_CLASS}
-              dropdownClassName="min-w-[220px] font-mono text-[10px]"
+              dropdownClassName="!w-[196px] border-2 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] [&_button]:px-2.5 [&_button]:py-1 [&_button]:text-xs [&_button]:font-semibold [&_button]:normal-case [&_button]:border-b [&_button:last-child]:border-b-0"
             />
           </div>
         )}
@@ -1038,17 +1069,9 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
       </div>
 
       <BrutalDialog
-        open={pendingPermissionMode !== null}
-        title={
-          pendingPermissionMode === 'full_access'
-            ? t('chatWindow.fullAccessModeDialogTitle')
-            : t('chatWindow.autoModeDialogTitle')
-        }
-        message={
-          pendingPermissionMode === 'full_access'
-            ? t('chatWindow.fullAccessModeConfirmation')
-            : t('chatWindow.autoModeConfirmation')
-        }
+        open={pendingPermissionMode === 'full_access'}
+        title={t('chatWindow.fullAccessModeDialogTitle')}
+        message={t('chatWindow.fullAccessModeConfirmation')}
         onClose={() => setPendingPermissionMode(null)}
         actions={[
           {
@@ -1056,10 +1079,7 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
             tone: 'default',
           },
           {
-            label:
-              pendingPermissionMode === 'full_access'
-                ? t('chatWindow.fullAccessModeEnable')
-                : t('chatWindow.autoModeEnable'),
+            label: t('chatWindow.fullAccessModeEnable'),
             tone: 'primary',
             onClick: () => {
               if (pendingPermissionMode) {

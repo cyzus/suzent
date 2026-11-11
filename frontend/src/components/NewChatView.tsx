@@ -214,7 +214,7 @@ const ProjectPicker: React.FC = () => {
               />
               <button
                 type="submit"
-                className="px-2 py-1 text-[10px] font-extrabold uppercase border-2 border-brutal-black bg-brutal-yellow hover:bg-yellow-300 text-brutal-black shrink-0"
+                className="px-2 py-1 text-[10px] font-extrabold uppercase border-2 border-brutal-black bg-brutal-yellow hover:brightness-95 text-brutal-black shrink-0"
               >
                 ✓
               </button>

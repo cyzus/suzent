@@ -60,6 +60,8 @@ public struct Chat: Decodable, Identifiable, Sendable {
     public var platform: String?
     public var parentChatId: String?
     public var regent: RegentStatus?
+    /// Finished turns nobody has viewed yet; older desktops omit it.
+    public var unreadCount: Int?
     public var isRegent: Bool { platform == "focal" }
 
     public init(id: String, title: String) {
@@ -81,11 +83,56 @@ public struct ScheduledTask: Decodable, Identifiable, Sendable {
     public let lastRunFinishedAt: String?
 }
 
+/// A conversation's plan and context headline, as the desktop sidebar overview shows them.
+public struct ChatOverview: Decodable, Sendable, Equatable {
+    public struct Goal: Decodable, Sendable, Equatable {
+        public let objective: String
+        public let status: String
+        public let turnsElapsed: Int?
+        public let maxTurns: Int?
+    }
+
+    public struct PlanTask: Decodable, Identifiable, Sendable, Equatable {
+        public let id: String
+        public let title: String
+        public let activeForm: String?
+        public let status: String
+
+        public var isDone: Bool { status == "completed" || status == "cancelled" }
+    }
+
+    public struct Context: Decodable, Sendable, Equatable {
+        public struct Category: Decodable, Identifiable, Sendable, Equatable {
+            public let id: String
+            public let tokens: Int
+        }
+
+        public let usedTokens: Int?
+        public let limit: Int?
+        public let percent: Double?
+        public let reserveTokens: Int?
+        public let categories: [Category]
+    }
+
+    public let goal: Goal?
+    public let tasks: [PlanTask]
+    public let context: Context
+
+    public var completedCount: Int { tasks.filter { $0.status == "completed" }.count }
+    /// The step the agent is on now, which the plan summary names.
+    public var currentTask: PlanTask? { tasks.first { $0.status == "in_progress" } }
+}
+
 public struct Project: Decodable, Identifiable, Sendable {
     public let id: String
     public let name: String
     public let chatCount: Int?
-    public init(id: String, name: String, chatCount: Int? = nil) { self.id = id; self.name = name; self.chatCount = chatCount }
+    /// Cover the whole project, so a collapsed one still shows activity; older desktops omit them.
+    public let running: Bool?
+    public let unread: Bool?
+    public init(id: String, name: String, chatCount: Int? = nil, running: Bool? = nil, unread: Bool? = nil) {
+        self.id = id; self.name = name; self.chatCount = chatCount; self.running = running; self.unread = unread
+    }
 }
 
 public struct FileAttachment: Decodable, Sendable, Equatable {
@@ -119,13 +166,13 @@ public struct ChatMessage: Decodable, Sendable, Equatable {
     public var runActiveSeconds: Double?
     public var lastActivityAt: String?
 
-    public init(role: String, content: String, files: [FileAttachment] = []) {
+    public init(role: String, content: String, files: [FileAttachment] = [], parts: [MessagePart] = [], model: String? = nil) {
         self.role = role
         self.content = content
-        self.parts = []
+        self.parts = parts
         self.name = nil
         self.toolCallId = nil
-        self.model = nil
+        self.model = model
         self.timestamp = nil
         self.files = files
     }

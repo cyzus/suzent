@@ -1,0 +1,5 @@
+{
+  "products": {"desktop": "none", "mobile": "patch"},
+  "summary": "Regent's chat on the phone no longer repeats the logo and name already shown in the header.",
+  "reason": "The desktop app is unchanged. The frontend edit is only a regression test that a desktop Regent message still shows its name."
+}

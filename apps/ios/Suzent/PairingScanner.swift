@@ -12,7 +12,7 @@ struct PairingScanner: View {
     @State private var failed = false
     @State private var torch = false
     @State private var paste = false
-    private var found: Bool { model.pairingInvitation != nil || model.pairingCode != nil }
+    private var found: Bool { model.pairingInvitation != nil || model.awaitingDesktop }
     private var scanning: Bool { !found && !model.busy && model.error == nil && !paste }
     private func reset() { model.cancelPairing(); model.error = nil }
     private func setTorch(_ enabled: Bool) {
@@ -58,7 +58,7 @@ struct PairingScanner: View {
                                     Spacer()
                                     Button("Scan again", action: reset).font(.footnote.bold())
                                 }.padding(16).background(Color(uiColor: .systemBackground))
-                                    .overlay(alignment: .leading) { Rectangle().fill(Color(presentation: PresentationTokens.yellow)).frame(width: 3) }
+                                    .overlay(alignment: .leading) { Rectangle().fill(Color.suzentYellow).frame(width: 3) }
                                     .transition(.offset(y: 12).combined(with: .opacity))
                             } else if model.busy {
                                 VStack(spacing: 12) {
@@ -70,7 +70,7 @@ struct PairingScanner: View {
                             }
                             HStack(spacing: 12) {
                                 Button { setTorch(!torch) } label: { Image(systemName: torch ? "flashlight.on.fill" : "flashlight.off.fill").frame(width: 44, height: 44) }
-                                    .foregroundStyle(torch ? .black : .white).background(torch ? Color(presentation: PresentationTokens.yellow) : .black.opacity(0.6))
+                                    .foregroundStyle(torch ? .black : .white).background(torch ? Color.suzentYellow : .black.opacity(0.6))
                                     .accessibilityLabel("Flashlight").disabled(allowed != true || failed)
                                 Button("Paste an invitation instead") { paste = true }.buttonStyle(SuzentButtonStyle(compact: true))
                             }
@@ -103,7 +103,7 @@ struct PairingScanner: View {
                         Text(model.pairingInvitation?.origin ?? "").font(.caption.monospaced()).foregroundStyle(.secondary)
                     }
                 }
-                if let code = model.pairingCode { Text("Waiting for desktop approval"); Text(code).font(.title.monospaced().bold()) }
+                if model.awaitingDesktop { Text("Waiting for desktop approval").font(.headline); Text("Click Allow on your computer to finish connecting.").font(.footnote).foregroundStyle(.secondary) }
                 else if let invitation = model.pairingInvitation {
                     if let preview = model.pairingPreview { DisclosureGroup("Desktop access") { PairingPermissionsView(permissions: preview.permissions) } }
                     Text(invitation.phoneConfirmation ? String(localized: "Confirm to connect with the permissions shown above. You do not need to approve again on desktop.") : String(localized: "Your desktop will ask you to approve this phone. Node access stays separate.")).font(.footnote).foregroundStyle(.secondary)

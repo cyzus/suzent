@@ -8,10 +8,12 @@ import SuzentCore
     var pairingInvitation: PairingInvitation?
     var pairingPreview: PairingPreview?
     var pairingStatus: String?
-    var pairingCode: String?
+    var awaitingDesktop = false
     var device: ClientDevice?
     var canReconnect = false
     var reconnecting = false
+    var reconnectStage = 0
+    var reconnectStatus: String?
     @ObservationIgnored private var reconnectTask: Task<Void, Never>?
     private var pairingTask: Task<Void, Never>?
     var chatPages: [ChatPageQuery: ChatPage] = [:]
@@ -75,17 +77,19 @@ import SuzentCore
             let updates = try await client.chatStatuses(Array(requested))
             guard current == generation, revision == navigationRevision else { return }
             chats = chats.filter { !requested.contains($0.id) } + updates
+            // Collapsed projects have no loaded rows, so their running and unread marks come from metadata.
+            let metadata = try await client.navigationMetadata()
+            guard current == generation, revision == navigationRevision else { return }
+            projects = metadata.projects
+            if let regent = metadata.regent { mergeNavigationChats([regent]) }
             if Date().timeIntervalSince(lastNavigationRefresh) >= 60 {
                 let recentIDs = chatPages[ChatPageQuery()]?.chats.map(\.id)
                 let pinnedIDs = chatPages[ChatPageQuery("pinned")]?.chats.map(\.id)
-                let metadata = try await client.navigationMetadata()
                 let recent = chatPages[ChatPageQuery()].map { $0.chats.count <= 30 } == true
                     ? try await client.chatPage(ChatPageQuery(), offset: 0, limit: 30) : nil
                 let pinned = (chatPages[ChatPageQuery("pinned")]?.chats.count ?? 0) <= 30
                     ? try await client.chatPage(ChatPageQuery("pinned"), offset: 0, limit: 30) : nil
                 guard current == generation, revision == navigationRevision else { return }
-                projects = metadata.projects
-                if let regent = metadata.regent { mergeNavigationChats([regent]) }
                 if let recent, !loadingPages.contains(ChatPageQuery()), chatPages[ChatPageQuery()]?.chats.map(\.id) == recentIDs {
                     chatPages[ChatPageQuery()] = recent; mergeNavigationChats(recent.chats)
                 }
@@ -103,6 +107,7 @@ import SuzentCore
     var selectedModel: String?
     var sentVersion = 0
     var openedVersion = 0
+    private(set) var openingChatID: String?
     var pinnedVersion = 0
     var pairingVersion = 0
     @ObservationIgnored private var drafts: [String: String] = [:]
@@ -111,6 +116,11 @@ import SuzentCore
     var attachments: [PendingAttachment] = []
     var attachmentsSupported = false
     var voiceSupported = false
+    var overviewSupported = false
+    var surfacesSupported = false
+    var steerSupported = false
+    private(set) var queues = MessageQueues()
+    private var releasing = false
     let voice = VoiceSession()
 
     var voiceUnavailableReason: String? {
@@ -123,6 +133,38 @@ import SuzentCore
             return String(localized: "Enable Create conversations for this phone, or open an existing conversation.")
         }
         return nil
+    }
+
+    /// The plan and context panel reads on demand; nil while unavailable.
+    func overview(_ chatID: String) async -> ChatOverview? {
+        guard overviewSupported, !chatID.isEmpty, let client else { return nil }
+        return try? await client.overview(chatID)
+    }
+
+    @ObservationIgnored private var mediaDownloads: [URL: Task<URL?, Never>] = [:]
+
+    /// A tool's image, video or audio, downloaded once into Caches; nil when it can't be fetched.
+    func mediaFile(_ chatID: String, item: MediaItem) async -> URL? {
+        guard item.isValid, let client else { return nil }
+        // Ids are per desktop path, so each desktop keeps its own folder.
+        let desktop = String((store.activeId ?? "demo").utf8.reduce(UInt64(14_695_981_039_346_656_037)) { ($0 ^ UInt64($1)) &* 1_099_511_628_211 }, radix: 16)
+        guard let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first else { return nil }
+        // The original name, so a shared file arrives as report.pdf rather than an id.
+        let directory = caches.appendingPathComponent("media/\(desktop)/\(item.id)", isDirectory: true)
+        let file = directory.appendingPathComponent(item.safeName)
+        if FileManager.default.fileExists(atPath: file.path) { return file }
+        if let running = mediaDownloads[file] { return await running.value }
+        let task = Task<URL?, Never> {
+            do {
+                try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+                try await client.media(chatID, mediaID: item.id, to: file)
+                return file
+            } catch { return nil }
+        }
+        mediaDownloads[file] = task
+        let result = await task.value
+        mediaDownloads[file] = nil
+        return result
     }
 
     func startVoice() {
@@ -153,6 +195,8 @@ import SuzentCore
     }
     var liveParts: [MessagePart] = []
     var regentVisible = false
+    /// The open conversation is on screen, so its finished replies count as read.
+    var chatVisible = false
     var pendingApprovals: [ApprovalRequest] = []
     var approvalChoices: [String: String] = [:]
     var approvalBusy = false
@@ -176,6 +220,9 @@ import SuzentCore
     private var repairActive = false
     private var connection: Connection? { store.active?.connection }
     private var client: (any MobileClient)?
+    private let connectionUpgrade = ConnectionUpgrade<SuzentClient>()
+    // Previously captured clients may still serve polling requests or the device socket.
+    private var retiredClients: [SuzentClient] = []
     private var streamTask: Task<Void, Never>?
     private var nodeTask: Task<Void, Never>?
     private var socket: (any MobileSocket)?
@@ -227,6 +274,9 @@ import SuzentCore
             canReconnect = false
             device = session.device
             attachmentsSupported = true
+            overviewSupported = true
+            surfacesSupported = true
+            steerSupported = true
             applyNavigation(navigation); scheduledTasks = taskList
             selected = composer
             connected = true
@@ -239,7 +289,7 @@ import SuzentCore
         generation = UUID()
         streamTask?.cancel(); streaming = false; liveParts = []
         pendingApprovals = []; approvalChoices = [:]; approvalBusy = false; drafts = [:]; draft = ""; error = nil
-        discardAttachments()
+        discardAttachments(); discardQueues()
         do {
             try demo.reset()
             selected = try await demo.composer()
@@ -314,7 +364,7 @@ import SuzentCore
         pairingTask = nil
         pairingStatus = nil
         pairingInvitation = nil
-        pairingCode = nil
+        awaitingDesktop = false
         pairingPreview = nil
         busy = false
         generation = UUID()
@@ -337,7 +387,7 @@ import SuzentCore
         let viaRelay = pairingViaRelay
         pairingTask = Task {
             var savedID = target?.id
-            defer { if generation == current { busy = false; pairingCode = nil; pairingStatus = nil } }
+            defer { if generation == current { busy = false; awaitingDesktop = false; pairingStatus = nil } }
             pairingStatus = String(localized: "Sending connection request…")
             do {
                 let backend = try Backend(invitation.origin, allowHTTP: allowsHTTP)
@@ -359,7 +409,7 @@ import SuzentCore
                 let recognized = previous.map { claim.serverProof == pairingRepairProof(token: $0, invitation: invitation, side: "desktop") } ?? false
                 if claim.serverProof != nil && !recognized { throw ClientError.invalidResponse }
                 guard generation == current else { return }
-                if !invitation.phoneConfirmation { pairingCode = String(invitation.pairingId.prefix(6)) }
+                if !invitation.phoneConfirmation { awaitingDesktop = true }
                 pairingStatus = String(localized: "Finishing connection…")
                 while Date().timeIntervalSince1970 < claim.expiresAt {
                     try Task.checkCancellation()
@@ -386,7 +436,7 @@ import SuzentCore
                         if store.activeId == id { origin = saved.origin; canReconnect = true }
                         try await activate(id, saved)
                         repairActive = false
-                        busy = false; pairingCode = nil; pairingStatus = nil
+                        busy = false; awaitingDesktop = false; pairingStatus = nil
                         pairingVersion += 1
                         pairingInvitation = nil
                         return
@@ -407,28 +457,35 @@ import SuzentCore
     /// Builds the session on a separate client and swaps it in only once everything has loaded,
     /// so a failed switch leaves the current desktop untouched.
     private func activate(_ id: String, _ stored: Connection) async throws {
+        connectionUpgrade.cancel()
         var saved = stored
         var throughRelay: RelayRoute?
-        do {
-            var reachable: String?
-            var visited = Set<String>()
-            for origin in [saved.origin] + (saved.origins ?? []) where reachable == nil && visited.insert(origin).inserted {
-                try Task.checkCancellation()
-                let probe = try SuzentClient(backend: try Backend(origin, allowHTTP: allowsHTTP), token: "", probeOnly: true, deviceTrust: saved.tls)
-                defer { probe.close() }
-                do { _ = try await probe.capabilities(); reachable = origin }
-                catch { try Task.checkCancellation() }
+        reconnectStage = 0
+        reconnectStatus = String(localized: "Finding a connection")
+        let trust = saved.tls
+        let relay = saved.relay
+        let allowHTTP = allowsHTTP
+        let route = try await resolveConnectionRoute(
+            origins: [saved.origin] + (saved.origins ?? []), hasRelay: relay != nil
+        ) { route in
+            let probe: SuzentClient
+            switch route {
+            case .direct(let origin):
+                probe = try SuzentClient(backend: try Backend(origin, allowHTTP: allowHTTP), token: "", probeOnly: true, deviceTrust: trust)
+            case .relay:
+                guard let relay else { throw PairingError.unreachable }
+                probe = try SuzentClient(relay: relay, token: "", probeOnly: true)
             }
-            if let reachable { saved.origin = reachable }
-            else if let relay = saved.relay {
-                try Task.checkCancellation()
-                let probe = try SuzentClient(relay: relay, token: "", probeOnly: true)
-                defer { probe.close() }
-                do { _ = try await probe.capabilities(); throughRelay = relay }
-                catch { try Task.checkCancellation(); throw PairingError.unreachable }
-            } else { throw PairingError.unreachable }
+            defer { probe.close() }
+            _ = try await probe.capabilities()
+        }
+        switch route {
+        case .direct(let origin): saved.origin = origin
+        case .relay: throughRelay = relay
         }
         guard saved.clientProtocol == 1 else { throw PairingError.incompatible }
+        reconnectStage = 2
+        reconnectStatus = String(localized: "Verifying connection")
         let candidate: SuzentClient
         if let throughRelay {
             candidate = try SuzentClient(relay: throughRelay, token: saved.hostToken)
@@ -460,6 +517,8 @@ import SuzentCore
             }
             _ = try await candidate.capabilities()
             let session = try await candidate.clientSession()
+            reconnectStage = 3
+            reconnectStatus = String(localized: "Syncing desktop")
             let navigation = try await candidate.initialNavigation()
             let taskList = session.supportsScheduledTasks ? try await candidate.scheduledTasks() : []
             let initialChat = try await candidate.composer()
@@ -476,17 +535,72 @@ import SuzentCore
             store = next
             origin = saved.origin
             canReconnect = true
+            retiredClients.forEach { $0.close() }
+            retiredClients = []
             client?.close()
             client = candidate
             device = session.device
             attachmentsSupported = session.supportsAttachments
             voiceSupported = session.voice == 1
+            overviewSupported = session.supportsChatOverview
+            surfacesSupported = session.supportsSurfaces
+            steerSupported = session.supportsSteer
             applyNavigation(navigation)
             scheduledTasks = taskList
             selected = initialChat
             restoreModel(initialChat)
             connected = true
+            if throughRelay != nil { startDirectUpgrade(id, saved, candidate) }
         } catch { candidate.close(); throw error }
+    }
+
+    private func startDirectUpgrade(_ id: String, _ saved: Connection, _ relayed: SuzentClient) {
+        let allowHTTP = allowsHTTP
+        let deviceID = device?.deviceId
+        connectionUpgrade.start(
+            prepare: {
+                let route = try await resolveConnectionRoute(origins: [saved.origin] + (saved.origins ?? []), hasRelay: false) { route in
+                    guard case .direct(let origin) = route else { throw PairingError.unreachable }
+                    let probe = try SuzentClient(backend: try Backend(origin, allowHTTP: allowHTTP), token: "", probeOnly: true, deviceTrust: saved.tls)
+                    defer { probe.close() }
+                    _ = try await probe.capabilities()
+                }
+                guard case .direct(let origin) = route else { throw PairingError.unreachable }
+                let direct = try SuzentClient(backend: try Backend(origin, allowHTTP: allowHTTP), token: saved.hostToken, deviceTrust: saved.tls)
+                do {
+                    try await withConnectionTimeout(.seconds(5)) {
+                        _ = try await direct.capabilities()
+                        let session = try await direct.clientSession()
+                        guard session.device.deviceId == deviceID else { throw ClientError.invalidResponse }
+                    }
+                    return direct
+                } catch { direct.close(); throw error }
+            },
+            isCurrent: { [weak self] in
+                guard let self else { return false }
+                return foreground && connected && !isDemo && store.activeId == id &&
+                    (client as? SuzentClient) === relayed && connection?.hostToken == saved.hostToken
+            },
+            isIdle: { [weak self] in
+                guard let self else { return false }
+                return !busy && !streaming && !voice.active && !approvalBusy && !stopInFlight && checkingDesktopId == nil
+            },
+            validate: { direct in
+                try await withConnectionTimeout(.seconds(5)) {
+                    let session = try await direct.clientSession()
+                    guard session.device.deviceId == deviceID else { throw ClientError.invalidResponse }
+                }
+            },
+            install: { [weak self] direct in
+                guard let self, var latest = store.desktop(id)?.connection else { throw CancellationError() }
+                latest.origin = direct.backend.url.absoluteString
+                try storeConnection(id, latest)
+                origin = latest.origin
+                retiredClients.append(relayed)
+                client = direct
+            },
+            discard: { $0.close() }
+        )
     }
 
     private func storeConnection(_ id: String, _ connection: Connection) throws {
@@ -522,7 +636,7 @@ import SuzentCore
     /// A switch to another desktop may have cancelled this attempt and taken over; the newer attempt keeps the busy state.
     private func releaseReconnect(_ attempt: Task<Void, Never>) {
         guard reconnectTask == attempt else { return }
-        busy = false; reconnecting = false; reconnectTask = nil
+        busy = false; reconnecting = false; reconnectStatus = nil; reconnectStage = 0; reconnectTask = nil
     }
 
     /// Probes the target with the reconnect timeouts and keeps the current desktop if it cannot be reached.
@@ -599,6 +713,9 @@ import SuzentCore
             device = session.device
             attachmentsSupported = session.supportsAttachments
             voiceSupported = session.voice == 1
+            overviewSupported = session.supportsChatOverview
+            surfacesSupported = session.supportsSurfaces
+            steerSupported = session.supportsSteer
             scheduledTasks = taskList
             if !isDemo, let id = store.activeId, let name = session.desktopName, store.active?.name != name {
                 var next = store
@@ -609,6 +726,7 @@ import SuzentCore
                 let chat = try await client.chat(id)
                 guard generation == current, selected?.id == id, !streaming else { return }
                 selected = chat
+                if chatVisible, foreground { await clearUnread(id, client: client) }
                 if chat.isRegent {
                     if regentVisible && (chat.regent?.unread ?? 0) > 0 { try await client.markRead(id) }
                     if current == generation && selected?.id == id && chat.isRunning == true && liveParts.isEmpty { observe(id, client: client) }
@@ -627,6 +745,8 @@ import SuzentCore
             guard generation == current else { return }
             if action == "delete" {
                 drafts.removeValue(forKey: chat.id)
+                queues.of(chat.id).flatMap(\.attachments).forEach { try? FileManager.default.removeItem(at: $0.url) }
+                queues.clear(chat.id)
                 chats.removeAll { $0.id == chat.id }
                 if selected?.id == chat.id {
                     streamTask?.cancel()
@@ -657,16 +777,18 @@ import SuzentCore
         streaming = false
         pendingApprovals = []
         if chat.id != selected?.id { discardAttachments() }
-        selected = chat
+        if selected?.id != chat.id { selected = chat }
+        openingChatID = chat.id
         selectedModel = UserDefaults.standard.string(forKey: "suzent.chatModel.\(origin).\(chat.id)")
         draft = drafts[chat.id] ?? ""
         liveParts = []
         let current = generation
+        defer { if current == generation { openingChatID = nil } }
         do {
             let saved = try await client.chat(chat.id)
             guard current == generation, selected?.id == chat.id else { return }
             selected = saved
-            if saved.isRegent { try await client.markRead(saved.id) }
+            if saved.isRegent { try await client.markRead(saved.id) } else { await clearUnread(saved.id, client: client) }
             guard current == generation, selected?.id == saved.id else { return }
             restoreModel(saved)
             openedVersion += 1
@@ -757,17 +879,145 @@ import SuzentCore
         attachments = []
     }
 
+    private func discardQueues() {
+        queues.attachments.forEach { try? FileManager.default.removeItem(at: $0.url) }
+        queues = MessageQueues()
+    }
+
     func send() async {
-        guard let client, device?.permissions.send == true, var id = selected?.id, !busy, !streaming else { return }
+        _ = await submit(draft.trimmingCharacters(in: .whitespacesAndNewlines), outgoing: attachments, fromDraft: true)
+    }
+
+    var queued: [QueuedMessage] { queues.of(selected?.id) }
+    /// Whether typed text can redirect the running turn here, rather than only wait in the queue.
+    var redirectSupported: Bool { steerSupported && device?.permissions.stop == true }
+
+    /// Holds the composer's message until this conversation's running turn ends.
+    func queue() {
+        guard let id = selected?.id, !id.isEmpty, !busy, device?.permissions.send == true else { return }
         let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
-        let outgoing = attachments
-        guard !text.isEmpty || !outgoing.isEmpty else { return }
+        guard !text.isEmpty || !attachments.isEmpty else { return }
+        queues.add(QueuedMessage(text: text, attachments: attachments), to: id)
+        attachments = []
+        draft = ""; drafts[id] = nil
+    }
+
+    func removeQueued(_ item: QueuedMessage) {
+        guard let id = selected?.id else { return }
+        item.attachments.forEach { try? FileManager.default.removeItem(at: $0.url) }
+        queues.remove(item.id, from: id)
+    }
+
+    func clearQueued() {
+        guard let id = selected?.id else { return }
+        queued.flatMap(\.attachments).forEach { try? FileManager.default.removeItem(at: $0.url) }
+        queues.clear(id)
+    }
+
+    /// Redirects the running turn with the composer's text, like Enter mid-turn on desktop; attachments stay put.
+    func redirect() async {
+        _ = await steer(draft.trimmingCharacters(in: .whitespacesAndNewlines), fromDraft: true)
+    }
+
+    /// Pulls one message out of line and redirects with it now; its attachments go back to the composer.
+    func redirectQueued(_ item: QueuedMessage) async {
+        guard let id = selected?.id, !busy, !item.text.isEmpty, queued.contains(item) else { return }
+        // Its attachments must fit beside the composer's, or one set would be dropped.
+        guard item.attachments.count + attachments.count <= maxAttachments else {
+            error = String(localized: "You can attach up to \(maxAttachments) items per message."); return
+        }
+        queues.remove(item.id, from: id)
+        attachments = item.attachments + attachments
+        if !(await steer(item.text, fromDraft: false)) { restore(QueuedMessage(text: item.text)) }
+    }
+
+    /// Sends the next queued message once this conversation is idle; called whenever that may have changed.
+    /// The send runs in a task the model owns: the view's trigger is cancelled by the very state changes the send makes.
+    func releaseQueued() {
+        guard let chat = selected, let next = queues.of(chat.id).first else { return }
+        guard !releasing, !busy, !streaming, chat.isRunning != true, pendingApprovals.isEmpty, !approvalBusy, foreground else { return }
+        queues.remove(next.id, from: chat.id)
+        releasing = true
+        Task {
+            defer { releasing = false }
+            if !(await submit(next.text, outgoing: next.attachments, fromDraft: false)) { restore(next) }
+        }
+    }
+
+    // A message that could not go out returns to the composer, never back into the queue, so a failing
+    // desktop is not retried in a loop and nothing typed is lost.
+    private func restore(_ item: QueuedMessage) {
+        draft = [item.text, draft].filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }.joined(separator: "\n\n")
+        // Never truncated: a composer over the limit is refused on send, and the person chooses what to drop.
+        attachments = item.attachments + attachments
+    }
+
+    private func steer(_ text: String, fromDraft: Bool) async -> Bool {
+        guard let client, redirectSupported, device?.permissions.send == true, let id = selected?.id, !id.isEmpty,
+              !busy, !text.isEmpty else { return false }
+        busy = true
+        error = nil
+        defer { busy = false }
+        let current = generation
+        do {
+            try await client.steer(text, chatID: id, model: selectedModel)
+            guard generation == current else { return true }
+            if fromDraft { draft = ""; drafts[id] = nil }
+            sentVersion += 1
+            // The interrupted turn's stream is retired so its partial reply stays on screen and the redirect streams fresh.
+            let watching = streaming
+            let previous = streamTask
+            previous?.cancel()
+            await previous?.value
+            guard generation == current, selected?.id == id else { return true }
+            streaming = false
+            let partial = watching ? interruptedReply(liveParts, model: selectedModel ?? selected?.model) : nil
+            liveParts = []
+            if var chat = selected {
+                chat.messages = (chat.messages ?? []) + [partial].compactMap { $0 } + [ChatMessage(role: "user", content: text)]
+                chat.isRunning = true
+                selected = chat
+                syncRunning(chat)
+            }
+            if foreground { observe(id, client: client) }
+            return true
+        } catch {
+            if case ClientError.http(401) = error { handle(error) }
+            else { self.error = String(localized: "Send could not be confirmed. Check the conversation before trying again.") }
+            return false
+        }
+    }
+
+    /// A button or form on a surface: a blocked question gets its answer, anything else is sent like a message.
+    /// Returns whether the answer was delivered, so a form can be used again after a failure.
+    func act(on surface: A2UISurface, action: String, context: [String: JSONValue]) async -> Bool {
+        guard let client, device?.permissions.send == true, let id = selected?.id, !id.isEmpty else { return false }
+        if surface.isDeferred {
+            do {
+                try await client.answerSurface(id, surfaceID: surface.id, answer: deferredAnswer(context))
+                liveParts.removeAll { $0.type == "a2ui" && $0.surface?.id == surface.id }
+                return true
+            } catch {
+                if case ClientError.http(401) = error { handle(error) }
+                else { self.error = String(localized: "The answer could not be delivered. The question may have expired.") }
+                return false
+            }
+        }
+        let text = action == "submit_question" ? questionAnswerText(context)
+            : canvasActionMessage(action: action, context: context, surfaceID: surface.id)
+        guard !text.isEmpty else { return false }
+        return await submit(text, outgoing: [], fromDraft: false)
+    }
+
+    private func submit(_ text: String, outgoing: [PendingAttachment], fromDraft: Bool) async -> Bool {
+        guard let client, device?.permissions.send == true, var id = selected?.id, !busy, !streaming else { return false }
+        guard !text.isEmpty || !outgoing.isEmpty else { return false }
         busy = true
         error = nil
         defer { busy = false }
         do {
             if id.isEmpty {
-                guard device?.permissions.createChats == true else { return }
+                guard device?.permissions.createChats == true else { return false }
                 let created = try await client.createChat(title: String(localized: "Mobile conversation"), projectID: selected?.projectId)
                 selected = created
                 id = created.id
@@ -776,8 +1026,7 @@ import SuzentCore
             }
             let issued = outgoing.isEmpty ? [] : try await client.upload(outgoing, chatID: id)
             try await client.send(text, chatID: id, model: selectedModel, attachments: issued)
-            draft = ""
-            drafts[id] = nil
+            if fromDraft { draft = ""; drafts[id] = nil }
             outgoing.forEach { try? FileManager.default.removeItem(at: $0.url) }
             attachments.removeAll { item in outgoing.contains { $0.id == item.id } }
             sentVersion += 1
@@ -789,9 +1038,11 @@ import SuzentCore
                 syncRunning(chat)
             }
             if foreground { observe(id, client: client) }
+            return true
         } catch {
             if case ClientError.http(401) = error { handle(error) }
             else { self.error = String(localized: "Send could not be confirmed. Check the conversation before trying again.") }
+            return false
         }
     }
 
@@ -843,6 +1094,18 @@ import SuzentCore
         let parts = await buffer.drain()
         guard generation == current, foreground, !Task.isCancelled else { return }
         if let parts { liveParts = parts }
+    }
+
+    /// Desktop counts each finished turn as unread until someone views the conversation.
+    private func clearUnread(_ id: String, client: any MobileClient) async {
+        guard chats.contains(where: { $0.id == id && ($0.unreadCount ?? 0) > 0 && !$0.isRegent }) else { return }
+        guard (try? await client.markRead(id)) != nil else { return }
+        chats = chats.map { item in
+            guard item.id == id else { return item }
+            var updated = item
+            updated.unreadCount = 0
+            return updated
+        }
     }
 
     private func syncRunning(_ saved: Chat) {
@@ -921,12 +1184,17 @@ import SuzentCore
     func setForeground(_ active: Bool) async {
         foreground = active
         if !active {
+            connectionUpgrade.cancel()
             cancelReconnect()
             streamTask?.cancel()
             streaming = false
             liveParts = []
             disconnectNode()
         } else {
+            if let relayed = client as? SuzentClient, relayed.relay != nil,
+               let id = store.activeId, let saved = connection {
+                startDirectUpgrade(id, saved, relayed)
+            }
             if !connected && canReconnect { await connect() }
             await refresh()
             if let chat = selected, chat.isRunning == true, let client {
@@ -1032,10 +1300,14 @@ import SuzentCore
     }
 
     private func resetSessionState() {
+        connectionUpgrade.cancel()
+        retiredClients.forEach { $0.close() }
+        retiredClients = []
         voice.stop()
         voiceSupported = false
         scheduledTasks = []
-        projects = []; selectedModel = nil; drafts = [:]; discardAttachments(); attachmentsSupported = false
+        projects = []; selectedModel = nil; drafts = [:]; discardAttachments(); attachmentsSupported = false; overviewSupported = false; surfacesSupported = false; steerSupported = false
+        discardQueues()
         pendingApprovals = []; approvalChoices = [:]; approvalBusy = false
         generation = UUID()
         nodeEnabled = false
@@ -1060,7 +1332,7 @@ import SuzentCore
         busy = false
         canReconnect = connection?.clientProtocol == 1
         pairingInvitation = nil
-        pairingCode = nil
+        awaitingDesktop = false
         invitationText = ""
         origin = connection?.origin ?? ""
     }

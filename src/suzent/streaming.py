@@ -380,10 +380,12 @@ def _first_event_timeout(
     learned = _observed_prefill_k.get(model_id or "")
     if learned is not None:
         k = max(k, learned)
-    return min(
+    # A provider's silence budget also covers thinking before its first event.
+    timeout = min(
         _FIRST_STREAM_EVENT_TIMEOUT_SECONDS + k * _prefill_shape(tokens),
         _MAX_FIRST_STREAM_EVENT_TIMEOUT_SECONDS,
     )
+    return max(timeout, _stream_idle_timeout(model_id)) if model_id else timeout
 
 
 def _serialize_tool_output(output: Any) -> str:
@@ -741,6 +743,10 @@ class _DraftDisplayAccumulator:
                 {"type": "incoming-message", "text": str(value.get("content") or "")}
             )
             self.dirty = True
+        elif name == "code_mode_call" and isinstance(value, dict):
+            tool = self._ensure_tool(str(value.get("toolCallId") or ""))
+            tool["parentToolCallId"] = value.get("parentToolCallId")
+            self.dirty = True
         elif name == "tool_display" and isinstance(value, dict):
             tool_call_id = str(value.get("toolCallId") or "")
             tool = self._ensure_tool(tool_call_id)
@@ -882,6 +888,10 @@ def _tool_timeout_from_event(event: Any) -> float:
     if tool_name == "ask_question":
         # The call is waiting on a person, who may take as long as they like.
         return math.inf
+    if tool_name == "run_code":
+        from suzent.core.code_mode import RUN_CODE_STREAM_TIMEOUT_SECONDS
+
+        return RUN_CODE_STREAM_TIMEOUT_SECONDS
     if tool_name not in ("run_command", "agent_send"):
         return timeout
 
@@ -1165,7 +1175,7 @@ async def _iter_stream_events_with_timeout(
                         # A tool-result wait is not: the model is idle by
                         # definition while our own tool runs.
                         event = await _await_model_event(
-                            stream, timeout, _probe, chat_id
+                            stream, timeout, _probe, chat_id, control
                         )
                     elif timeout == math.inf:
                         event = await anext(stream)
@@ -2191,12 +2201,25 @@ async def stream_agent_responses(
                 except asyncio.QueueEmpty:
                     break
 
+        async def _drain_ui_events() -> None:
+            ui_event_queue = getattr(deps, "ui_event_queue", None)
+            while ui_event_queue and not ui_event_queue.empty():
+                event = ui_event_queue.get_nowait()
+                if draft_accumulator is not None:
+                    draft_accumulator.apply(event)
+                    await draft_accumulator.maybe_persist()
+                await out_queue.put(("chunk", _encoder.encode(event)))
+
         while True:
             # Drain canvas/a2ui updates before waiting for stream events.
             await _drain_a2ui_events()
+            await _drain_ui_events()
 
             try:
                 msg = await asyncio.wait_for(sse_queue.get(), timeout=0.1)
+                # Anything queued before this message was produced goes first:
+                # a code mode snippet's calls come before its run_code result.
+                await _drain_ui_events()
                 msg_type, payload = msg
 
                 if msg_type == "event":
@@ -2421,6 +2444,7 @@ async def stream_agent_responses(
                 elif msg_type == "done":
                     # Final flush to avoid dropping last-moment canvas/a2ui updates.
                     await _drain_a2ui_events()
+                    await _drain_ui_events()
                     break
 
                 elif msg_type == "error":

@@ -73,7 +73,7 @@ describe('Focal conversation controls', () => {
   it('keeps model and thinking controls while hiding only focal permission controls', () => {
     const html = composer('focal-suzent');
     expect(html).toContain('chatInput.attachFiles');
-    expect(html).toContain('chatInput.sendMessage');
+    expect(html).toContain('voice.micButton');
     expect(html).toContain('chat-composer-model');
     expect(html).toContain('suzent-ts__trigger');
     expect(html).not.toContain('chatWindow.permissionModeInputLabels');
@@ -107,14 +107,41 @@ describe('Focal conversation controls', () => {
       expect(html).not.toContain('\ue202');
     }
   );
-  it('keeps copy while removing retry, fork and model signature only for focal', () => {
+  it('keeps Regent named on a desktop message and names a different agent', () => {
+    const regent = renderToStaticMarkup(
+      <AssistantMessage
+        conversational
+        regent
+        message={{ role: 'assistant', content: 'Hello' }}
+        messageIndex={0}
+        isStreaming={false}
+        isLastMessage={false}
+      />
+    );
+    expect(regent).toContain('regent-identity');
+    expect(regent).toContain('chatList.focal.name');
+    const agent = renderToStaticMarkup(
+      <AssistantMessage
+        message={{ role: 'assistant', content: 'Hello', model: 'acp/codex' }}
+        messageIndex={0}
+        isStreaming={false}
+        isLastMessage={false}
+      />
+    );
+    expect(agent).toContain('codex');
+    expect(agent).not.toContain('regent-identity');
+    expect(response(false)).toContain('Suzent');
+  });
+  it('hides message actions and empty footers only for focal', () => {
     const focal = response(true);
-    expect(focal).toContain('status.copyToClipboard');
+    expect(focal).not.toContain('status.copyToClipboard');
+    expect(focal).not.toContain('conversation-message-actions');
     expect(focal).not.toContain('common.retry');
     expect(focal).not.toContain('conversationFork.button');
     expect(focal).not.toContain('test-model');
     expect(focal).not.toContain('<time');
     const regular = response(false);
+    expect(regular).toContain('status.copyToClipboard');
     expect(regular).toContain('common.retry');
     expect(regular).toContain('conversationFork.button');
     expect(regular).toContain('test-model');

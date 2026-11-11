@@ -1695,7 +1695,7 @@ fn acquire_lock_as(state_dir: &Path, marker: Option<&str>) -> Result<UpdateLock,
 fn ui_asset_name() -> &'static str {
     if cfg!(windows) {
         "suzent-windows-x86_64.exe"
-    } else if cfg!(target_os = "macos") && cfg!(target_arch = "aarch64") {
+    } else if network::is_apple_silicon_macos() {
         "suzent-macos-aarch64"
     } else if cfg!(target_os = "macos") {
         "suzent-macos-x86_64"

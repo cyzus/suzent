@@ -4,8 +4,14 @@ import { describe, expect, it, vi } from 'vitest';
 import { ImageViewer } from './ImageViewer';
 
 vi.mock('../i18n', () => ({ useI18n: () => ({ t: (key: string) => key }) }));
-vi.mock('./WorkspacePanel', () => ({
-  WorkspacePanel: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+vi.mock('@headlessui/react', () => ({
+  Dialog: Object.assign(
+    ({ children }: { children: React.ReactNode }) => <div role="dialog">{children}</div>,
+    {
+      Panel: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+      Title: ({ children }: { children: React.ReactNode }) => <h2>{children}</h2>,
+    }
+  ),
 }));
 
 describe('image viewer navigation', () => {
@@ -19,6 +25,8 @@ describe('image viewer navigation', () => {
       />
     );
     expect(html).toContain('src="b.png"');
+    expect(html).toContain('role="dialog"');
+    expect(html).toContain('imageViewer.close');
     expect(html).toContain('2 / 3');
     expect(html).toContain('imageViewer.previous');
     expect(html).toContain('imageViewer.next');

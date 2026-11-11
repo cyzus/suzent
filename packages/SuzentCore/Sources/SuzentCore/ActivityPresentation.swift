@@ -88,6 +88,72 @@ public func activityDuration(_ seconds: Int) -> String {
     seconds < 60 ? "\(seconds)s" : seconds % 60 == 0 ? "\(seconds / 60)m" : "\(seconds / 60)m \(seconds % 60)s"
 }
 
+/// Whether an activity rail is open.
+///
+/// A missing choice follows the stream. Remembering the choice on the conversation,
+/// not on the row, keeps a collapse across token updates and across the row leaving
+/// the screen. Approval still forces the rail open.
+public func railExpanded(choice: Bool?, live: Bool, current: Bool, waiting: Bool) -> Bool {
+    waiting || (choice ?? (live && current))
+}
+
+/// A new stream gets a new generation so it does not inherit the previous rail's collapse.
+public func nextStreamGeneration(_ generation: Int, wasStreaming: Bool, streaming: Bool) -> (generation: Int, streaming: Bool) {
+    streaming && !wasStreaming ? (generation + 1, true) : (generation, streaming)
+}
+
+public func railScope(chatId: String, messageKey: String) -> String { "\(chatId)#\(messageKey)" }
+
+public func railChunkKey(_ chunk: [MessagePart], index: Int) -> String {
+    let first = chunk.first
+    if let id = first?.toolCallId, !id.isEmpty { return id }
+    if let id = first?.messageId, !id.isEmpty { return id }
+    return "i\(index)"
+}
+
+/// Choices for one chat. Replace the object when the chat changes.
+@MainActor
+public final class RailChoices {
+    private var values: [String: Bool] = [:]
+    public init() {}
+    public func choice(_ key: String) -> Bool? { values[key] }
+    public func set(_ key: String, expanded: Bool) { values[key] = expanded }
+    public func clear() { values.removeAll() }
+}
+
+public enum ActivityTone: String, Sendable { case idle, streaming, waiting, failed }
+
+/// The header speaks for the turn. A failure paints it only when every tool
+/// settled in failure. A stream, or a mix of successes and failures, keeps its
+/// own color; the failed row carries the error.
+public func activityHeaderTone(_ parts: [MessagePart], live: Bool, current: Bool) -> ActivityTone {
+    let waiting = parts.contains { $0.state == "approval-requested" && ($0.output ?? "").isEmpty }
+    let running = live && current && parts.contains { $0.state == "running" || $0.type == "reasoning" }
+    if waiting { return .waiting }
+    if running { return .streaming }
+    let tools = parts.filter { $0.type == "tool" }
+    let failed = tools.filter(activityFailed).count
+    if !tools.isEmpty && failed == tools.count { return .failed }
+    return .idle
+}
+
+public func activityItemTone(failed: Bool, pending: Bool, active: Bool) -> ActivityTone {
+    if failed { return .failed }
+    if pending { return .waiting }
+    if active { return .streaming }
+    return .idle
+}
+
+/// Streaming uses the theme's text color. Link blue is not an activity state.
+public func activityToneToken(_ tone: ActivityTone) -> String {
+    switch tone {
+    case .idle: return "muted"
+    case .streaming: return "text"
+    case .waiting: return "warning"
+    case .failed: return "danger"
+    }
+}
+
 public func activityFailed(_ part: MessagePart) -> Bool {
     ["error", "denied", "rejected"].contains(part.state ?? "") || toolCallFailed(part)
 }
@@ -147,7 +213,8 @@ public func activityDetail(_ raw: String?, output: Bool = false) -> String {
 
 public func activityFinalStart(_ parts: [MessagePart]) -> Int {
     var start = parts.count
-    while start > 0 && parts[start - 1].type == "text" { start -= 1 }
+    // The reply ends with its text and any surfaces shown with it.
+    while start > 0 && ["text", "a2ui"].contains(parts[start - 1].type) { start -= 1 }
     return start
 }
 

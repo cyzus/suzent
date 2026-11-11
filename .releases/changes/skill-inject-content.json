@@ -1,0 +1,1 @@
+{"products": {"desktop": "patch"}, "summary": "/skill <name> now gives the agent the skill's full instructions with your message, so it no longer has to load the skill itself."}

@@ -31,6 +31,9 @@ import {
   markChatRead,
   deleteCronJob,
   updateCronJob,
+  triggerCronJob,
+  disableHeartbeat,
+  triggerHeartbeat,
   type CronJob,
   type HeartbeatStatus,
 } from '../lib/api';
@@ -46,6 +49,10 @@ import {
 } from '../lib/chatSelection';
 import { ChatRowMenu, type View as ChatRowMenuView } from './ChatRowMenu';
 import { ProjectRowMenu } from './ProjectRowMenu';
+import { HeartbeatRowMenu, ScheduledTaskMenu } from './sidebar/AutomationRowMenu';
+import { openOwnedMenu } from './chat/messageMenuActions';
+import { freshPointerPoint } from '../lib/menuPlacement';
+import { canStartRun } from '../lib/runNowGuard';
 import { ProjectSettingsDialog, SYSTEM_PROJECT_SLUGS } from './ProjectSettingsDialog';
 import { BrutalDialog } from './BrutalDialog';
 import { isImeComposing } from '../lib/ime';
@@ -69,7 +76,7 @@ const isCronFailureHandledInChat = (job: CronJob): boolean => {
 };
 
 /**
- * A row's or project's status, Slack-style: unread is carried by bold text, so the only
+ * A chat's status: unread is carried by bold text, so the only
  * mark is a blue square while something runs. What waits on the user lives on
  * Regent's board, not in the sidebar.
  */
@@ -218,8 +225,16 @@ export const ChatList: React.FC<ChatListProps> = ({
   const [projectRenameValue, setProjectRenameValue] = useState('');
   const [taskMenu, setTaskMenu] = useState<{
     jobId: number;
-    anchor: { rect: DOMRect };
+    anchor: { x: number; y: number } | { rect: DOMRect };
   } | null>(null);
+  const [heartbeatMenu, setHeartbeatMenu] = useState<{
+    chatId: string;
+    anchor: { x: number; y: number } | { rect: DOMRect };
+  } | null>(null);
+  const taskLockRef = useRef(new Set<number>());
+  const [taskLocks, setTaskLocks] = useState<ReadonlySet<number>>(new Set());
+  const heartbeatLockRef = useRef(new Set<string>());
+  const [heartbeatLocks, setHeartbeatLocks] = useState<ReadonlySet<string>>(new Set());
   const [renamingTaskId, setRenamingTaskId] = useState<number | null>(null);
   const [taskRenameValue, setTaskRenameValue] = useState('');
   const [organizationMenuOpen, setOrganizationMenuOpen] = useState(false);
@@ -268,7 +283,6 @@ export const ChatList: React.FC<ChatListProps> = ({
   const [loadingArchived, setLoadingArchived] = useState(false);
   // Grows by a page per "load more"; a refetch covers everything already shown.
   const [archivedLimit, setArchivedLimit] = useState(ARCHIVED_PAGE_SIZE);
-  const [runningChatProjects, setRunningChatProjects] = useState<Record<string, string | null>>({});
   const knownChats = useMemo(
     () =>
       new Map(
@@ -282,26 +296,6 @@ export const ChatList: React.FC<ChatListProps> = ({
     const known = currentChatId ? knownChats.get(currentChatId) : undefined;
     if (known) setCurrentChatSummary(known);
   }, [currentChatId, knownChats]);
-
-  useEffect(() => {
-    const controller = new AbortController();
-    const missingIds = [...activeStreams].filter(
-      (id) => !knownChats.has(id) && !(id in runningChatProjects)
-    );
-    void Promise.allSettled(
-      missingIds.map(async (id) => {
-        const response = await fetch(`${getApiBase()}/chats/${encodeURIComponent(id)}`, {
-          signal: controller.signal,
-        });
-        if (!response.ok) return;
-        const chat: { projectId?: string | null } = await response.json();
-        if (!controller.signal.aborted) {
-          setRunningChatProjects((previous) => ({ ...previous, [id]: chat.projectId ?? null }));
-        }
-      })
-    );
-    return () => controller.abort();
-  }, [activeStreams, knownChats, runningChatProjects]);
 
   // When a chat opens from outside the sidebar (the task board, a link), open
   // its project and bring its row into view so the list shows where you are.
@@ -371,17 +365,6 @@ export const ChatList: React.FC<ChatListProps> = ({
     return () => clearTimeout(timer);
   }, [locatedChatId]);
 
-  const runningProjectIds = useMemo(() => {
-    const ids = new Set<string>();
-    for (const chat of knownChats.values()) {
-      if (chat.projectId && isChatRunning(chat.id, chat.isRunning)) ids.add(chat.projectId);
-    }
-    for (const id of activeStreams) {
-      const projectId = knownChats.get(id)?.projectId ?? runningChatProjects[id];
-      if (projectId) ids.add(projectId);
-    }
-    return ids;
-  }, [activeStreams, knownChats, runningChatProjects, isChatRunning]);
   const [projectChatKindTotals, setProjectChatKindTotals] = useState<ChatKindCounts>({
     you: 0,
     scheduled: 0,
@@ -1456,10 +1439,14 @@ export const ChatList: React.FC<ChatListProps> = ({
           if (renamingChatId) return;
           e.preventDefault();
           e.stopPropagation();
-          openChatMenu(chat.id, { x: e.clientX, y: e.clientY });
+          const rect = e.currentTarget.getBoundingClientRect();
+          openChatMenu(
+            chat.id,
+            freshPointerPoint(e) ?? { x: rect.left + 16, y: rect.top + rect.height / 2 }
+          );
         }}
-        className={`group relative transition-colors ${compact ? 'min-h-9 px-2.5 py-2 rounded-sm' : nested ? 'py-1.5 border-transparent' : 'py-2 border-b last:border-b-0'}
-          ${compact ? '' : chatKind === 'subagent' ? (nested ? 'pl-10 pr-2' : 'pl-8 pr-3.5') : nested ? 'pl-8 pr-2' : 'px-3.5'}
+        className={`group relative transition-colors ${compact ? 'min-h-9 px-2.5 py-2 rounded-sm' : nested ? 'py-2 rounded-sm border-transparent' : 'py-2 border-b last:border-b-0'}
+          ${compact ? '' : chatKind === 'subagent' ? (nested ? 'pl-10 pr-2' : 'pl-8 pr-3.5') : nested ? 'pl-7 pr-2' : 'px-3.5'}
           ${renamingChatId ? (renamingChatId === chat.id ? 'cursor-default' : 'opacity-50 pointer-events-none') : 'cursor-pointer'}
           ${rowSurface} ${locatedChatId === chat.id ? 'chat-row-located' : ''}`}
       >
@@ -1483,7 +1470,7 @@ export const ChatList: React.FC<ChatListProps> = ({
             />
             <button
               type="submit"
-              className="px-2 py-1 text-[10px] font-extrabold uppercase border-2 border-brutal-black bg-brutal-yellow hover:bg-yellow-300 text-brutal-black transition-colors shrink-0"
+              className="px-2 py-1 text-[10px] font-extrabold uppercase border-2 border-brutal-black bg-brutal-yellow hover:brightness-95 text-brutal-black transition-colors shrink-0"
             >
               {t('chatList.rename.confirm')}
             </button>
@@ -1580,6 +1567,62 @@ export const ChatList: React.FC<ChatListProps> = ({
     beginNewChat();
     if (switchToView) switchToView('chat');
     onOpenChat?.();
+  };
+
+  // The chat row is created lazily on the first message. Point that creation at
+  // this project before opening the draft, including for Home and Social.
+  const startChatInProject = (projectId: string): void => {
+    setFilterId(projectId);
+    setCurrentProjectId(projectId);
+    beginNewChat();
+    if (switchToView) switchToView('chat');
+    onOpenChat?.();
+  };
+
+  const showAutomationError = (title: string): void => {
+    setDialog({
+      title,
+      message: t('chatList.automation.actionFailed'),
+      actions: [{ label: t('common.ok'), tone: 'primary' }],
+    });
+  };
+
+  const runTaskAction = async (job: CronJob, action: () => Promise<void>): Promise<void> => {
+    if (taskLockRef.current.has(job.id)) return;
+    taskLockRef.current.add(job.id);
+    setTaskLocks(new Set(taskLockRef.current));
+    try {
+      await action();
+      await refreshAutomation();
+    } catch (error) {
+      console.error('Scheduled task action failed', error);
+      showAutomationError(job.name);
+      await refreshAutomation();
+    } finally {
+      taskLockRef.current.delete(job.id);
+      setTaskLocks(new Set(taskLockRef.current));
+    }
+  };
+
+  const runHeartbeatAction = async (
+    chatId: string,
+    title: string,
+    action: () => Promise<void>
+  ): Promise<void> => {
+    if (heartbeatLockRef.current.has(chatId)) return;
+    heartbeatLockRef.current.add(chatId);
+    setHeartbeatLocks(new Set(heartbeatLockRef.current));
+    try {
+      await action();
+      await refreshAutomation();
+    } catch (error) {
+      console.error('Heartbeat action failed', error);
+      showAutomationError(title);
+      await refreshAutomation();
+    } finally {
+      heartbeatLockRef.current.delete(chatId);
+      setHeartbeatLocks(new Set(heartbeatLockRef.current));
+    }
   };
 
   exitRegentRef.current = () => {
@@ -1694,10 +1737,14 @@ export const ChatList: React.FC<ChatListProps> = ({
                                 <div
                                   key={job.id}
                                   onContextMenu={(event) => {
+                                    if (renamingTaskId === job.id) return;
                                     event.preventDefault();
+                                    event.stopPropagation();
                                     setTaskMenu({
                                       jobId: job.id,
-                                      anchor: { rect: event.currentTarget.getBoundingClientRect() },
+                                      anchor: freshPointerPoint(event) ?? {
+                                        rect: event.currentTarget.getBoundingClientRect(),
+                                      },
                                     });
                                   }}
                                   className={`group/task relative transition-colors ${
@@ -1829,48 +1876,109 @@ export const ChatList: React.FC<ChatListProps> = ({
                       {heartbeatSessions.length > 0 && (
                         <div>
                           <div>
-                            {heartbeatSessions.slice(0, AUTOMATION_PREVIEW_LIMIT).map((session) => (
-                              <button
-                                key={session.chat_id}
-                                type="button"
-                                onClick={() => openChatById(session.chat_id)}
-                                className={`group/beat block w-full space-y-0.5 py-1.5 pl-8 pr-2 text-left transition-colors ${
-                                  currentChatId === session.chat_id
-                                    ? 'bg-neutral-200/70 dark:bg-zinc-700'
-                                    : 'hover:bg-neutral-50 dark:hover:bg-zinc-700/80'
-                                }`}
-                              >
-                                <span className="flex items-center gap-1.5 overflow-hidden">
-                                  <span
-                                    className={`min-w-0 flex-1 truncate text-xs leading-snug transition-colors ${
-                                      currentChatId !== session.chat_id && session.unread_count > 0
-                                        ? 'font-extrabold text-neutral-950 dark:text-white'
-                                        : currentChatId === session.chat_id
-                                          ? 'font-medium text-brutal-black dark:text-white'
-                                          : 'font-medium text-neutral-700 dark:text-neutral-200 group-hover/beat:text-brutal-black dark:group-hover/beat:text-white'
+                            {heartbeatSessions.slice(0, AUTOMATION_PREVIEW_LIMIT).map((session) => {
+                              const heartbeatRunning = isChatRunning(
+                                session.chat_id,
+                                session.is_running
+                              );
+                              return (
+                                <div
+                                  key={session.chat_id}
+                                  onContextMenu={(event) =>
+                                    openOwnedMenu(event, (point) =>
+                                      setHeartbeatMenu({ chatId: session.chat_id, anchor: point })
+                                    )
+                                  }
+                                  className={`group/beat relative transition-colors ${
+                                    currentChatId === session.chat_id
+                                      ? 'bg-neutral-200/70 dark:bg-zinc-700'
+                                      : 'hover:bg-neutral-50 dark:hover:bg-zinc-700/80'
+                                  }`}
+                                >
+                                  <button
+                                    type="button"
+                                    onClick={() => openChatById(session.chat_id)}
+                                    onKeyDown={(event) => {
+                                      if (isImeComposing(event)) return;
+                                      if (
+                                        event.key !== 'ContextMenu' &&
+                                        !(event.shiftKey && event.key === 'F10')
+                                      ) {
+                                        return;
+                                      }
+                                      event.preventDefault();
+                                      setHeartbeatMenu({
+                                        chatId: session.chat_id,
+                                        anchor: {
+                                          rect: event.currentTarget.getBoundingClientRect(),
+                                        },
+                                      });
+                                    }}
+                                    className="block w-full space-y-0.5 bg-transparent py-1.5 pl-8 pr-8 text-left"
+                                  >
+                                    <span className="flex items-center gap-1.5 overflow-hidden">
+                                      <span
+                                        className={`min-w-0 flex-1 truncate text-xs leading-snug transition-colors ${
+                                          currentChatId !== session.chat_id &&
+                                          session.unread_count > 0
+                                            ? 'font-extrabold text-neutral-950 dark:text-white'
+                                            : currentChatId === session.chat_id
+                                              ? 'font-medium text-brutal-black dark:text-white'
+                                              : 'font-medium text-neutral-700 dark:text-neutral-200 group-hover/beat:text-brutal-black dark:group-hover/beat:text-white'
+                                        }`}
+                                      >
+                                        {session.title}
+                                      </span>
+                                      <span
+                                        className={`flex min-w-6 shrink-0 items-center justify-end transition-opacity ${
+                                          heartbeatMenu?.chatId === session.chat_id
+                                            ? 'opacity-0'
+                                            : 'group-hover/beat:opacity-0 group-focus-within/beat:opacity-0'
+                                        }`}
+                                      >
+                                        {heartbeatRunning ? (
+                                          <RunningMark running />
+                                        ) : (
+                                          <span
+                                            className={`text-[10px] font-medium uppercase tabular-nums ${currentChatId === session.chat_id ? 'text-neutral-600 dark:text-neutral-300' : 'text-neutral-400 dark:text-neutral-500'}`}
+                                          >
+                                            {session.last_run_at
+                                              ? formatDate(session.last_run_at)
+                                              : t('chatList.automation.notYet')}
+                                          </span>
+                                        )}
+                                      </span>
+                                    </span>
+                                    <span className="block truncate text-[10px] text-neutral-500 dark:text-neutral-400">
+                                      {t('chatList.automation.everyMinutes', {
+                                        minutes: session.interval_minutes,
+                                      })}
+                                    </span>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    aria-label={t('chatList.menu.title')}
+                                    title={t('chatList.menu.title')}
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      setHeartbeatMenu({
+                                        chatId: session.chat_id,
+                                        anchor: {
+                                          rect: event.currentTarget.getBoundingClientRect(),
+                                        },
+                                      });
+                                    }}
+                                    className={`absolute right-1 top-1.5 flex items-center justify-center p-1 text-neutral-500 transition-opacity hover:bg-neutral-200 hover:text-brutal-black dark:text-neutral-400 dark:hover:bg-zinc-600 dark:hover:text-white ${
+                                      heartbeatMenu?.chatId === session.chat_id
+                                        ? 'opacity-100'
+                                        : 'opacity-0 group-hover/beat:opacity-100 focus:opacity-100'
                                     }`}
                                   >
-                                    {session.title}
-                                  </span>
-                                  {isChatRunning(session.chat_id, session.is_running) ? (
-                                    <RunningMark running />
-                                  ) : (
-                                    <span
-                                      className={`shrink-0 text-[10px] font-medium uppercase tabular-nums ${currentChatId === session.chat_id ? 'text-neutral-600 dark:text-neutral-300' : 'text-neutral-400 dark:text-neutral-500'}`}
-                                    >
-                                      {session.last_run_at
-                                        ? formatDate(session.last_run_at)
-                                        : t('chatList.automation.notYet')}
-                                    </span>
-                                  )}
-                                </span>
-                                <span className="block truncate text-[10px] text-neutral-500 dark:text-neutral-400">
-                                  {t('chatList.automation.everyMinutes', {
-                                    minutes: session.interval_minutes,
-                                  })}
-                                </span>
-                              </button>
-                            ))}
+                                    <MoreActionsIcon />
+                                  </button>
+                                </div>
+                              );
+                            })}
                             {heartbeatSessions.length > AUTOMATION_PREVIEW_LIMIT && (
                               <div className="py-1.5 pl-8 pr-2 text-[10px] text-neutral-500 dark:text-neutral-400">
                                 {t('chatList.automation.moreHeartbeat', {
@@ -2197,9 +2305,13 @@ export const ChatList: React.FC<ChatListProps> = ({
                                 event.preventDefault();
                                 // Keep the open menu's own contextmenu listener from closing it.
                                 event.stopPropagation();
+                                const rect = event.currentTarget.getBoundingClientRect();
                                 setProjectMenu({
                                   projectId: project.id,
-                                  anchor: { x: event.clientX, y: event.clientY },
+                                  anchor: freshPointerPoint(event) ?? {
+                                    x: rect.left + 16,
+                                    y: rect.top + rect.height / 2,
+                                  },
                                 });
                               }}
                               className={`group/proj relative grid min-h-8 grid-cols-[minmax(0,1fr)_24px] transition-colors hover:bg-neutral-100 dark:hover:bg-zinc-700`}
@@ -2250,22 +2362,19 @@ export const ChatList: React.FC<ChatListProps> = ({
                                         ? setFilterId(ALL_PROJECTS_FILTER)
                                         : handleSelectFilter(project.id)
                                     }
-                                    className="min-w-0 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-2.5 py-1 text-left outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brutal-blue"
+                                    className="min-w-0 flex items-center gap-1.5 px-2 py-1.5 text-left outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brutal-blue"
                                   >
+                                    <ChevronRightIcon
+                                      aria-hidden="true"
+                                      className={`h-3 w-3 shrink-0 text-neutral-400 transition-transform ${isOpen ? 'rotate-90' : ''}`}
+                                    />
                                     <span
-                                      className={`min-w-0 truncate text-[11px] ${projectUnread(project) > 0 ? 'font-extrabold text-brutal-black dark:text-white' : isOpen ? 'font-semibold text-brutal-black dark:text-white' : 'font-medium text-neutral-700 dark:text-neutral-200'}`}
+                                      className={`min-w-0 truncate text-[11px] ${projectUnread(project) > 0 ? 'font-extrabold text-brutal-black dark:text-white' : 'font-medium text-neutral-500 dark:text-neutral-400'}`}
                                     >
                                       {project.name}
                                     </span>
                                   </button>
                                   <span className="relative flex items-center justify-center">
-                                    <span
-                                      className={`flex transition-opacity ${projectMenu?.projectId === project.id ? 'opacity-0' : 'group-hover/proj:opacity-0 group-focus-within/proj:opacity-0'}`}
-                                    >
-                                      <RunningMark
-                                        running={!isOpen && runningProjectIds.has(project.id)}
-                                      />
-                                    </span>
                                     <button
                                       type="button"
                                       aria-label={t('chatList.menu.title')}
@@ -2292,8 +2401,21 @@ export const ChatList: React.FC<ChatListProps> = ({
                                 {loadingProjectChats ? (
                                   renderListSkeleton()
                                 ) : visibleChats.length === 0 ? (
-                                  <div className="px-4 py-6 text-center text-[10px] font-bold uppercase text-neutral-400">
-                                    {t('chatList.empty.noChatsTitle')}
+                                  <div className="px-4 py-6 text-center">
+                                    <p className="text-[10px] font-bold uppercase text-neutral-400">
+                                      {t('chatList.empty.noChatsTitle')}
+                                    </p>
+                                    <button
+                                      type="button"
+                                      onClick={() => startChatInProject(project.id)}
+                                      className="mt-3 inline-flex items-center gap-1 border-2 border-brutal-black bg-brutal-yellow px-2.5 py-1.5 text-[10px] font-extrabold uppercase text-brutal-black hover:brightness-95"
+                                    >
+                                      <PlusIcon
+                                        className="h-3.5 w-3.5 stroke-[3]"
+                                        aria-hidden="true"
+                                      />
+                                      {t('chatList.newChat')}
+                                    </button>
                                   </div>
                                 ) : (
                                   <>
@@ -2503,16 +2625,66 @@ export const ChatList: React.FC<ChatListProps> = ({
           const job = cronJobs.find((item) => item.id === taskMenu.jobId);
           if (!job) return null;
           return (
-            <ProjectRowMenu
+            <ScheduledTaskMenu
               anchor={taskMenu.anchor}
               boundary={sidebarBoundsRef.current?.getBoundingClientRect() ?? null}
-              rootDataAttrs={{ 'data-popover-source': 'task-row' }}
+              active={job.active}
+              runDisabled={
+                !canStartRun(
+                  isChatRunning(getScheduledTaskChat(job).chatId, job.is_running),
+                  taskLocks.has(job.id)
+                )
+              }
+              onToggleActive={() =>
+                void runTaskAction(job, async () => {
+                  await updateCronJob(job.id, { active: !job.active });
+                })
+              }
+              onRunNow={() => {
+                if (
+                  !canStartRun(
+                    isChatRunning(getScheduledTaskChat(job).chatId, job.is_running),
+                    taskLocks.has(job.id)
+                  )
+                ) {
+                  return;
+                }
+                void runTaskAction(job, () => triggerCronJob(job.id));
+              }}
               onRename={() => {
                 setTaskRenameValue(job.name);
                 setRenamingTaskId(job.id);
               }}
               onDelete={() => handleRequestTaskDelete(job)}
               onClose={() => setTaskMenu(null)}
+            />
+          );
+        })()}
+
+      {heartbeatMenu &&
+        (() => {
+          const session = heartbeatSessions.find((item) => item.chat_id === heartbeatMenu.chatId);
+          if (!session) return null;
+          const running = isChatRunning(session.chat_id, session.is_running);
+          const pending = heartbeatLocks.has(session.chat_id);
+          return (
+            <HeartbeatRowMenu
+              anchor={heartbeatMenu.anchor}
+              boundary={sidebarBoundsRef.current?.getBoundingClientRect() ?? null}
+              runDisabled={!canStartRun(running, pending)}
+              onOpen={() => openChatById(session.chat_id)}
+              onDisable={() =>
+                void runHeartbeatAction(session.chat_id, session.title, () =>
+                  disableHeartbeat(session.chat_id)
+                )
+              }
+              onRunNow={() => {
+                if (!canStartRun(running, pending)) return;
+                void runHeartbeatAction(session.chat_id, session.title, () =>
+                  triggerHeartbeat(session.chat_id)
+                );
+              }}
+              onClose={() => setHeartbeatMenu(null)}
             />
           );
         })()}
@@ -2538,6 +2710,7 @@ export const ChatList: React.FC<ChatListProps> = ({
               anchor={projectMenu.anchor}
               boundary={sidebarBoundsRef.current?.getBoundingClientRect() ?? null}
               rootDataAttrs={{ 'data-popover-source': 'project-filter' }}
+              onNewChat={() => startChatInProject(p.id)}
               onSettings={() => setSettingsProjectId(p.id)}
               onRename={
                 isSystem

@@ -241,12 +241,14 @@ def _all_tool_classes() -> tuple:
     from suzent.tools.recall import SessionSearchTool
     from suzent.tools.render_ui_tool import RenderUITool
     from suzent.tools.ask_question_tool import AskQuestionTool
+    from suzent.tools.send_file_tool import SendFileTool
     from suzent.tools.agents import AgentTool
     from suzent.tools.agents import (
         AgentListTool,
         AgentReadTool,
         AgentSendTool,
         AgentStopTool,
+        RegentSendTool,
     )
 
     builtin = (
@@ -263,6 +265,7 @@ def _all_tool_classes() -> tuple:
         WebpageTool,
         WebSearchTool,
         AskQuestionTool,
+        SendFileTool,
         GoalTool,
         TaskCreateTool,
         TaskUpdateTool,
@@ -285,6 +288,7 @@ def _all_tool_classes() -> tuple:
         AgentReadTool,
         AgentSendTool,
         AgentStopTool,
+        RegentSendTool,
         FocalDispatchTool,
         FocalScheduleTool,
         FocalNotesTool,
@@ -342,6 +346,7 @@ TOOL_DESCRIPTION_OVERRIDES = {
     "VideoGenerationTool": "Generate a video from text or a reference image and return a persistent job ID.",
     "VideoStatusTool": "Check a video job and save its completed video to the conversation.",
     "SpeakTool": "Convert a response to speech and return playable audio to the conversation.",
+    "SendFileTool": "Deliver finished files to the user in the chat app they wrote from, or as attachments on desktop and phone.",
     "SocialMessageTool": "Send a message through a configured social channel after approval.",
 }
 

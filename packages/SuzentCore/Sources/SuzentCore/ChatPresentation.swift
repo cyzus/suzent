@@ -21,6 +21,9 @@ public struct MessagePart: Decodable, Sendable, Equatable {
     public var outcome: String?
     public var regentBubble: Bool? = nil
     public var citationSources: [CitationSource]?
+    public var surface: A2UISurface? = nil
+    /// Images, video and audio the tool made, which the desktop serves by id.
+    public var media: [MediaItem]? = nil
     public init(type: String, text: String? = nil, toolName: String? = nil, args: String? = nil,
                 output: String? = nil, toolCallId: String? = nil, state: String? = nil, messageId: String? = nil,
                 citationSources: [CitationSource]? = nil) {
@@ -29,6 +32,41 @@ public struct MessagePart: Decodable, Sendable, Equatable {
         self.citationSources = citationSources
     }
 
+}
+
+public struct MediaItem: Decodable, Sendable, Equatable, Hashable, Identifiable {
+    public let id: String
+    public let kind: String
+    public let name: String
+    public init(id: String, kind: String, name: String) { self.id = id; self.kind = kind; self.name = name }
+    private enum CodingKeys: String, CodingKey { case id, kind, name }
+    // Lenient, so one malformed entry is dropped by `isValid` instead of failing the whole transcript.
+    public init(from decoder: any Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        id = (try? values.decodeIfPresent(String.self, forKey: .id)) ?? ""
+        kind = (try? values.decodeIfPresent(String.self, forKey: .kind)) ?? ""
+        name = (try? values.decodeIfPresent(String.self, forKey: .name)) ?? ""
+    }
+
+    /// Only ids the backend could have issued, and kinds this app can show.
+    public var isValid: Bool {
+        id.count == 32 && id.allSatisfy { $0.isHexDigit && !$0.isUppercase } && ["image", "video", "audio", "file"].contains(kind)
+    }
+    /// The original name, safe as one path component, so a shared file keeps it.
+    public var safeName: String {
+        let cleaned = String(name.map { "/\\:\u{0}".contains($0) ? "_" : $0 })
+            .trimmingCharacters(in: CharacterSet(charactersIn: ". "))
+        return cleaned.isEmpty ? "file.\(fileExtension)" : String(cleaned.prefix(120))
+    }
+    public var fileExtension: String {
+        let ext = (name as NSString).pathExtension.lowercased().filter { $0.isLetter || $0.isNumber }
+        return ext.isEmpty ? "bin" : String(ext.prefix(5))
+    }
+}
+
+public func mediaItems(_ parts: [MessagePart]) -> [MediaItem] {
+    var seen = Set<String>()
+    return parts.flatMap { $0.media ?? [] }.filter { $0.isValid && seen.insert($0.id).inserted }
 }
 
 public struct DisplayMessage: Sendable {
@@ -149,7 +187,8 @@ public func activityChunks(_ parts: [MessagePart]) -> [[MessagePart]] {
     var chunks: [[MessagePart]] = []
     for part in parts {
         if part.type == "citation-sources" || (["text", "reasoning"].contains(part.type) && (part.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) { continue }
-        if part.type == "text" || chunks.isEmpty || chunks.last?.last?.type == "text" { chunks.append([part]) }
+        // A surface is a block of its own, like text; tools and reasoning around it keep their own rails.
+        if ["text", "a2ui"].contains(part.type) || chunks.isEmpty || ["text", "a2ui"].contains(chunks.last?.last?.type ?? "") { chunks.append([part]) }
         else { chunks[chunks.count - 1].append(part) }
     }
     return chunks
@@ -265,7 +304,21 @@ public struct LiveActivityBuffer: Sendable {
             default: parts[index].output = (fields["content"] ?? fields["output"] ?? fields["result"])?.text; parts[index].state = "completed"; parts[index].outcome = fields["outcome"]?.text
             }
         case "CUSTOM":
-            guard let value = fields["value"], let toolId = value["toolCallId"]?.text, !toolId.isEmpty else { return }
+            guard let value = fields["value"] else { return }
+            switch fields["name"]?.text {
+            case "a2ui.render":
+                guard let surface = value.decodeSurface() else { return }
+                // A later render of the same id replaces the earlier one in place.
+                if let index = parts.firstIndex(where: { $0.type == "a2ui" && $0.surface?.id == surface.id }) { parts[index].surface = surface }
+                else { var part = MessagePart(type: "a2ui"); part.surface = surface; parts.append(part) }
+                dirty = true; return
+            case "a2ui.resolved":
+                guard let id = value["surfaceId"]?.text else { return }
+                parts.removeAll { $0.type == "a2ui" && $0.surface?.id == id && $0.surface?.isDeferred == true }
+                dirty = true; return
+            default: break
+            }
+            guard let toolId = value["toolCallId"]?.text, !toolId.isEmpty else { return }
             switch fields["name"]?.text {
             case "tool_approval_request":
                 let index = toolIndex(toolId)

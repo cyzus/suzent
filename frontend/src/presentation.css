@@ -2,3 +2,6 @@
 :root {
   --suzent-yellow: #ffe666;
 }
+.dark {
+  --suzent-yellow: #e8c200;
+}

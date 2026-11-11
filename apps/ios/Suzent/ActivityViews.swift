@@ -1,6 +1,35 @@
 import SwiftUI
 import SuzentCore
 
+private struct RailChoicesKey: EnvironmentKey {
+    static let defaultValue: RailChoices? = nil
+}
+
+private struct RailScopeKey: EnvironmentKey {
+    static let defaultValue = ""
+}
+
+extension EnvironmentValues {
+    var railChoices: RailChoices? {
+        get { self[RailChoicesKey.self] }
+        set { self[RailChoicesKey.self] = newValue }
+    }
+
+    var railScope: String {
+        get { self[RailScopeKey.self] }
+        set { self[RailScopeKey.self] = newValue }
+    }
+}
+
+private func activityToneColor(_ tone: ActivityTone) -> Color {
+    switch tone {
+    case .idle: return .suzentMuted
+    case .streaming: return .suzentText
+    case .waiting: return .orange
+    case .failed: return .suzentDanger
+    }
+}
+
 private let activityDisclosureAnimation = Animation.spring(duration: 0.3, bounce: 0)
 
 /// Animates a disclosure's real height and clips its content, like Compose's expandVertically. Inserting
@@ -31,6 +60,14 @@ private struct ActivityReveal<Content: View>: View {
     }
 }
 
+/// Same rule as Android `turnAuthorMark`: Regent's chat header already names Regent.
+enum TurnAuthorMark { case assembly, assistant }
+
+func turnAuthorMark(regentChat: Bool, live: Bool, compact: Bool, pendingApproval: Bool) -> TurnAuthorMark? {
+    if regentChat { return nil }
+    return live || !compact || pendingApproval ? .assembly : .assistant
+}
+
 struct ActivityTurn: View {
     let parts: [MessagePart]
     var live = false
@@ -44,15 +81,19 @@ struct ActivityTurn: View {
 
     var body: some View {
         let start = activityFinalStart(parts)
-        let work = Array(parts.prefix(start)).filter { $0.regentBubble != true }
-        let persistent = Array(parts.prefix(start)).filter { $0.regentBubble == true }
+        // Regent's bubbles and surfaces stay visible when the work above them folds away.
+        let work = Array(parts.prefix(start)).filter { $0.regentBubble != true && $0.type != "a2ui" }
+        let persistent = Array(parts.prefix(start)).filter { $0.regentBubble == true || $0.type == "a2ui" }
         let pending = work.contains { $0.state == "approval-requested" && ($0.output ?? "").isEmpty }
+        let author = turnAuthorMark(regentChat: regent, live: live, compact: compact, pendingApproval: pending)
+        let showDisclosure = !live && !work.isEmpty
         VStack(alignment: .leading, spacing: 10) {
+            if author != nil || showDisclosure {
             HStack(spacing: 12) {
-                if regent { RegentIdentity(working: live, showStatus: false) }
-                else if live || !compact || pending { AssemblyBadge(thinking: showAssemblyBadge(parts, streaming: live), parts: parts, streaming: live) }
-                else { SuzentAssistantBadge(compact: compact) }
-                if !live && !work.isEmpty {
+                if author == .assembly { AssemblyBadge(thinking: showAssemblyBadge(parts, streaming: live), parts: parts, streaming: live) }
+                else if author == .assistant { SuzentAssistantBadge(compact: compact) }
+                else { Spacer(minLength: 0) }
+                if showDisclosure {
                     Button {
                         withAnimation(reduceMotion ? nil : activityDisclosureAnimation) { expanded.toggle() }
                     } label: {
@@ -64,6 +105,7 @@ struct ActivityTurn: View {
                     }.buttonStyle(.plain).accessibilityValue(expanded || pending ? Text("Expanded") : Text("Collapsed"))
                 }
             }
+            }
             if live { ActivityContent(parts: parts, live: true, citationSources: citationSources, regent: regent) }
             else {
                 // The gap below the disclosed work lives inside the reveal, so a collapsed reveal adds no spacing.
@@ -71,6 +113,8 @@ struct ActivityTurn: View {
                     ActivityReveal(expanded: expanded || pending) {
                         ActivityContent(parts: work, citationSources: citationSources, regent: regent).padding(.bottom, 10)
                     }
+                    let media = mediaItems(parts)
+                    if !media.isEmpty { MediaGallery(items: media).padding(.bottom, 10) }
                     ActivityContent(parts: persistent + Array(parts.dropFirst(start)), citationSources: citationSources, regent: regent,
                                     bubbleMenu: bubbleMenu)
                 }
@@ -84,13 +128,22 @@ struct ActivityRail: View {
     let parts: [MessagePart]
     let live: Bool
     let current: Bool
-    @State private var userExpanded: Bool?
+    var expansionKey = ""
+    @State private var localChoice: Bool?
+    @Environment(\.railChoices) private var railChoices
+    @Environment(\.railScope) private var railScope
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    private var storedKey: String { railChoices != nil && !railScope.isEmpty ? "\(railScope):\(expansionKey)" : "" }
+    private var choice: Bool? {
+        // Read the local choice even when the store already has one, so a later tap still refreshes the row.
+        let local = localChoice
+        if !storedKey.isEmpty, let stored = railChoices?.choice(storedKey) { return stored }
+        return local
+    }
     private var waiting: Bool { parts.contains { $0.state == "approval-requested" && ($0.output ?? "").isEmpty } }
-    private var expanded: Bool { waiting || (userExpanded ?? (live && current)) }
+    private var expanded: Bool { railExpanded(choice: choice, live: live, current: current, waiting: waiting) }
     private var running: Bool { live && current && parts.contains { $0.state == "running" || $0.type == "reasoning" } }
-    private var failed: Bool { parts.contains(where: activityFailed) }
-    private var accent: Color { waiting ? .orange : failed ? Color.suzentDanger : running ? Color.suzentLink : Color.suzentMuted }
+    private var accent: Color { activityToneColor(activityHeaderTone(parts, live: live, current: current)) }
     /// Desktop's collapsed current header: a running tool's surface, or the plain moving ruler before any tool.
     private var headerSurface: String? {
         guard live, current, !expanded, !waiting, parts.last?.type != "reasoning" else { return nil }
@@ -128,7 +181,9 @@ struct ActivityRail: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             Button {
-                withAnimation(reduceMotion ? nil : activityDisclosureAnimation) { userExpanded = !expanded }
+                let next = !expanded
+                if !storedKey.isEmpty { railChoices?.set(storedKey, expanded: next) }
+                withAnimation(reduceMotion ? nil : activityDisclosureAnimation) { localChoice = next }
             } label: {
                 HStack(spacing: 8) {
                     if let tool = parts.last(where: { $0.type == "tool" }) { ActivityToolIcon(part: tool, running: running && tool.state == "running", color: accent).frame(width: 20, height: 20) }
@@ -143,6 +198,7 @@ struct ActivityRail: View {
                     .background { RunningSurface(kind: headerSurface) }
             }.buttonStyle(.plain).accessibilityValue(expanded ? Text("Expanded") : Text("Collapsed"))
                 .overlay(alignment: .bottom) { Rectangle().fill(Color.suzentText.opacity(0.1)).frame(height: 1) }
+                .onChange(of: storedKey) { _, _ in localChoice = nil }
             ActivityReveal(expanded: expanded) {
                 VStack(spacing: 0) {
                     let rows = activityRows(parts)
@@ -166,7 +222,7 @@ struct ToolActivityBlock: View {
     private var failed: Bool { activityFailed(part) }
     private var pending: Bool { part.state == "approval-requested" && (part.output ?? "").isEmpty }
     private var active: Bool { !failed && !pending && live && current && (part.state == "running" || (last && part.type == "reasoning")) }
-    private var color: Color { failed ? Color.suzentDanger : pending ? .orange : active ? Color.suzentLink : Color.suzentMuted }
+    private var color: Color { activityToneColor(activityItemTone(failed: failed, pending: pending, active: active)) }
     private var surface: String? { part.type == "tool" && active && (part.output ?? "").isEmpty ? activityRunningSurface(part.toolName ?? "") : nil }
     private var status: String { failed ? String(localized: "Failed") : pending ? String(localized: "Approval required") : active ? String(localized: "Running") : String(localized: "Completed") }
     var body: some View {

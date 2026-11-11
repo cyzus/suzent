@@ -1,6 +1,7 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { isImeComposing } from '../lib/ime';
+import { menuFrame, placeMenu } from '../lib/menuPlacement';
 
 interface ContextMenuProps {
   anchor: { x: number; y: number } | { rect: DOMRect };
@@ -45,16 +46,16 @@ export function ContextMenu({
   useLayoutEffect(() => {
     const menu = ref.current;
     if (!menu) return;
-    const left = Math.max(8, boundary?.left ?? 0);
-    const top = Math.max(8, boundary?.top ?? 0);
-    const right = Math.min(window.innerWidth, boundary?.right ?? window.innerWidth) - 8;
-    const bottom = Math.min(window.innerHeight, boundary?.bottom ?? window.innerHeight) - 8;
-    menu.style.maxWidth = `${Math.max(0, right - left)}px`;
-    menu.style.maxHeight = `${Math.max(0, bottom - top)}px`;
-    setPosition({
-      left: Math.max(left, Math.min(x, right - menu.offsetWidth)),
-      top: Math.max(top, Math.min(y, bottom - menu.offsetHeight)),
-    });
+    const frame = menuFrame(
+      8,
+      boundary
+        ? { left: boundary.left, top: boundary.top, right: boundary.right, bottom: boundary.bottom }
+        : null
+    );
+    menu.style.maxWidth = `${Math.max(0, frame.right - frame.left)}px`;
+    menu.style.maxHeight = `${Math.max(0, frame.bottom - frame.top)}px`;
+    const placed = placeMenu(x, y, menu.offsetWidth, menu.offsetHeight, frame);
+    setPosition({ left: placed.left, top: placed.top });
     menu.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus({ preventScroll: true });
   }, [x, y, boundary, viewKey]);
 

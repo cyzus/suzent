@@ -49,10 +49,18 @@ const OBJ_MARKER = /\ufffc([a-zA-Z]+)\ufffc([a-zA-Z0-9_,\s]+(?:\ufffc[a-zA-Z0-9_
 const LOOSE_CITE_MARKER = /\bcite[-:]((?:t\d+_src_\d+)(?:\s*,\s*t\d+_src_\d+)*)\b/;
 // Recover delimiter-free markers only when their IDs are present in the source map.
 const JOINED_CITE_MARKER = /\bcite((?:t\d+_src_\d+)(?:\s*,\s*t\d+_src_\d+)*)\b/;
+// Some models copy the `[t0_src_1]` label tools print instead of writing a
+// marker. Like the joined form, it only counts when every id resolves.
+const BRACKET_CITE_MARKER = /\[((?:[a-zA-Z0-9_]+_src_\d+)(?:\s*,\s*[a-zA-Z0-9_]+_src_\d+)*)\]/;
 export const CITATION_MARKER_RE = new RegExp(
-  `${ASCII_MARKER.source}|${PUA_MARKER.source}|${OBJ_MARKER.source}|${LOOSE_CITE_MARKER.source}|${JOINED_CITE_MARKER.source}`,
+  `${ASCII_MARKER.source}|${PUA_MARKER.source}|${OBJ_MARKER.source}|${LOOSE_CITE_MARKER.source}|${JOINED_CITE_MARKER.source}|${BRACKET_CITE_MARKER.source}`,
   'g'
 );
+
+/** Joined and bracket forms are ordinary text unless every id is a known source. */
+function needsKnownIds(m: RegExpExecArray): boolean {
+  return Boolean(m[8] || m[9]);
+}
 
 /** True when the string may contain a typed marker (either form). */
 export function hasCitationMarker(text: string): boolean {
@@ -60,7 +68,7 @@ export function hasCitationMarker(text: string): boolean {
     text.includes('[[') ||
     text.includes('\ue200') ||
     text.includes('\ufffc') ||
-    /\bcite[-:]?t\d+_src_\d+\b/.test(text)
+    /\bcite[-:]?t\d+_src_\d+\b|\[[a-zA-Z0-9_]+_src_\d+[\],\s]/.test(text)
   );
 }
 
@@ -91,9 +99,9 @@ interface ParsedMarker {
 
 function parseMarker(m: RegExpExecArray): ParsedMarker {
   // ASCII groups are 1/2; PUA groups are 3/4; OBJ groups are 5/6;
-  // Loose and delimiter-free fallbacks are groups 7/8 and mean "cite".
-  const type = (m[1] ?? m[3] ?? m[5] ?? (m[7] || m[8] ? 'cite' : '')).toLowerCase();
-  const payload = m[2] ?? m[4] ?? m[6] ?? m[7] ?? m[8] ?? '';
+  // Loose, delimiter-free and bracket fallbacks are groups 7/8/9 and mean "cite".
+  const type = (m[1] ?? m[3] ?? m[5] ?? (m[7] || m[8] || m[9] ? 'cite' : '')).toLowerCase();
+  const payload = m[2] ?? m[4] ?? m[6] ?? m[7] ?? m[8] ?? m[9] ?? '';
   const tokens = payload
     .split(ID_SEPARATORS)
     .map((s) => s.trim())
@@ -128,7 +136,7 @@ export function formatTextWithCitationReferences(
     const match = args.slice(0, -2) as unknown as RegExpExecArray;
     const offset = Number(args[args.length - 2] ?? 0);
     const { type, tokens } = parseMarker(match);
-    if (match[8] && !tokens.every((id) => sourcesMap.has(id))) return match[0];
+    if (needsKnownIds(match) && !tokens.every((id) => sourcesMap.has(id))) return match[0];
     if (type !== 'cite' || tokens.length === 0) return '';
 
     const labels = tokens.map((id) => {
@@ -191,7 +199,7 @@ export function renderTextWithCitations(
     const { type, tokens } = parseMarker(m);
     last = re.lastIndex;
 
-    if (m[8] && !tokens.every((id) => sourcesMap?.has(id))) {
+    if (needsKnownIds(m) && !tokens.every((id) => sourcesMap?.has(id))) {
       nodes.push(before, m[0]);
     } else if (type === 'cite' && tokens.length > 0 && hasSources) {
       nodes.push(before);

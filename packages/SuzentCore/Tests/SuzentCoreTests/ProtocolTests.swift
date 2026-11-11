@@ -67,3 +67,17 @@ import Testing
     let body = try String(contentsOf: form, encoding: .utf8)
     #expect(body == "--edge\r\nContent-Disposition: form-data; name=\"files\"; filename=\"a'b.txt\"\r\nContent-Type: text/plain\r\n\r\nabc\r\n--edge--\r\n")
 }
+
+@Test func toolMediaDecodesLenientlyAndKeepsOnlyValidItems() throws {
+    let id = "0123456789abcdef0123456789abcdef"
+    let json = """
+    {"type":"tool","toolName":"check_video","media":[{"id":"\(id)","kind":"video","name":"clip.MP4"},
+     {"id":"../x","kind":"video","name":"bad.mp4"},{"kind":"image"},{"id":"\(id)","kind":"video","name":"clip.MP4"}]}
+    """
+    let part = try JSONDecoder().decode(MessagePart.self, from: Data(json.utf8))
+    #expect(mediaItems([part]) == [MediaItem(id: id, kind: "video", name: "clip.MP4")])
+    #expect(mediaItems([part]).first?.fileExtension == "mp4")
+    #expect(MediaItem(id: id, kind: "file", name: "a/b.pdf").safeName == "a_b.pdf")
+    #expect(MediaItem(id: id, kind: "file", name: "..").safeName == "file.bin")
+    #expect(MediaItem(id: id, kind: "file", name: "x").isValid)
+}

@@ -23,6 +23,8 @@ export interface AGUIPart {
   argsReplayPending?: boolean;
   output?: string;
   state?: 'running' | 'completed' | 'error' | 'approval-requested';
+  /** For a call a code mode snippet made: the run_code call that made it. */
+  parentToolCallId?: string;
   /** How a finished call ended when it did not succeed; `state` 'error' means denied. */
   outcome?: ToolCallOutcome;
   approvalId?: string;

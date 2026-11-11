@@ -69,7 +69,7 @@ export const QueuedMessages: React.FC<QueuedMessagesProps> = ({
           <button
             type="button"
             onClick={() => onSteer(item.id)}
-            className="shrink-0 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide border-2 border-brutal-black bg-brutal-yellow hover:bg-yellow-300 text-brutal-black focus:outline-none focus-visible:ring-2 focus-visible:ring-brutal-blue"
+            className="shrink-0 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide border-2 border-brutal-black bg-brutal-yellow hover:brightness-95 text-brutal-black focus:outline-none focus-visible:ring-2 focus-visible:ring-brutal-blue"
             title={t('chatInput.steerQueuedHint')}
           >
             {t('chatInput.steerQueued')}

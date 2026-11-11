@@ -52,6 +52,7 @@ import { NewChatView } from './NewChatView';
 import { FocalBriefing } from './chat/FocalBriefing';
 import { FOCAL_CHAT_ID, focalRequestText } from '../lib/focalAgent';
 import { ChatInputPanel, type FileMentionSelection } from './ChatInputPanel';
+import { COMPOSER_EDITOR_MIN_HEIGHT_PX, composerEditorMaxHeightPx } from '../lib/composerHeight';
 import { ChatImageGallery } from './ChatImageGallery';
 import { ImageViewer } from './ImageViewer';
 import { FileViewer } from './FileViewer';
@@ -429,9 +430,25 @@ function _clearStreamSeed(chatId?: string | null): void {
   }
 }
 
-// Message list component (renders historical / store messages only)
+/** The turn that is still streaming, rendered as the row after `messages`. */
+interface LiveTurn {
+  message: Message;
+  parts: AGUIPart[];
+  isStreaming: boolean;
+  startedAtMs?: number;
+  usage?: unknown;
+  toolApprovalPolicy?: Record<string, string>;
+}
+
+const LIVE_ASSISTANT_MESSAGE: Message = { role: 'assistant', content: '' };
+
+// Message list component: store messages, then the live turn. The live turn
+// takes the row its saved message will occupy (same key, same element tree),
+// so when the stream ends React updates that row in place instead of swapping
+// in a new one under the reader.
 const MessageList: React.FC<{
   messages: Message[];
+  liveTurn?: LiveTurn;
   streamingForCurrentChat: boolean;
   messageIndexOffset?: number;
   chatId?: string;
@@ -466,6 +483,7 @@ const MessageList: React.FC<{
   reactionParts?: AGUIPart[];
 }> = ({
   messages,
+  liveTurn,
   streamingForCurrentChat,
   messageIndexOffset = 0,
   chatId,
@@ -546,8 +564,9 @@ const MessageList: React.FC<{
   let previousTimestamp: string | undefined;
   return (
     <div className={`space-y-6 ${chatId === FOCAL_CHAT_ID ? 'regent-conversation-list' : ''}`}>
-      {messages.map((m, idx) => {
+      {(liveTurn ? [...messages, liveTurn.message] : messages).map((m, idx) => {
         if (skipIndices.has(idx)) return null; // Part of a group, rendered by representative
+        const live = liveTurn && idx === messages.length ? liveTurn : undefined;
 
         const globalIdx = messageIndexOffset + idx;
         const timeLabel =
@@ -572,7 +591,7 @@ const MessageList: React.FC<{
         );
         const isUser = m.role === 'user';
         const isNotice = m.role === 'notice';
-        const isLastMessage = idx === messages.length - 1;
+        const isLastMessage = live ? true : idx === messages.length - 1;
         const isAssistant = m.role === 'assistant';
         const group = groupRenders.get(idx);
 
@@ -715,13 +734,16 @@ const MessageList: React.FC<{
                     conversational={chatId === FOCAL_CHAT_ID}
                     regent={chatId === FOCAL_CHAT_ID}
                     message={m}
+                    aguiParts={live?.parts}
+                    streamStartedAtMs={live?.startedAtMs}
+                    usage={live?.usage}
                     workedDurationSeconds={turnWorkedSeconds?.get(globalIdx)}
                     messageIndex={globalIdx}
-                    isStreaming={streamingForCurrentChat}
+                    isStreaming={live ? live.isStreaming : streamingForCurrentChat}
                     isLastMessage={isLastMessage}
                     onFileClick={onFileClick}
-                    onToolApproval={onToolApproval}
-                    toolApprovalPolicy={toolApprovalPolicy}
+                    onToolApproval={live ? undefined : onToolApproval}
+                    toolApprovalPolicy={live ? live.toolApprovalPolicy : toolApprovalPolicy}
                     onRemoveApprovalPolicy={onRemoveApprovalPolicy}
                     onInlineAction={onInlineAction}
                     repliedTo={idx < lastUserIdx}
@@ -730,10 +752,13 @@ const MessageList: React.FC<{
                     onStopSubAgent={onStopSubAgent}
                     onForceWebContext={onForceWebContext}
                     onRetry={
-                      idx === lastAssistantIdx && !streamingForCurrentChat ? onRetry : undefined
+                      !live && idx === lastAssistantIdx && !streamingForCurrentChat
+                        ? onRetry
+                        : undefined
                     }
                     onFork={
                       onFork &&
+                      !live &&
                       !streamingForCurrentChat &&
                       typeof m.raw_message_end_index === 'number'
                         ? getForkHandler(m.raw_message_end_index)
@@ -1811,6 +1836,9 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       (p) => p.type === 'tool' && p.state === 'approval-requested' && !p.output && !!p.approvalId
     );
   const showTransientAssistant = streamingForCurrentChat || hasPendingTransientApprovals;
+  const liveStartedAtMs = currentChatId
+    ? streamStartByChatRef.current.get(currentChatId)
+    : undefined;
 
   // Safe values
   const reconciledMessages = useMemo(
@@ -1949,6 +1977,29 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     stableToolApprovalPolicyRef.current = toolApprovalPolicy;
     return toolApprovalPolicy;
   }, [toolApprovalPolicy]);
+
+  const liveTurn = useMemo<LiveTurn | undefined>(() => {
+    if (!showTransientAssistant) return undefined;
+    return {
+      message:
+        streamDisplayRole === 'notice'
+          ? aguiPartsToStoreMessage(streamingParts, currentUsage, 'notice')
+          : LIVE_ASSISTANT_MESSAGE,
+      parts: streamingParts,
+      isStreaming: streamingForCurrentChat,
+      startedAtMs: liveStartedAtMs,
+      usage: currentUsage,
+      toolApprovalPolicy: stableToolApprovalPolicy,
+    };
+  }, [
+    showTransientAssistant,
+    streamDisplayRole,
+    streamingParts,
+    currentUsage,
+    streamingForCurrentChat,
+    liveStartedAtMs,
+    stableToolApprovalPolicy,
+  ]);
 
   useEffect(() => {
     if (!_isCronChat || !Number.isFinite(cronJobId)) {
@@ -2151,6 +2202,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     scrollContainerRef,
     attachScrollContainer,
     bottomRef,
+    showScrollButton,
     scrollToBottom,
     isSelectionDragActive,
   } = useAutoScroll([safeMessages.length, isStreaming], {
@@ -2609,8 +2661,12 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   useEffect(() => {
     const textarea = textareaRef.current;
     if (textarea) {
+      const maxHeight = composerEditorMaxHeightPx({
+        viewportWidth: window.innerWidth,
+        viewportHeight: window.innerHeight,
+      });
       textarea.style.height = '0px';
-      textarea.style.height = `${Math.min(Math.max(textarea.scrollHeight, 40), 120)}px`;
+      textarea.style.height = `${Math.min(Math.max(textarea.scrollHeight, COMPOSER_EDITOR_MIN_HEIGHT_PX), maxHeight)}px`;
     }
   }, [input, isRightSidebarOpen]);
 
@@ -2865,6 +2921,8 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     clearParts();
     streamStartByChatRef.current.set(chatIdForSend, Date.now());
     setIsStreaming(true, chatIdForSend);
+    // Sending is a request to see the reply, even from far up the history.
+    scrollToBottom();
     const clearPartsIfStillViewingSendChat = () => {
       if (activeChatIdRef.current === chatIdForSend) {
         clearParts();
@@ -3514,8 +3572,9 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                           <FocalBriefing />
                         </div>
                       )}
-                    {safeMessages.length > 0 && (
+                    {(safeMessages.length > 0 || liveTurn) && (
                       <MessageListMemo
+                        liveTurn={liveTurn}
                         messages={visibleMessages}
                         reactionParts={showTransientAssistant ? streamingParts : undefined}
                         turnWorkedSeconds={turnWorkedSecondsByMessageIndex}
@@ -3556,50 +3615,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                           );
                         }}
                       />
-                    )}
-                    {/* Streaming/transient message from AG-UI */}
-                    {showTransientAssistant && (
-                      <div className="space-y-6 mt-6">
-                        <div className="w-full flex flex-col group/message">
-                          <div className="flex justify-start w-full">
-                            {streamDisplayRole === 'notice' ? (
-                              <NoticeMessage
-                                message={aguiPartsToStoreMessage(
-                                  streamingParts,
-                                  currentUsage,
-                                  'notice'
-                                )}
-                              />
-                            ) : (
-                              <AssistantMessage
-                                conversational={currentChatId === FOCAL_CHAT_ID}
-                                regent={currentChatId === FOCAL_CHAT_ID}
-                                message={{ role: 'assistant', content: '' }}
-                                messageIndex={safeMessages.length}
-                                isStreaming={streamingForCurrentChat}
-                                isLastMessage={true}
-                                onFileClick={handleFileClick}
-                                aguiParts={streamingParts}
-                                streamStartedAtMs={
-                                  currentChatId
-                                    ? streamStartByChatRef.current.get(currentChatId)
-                                    : undefined
-                                }
-                                usage={currentUsage}
-                                toolApprovalPolicy={safeConfig.tool_approval_policy}
-                                onRemoveApprovalPolicy={handleRemoveApprovalPolicy}
-                                onInlineAction={handleInlineAction}
-                                subAgentTasks={subAgentTasks}
-                                onOpenSubAgentSidebar={handleOpenSubAgentSidebar}
-                                onStopSubAgent={handleStopSubAgent}
-                                onForceWebContext={handleForceWebContext}
-                                chatCitationSources={chatCitationSources}
-                                fallbackModel={fallbackModelSignature}
-                              />
-                            )}
-                          </div>
-                        </div>
-                      </div>
                     )}
                   </>
                 )}
@@ -3670,6 +3685,9 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                   currentChatId={currentChatId}
                   inputSuggestion={inputSuggestion}
                   voice={voice}
+                  showScrollToBottom={showScrollButton}
+                  scrollContainerRef={scrollContainerRef}
+                  onScrollToBottom={scrollToBottom}
                   onFileMentionSelected={(mention) =>
                     setFileMentions((prev) => [
                       ...prev.filter((item) => item.name !== mention.name),
@@ -3743,6 +3761,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
           }
           hasSubAgentHistory={transcriptHasSubAgentCall}
           messages={safeMessages}
+          onOpenFile={handleFileClick}
           forcedWebContextId={forcedWebContextId}
           canvasRequestNonce={canvasRequestNonce}
           canvasExpandNonce={canvasExpandNonce}

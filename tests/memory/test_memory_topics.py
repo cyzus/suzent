@@ -42,6 +42,13 @@ def test_profile_and_personal_pages_are_about_the_user():
     )
 
 
+def test_an_experience_page_is_experience():
+    page = {"source_type": "notebook", "category": "experience"}
+
+    assert describe(page)["kind"] == "experience"
+    assert matches_metadata(page, kinds=["experience"])
+
+
 def test_topics_are_normalized_and_capped():
     assert normalize_topics(["Suzent repo", "suzent-repo", "a_b"] + list("cdefgh")) == [
         "suzent-repo",

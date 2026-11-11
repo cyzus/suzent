@@ -176,7 +176,7 @@ const SubAgentCallBlockComponent: React.FC<SubAgentCallBlockProps> = ({
       ? 'bg-neutral-100 dark:bg-zinc-700 text-brutal-black dark:text-white'
       : 'bg-transparent text-neutral-500 dark:text-neutral-400 hover:text-brutal-black dark:hover:text-white',
     isRunning
-      ? 'brutal-running-mono !text-brutal-black dark:!text-white border-2 !border-brutal-black dark:!border-white'
+      ? 'brutal-running-mono !text-brutal-black dark:!text-white border-2 !border-brutal-black dark:!border-white !shadow-none dark:!shadow-none'
       : 'border-2 border-transparent',
   ].join(' ');
 

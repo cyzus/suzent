@@ -39,6 +39,8 @@ class DiscordChannel(SocialChannel):
     Discord Driver using discord.py.
     """
 
+    max_file_bytes = 10 * 1024 * 1024
+
     def __init__(self, config: Dict[str, Any]):
         super().__init__("discord", config)
         self.token = config.get("token")

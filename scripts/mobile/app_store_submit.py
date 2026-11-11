@@ -36,8 +36,8 @@ class AppStoreError(RuntimeError):
     pass
 
 
-def whats_new(notes: str) -> str:
-    """Convert a mobile changelog section into App Store plain text."""
+def whats_new(notes: str, limit: int = WHATS_NEW_LIMIT) -> str:
+    """Convert a mobile changelog section into plain store release notes."""
     section = re.search(r"^### Release notes\s*\n(.*?)(?=^### |\Z)", notes, re.M | re.S)
     text = section[1] if section else notes
     text = re.sub(r"<!--.*?-->", "", text, flags=re.S)
@@ -51,8 +51,8 @@ def whats_new(notes: str) -> str:
         line = re.sub(r"^\s*[-*]\s+", "• ", line)
         lines.append(line)
     result = re.sub(r"\n{3,}", "\n\n", "\n".join(lines)).strip()
-    if len(result) > WHATS_NEW_LIMIT:
-        result = result[: WHATS_NEW_LIMIT - 1].rstrip() + "…"
+    if len(result) > limit:
+        result = result[: limit - 1].rstrip() + "…"
     return result
 
 

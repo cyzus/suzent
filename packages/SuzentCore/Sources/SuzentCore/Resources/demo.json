@@ -227,6 +227,116 @@
                     "snippet": "Neighbourhoods, transport and opening hours for Lisbon."
                   }
                 ]
+              },
+              {
+                "type": "a2ui",
+                "surface": {
+                  "id": "demo-fado",
+                  "title": "Fado dinner",
+                  "target": "inline",
+                  "rev": 1,
+                  "component": {
+                    "type": "card",
+                    "title": "Friday evening",
+                    "children": [
+                      {
+                        "type": "stack",
+                        "gap": "sm",
+                        "children": [
+                          {
+                            "type": "text",
+                            "content": "Two small tascas near your hotel have tables left."
+                          },
+                          {
+                            "type": "badge",
+                            "label": "2 left",
+                            "color": "success"
+                          }
+                        ]
+                      },
+                      {
+                        "type": "table",
+                        "columns": [
+                          {
+                            "key": "time",
+                            "label": "Time"
+                          },
+                          {
+                            "key": "place",
+                            "label": "Place"
+                          },
+                          {
+                            "key": "seats",
+                            "label": "Seats"
+                          }
+                        ],
+                        "rows": [
+                          {
+                            "time": "19:30",
+                            "place": "Tasca do Chico",
+                            "seats": "2"
+                          },
+                          {
+                            "time": "21:00",
+                            "place": "A Baiuca",
+                            "seats": "4"
+                          }
+                        ]
+                      },
+                      {
+                        "type": "columns",
+                        "children": [
+                          {
+                            "type": "button",
+                            "label": "Book 19:30",
+                            "action": "book_table",
+                            "context": {
+                              "time": "19:30"
+                            },
+                            "variant": "primary"
+                          },
+                          {
+                            "type": "button",
+                            "label": "Remind me later",
+                            "action": "remind_later",
+                            "variant": "secondary"
+                          }
+                        ]
+                      },
+                      {
+                        "type": "html",
+                        "html": "<style>body{margin:0;font:14px -apple-system,Roboto,sans-serif;color:#111;background:#fff}.room{padding:12px}.stage{background:#ffe666;border:2px solid #000;text-align:center;padding:6px;font-weight:700}.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:12px 0}.t{border:2px solid #000;height:36px;display:flex;align-items:center;justify-content:center}.mine{background:#0066ff;color:#fff;animation:pulse 1.6s ease-in-out infinite}@keyframes pulse{50%{transform:scale(1.06)}}button{width:100%;padding:10px;border:2px solid #000;background:#000;color:#fff;font-weight:700}</style><div class=room><div class=stage>Stage</div><div class=grid><div class=t>1</div><div class=\"t mine\">Your table</div><div class=t>3</div><div class=t>4</div><div class=t>5</div><div class=t>6</div><div class=t>7</div><div class=t>8</div></div><button onclick=\"parent.postMessage({type:'a2ui:action',action:'pick_table',context:{table:2}},'*')\">Pick this table</button></div>"
+                      },
+                      {
+                        "type": "divider"
+                      },
+                      {
+                        "type": "form",
+                        "action": "dinner_preferences",
+                        "submit_label": "Send",
+                        "fields": [
+                          {
+                            "name": "diet",
+                            "label": "Dietary needs",
+                            "type": "select",
+                            "options": [
+                              "Vegetarian",
+                              "Vegan",
+                              "None"
+                            ],
+                            "default": "Vegetarian"
+                          },
+                          {
+                            "name": "near_stage",
+                            "label": "Sit near the singers",
+                            "type": "checkbox",
+                            "default": true
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                }
               }
             ]
           }
@@ -379,7 +489,65 @@
     "regent_reply": "I'll keep watching your projects, inbox and calendar, and bring back only what needs you.",
     "approval_tool": "run_command",
     "approval_args": "{\"command\": \"mv ~/Downloads/*receipt*.pdf ~/Documents/Receipts/\"}",
-    "source_url": "https://www.visitlisboa.com"
+    "source_url": "https://www.visitlisboa.com",
+    "overview": {
+      "goal": {
+        "objective": "Plan a relaxed Lisbon weekend",
+        "status": "active",
+        "turnsElapsed": 3,
+        "maxTurns": 10
+      },
+      "tasks": [
+        {
+          "id": "1",
+          "title": "Check the weather",
+          "activeForm": null,
+          "status": "completed"
+        },
+        {
+          "id": "2",
+          "title": "Draft a day-by-day plan",
+          "activeForm": null,
+          "status": "completed"
+        },
+        {
+          "id": "3",
+          "title": "Remind me about online check-in",
+          "activeForm": "Waiting for Thursday",
+          "status": "in_progress"
+        },
+        {
+          "id": "4",
+          "title": "Book the fado dinner",
+          "activeForm": null,
+          "status": "pending"
+        }
+      ],
+      "context": {
+        "usedTokens": 18400,
+        "limit": 200000,
+        "percent": 9.2,
+        "reserveTokens": 16000,
+        "categories": [
+          {
+            "id": "system_prompt",
+            "tokens": 7200
+          },
+          {
+            "id": "messages",
+            "tokens": 5600
+          },
+          {
+            "id": "system_tools",
+            "tokens": 3900
+          },
+          {
+            "id": "memory",
+            "tokens": 1700
+          }
+        ]
+      }
+    }
   },
   "zh": {
     "home": "主页",
@@ -609,6 +777,116 @@
                     "snippet": "里斯本的街区、交通和开放时间。"
                   }
                 ]
+              },
+              {
+                "type": "a2ui",
+                "surface": {
+                  "id": "demo-fado",
+                  "title": "法朵晚餐",
+                  "target": "inline",
+                  "rev": 1,
+                  "component": {
+                    "type": "card",
+                    "title": "周五晚上",
+                    "children": [
+                      {
+                        "type": "stack",
+                        "gap": "sm",
+                        "children": [
+                          {
+                            "type": "text",
+                            "content": "酒店附近两家小酒馆还有位子。"
+                          },
+                          {
+                            "type": "badge",
+                            "label": "剩 2 家",
+                            "color": "success"
+                          }
+                        ]
+                      },
+                      {
+                        "type": "table",
+                        "columns": [
+                          {
+                            "key": "time",
+                            "label": "时间"
+                          },
+                          {
+                            "key": "place",
+                            "label": "地点"
+                          },
+                          {
+                            "key": "seats",
+                            "label": "座位"
+                          }
+                        ],
+                        "rows": [
+                          {
+                            "time": "19:30",
+                            "place": "Tasca do Chico",
+                            "seats": "2"
+                          },
+                          {
+                            "time": "21:00",
+                            "place": "A Baiuca",
+                            "seats": "4"
+                          }
+                        ]
+                      },
+                      {
+                        "type": "columns",
+                        "children": [
+                          {
+                            "type": "button",
+                            "label": "预订 19:30",
+                            "action": "book_table",
+                            "context": {
+                              "time": "19:30"
+                            },
+                            "variant": "primary"
+                          },
+                          {
+                            "type": "button",
+                            "label": "稍后提醒我",
+                            "action": "remind_later",
+                            "variant": "secondary"
+                          }
+                        ]
+                      },
+                      {
+                        "type": "html",
+                        "html": "<style>body{margin:0;font:14px -apple-system,Roboto,sans-serif;color:#111;background:#fff}.room{padding:12px}.stage{background:#ffe666;border:2px solid #000;text-align:center;padding:6px;font-weight:700}.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:12px 0}.t{border:2px solid #000;height:36px;display:flex;align-items:center;justify-content:center}.mine{background:#0066ff;color:#fff;animation:pulse 1.6s ease-in-out infinite}@keyframes pulse{50%{transform:scale(1.06)}}button{width:100%;padding:10px;border:2px solid #000;background:#000;color:#fff;font-weight:700}</style><div class=room><div class=stage>舞台</div><div class=grid><div class=t>1</div><div class=\"t mine\">你的座位</div><div class=t>3</div><div class=t>4</div><div class=t>5</div><div class=t>6</div><div class=t>7</div><div class=t>8</div></div><button onclick=\"parent.postMessage({type:'a2ui:action',action:'pick_table',context:{table:2}},'*')\">选这张桌子</button></div>"
+                      },
+                      {
+                        "type": "divider"
+                      },
+                      {
+                        "type": "form",
+                        "action": "dinner_preferences",
+                        "submit_label": "发送",
+                        "fields": [
+                          {
+                            "name": "diet",
+                            "label": "饮食要求",
+                            "type": "select",
+                            "options": [
+                              "素食",
+                              "纯素",
+                              "无"
+                            ],
+                            "default": "素食"
+                          },
+                          {
+                            "name": "near_stage",
+                            "label": "坐在歌手附近",
+                            "type": "checkbox",
+                            "default": true
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                }
               }
             ]
           }
@@ -761,6 +1039,64 @@
     "regent_reply": "我会持续关注你的项目、收件箱和日程，只把需要你决定的事带回来。",
     "approval_tool": "run_command",
     "approval_args": "{\"command\": \"mv ~/Downloads/*receipt*.pdf ~/Documents/Receipts/\"}",
-    "source_url": "https://www.visitlisboa.com"
+    "source_url": "https://www.visitlisboa.com",
+    "overview": {
+      "goal": {
+        "objective": "规划一个轻松的里斯本周末",
+        "status": "active",
+        "turnsElapsed": 3,
+        "maxTurns": 10
+      },
+      "tasks": [
+        {
+          "id": "1",
+          "title": "查看天气",
+          "activeForm": null,
+          "status": "completed"
+        },
+        {
+          "id": "2",
+          "title": "列出每天的安排",
+          "activeForm": null,
+          "status": "completed"
+        },
+        {
+          "id": "3",
+          "title": "提醒我网上值机",
+          "activeForm": "等到周四",
+          "status": "in_progress"
+        },
+        {
+          "id": "4",
+          "title": "预订法朵晚餐",
+          "activeForm": null,
+          "status": "pending"
+        }
+      ],
+      "context": {
+        "usedTokens": 18400,
+        "limit": 200000,
+        "percent": 9.2,
+        "reserveTokens": 16000,
+        "categories": [
+          {
+            "id": "system_prompt",
+            "tokens": 7200
+          },
+          {
+            "id": "messages",
+            "tokens": 5600
+          },
+          {
+            "id": "system_tools",
+            "tokens": 3900
+          },
+          {
+            "id": "memory",
+            "tokens": 1700
+          }
+        ]
+      }
+    }
   }
 }

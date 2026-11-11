@@ -149,3 +149,34 @@ import Testing
         #expect(try await client.chat("demo-note").messages?.last?.content.isEmpty == false)
     }
 }
+
+@Test @MainActor func demoOverviewHasSamplePlanOnlyForTrip() async throws {
+    for language in ["en", "zh"] {
+        let client = try DemoClient(language: language)
+        #expect(try await client.clientSession().supportsChatOverview)
+        let trip = try await client.overview("demo-trip")
+        #expect(trip.goal != nil)
+        #expect(trip.completedCount == 2)
+        #expect(trip.currentTask?.id == "3")
+        #expect(trip.context.percent != nil)
+        let other = try await client.overview("demo-note")
+        #expect(other.goal == nil && other.tasks.isEmpty && other.context.usedTokens == nil)
+    }
+}
+
+@Test func overviewDecodesWithoutUsage() throws {
+    let json = #"{"goal":null,"tasks":[{"id":"1","title":"A","activeForm":null,"status":"cancelled"}],"context":{"usedTokens":null,"limit":100000,"percent":null,"reserveTokens":null,"categories":[]}}"#
+    let overview = try JSONDecoder().decode(ChatOverview.self, from: Data(json.utf8))
+    #expect(overview.tasks.first?.isDone == true)
+    #expect(overview.completedCount == 0)
+    #expect(overview.context.limit == 100_000)
+}
+
+@Test @MainActor func demoTripReplyCarriesASurface() async throws {
+    let client = try DemoClient(language: "en")
+    let rows = presentMessages(try await client.chat("demo-trip").messages ?? [])
+    let reply = try #require(rows.last)
+    #expect(reply.parts.map(\.type) == ["text", "a2ui"])
+    #expect(reply.parts.last?.surface?.id == "demo-fado")
+    #expect(activityFinalStart(reply.parts) == 0)
+}

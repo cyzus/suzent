@@ -13,6 +13,7 @@ import {
 import { ChatList } from './components/ChatList';
 import { ChatWindow, hasUnsentComposerWork } from './components/ChatWindow';
 import { BackendLoadingScreen } from './components/BackendLoadingScreen';
+import { ClosePrompt } from './components/ClosePrompt';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { RobotAvatar } from './components/chat/RobotAvatar';
 import { SidebarToggleIcon } from './components/SidebarToggleIcon';
@@ -233,34 +234,10 @@ function HeaderTitle({ text, onUnlock }: HeaderTitleProps): React.ReactElement {
   );
 }
 
-interface MacTrafficLightsProps {
-  isMaximized: boolean;
-  onMaximize: () => void;
-}
-
-function MacTrafficLights({ isMaximized, onMaximize }: MacTrafficLightsProps): React.ReactElement {
-  const { t } = useI18n();
-  const appWindow = window.__TAURI__?.window.getCurrentWindow();
-
-  return (
-    <div className="mr-3 flex h-10 shrink-0 items-center gap-2" aria-label={t('app.title')}>
-      <button
-        onClick={() => appWindow?.close()}
-        className="h-3 w-3 rounded-full border border-[#e0443e] bg-[#ff5f57] transition-opacity hover:opacity-90"
-        title={t('titlebar.close')}
-      />
-      <button
-        onClick={() => appWindow?.minimize()}
-        className="h-3 w-3 rounded-full border border-[#dfa123] bg-[#febc2e] transition-opacity hover:opacity-90"
-        title={t('titlebar.minimize')}
-      />
-      <button
-        onClick={onMaximize}
-        className="h-3 w-3 rounded-full border border-[#1ea833] bg-[#28c840] transition-opacity hover:opacity-90"
-        title={isMaximized ? t('titlebar.restore') : t('titlebar.maximize')}
-      />
-    </div>
-  );
+// The window's native traffic lights float over this spot (placed in
+// `create_main_window`); keep it clear so they do not cover header controls.
+function MacTrafficLightsSpacer(): React.ReactElement {
+  return <div className="mr-3 h-10 w-[54px] shrink-0" aria-hidden="true" />;
 }
 
 type MainView = 'chat' | 'memory' | 'skills' | 'emotes';
@@ -411,6 +388,10 @@ function AppInner(): React.ReactElement {
     setIsSettingsOpen(true);
     setIsLeftSidebarOpen(window.innerWidth >= DESKTOP_BREAKPOINT_PX);
   };
+  const closeSettings = () => {
+    setIsSettingsOpen(false);
+    setIsLeftSidebarOpen(sidebarOpenBeforeSettings.current);
+  };
   const [isLeftSidebarOpen, setIsLeftSidebarOpen] = useState(
     window.innerWidth >= DESKTOP_BREAKPOINT_PX
   );
@@ -508,6 +489,35 @@ function AppInner(): React.ReactElement {
   React.useEffect(() => {
     loadChatRef.current = loadChat;
   }, [loadChat]);
+  // The window may have been hidden on Memory, Skills or Settings; a tray
+  // click should land on the conversation itself.
+  const openChatFromTray = (chatId: string) => {
+    if (isSettingsOpen) closeSettings();
+    setMainView('chat');
+    mobileNavigation.open();
+    void loadChat(chatId, { force: true });
+  };
+  const openChatFromTrayRef = React.useRef(openChatFromTray);
+  React.useEffect(() => {
+    openChatFromTrayRef.current = openChatFromTray;
+  });
+  React.useEffect(() => {
+    if (isWeb()) return;
+    let unlisten: (() => void) | undefined;
+    let cancelled = false;
+    void import('@tauri-apps/api/event').then(({ listen }) =>
+      listen<string>('tray-open-chat', (event) => {
+        openChatFromTrayRef.current(event.payload);
+      }).then((stop) => {
+        if (cancelled) stop();
+        else unlisten = stop;
+      })
+    );
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
+  }, []);
   React.useEffect(() => {
     currentChatIdRef.current = currentChatId;
   }, [currentChatId]);
@@ -801,12 +811,7 @@ function AppInner(): React.ReactElement {
             onOpenSettings={() => openSettings()}
             onClose={closeLeftSidebar}
             titlebarControls={
-              showMacWindowControls && isLeftSidebarOpen ? (
-                <MacTrafficLights
-                  isMaximized={isWindowMaximized}
-                  onMaximize={toggleWindowMaximize}
-                />
-              ) : null
+              showMacWindowControls && isLeftSidebarOpen ? <MacTrafficLightsSpacer /> : null
             }
           />
           <div
@@ -817,12 +822,7 @@ function AppInner(): React.ReactElement {
               onMouseDown={handleHeaderMouseDown}
             >
               <div className="flex min-w-0 flex-1 items-center gap-2 md:gap-0">
-                {showMacWindowControls && !isLeftSidebarOpen ? (
-                  <MacTrafficLights
-                    isMaximized={isWindowMaximized}
-                    onMaximize={toggleWindowMaximize}
-                  />
-                ) : null}
+                {showMacWindowControls && !isLeftSidebarOpen ? <MacTrafficLightsSpacer /> : null}
                 {mobile ? (
                   <button
                     type="button"
@@ -1002,10 +1002,7 @@ function AppInner(): React.ReactElement {
         </div>
         <SettingsModal
           isOpen={isSettingsOpen}
-          onClose={() => {
-            setIsSettingsOpen(false);
-            setIsLeftSidebarOpen(sidebarOpenBeforeSettings.current);
-          }}
+          onClose={closeSettings}
           initialCategory={settingsInitialCategory}
           navigationHost={settingsNavigationHost}
           showInlineNavigation={!isLeftSidebarOpen || viewportWidth < DESKTOP_BREAKPOINT_PX}
@@ -1640,6 +1637,7 @@ export default function App({ children }: AppProps = {}) {
           </ChatProvider>
         </ProjectProvider>
       )}
+      <ClosePrompt />
     </ErrorBoundary>
   );
 }

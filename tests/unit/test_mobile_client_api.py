@@ -1,6 +1,8 @@
 import asyncio
+import json
 import socket
 from datetime import datetime
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -12,6 +14,7 @@ from starlette.testclient import TestClient
 from suzent.auth_boundary import AuthBoundaryMiddleware
 from suzent.mobile.attachments import AttachmentRegistry
 from suzent.mobile.client_api import client_routes, revocable_stream
+from suzent.mobile.media import media_id
 from suzent.mobile.pairing import ClientPermissions, PairingStore
 from suzent.routes.mobile_routes import mobile_routes
 
@@ -58,6 +61,7 @@ def setup_client(tmp_path, monkeypatch):
             key: {
                 "platform": records[key].config.get("platform"),
                 "parentChatId": records[key].config.get("parent_chat_id"),
+                "unreadCount": records[key].config.get("unread_count", 0),
             }
             for key in ids
             if key in records
@@ -109,6 +113,7 @@ def test_scoped_reads_and_host_endpoints(setup_client, monkeypatch):
             "projectId": "p-shared",
             "projectName": "Shared",
             "platform": None,
+            "unreadCount": 0,
             "parentChatId": None,
         }
     ]
@@ -672,6 +677,69 @@ def test_confirm_pairing_requires_mobile_credential(setup_client):
     assert client.post("/mobile/client/pairing/confirm", json={}).status_code == 200
     store.revoke(result["device"]["device_id"])
     assert client.post("/mobile/client/pairing/confirm", json={}).status_code == 401
+
+
+def test_steer_needs_send_and_stop_and_redirects_only_a_running_turn(
+    setup_client, monkeypatch
+):
+    from suzent.mobile.client_api import get_database
+
+    client, store = setup_client
+    calls = []
+    running = {"shared": False}
+
+    async def send(request):
+        calls.append(("send", await request.json()))
+        return JSONResponse({"chat_id": "shared"}, status_code=202)
+
+    async def steer(request):
+        calls.append(("steer", await request.json()))
+        return JSONResponse({"chat_id": "shared"}, status_code=202)
+
+    monkeypatch.setattr("suzent.routes.chat_routes.chat_send", send)
+    monkeypatch.setattr("suzent.routes.chat_routes.steer_chat_send", steer)
+    monkeypatch.setattr(
+        "suzent.core.stream_registry.is_background_streaming",
+        lambda chat_id: running.get(chat_id, False),
+    )
+    base = {"chat_id": "shared", "message": "Use the other file"}
+
+    send_only = grant(store, chat_ids=["shared"], send=True)
+    client.headers["Authorization"] = f"Bearer {send_only['token']}"
+    assert client.post("/mobile/client/steer", json=base).status_code == 403
+
+    result = grant(store, chat_ids=["shared"], send=True, stop=True)
+    client.headers["Authorization"] = f"Bearer {result['token']}"
+    for body in (
+        {**base, "message": "   "},
+        {**base, "config": {"permission_mode": "auto"}},
+        {**base, "attachments": ["0" * 32]},
+        {**base, "client_run_token": "x"},
+    ):
+        assert client.post("/mobile/client/steer", json=body).status_code == 400
+    assert (
+        client.post("/mobile/client/steer", json={**base, "message": "/x"}).status_code
+        == 403
+    )
+    assert (
+        client.post(
+            "/mobile/client/steer", json={**base, "chat_id": "private"}
+        ).status_code
+        == 403
+    )
+    assert calls == []
+
+    running["shared"] = True
+    redirect = {**base, "model": "test/other"}
+    assert client.post("/mobile/client/steer", json=redirect).status_code == 202
+    assert calls == [("steer", {**base, "config": {"model": "test/other"}})]
+    assert get_database().get_chat("shared").config == {"model": "test/other"}
+
+    # A turn that ended before the redirect arrived: the message starts the next one.
+    running["shared"] = False
+    assert client.post("/mobile/client/steer", json=base).status_code == 202
+    assert calls[-1] == ("send", {**base, "config": {"model": "test/other"}})
+    assert client.get("/mobile/client/session").json()["steer"] == 1
 
 
 @pytest.mark.parametrize("status", [202, 409, 500])
@@ -1273,6 +1341,19 @@ def test_navigation_redacts_unshared_parent(
         assert row["parentChatId"] == expected
 
 
+def test_navigation_reports_unread_replies(
+    setup_client: tuple[TestClient, PairingStore],
+) -> None:
+    client, store = setup_client
+    from suzent.mobile.client_api import get_database
+
+    get_database().get_chat("shared").config = {"unread_count": 2}
+    result = grant(store, chat_ids=["shared"])
+    client.headers["Authorization"] = f"Bearer {result['token']}"
+    rows = client.get("/mobile/client/chats").json()["chats"]
+    assert [(row["id"], row["unreadCount"]) for row in rows] == [("shared", 2)]
+
+
 def test_scheduled_tasks_are_scoped_and_safe(
     setup_client: tuple[TestClient, PairingStore],
 ) -> None:
@@ -1663,3 +1744,205 @@ def test_voice_rejects_browser_origin(setup_client):
             },
         ):
             pytest.fail("Cross-origin voice connection accepted")
+
+
+def test_overview_is_scoped_and_omits_task_details(
+    setup_client: tuple[TestClient, PairingStore], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client, store = setup_client
+    from suzent.mobile.client_api import get_database
+
+    db = get_database()
+    monkeypatch.setattr(
+        "suzent.core.context_compressor.resolve_context_limit", lambda model: 200_000
+    )
+    db.get_goal = lambda project_id, chat_id: SimpleNamespace(
+        objective="Ship it", status="active", turns_elapsed=2, max_turns=10
+    )
+    db.list_tasks = lambda **kwargs: [
+        SimpleNamespace(
+            id=1,
+            title="Write tests",
+            active_form="Writing tests",
+            status="completed",
+            blocked_by=[],
+            description="private description",
+            result_path="/private/path",
+        ),
+        SimpleNamespace(
+            id=2,
+            title="Release",
+            active_form=None,
+            status="pending",
+            blocked_by=[1],
+            description=None,
+            result_path=None,
+        ),
+    ]
+    db.get_chat("shared").context_usage = {
+        "context_tokens": 50_000,
+        "context_breakdown": {
+            "reserve_tokens": 8_000,
+            "categories": [
+                {"id": "messages", "tokens": 30_000, "items": []},
+                {"id": "skills", "tokens": 0, "items": []},
+                {"id": "system_prompt", "tokens": 40_000, "items": []},
+            ],
+        },
+    }
+    db.get_chat("private").context_usage = {}
+
+    result = grant(store, chat_ids=["shared"])
+    client.headers["Authorization"] = f"Bearer {result['token']}"
+    assert client.get("/mobile/client/session").json()["chat_overview"] == 1
+    assert client.get("/mobile/client/chats/private/overview").status_code == 403
+
+    body = client.get("/mobile/client/chats/shared/overview").json()
+    assert body["goal"] == {
+        "objective": "Ship it",
+        "status": "active",
+        "turnsElapsed": 2,
+        "maxTurns": 10,
+    }
+    assert [task["status"] for task in body["tasks"]] == ["completed", "blocked"]
+    assert "private" not in str(body["tasks"])
+    assert body["context"] == {
+        "usedTokens": 50_000,
+        "limit": 200_000,
+        "percent": 25.0,
+        "reserveTokens": 8_000,
+        "categories": [
+            {"id": "system_prompt", "tokens": 40_000},
+            {"id": "messages", "tokens": 30_000},
+        ],
+    }
+
+    store.revoke(result["device"]["device_id"])
+    assert client.get("/mobile/client/chats/shared/overview").status_code == 401
+
+
+def test_overview_without_usage_or_project(
+    setup_client: tuple[TestClient, PairingStore], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client, store = setup_client
+    from suzent.mobile.client_api import get_database
+
+    db = get_database()
+    monkeypatch.setattr(
+        "suzent.core.context_compressor.resolve_context_limit", lambda model: 100_000
+    )
+    db.get_chat_projects = lambda ids: {}
+    db.get_chat("shared").context_usage = {}
+    result = grant(store, chat_ids=["shared"])
+    client.headers["Authorization"] = f"Bearer {result['token']}"
+    body = client.get("/mobile/client/chats/shared/overview").json()
+    assert body["goal"] is None and body["tasks"] == []
+    assert body["context"]["usedTokens"] is None
+    assert body["context"]["percent"] is None
+    assert body["context"]["limit"] == 100_000
+
+
+def test_surface_answer_requires_send_scope_and_pending_question(
+    setup_client: tuple[TestClient, PairingStore], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client, store = setup_client
+    resolved: list[tuple[str, str, dict]] = []
+    events: list[tuple[str, str, dict]] = []
+
+    def resolve(chat_id: str, surface_id: str, answer: dict) -> bool:
+        resolved.append((chat_id, surface_id, answer))
+        return surface_id == "ask"
+
+    async def push(chat_id: str, name: str, value: dict) -> None:
+        events.append((chat_id, name, value))
+
+    monkeypatch.setattr("suzent.a2ui.pending.resolve", resolve)
+    monkeypatch.setattr("suzent.core.stream_registry.push_custom_event", push)
+    body = {"chat_id": "shared", "surface_id": "ask", "answer": {"answer": "Yes"}}
+
+    reader = grant(store, chat_ids=["shared"])
+    client.headers["Authorization"] = f"Bearer {reader['token']}"
+    assert client.get("/mobile/client/session").json()["surfaces"] == 1
+    assert client.post("/mobile/client/surface-answer", json=body).status_code == 403
+
+    sender = grant(store, chat_ids=["shared"], send=True)
+    client.headers["Authorization"] = f"Bearer {sender['token']}"
+    private = {**body, "chat_id": "private"}
+    assert client.post("/mobile/client/surface-answer", json=private).status_code == 403
+    assert client.post("/mobile/client/surface-answer", json=body).json() == {
+        "ok": True
+    }
+    assert resolved == [("shared", "ask", {"answer": "Yes"})]
+    assert events == [("shared", "a2ui.resolved", {"surfaceId": "ask"})]
+
+    missing = {**body, "surface_id": "gone"}
+    assert client.post("/mobile/client/surface-answer", json=missing).status_code == 404
+    huge = {**body, "answer": {"text": "x" * 100_001}}
+    assert client.post("/mobile/client/surface-answer", json=huge).status_code == 400
+    extra = {**body, "config": {"tools": []}}
+    assert client.post("/mobile/client/surface-answer", json=extra).status_code == 400
+
+
+def media_tool(name: str, paths: list[str]) -> dict:
+    return {
+        "type": "tool",
+        "toolName": name,
+        "output": json.dumps({"success": True, "metadata": {"saved_paths": paths}}),
+    }
+
+
+def test_media_route_serves_only_reported_files_in_shared_chats(
+    setup_client: tuple[TestClient, PairingStore],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    client, store = setup_client
+    from suzent.mobile.client_api import get_database
+
+    video = tmp_path / "clip.mp4"
+    video.write_bytes(b"0123456789")
+    secret = tmp_path / "secret.mp4"
+    secret.write_bytes(b"secret")
+    db = get_database()
+    db.get_chat("shared").messages = [
+        {"role": "assistant", "parts": [media_tool("check_video", [str(video)])]}
+    ]
+    db.get_chat("private").messages = db.get_chat("shared").messages
+    monkeypatch.setattr(
+        "suzent.routes.sandbox_routes._get_resolver_for_request",
+        lambda chat_id: SimpleNamespace(resolve=Path),
+    )
+
+    result = grant(store, chat_ids=["shared"])
+    client.headers["Authorization"] = f"Bearer {result['token']}"
+    assert client.get("/mobile/client/session").json()["media"] == 1
+
+    response = client.get(f"/mobile/client/chats/shared/media/{media_id(str(video))}")
+    assert response.status_code == 200
+    assert response.content == b"0123456789"
+    assert response.headers["content-type"] == "video/mp4"
+    ranged = client.get(
+        f"/mobile/client/chats/shared/media/{media_id(str(video))}",
+        headers={"Range": "bytes=2-4"},
+    )
+    assert ranged.status_code == 206 and ranged.content == b"234"
+
+    assert (
+        client.get(
+            f"/mobile/client/chats/shared/media/{media_id(str(secret))}"
+        ).status_code
+        == 404
+    )
+    assert (
+        client.get(
+            f"/mobile/client/chats/private/media/{media_id(str(video))}"
+        ).status_code
+        == 403
+    )
+    video.unlink()
+    assert (
+        client.get(
+            f"/mobile/client/chats/shared/media/{media_id(str(video))}"
+        ).status_code
+        == 404
+    )

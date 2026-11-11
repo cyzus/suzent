@@ -224,9 +224,11 @@ public final class SuzentClient: Sendable {
         guard await navigationCapability.enabled else {
             let rows = try await chats()
             let projects = try await projects().map { project in
-                Project(id: project.id, name: project.name, chatCount: rows.filter {
-                    $0.projectId == project.id && !$0.isRegent && !$0.isScheduled && $0.pinned != true
-                }.count)
+                let members = rows.filter { $0.projectId == project.id && !$0.isRegent }
+                return Project(id: project.id, name: project.name,
+                               chatCount: members.filter { !$0.isScheduled && $0.pinned != true }.count,
+                               running: members.contains { $0.isRunning == true },
+                               unread: members.contains { ($0.unreadCount ?? 0) > 0 })
             }
             return NavigationMetadata(regent: rows.first { $0.isRegent }, projects: projects)
         }
@@ -254,6 +256,18 @@ public final class SuzentClient: Sendable {
     public func chats() async throws -> [Chat] {
         struct Listing: Decodable { let chats: [Chat] }
         return try JSONDecoder().decode(Listing.self, from: await data("mobile/client/chats")).chats
+    }
+
+    public func answerSurface(_ chatID: String, surfaceID: String, answer: [String: JSONValue]) async throws {
+        var request = try request("mobile/client/surface-answer", body: [:])
+        request.httpBody = try JSONSerialization.data(withJSONObject: ["chat_id": chatID, "surface_id": surfaceID,
+                                                                      "answer": answer.mapValues(\.foundationValue)])
+        let (_, response) = try await session.data(for: request)
+        try validate(response)
+    }
+
+    public func overview(_ id: String) async throws -> ChatOverview {
+        try JSONDecoder().decode(ChatOverview.self, from: await data("mobile/client/chats/\(id)/overview"))
     }
 
     public func scheduledTasks() async throws -> [ScheduledTask] {
@@ -305,6 +319,24 @@ public final class SuzentClient: Sendable {
         return try JSONDecoder().decode(Chat.self, from: await data("mobile/client/chats/\(id)"))
     }
 
+    public func media(_ chatID: String, mediaID: String, to destination: URL) async throws {
+        guard !chatID.contains("/"), chatID != ".", chatID != "..",
+              MediaItem(id: mediaID, kind: "image", name: "").isValid else { throw ClientError.invalidResponse }
+        let request = try request("mobile/client/chats/\(chatID)/media/\(mediaID)")
+        let fileManager = FileManager.default
+        try? fileManager.removeItem(at: destination)
+        if tunnel == nil {
+            let (location, response) = try await session.download(for: request)
+            try validate(response)
+            try fileManager.moveItem(at: location, to: destination)
+        } else {
+            // The relay's URLProtocol answers data tasks, as uploads do.
+            let (data, response) = try await session.data(for: request)
+            try validate(response)
+            try data.write(to: destination, options: .atomic)
+        }
+    }
+
     /// Uploads files for one conversation and returns the ids the backend issued for them.
     public func upload(_ attachments: [PendingAttachment], chatID: String) async throws -> [String] {
         guard !chatID.contains("/"), chatID != ".", chatID != ".." else { throw ClientError.invalidResponse }
@@ -353,6 +385,12 @@ public final class SuzentClient: Sendable {
 
     public func stop(_ chatID: String) async throws {
         _ = try await data("mobile/client/stop", body: ["chat_id": chatID])
+    }
+
+    public func steer(_ text: String, chatID: String, model: String? = nil) async throws {
+        var body = ["chat_id": chatID, "message": text]
+        if let model { body["model"] = model }
+        _ = try await data("mobile/client/steer", body: body)
     }
 
     public func observe(_ chatID: String, onEvent: @Sendable (StreamEvent) async -> Void) async throws {

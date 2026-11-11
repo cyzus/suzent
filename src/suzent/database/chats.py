@@ -1386,7 +1386,7 @@ class ChatOperationsMixin:
 
     def get_chat_navigation(
         self, chat_ids: list[str]
-    ) -> dict[str, dict[str, str | None]]:
+    ) -> dict[str, dict[str, str | int | None]]:
         if not chat_ids:
             return {}
         with self._session() as session:
@@ -1397,6 +1397,7 @@ class ChatOperationsMixin:
                 chat_id: {
                     "platform": (config or {}).get("platform"),
                     "parentChatId": (config or {}).get("parent_chat_id"),
+                    "unreadCount": int((config or {}).get("unread_count") or 0),
                 }
                 for chat_id, config in session.exec(statement).all()
             }

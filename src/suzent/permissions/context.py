@@ -57,11 +57,9 @@ def seed_default_permission_mode(config: dict[str, Any]) -> None:
     from suzent.config import CONFIG
 
     try:
-        default_mode = str(
-            getattr(CONFIG, "default_permission_mode", "default") or "default"
-        )
+        default_mode = str(getattr(CONFIG, "default_permission_mode", "auto") or "auto")
     except Exception:
-        default_mode = "default"
+        default_mode = "auto"
     # The same public set chat creation used to seed with (see chat_routes):
     # only a mode that parses to a real, non-legacy behaviour is written out.
     if default_mode in {

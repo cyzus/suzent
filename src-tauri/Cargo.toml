@@ -1,6 +1,6 @@
 [package]
 name = "suzent"
-version = "0.23.0"
+version = "0.25.0"
 edition = "2021"
 description = "SUZENT - Your Personal Agent"
 authors = ["SUZENT Team"]
@@ -10,7 +10,7 @@ authors = ["SUZENT Team"]
 tauri-build = { version = "2.0", features = [] }
 
 [dependencies]
-tauri = { version = "2.0", features = [] }
+tauri = { version = "2.0", features = ["tray-icon", "image-png"] }
 tauri-plugin-dialog = "2.0"
 tauri-plugin-shell = "2.0"
 tauri-plugin-single-instance = "2.0"
@@ -22,8 +22,13 @@ tauri-plugin-notification = "~2.3"
 # The voice shortcut, registered from the web app (useVoiceHotkey).
 tauri-plugin-global-shortcut = "~2.3"
 notify-rust = "4.18"
-windows-sys = { version = "0.61.2", features = ["Win32_System_Console"] }
+windows-sys = { version = "0.61.2", features = ["Win32_System_Console", "Win32_Globalization"] }
 uuid = { version = "1", features = ["v4"] }
+
+# macOS Dock Quit and Cmd+Q go through NSApplication before the window close.
+# The hook that tells those apart from the red close button lives in tray.rs.
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6.4"
 
 # WinRT StartupTask for "start at login" in the MSIX package (packaged.rs).
 # 0.61 is already in the tree through Tauri.

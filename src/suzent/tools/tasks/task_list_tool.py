@@ -1,6 +1,6 @@
-from typing import Annotated, Literal, Optional
+from typing import Annotated, Literal, Optional, TypedDict
 
-from pydantic import Field
+from pydantic import ConfigDict, Field, with_config
 from pydantic_ai import RunContext
 
 from suzent.core.agent_deps import AgentDeps
@@ -12,10 +12,40 @@ from suzent.tools.tasks.project_scope import require_project_id
 logger = get_logger(__name__)
 
 
+@with_config(ConfigDict(extra="allow", use_attribute_docstrings=True))
+class TaskRecord(TypedDict, total=False):
+    id: int
+    """Pass as task_id to update_task."""
+    title: str
+    description: str
+    status: str
+    assignee: Optional[str]
+    blocks: list[int]
+    blocked_by: list[int]
+    active_form: Optional[str]
+    waiting_kind: Optional[str]
+    waiting_reason: Optional[str]
+    next_action: Optional[str]
+    result_summary: Optional[str]
+    result_path: Optional[str]
+
+
+@with_config(ConfigDict(extra="allow"))
+class TaskListMetadata(TypedDict, total=False):
+    count: int
+    tasks: list[TaskRecord]
+
+
+class TaskListResult(ToolResult):
+    metadata: TaskListMetadata = Field(default_factory=dict)
+
+
 class TaskListTool(Tool):
     name: str = "TaskListTool"
     tool_name: str = "list_tasks"
     group: ToolGroup = ToolGroup.TASKS
+    # The message already lists the tasks the model reads.
+    model_excluded_metadata = frozenset({"tasks"})
 
     def forward(
         self,
@@ -43,7 +73,7 @@ class TaskListTool(Tool):
             bool,
             Field(description="Include cancelled tasks, which are omitted by default."),
         ] = False,
-    ) -> ToolResult:
+    ) -> TaskListResult:
         project_id, no_project = require_project_id(ctx)
         if no_project:
             return no_project
@@ -63,7 +93,9 @@ class TaskListTool(Tool):
                 if t.status == "blocked" or (t.status == "pending" and t.blocked_by)
             ]
         if not tasks:
-            return ToolResult.success_result("No tasks found.")
+            return TaskListResult.success_result(
+                "No tasks found.", metadata={"count": 0, "tasks": []}
+            )
 
         lines = ["Tasks:"]
         for task in tasks:
@@ -86,4 +118,28 @@ class TaskListTool(Tool):
                 f"    Next action: {task.next_action or ''}\n"
                 f"    Result: {task.result_summary or ''} {task.result_path or ''}"
             )
-        return ToolResult.success_result("\n".join(lines))
+        return TaskListResult.success_result(
+            "\n".join(lines),
+            metadata={
+                "count": len(tasks),
+                "tasks": [_task_record(task) for task in tasks],
+            },
+        )
+
+
+def _task_record(task) -> TaskRecord:
+    return {
+        "id": task.id,
+        "title": task.title,
+        "description": task.description,
+        "status": task.status,
+        "assignee": task.assignee,
+        "blocks": list(task.blocks or []),
+        "blocked_by": list(task.blocked_by or []),
+        "active_form": task.active_form,
+        "waiting_kind": task.waiting_kind,
+        "waiting_reason": task.waiting_reason,
+        "next_action": task.next_action,
+        "result_summary": task.result_summary,
+        "result_path": task.result_path,
+    }

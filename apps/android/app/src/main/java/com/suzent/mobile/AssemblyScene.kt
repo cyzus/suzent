@@ -18,11 +18,12 @@ internal object AssemblyScene {
         return v - floor(v)
     }
     fun frame(seconds: Double, reduced: Boolean = false): List<AssemblyMark> {
-        val t = if (reduced) 3.2 else seconds * 1.45
+        val t = if (reduced) 0.0 else seconds * 1.45
         val cycle = t % duration
         val cycleId = floor(t / duration).toInt()
         val marks = mutableListOf<AssemblyMark>()
-        val advance = ease((cycle - 4.3) / 1.2) * 76
+        // Reduced motion skips the build but keeps the line moving: finished robots rest, then glide one slot.
+        val advance = if (reduced) ease((seconds.coerceAtLeast(0.0) % 2.6 - 1.8) / .8) * 76 else ease((cycle - 4.3) / 1.2) * 76
         val shell = ease((cycle - 1.5) / .28)
         val awake = ease((cycle - 2.7) / .3)
         fun project(x: Double, y: Double, z: Double, center: Double): AssemblyPoint {
@@ -56,8 +57,9 @@ internal object AssemblyScene {
                 if ((i < 2) == back) continue
                 val points = listOf(corners[i],corners[(i+1)%4])
                 val opacity = sin(progress * PI) * if (back) .24 else .95
-                if (!back) marks += AssemblyMark(points, 0xFF408DFF, opacity * .15, true, 4.0)
-                marks += AssemblyMark(points, 0xFF408DFF, opacity, true, if (back) .65 else 1.15)
+                for (layer in if (back) AssemblyScan.back else AssemblyScan.front) {
+                    marks += AssemblyMark(points, layer.color, opacity * layer.opacity, true, layer.width)
+                }
             }
         }
         data class Part(val offset: Triple<Double,Double,Double>, val alpha: Double)
@@ -65,7 +67,7 @@ internal object AssemblyScene {
             val center = 160 + slot * 76 + advance
             if (center < -35 || center > 355) continue
             marks += AssemblyMark((0..23).map { val angle=it*PI/12; AssemblyPoint(center+18*cos(angle),81+2*sin(angle)) },0xFF000000,.09)
-            if (slot > 0) { cube(center,14.65,eyes=.22); continue }
+            if (slot > 0 || reduced) { cube(center,14.65,eyes=.22); continue }
             if (slot == 0) scan(true)
             val parts = mutableListOf<Part>()
             for (a in -1..1) for (b in -1..1) for (c in -1..1) {

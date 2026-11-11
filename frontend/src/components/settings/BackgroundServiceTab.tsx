@@ -6,6 +6,7 @@ import { useI18n } from '../../i18n';
 import { BrutalButton, BrutalIconButton } from '../BrutalButton';
 import { BrutalOnOff } from '../BrutalOnOff';
 import { SectionCardHeader, SettingsCard, SettingsPage } from './SettingsCard';
+import { SettingsChoiceGroup } from './SettingsChoiceGroup';
 import { SettingsHeader } from './SettingsHeader';
 import { ServiceLogCard } from './ServiceLogCard';
 
@@ -31,6 +32,59 @@ function formatUptime(seconds: number | null): string {
   const hours = Math.floor(seconds / 3600);
   const minutes = Math.floor((seconds % 3600) / 60);
   return hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`;
+}
+
+type CloseAction = 'ask' | 'tray' | 'quit';
+
+/** What the window's close button does. Hidden where there is no tray. */
+function CloseBehaviorCard(): React.ReactElement | null {
+  const { t } = useI18n();
+  const [action, setAction] = useState<CloseAction | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    invoke<CloseAction | null>('get_close_action')
+      .then(setAction)
+      .catch(() => setAction(null));
+  }, []);
+
+  if (action === null) return null;
+
+  const choose = async (next: CloseAction): Promise<void> => {
+    const previous = action;
+    setAction(next);
+    setError(null);
+    try {
+      await invoke('set_close_action', { action: next });
+    } catch (saveError) {
+      setAction(previous);
+      setError(String(saveError));
+    }
+  };
+
+  return (
+    <SettingsCard>
+      <SectionCardHeader
+        title={t('settings.service.closeTitle')}
+        description={t('settings.service.closeDesc')}
+      />
+      <SettingsChoiceGroup<CloseAction>
+        label={t('settings.service.closeTitle')}
+        value={action}
+        onChange={(next) => void choose(next)}
+        options={[
+          { value: 'ask', label: t('settings.service.closeAsk') },
+          { value: 'tray', label: t('settings.service.closeTray') },
+          { value: 'quit', label: t('settings.service.closeQuit') },
+        ]}
+      />
+      {error && (
+        <div className="mt-4 border-2 border-brutal-black bg-red-100 dark:bg-red-950 p-3 text-sm font-mono text-red-800 dark:text-red-200">
+          {error}
+        </div>
+      )}
+    </SettingsCard>
+  );
 }
 
 export function BackgroundServiceTab(): React.ReactElement {
@@ -189,6 +243,8 @@ export function BackgroundServiceTab(): React.ReactElement {
           </BrutalIconButton>
         </div>
       </SettingsCard>
+
+      <CloseBehaviorCard />
 
       {/* The same card the web console shows at #/ops. The service writes one
           log wherever it runs, so both shells read it the same way rather than

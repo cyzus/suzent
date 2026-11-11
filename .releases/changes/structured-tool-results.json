@@ -1,0 +1,4 @@
+{
+  "products": { "desktop": "patch" },
+  "summary": "File, web, memory, session, task and mail tools now return their results as structured data alongside the text, and that data no longer counts toward the context estimate."
+}

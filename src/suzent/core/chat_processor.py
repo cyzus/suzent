@@ -967,8 +967,31 @@ class ChatProcessor:
         # so turn-end persistence snapshots it. The old pre-turn compaction block was
         # removed as redundant.
 
+        # `/skill <name> ...` runs the agent rather than answering the turn, so
+        # it bypasses dispatch and rides in with that skill's instructions.
+        skill_context = None
+        if (
+            message_content
+            and message_content.lstrip().lower().startswith("/skill")
+            and not resume_approvals
+            and not is_heartbeat
+        ):
+            from suzent.core.commands.skill import skill_invocation_context
+
+            skill_context = skill_invocation_context(
+                message_content,
+                deps.skill_manager,
+                sandbox_enabled=deps.sandbox_enabled,
+            )
+
         # Universal slash command dispatch (before history is modified or agent runs)
-        if message_content and not resume_approvals and not files and not is_heartbeat:
+        if (
+            message_content
+            and not resume_approvals
+            and not files
+            and not is_heartbeat
+            and skill_context is None
+        ):
             from suzent.core.commands import (
                 dispatch as _dispatch_command,
                 CommandContext as _CmdCtx,
@@ -1075,6 +1098,7 @@ class ChatProcessor:
             build_combined_reminder,
             make_user_prompt_part,
             sanitize_untrusted_text,
+            wrap_in_system_reminder,
         )
 
         # Neutralize reminder delimiters in everything we did not author, before
@@ -1164,6 +1188,20 @@ class ChatProcessor:
                 message_content = f"{message_content}\n\n{reminder}"
             else:
                 message_content = reminder
+        if skill_context:
+            # A block of its own, not an ad-hoc reminder: the reminder budget
+            # would truncate a typical skill, and the user asked for all of it.
+            from suzent.core.context_usage import register_context_source
+
+            register_context_source(
+                deps,
+                sanitize_untrusted_text(skill_context).strip(),
+                "skills",
+                "skill_invocation",
+            )
+            message_content = (
+                f"{message_content}\n{wrap_in_system_reminder(skill_context)}"
+            )
 
         # Only append a new user message if there's actual content or attachments
         # (For stateless resume, we might just be submitting tool results)
@@ -2757,6 +2795,11 @@ def _rebuild_display_messages(messages: list, model_id: str | None = None) -> li
         ToolReturnPart,
     )
     import json
+    from suzent.core.code_mode import (
+        RUN_CODE_TOOL,
+        code_mode_display_part,
+        nested_calls,
+    )
     from suzent.streaming import tool_call_outcome
     from suzent.core.system_reminder import (
         has_authenticated_block,
@@ -2821,10 +2864,13 @@ def _rebuild_display_messages(messages: list, model_id: str | None = None) -> li
     denied_tool_calls = set()
     tool_returns_by_id: dict[str, str] = {}
     tool_outcomes_by_id: dict[str, str] = {}
+    code_mode_calls_by_id: dict[str, list[tuple[Any, Any]]] = {}
     for msg in messages:
         if isinstance(msg, ModelRequest):
             for part in msg.parts:
                 if isinstance(part, ToolReturnPart):
+                    if part.tool_name == RUN_CODE_TOOL:
+                        code_mode_calls_by_id[part.tool_call_id] = nested_calls(part)
                     executed_tool_calls.add(part.tool_call_id)
                     if _is_denied_tool_return(part.content):
                         denied_tool_calls.add(part.tool_call_id)
@@ -2958,6 +3004,24 @@ def _rebuild_display_messages(messages: list, model_id: str | None = None) -> li
                     if outcome := tool_outcomes_by_id.get(part.tool_call_id):
                         structured_tool_part["outcome"] = outcome
                     structured_parts.append(structured_tool_part)
+                    # A snippet's own calls are not in the history as parts;
+                    # its return recorded them, so show them after it.
+                    for nested_call, nested_return in code_mode_calls_by_id.get(
+                        part.tool_call_id, []
+                    ):
+                        structured_parts.append(
+                            code_mode_display_part(
+                                nested_call,
+                                nested_return,
+                                parent_id=part.tool_call_id,
+                                format_args=format_tool_args_for_display,
+                                format_output=lambda content: (
+                                    normalize_tool_output_for_part(
+                                        serialize_tool_return_content(content)
+                                    )
+                                ),
+                            )
+                        )
 
                     tc_dict = {
                         "id": part.tool_call_id,

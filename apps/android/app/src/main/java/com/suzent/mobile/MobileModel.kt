@@ -11,8 +11,10 @@ import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.currentCoroutineContext
@@ -30,10 +32,14 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
     var pairingInvitation by mutableStateOf<PairingInvitation?>(null)
     var pairingPreview by mutableStateOf<PairingPreview?>(null)
     var pairingStatus by mutableStateOf<String?>(null)
-    var pairingCode by mutableStateOf<String?>(null)
+    var awaitingDesktop by mutableStateOf(false)
     var device by mutableStateOf<ClientDevice?>(null)
     var canReconnect by mutableStateOf(false)
     var reconnecting by mutableStateOf(false)
+    var reconnectStage by mutableStateOf(0)
+        private set
+    var reconnectStatus by mutableStateOf<String?>(null)
+        private set
     private var reconnectJob: Job? = null
     private var pairingJob: Job? = null
     var scheduledTasks by mutableStateOf<List<ScheduledTask>>(emptyList())
@@ -44,6 +50,8 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
 
     var sentVersion by mutableStateOf(0)
     var openedVersion by mutableStateOf(0)
+    var openingChatId by mutableStateOf<String?>(null)
+        private set
     var pinnedVersion by mutableStateOf(0)
     var pairingVersion by mutableStateOf(0)
     private val drafts = mutableMapOf<String, String>()
@@ -105,15 +113,17 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
             val updates = api.chatStatuses(requested.toList())
             if (current != generation || revision != navigationRevision) return
             chats = chats.filterNot { it.id in requested } + updates
+            // Collapsed projects have no loaded rows, so their running and unread marks come from metadata.
+            val metadata = api.navigationMetadata()
+            if (current != generation || revision != navigationRevision) return
+            projects = metadata.projects
+            metadata.regent?.let { mergeNavigationChats(listOf(it)) }
             if (System.currentTimeMillis() - lastNavigationRefresh >= 60_000) {
                 val recentIds = chatPages[ChatPageQuery()]?.chats?.map { it.id }
                 val pinnedIds = chatPages[ChatPageQuery("pinned")]?.chats?.map { it.id }
-                val metadata = api.navigationMetadata()
                 val recent = if ((chatPages[ChatPageQuery()]?.chats?.size ?: 0) <= 30) api.chatPage(ChatPageQuery()) else null
                 val pinned = if ((chatPages[ChatPageQuery("pinned")]?.chats?.size ?: 0) <= 30) api.chatPage(ChatPageQuery("pinned")) else null
                 if (current != generation || revision != navigationRevision) return
-                projects = metadata.projects
-                metadata.regent?.let { mergeNavigationChats(listOf(it)) }
                 if (recent != null && ChatPageQuery() !in loadingPages && chatPages[ChatPageQuery()]?.chats?.map { it.id } == recentIds) {
                     chatPages = chatPages + (ChatPageQuery() to recent); mergeNavigationChats(recent.chats)
                 }
@@ -131,6 +141,8 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
     var attachments by mutableStateOf<List<PendingAttachment>>(emptyList())
     var attachmentsSupported by mutableStateOf(false)
     var regentVisible = false
+    /** The open conversation is on screen, so its finished replies count as read. */
+    var chatVisible by mutableStateOf(false)
     var liveParts by mutableStateOf<List<MessagePart>>(emptyList())
     var pendingApprovals by mutableStateOf<List<ApprovalRequest>>(emptyList())
     var approvalChoices by mutableStateOf<Map<String, String>>(emptyMap())
@@ -158,8 +170,42 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
     private var repairActive = false
     private val connection: Connection? get() = desktops.active?.connection
     private var client: MobileClient? = null
+    private val connectionUpgrade = ConnectionUpgrade<BackendClient>(viewModelScope)
+    // Previously captured clients may still serve polling requests or the device socket.
+    private val retiredClients = mutableListOf<MobileClient>()
     val voice = VoiceSession(application, viewModelScope, { error = text(it) }, { refresh() })
     val voiceSupported: Boolean get() = (client as? BackendClient)?.supportsVoice == true
+    val overviewSupported: Boolean get() = client?.supportsChatOverview == true
+
+    /** The plan and context panel reads on demand; null while unavailable. */
+    suspend fun overview(chatId: String): ChatOverview? {
+        val api = client?.takeIf { it.supportsChatOverview && chatId.isNotEmpty() } ?: return null
+        return try { api.overview(chatId) } catch (failure: CancellationException) { throw failure } catch (_: Exception) { null }
+    }
+
+    private val mediaDownloads = mutableMapOf<String, kotlinx.coroutines.Deferred<java.io.File?>>()
+
+    /** A tool's image, video or audio, downloaded once into the cache; null when it can't be fetched. */
+    suspend fun mediaFile(chatId: String, item: MediaItem): java.io.File? {
+        val api = client ?: return null
+        // Ids are per desktop path, so each desktop keeps its own folder.
+        val desktop = Integer.toHexString((desktops.activeId ?: "demo").hashCode())
+        val directory = java.io.File(getApplication<Application>().cacheDir, "media/$desktop").apply { mkdirs() }
+        // The original name, so a shared file arrives as report.pdf rather than an id.
+        val file = java.io.File(java.io.File(directory, item.id).apply { mkdirs() }, item.safeName)
+        if (file.isFile) return file
+        val download = synchronized(mediaDownloads) {
+            mediaDownloads.getOrPut(file.path) {
+                viewModelScope.async(Dispatchers.IO) {
+                    try { api.media(chatId, item.id, file); file }
+                    catch (failure: CancellationException) { throw failure }
+                    catch (_: Exception) { null }
+                    finally { synchronized(mediaDownloads) { mediaDownloads.remove(file.path) } }
+                }
+            }
+        }
+        return download.await()
+    }
 
     val voiceUnavailableReason: Int? get() = when {
         isDemo -> R.string.voice_demo_unavailable
@@ -251,7 +297,7 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
         generation++
         streamJob?.cancel(); streaming = false; liveParts = emptyList()
         pendingApprovals = emptyList(); approvalChoices = emptyMap(); approvalBusy = false; drafts.clear(); draft = ""; error = null
-        discardAttachments()
+        discardAttachments(); discardQueues()
         viewModelScope.launch {
             try {
                 demo.reset()
@@ -319,7 +365,7 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
         pairingJob = null
         pairingStatus = null
         pairingInvitation = null
-        pairingCode = null
+        awaitingDesktop = false
         pairingPreview = null
         generation++
         busy = false
@@ -353,7 +399,7 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
                 val recognized = previous != null && claim.optString("server_proof") == pairingRepairProof(previous, invitation, "desktop")
                 require(!claim.has("server_proof") || recognized)
                 if (generation != current) return@launch
-                if (!invitation.phoneConfirmation) pairingCode = invitation.id.take(6)
+                if (!invitation.phoneConfirmation) awaitingDesktop = true
                 pairingStatus = text(R.string.pairing_finishing)
                 while (System.currentTimeMillis() / 1000.0 < claim.getDouble("expires_at")) {
                     currentCoroutineContext().ensureActive()
@@ -385,12 +431,12 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
                                 removeDesktop(desktop.id)
                                 error = text(R.string.desktop_access_revoked, desktop.name)
                                 pairingInvitation = null
-                                busy = false; pairingCode = null; pairingStatus = null
+                                busy = false; awaitingDesktop = false; pairingStatus = null
                                 return@launch
                             }
                             pairingVersion++
                             pairingInvitation = null
-                            busy = false; pairingCode = null; pairingStatus = null
+                            busy = false; awaitingDesktop = false; pairingStatus = null
                             return@launch
                         }
                         "pending" -> {
@@ -406,7 +452,7 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
                 if (generation == current) { pairingInvitation = null; handle(failure) }
             } finally {
                 bootstrap.close()
-                if (generation == current) { busy = false; pairingCode = null; pairingStatus = null }
+                if (generation == current) { busy = false; awaitingDesktop = false; pairingStatus = null }
             }
         }
     }
@@ -416,31 +462,26 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
      * reached never tears down the session already open.
      */
     private suspend fun activate(id: String) {
+        connectionUpgrade.cancel()
         var saved = requireNotNull(desktops.desktop(id)).connection
         var viaRelay = false
-        run {
-            var reachable: String? = null
-            for (origin in (listOf(saved.origin) + saved.origins).distinct()) {
-                currentCoroutineContext().ensureActive()
-                val probe = BackendClient(Backend.parse(origin, BuildConfig.DEBUG), "", probeOnly = true, deviceTrust = saved.tls)
-                try { probe.capabilities(); reachable = origin; break }
-                catch (failure: CancellationException) { throw failure }
-                catch (_: Exception) { }
-                finally { probe.close() }
+        reconnectStage = 0
+        reconnectStatus = text(R.string.reconnect_finding)
+        val relay = saved.relay
+        val route = resolveConnectionRoute(listOf(saved.origin) + saved.origins, relay != null) { route ->
+            val probe = when (route) {
+                is ConnectionRoute.Direct -> BackendClient(Backend.parse(route.origin, BuildConfig.DEBUG), "", probeOnly = true, deviceTrust = saved.tls)
+                ConnectionRoute.Relay -> relayClient(requireNotNull(relay), "", probeOnly = true)
             }
-            // Direct addresses always win; the relay is only the way in when none answers.
-            val relay = saved.relay
-            if (reachable == null && relay != null) {
-                currentCoroutineContext().ensureActive()
-                val probe = relayClient(relay, "", probeOnly = true)
-                try { probe.capabilities(); viaRelay = true }
-                catch (failure: CancellationException) { throw failure }
-                catch (_: Exception) { }
-                finally { probe.close() }
-            }
-            if (!viaRelay) saved = saved.copy(origin = reachable ?: throw PairingFailure(PairingFailure.Reason.UNREACHABLE))
+            try { probe.capabilities() } finally { probe.close() }
+        }
+        when (route) {
+            is ConnectionRoute.Direct -> saved = saved.copy(origin = route.origin)
+            ConnectionRoute.Relay -> viaRelay = true
         }
         require(saved.clientProtocol == 1)
+        reconnectStage = 2
+        reconnectStatus = text(R.string.reconnect_verifying)
         val candidate = saved.relay?.takeIf { viaRelay }?.let { relayClient(it, saved.hostToken) }
             ?: BackendClient(Backend.parse(saved.origin, BuildConfig.DEBUG), saved.hostToken, deviceTrust = saved.tls)
         try {
@@ -464,6 +505,8 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
             }
             candidate.capabilities()
             val session = candidate.session()
+            reconnectStage = 3
+            reconnectStatus = text(R.string.reconnect_syncing)
             val navigation = candidate.initialNavigation()
             val taskList = candidate.scheduledTasks()
             val initialChat = candidate.composer()
@@ -484,7 +527,46 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
             selected = initialChat
             restoreModel(initialChat)
             connected = true
+            if (viaRelay) startDirectUpgrade(id, saved, candidate)
         } catch (failure: Exception) { candidate.close(); throw failure }
+    }
+
+    private fun startDirectUpgrade(id: String, saved: Connection, relayed: BackendClient) {
+        val deviceId = device?.id
+        connectionUpgrade.start(
+            prepare = {
+                val route = resolveConnectionRoute(listOf(saved.origin) + saved.origins, false) { route ->
+                    val origin = (route as ConnectionRoute.Direct).origin
+                    val probe = BackendClient(Backend.parse(origin, BuildConfig.DEBUG), "", probeOnly = true, deviceTrust = saved.tls)
+                    try { probe.capabilities() } finally { probe.close() }
+                } as ConnectionRoute.Direct
+                val direct = BackendClient(Backend.parse(route.origin, BuildConfig.DEBUG), saved.hostToken, deviceTrust = saved.tls)
+                try {
+                    withTimeout(5000) {
+                        direct.capabilities()
+                        check(direct.session().id == deviceId)
+                    }
+                    direct
+                } catch (failure: Exception) { direct.close(); throw failure }
+            },
+            isCurrent = {
+                foreground && connected && !isDemo && desktops.activeId == id &&
+                    client === relayed && connection?.hostToken == saved.hostToken
+            },
+            isIdle = { !busy && !streaming && !voice.active && !approvalBusy && !stopInFlight && checkingDesktop == null },
+            validate = { direct ->
+                withTimeout(5000) { check(direct.session().id == deviceId) }
+            },
+            install = { direct ->
+                val latest = requireNotNull(desktops.desktop(id)).connection
+                val updated = latest.copy(origin = direct.backend.origin.toString())
+                persist(desktops.updating(id, updated))
+                origin = updated.origin
+                retiredClients.add(relayed)
+                client = direct
+            },
+            discard = { it.close() },
+        )
     }
 
     fun connect() {
@@ -503,7 +585,7 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
                 else error = text(R.string.reconnect_unreachable)
             }
             catch (failure: Exception) { handle(failure) }
-            finally { busy = false; reconnecting = false; reconnectJob = null }
+            finally { busy = false; reconnecting = false; reconnectStatus = null; reconnectStage = 0; reconnectJob = null }
         }
     }
 
@@ -551,6 +633,7 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
                 val chat = api.chat(id)
                 if (current == generation && selected?.id == id && !streaming) {
                     selected = chat
+                    if (chatVisible && foreground) clearUnread(api, id)
                     if (chat.isRegent) {
                         if (regentVisible && (chat.regent?.unread ?: 0) > 0) api.markRead(id)
                         if (current == generation && selected?.id == id && chat.running && liveParts.isEmpty()) observe(id)
@@ -567,6 +650,15 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    /** Desktop counts each finished turn as unread until someone views the conversation. */
+    private suspend fun clearUnread(api: MobileClient, id: String) {
+        if (chats.none { it.id == id && it.unread > 0 && !it.isRegent }) return
+        try { api.markRead(id) }
+        catch (failure: CancellationException) { throw failure }
+        catch (_: Exception) { return }
+        chats = chats.map { if (it.id == id) it.copy(unread = 0) else it }
+    }
+
     fun manageChat(chat: Chat, action: String, value: String? = null) {
         val api = client ?: return
         if (busy || device?.permissions?.manageChats != true) return
@@ -578,6 +670,8 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
                 if (generation != current) return@launch
                 if (action == "delete") {
                     drafts.remove(chat.id)
+                    queues.of(chat.id).flatMap { it.attachments }.forEach { it.file.delete() }
+                    queues = queues.clear(chat.id)
                     chats = chats.filterNot { it.id == chat.id }
                     if (selected?.id == chat.id) {
                         streamJob?.cancel(); api.cancelLive()
@@ -608,26 +702,29 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
         streaming = false
         pendingApprovals = emptyList()
         if (chat.id != selected?.id) discardAttachments()
-        selected = chat
+        selected = if (selected?.id == chat.id) selected else chat
+        openingChatId = chat.id
+        val openingGeneration = generation
         selectedModel = modelPreferences.getString("chatModel.$origin.${chat.id}", null)
         draft = drafts[chat.id].orEmpty()
         liveParts = emptyList()
         viewModelScope.launch {
             try {
                 val api = client ?: return@launch
-                val current = generation
+                val current = openingGeneration
                 val saved = api.chat(chat.id)
                 if (current == generation && selected?.id == chat.id) {
                     selected = saved
-                    if (saved.isRegent) api.markRead(saved.id)
+                    if (saved.isRegent) api.markRead(saved.id) else clearUnread(api, saved.id)
                     if (current != generation || selected?.id != saved.id) return@launch
                     restoreModel(saved)
                     openedVersion++
-                    chats = chats.map { if (it.id == saved.id) saved.copy(messages = emptyList()) else it }
+                    chats = chats.map { if (it.id == saved.id) saved.copy(messages = emptyList(), unread = 0) else it }
                     if (saved.running) observe(chat.id)
                 }
             } catch (failure: CancellationException) { throw failure }
-            catch (failure: Exception) { handle(failure) }
+            catch (failure: Exception) { if (openingGeneration == generation) handle(failure) }
+            finally { if (openingGeneration == generation) openingChatId = null }
         }
     }
 
@@ -725,12 +822,135 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
         attachments = emptyList()
     }
 
-    fun send() {
-        val api = client ?: return
-        var id = selected?.id ?: return
-        val message = draft.trim()
-        val outgoing = attachments
-        if (busy || streaming || (message.isEmpty() && outgoing.isEmpty()) || device?.permissions?.send != true) return
+    private fun discardQueues() {
+        queues.attachments.forEach { it.file.delete() }
+        queues = MessageQueues()
+    }
+
+    fun send() = submit(draft.trim(), attachments, fromDraft = true)
+
+    var queues by mutableStateOf(MessageQueues())
+        private set
+    val queued: List<QueuedMessage> get() = queues.of(selected?.id)
+    /** Whether typed text can redirect the running turn here, rather than only wait in the queue. */
+    val redirectSupported: Boolean get() = client?.supportsSteer == true && device?.permissions?.stop == true
+
+    /** Holds the composer's message until this conversation's running turn ends. */
+    fun queue() {
+        val id = selected?.id?.takeIf { it.isNotEmpty() } ?: return
+        val text = draft.trim()
+        if (busy || (text.isEmpty() && attachments.isEmpty()) || device?.permissions?.send != true) return
+        queues = queues.add(id, QueuedMessage(text, attachments))
+        attachments = emptyList()
+        draft = ""; drafts.remove(id)
+    }
+
+    fun removeQueued(item: QueuedMessage) {
+        val id = selected?.id ?: return
+        item.attachments.forEach { it.file.delete() }
+        queues = queues.remove(id, item.id)
+    }
+
+    fun clearQueued() {
+        val id = selected?.id ?: return
+        queued.flatMap { it.attachments }.forEach { it.file.delete() }
+        queues = queues.clear(id)
+    }
+
+    /** Redirects the running turn with the composer's text, like Enter mid-turn on desktop; attachments stay put. */
+    fun redirect() = steer(draft.trim(), fromDraft = true)
+
+    /** Pulls one message out of line and redirects with it now; its attachments go back to the composer. */
+    fun redirectQueued(item: QueuedMessage) {
+        val id = selected?.id ?: return
+        if (busy || item.text.isEmpty() || item !in queued) return
+        // Its attachments must fit beside the composer's, or one set would be dropped.
+        if (item.attachments.size + attachments.size > MAX_ATTACHMENTS) { error = text(R.string.attachment_limit, MAX_ATTACHMENTS); return }
+        queues = queues.remove(id, item.id)
+        attachments = item.attachments + attachments
+        steer(item.text, fromDraft = false) { delivered -> if (!delivered) restore(item.copy(attachments = emptyList())) }
+    }
+
+    /** Sends the next queued message once this conversation is idle; called whenever that may have changed. */
+    fun releaseQueued() {
+        val chat = selected ?: return
+        val next = queues.of(chat.id).firstOrNull() ?: return
+        if (busy || streaming || chat.running || pendingApprovals.isNotEmpty() || approvalBusy || !foreground) return
+        queues = queues.remove(chat.id, next.id)
+        submit(next.text, next.attachments, fromDraft = false) { delivered -> if (!delivered) restore(next) }
+    }
+
+    // A message that could not go out returns to the composer, never back into the queue, so a failing
+    // desktop is not retried in a loop and nothing typed is lost.
+    private fun restore(item: QueuedMessage) {
+        draft = listOf(item.text, draft).filter { it.isNotBlank() }.joinToString("\n\n")
+        // Never truncated: a composer over the limit is refused on send, and the person chooses what to drop.
+        attachments = item.attachments + attachments
+    }
+
+    private fun steer(message: String, fromDraft: Boolean, done: (Boolean) -> Unit = {}) {
+        val api = client ?: return done(false)
+        val id = selected?.id?.takeIf { it.isNotEmpty() } ?: return done(false)
+        if (busy || message.isEmpty() || device?.permissions?.send != true || !redirectSupported) return done(false)
+        var delivered = false
+        busy = true
+        error = null
+        val current = generation
+        viewModelScope.launch {
+            try {
+                api.steer(id, message, selectedModel)
+                if (current != generation) return@launch
+                delivered = true
+                if (fromDraft) { draft = ""; drafts.remove(id) }
+                sentVersion++
+                // The interrupted turn's stream is retired so its partial reply stays on screen and the redirect streams fresh.
+                val previous = streamJob?.takeIf { it.isActive }
+                api.cancelLive(); previous?.cancelAndJoin()
+                if (current != generation || selected?.id != id) return@launch
+                val partial = if (previous != null) interruptedReply(liveParts, selectedModel ?: selected?.model) else null
+                liveParts = emptyList()
+                selected?.let { chat ->
+                    selected = chat.copy(running = true, messages = chat.messages + listOfNotNull(partial) + ChatMessage("user", message))
+                }
+                chats = chats.map { if (it.id == id) it.copy(running = true) else it }
+                if (foreground) observe(id)
+            } catch (failure: CancellationException) { throw failure }
+            catch (failure: Exception) { if (current == generation) handle(failure, R.string.send_unknown) }
+            finally { if (current == generation) busy = false; done(delivered) }
+        }
+    }
+
+    val surfacesSupported: Boolean get() = client?.supportsSurfaces == true
+
+    /**
+     * A button or form on a surface: a blocked question gets its answer, anything else is sent like a message.
+     * [done] reports whether it was delivered, so a form can be used again after a failure.
+     */
+    fun act(surface: A2UISurface, action: String, context: Map<String, Any?>, done: (Boolean) -> Unit = {}) {
+        val api = client ?: return done(false)
+        val id = selected?.id?.takeIf { it.isNotEmpty() } ?: return done(false)
+        if (device?.permissions?.send != true) return done(false)
+        if (surface.deferred) {
+            val current = generation
+            viewModelScope.launch {
+                try {
+                    api.answerSurface(id, surface.id, deferredAnswer(context))
+                    liveParts = liveParts.filterNot { it.type == "a2ui" && it.surface?.id == surface.id }
+                    done(true)
+                } catch (failure: CancellationException) { throw failure }
+                catch (failure: Exception) { if (current == generation) handle(failure, R.string.surface_answer_failed); done(false) }
+            }
+            return
+        }
+        val text = if (action == "submit_question") questionAnswerText(context) else canvasActionMessage(action, context, surface.id)
+        if (text.isNotEmpty()) submit(text, emptyList(), fromDraft = false, done) else done(false)
+    }
+
+    private fun submit(message: String, outgoing: List<PendingAttachment>, fromDraft: Boolean, done: (Boolean) -> Unit = {}) {
+        val api = client ?: return done(false)
+        var id = selected?.id ?: return done(false)
+        if (busy || streaming || (message.isEmpty() && outgoing.isEmpty()) || device?.permissions?.send != true) return done(false)
+        var delivered = false
         busy = true
         error = null
         val current = generation
@@ -749,8 +969,7 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
                 if (current != generation) return@launch
                 api.send(id, message, selectedModel, issued)
                 if (current != generation) return@launch
-                draft = ""
-                drafts.remove(id)
+                if (fromDraft) { draft = ""; drafts.remove(id) }
                 outgoing.forEach { it.file.delete() }
                 attachments = attachments - outgoing.toSet()
                 sentVersion++
@@ -759,10 +978,11 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
                         files = outgoing.map { FileAttachment(it.name, it.mimeType) }))
                 }
                 chats = chats.map { if (it.id == id) it.copy(running = true) else it }
+                delivered = true
                 if (foreground) observe(id)
             } catch (failure: CancellationException) { throw failure }
             catch (failure: Exception) { if (current == generation) handle(failure, R.string.send_unknown) }
-            finally { if (current == generation) { busy = false; pairingStatus = null } }
+            finally { if (current == generation) { busy = false; pairingStatus = null }; done(delivered) }
         }
     }
 
@@ -797,7 +1017,7 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
                 val saved = api.chat(id)
                 if (current == generation && selected?.id == id) {
                     selected = saved
-                    chats = chats.map { if (it.id == saved.id) saved.copy(messages = emptyList()) else it }
+                    chats = chats.map { if (it.id == saved.id) saved.copy(messages = emptyList(), unread = it.unread) else it }
                     liveParts = emptyList()
                 }
             } catch (error: CancellationException) { throw error }
@@ -885,6 +1105,7 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
     fun setForeground(active: Boolean) {
         foreground = active
         if (!active) {
+            connectionUpgrade.cancel()
             voice.stop()
             cancelReconnect()
             client?.cancelLive()
@@ -893,6 +1114,10 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
             liveParts = emptyList()
             disconnectNode()
         } else {
+            val relayed = client as? BackendClient
+            val saved = connection
+            val id = desktops.activeId
+            if (relayed?.relay != null && saved != null && id != null) startDirectUpgrade(id, saved, relayed)
             if (!connected && canReconnect) connect()
             viewModelScope.launch {
                 refreshNow()
@@ -1031,9 +1256,12 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
 
     /** Drops everything that belongs to the open desktop's session; credentials stay. */
     private fun resetSession() {
+        connectionUpgrade.cancel()
+        retiredClients.forEach { it.close() }
+        retiredClients.clear()
         voice.stop()
         scheduledTasks = emptyList()
-        projects = emptyList(); selectedModel = null; drafts.clear(); discardAttachments(); attachmentsSupported = false
+        projects = emptyList(); selectedModel = null; drafts.clear(); discardAttachments(); discardQueues(); attachmentsSupported = false
         pendingApprovals = emptyList(); approvalChoices = emptyMap(); approvalBusy = false
         generation++
         nodeEnabled = false
@@ -1058,10 +1286,15 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
         busy = false
         canReconnect = connection?.clientProtocol == 1
         pairingInvitation = null
-        pairingCode = null
+        awaitingDesktop = false
         invitationText = ""
         origin = connection?.origin.orEmpty()
     }
 
-    override fun onCleared() { voice.stop(); disconnectNode(); client?.close() }
+    override fun onCleared() {
+        connectionUpgrade.cancel()
+        retiredClients.forEach { it.close() }
+        retiredClients.clear()
+        voice.stop(); disconnectNode(); client?.close()
+    }
 }

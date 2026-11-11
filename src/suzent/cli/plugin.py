@@ -56,11 +56,13 @@ def _via_server(action: str, name: str) -> dict | None:
     """Have a running server apply ``action``; None when no server is running."""
     import asyncio
 
-    from suzent.client import get_client
+    from suzent.client.api import SuzentAsyncClient
     from suzent.client.base import ClientError, ServerUnavailableError
 
     async def call() -> dict:
-        client = get_client()
+        # Not the cached get_client(): it is closed below, and each
+        # asyncio.run needs a client bound to its own loop.
+        client = SuzentAsyncClient()
         try:
             api = client.plugins
             return await (api.install if action == "install" else api.remove)(name)
@@ -167,11 +169,13 @@ def _offer_binary(record, spec, *, yes: bool) -> None:
 def _install_binary_via_server(name: str, binary: str) -> dict | None:
     import asyncio
 
-    from suzent.client import get_client
+    from suzent.client.api import SuzentAsyncClient
     from suzent.client.base import ClientError, ServerUnavailableError
 
     async def call() -> dict:
-        client = get_client()
+        # Not the cached get_client(): it is closed below, and each
+        # asyncio.run needs a client bound to its own loop.
+        client = SuzentAsyncClient()
         try:
             return await client.plugins.install_binary(name, binary)
         finally:

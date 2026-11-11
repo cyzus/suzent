@@ -13,7 +13,6 @@ import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.graphics.Color
@@ -27,7 +26,7 @@ const val PRIVACY_POLICY_URL = "https://suzent.com/mobile-privacy"
 fun PairingView(model: MobileModel) {
     var scanning by remember { mutableStateOf(false) }
     if (scanning) PairingScanner(model) { scanning = false }
-    if (model.pairingCode == null && model.pairingInvitation == null && (!model.busy || model.startingDemo)) PairingWelcome(model) { scanning = true }
+    if (!model.awaitingDesktop && model.pairingInvitation == null && (!model.busy || model.startingDemo)) PairingWelcome(model) { scanning = true }
     else PairingProgressView(model)
 }
 
@@ -81,18 +80,16 @@ private fun PairingWelcome(model: MobileModel, scan: () -> Unit) {
 private fun PairingProgressView(model: MobileModel) {
     Column(Modifier.fillMaxSize().padding(top = 16.dp).verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(PresentationTokens.spaceLarge.dp)) {
-        Column(Modifier.fillMaxWidth().background(Color(PresentationTokens.yellow))
+        Column(Modifier.fillMaxWidth().background(suzentYellow())
             .border(PresentationTokens.borderWidth.dp, Color.Black).padding(PresentationTokens.spaceLarge.dp),
             verticalArrangement = Arrangement.spacedBy(PresentationTokens.spaceSmall.dp)) {
             Text(stringResource(R.string.pairing_heading), style = MaterialTheme.typography.titleLarge, color = Color.Black)
             Text(stringResource(R.string.pairing_intro), color = Color.Black)
         }
         val invitation = model.pairingInvitation
-        val code = model.pairingCode
-        if (code != null) {
+        if (model.awaitingDesktop) {
             PairingProgress(stringResource(R.string.waiting_approval))
-            PairingCode(code)
-            Text(stringResource(R.string.compare_code))
+            Text(stringResource(R.string.allow_on_desktop))
             SuzentAction(stringResource(R.string.cancel_pairing), model::cancelPairing)
         } else if (invitation != null) {
             Text(stringResource(R.string.confirm_desktop), style = MaterialTheme.typography.titleLarge)
@@ -137,12 +134,6 @@ fun PairingProgress(status: String, color: Color = MaterialTheme.colorScheme.onS
         CircularProgressIndicator(Modifier.size(20.dp), color = color, strokeWidth = 2.dp)
         Text(status, color = color)
     }
-}
-
-@Composable
-fun PairingCode(code: String) {
-    Text(code, style = MaterialTheme.typography.headlineLarge, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold,
-        letterSpacing = 4.sp)
 }
 
 @Composable

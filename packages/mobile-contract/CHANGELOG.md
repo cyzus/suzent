@@ -1,5 +1,38 @@
 # Mobile changelog
 
+## [mobile-v0.8.2] - 2026-11-10
+
+### Release notes
+- Android: inline code shows as a readable yellow chip in dark mode again, instead of a dark box with faint text or a whole line painted yellow.
+- Allow connection status text to wrap and grow with the font size instead of clipping it.
+
+## [mobile-v0.8.1] - 2026-11-09
+
+### Release notes
+- Citations inside bold or italic text, and citations written as plain [t0_src_1] labels, now render as source chips, and those paragraphs keep their formatting.
+- Mobile sessions connected through a relay now look for a direct route in the background and switch when idle without reloading the chat.
+- Mobile reconnects race available addresses and relay, with smoother connection progress.
+- With reduced motion turned on, the thinking animation now shows finished robots stepping along the line instead of a frozen frame.
+- Improve tool permission details and separate shell approval requirements from risk for read-only chained commands.
+
+## [mobile-v0.8.0] - 2026-11-09
+
+### Release notes
+- Keep a collapsed activity rail closed while a reply is streaming, and stop streaming blue and a single failure from recoloring the whole rail.
+- Long-press menus open beside the finger and stay inside the screen, including in the Android app.
+- Reduce Android conversation entry flicker by preserving open messages, avoiding temporary empty greetings, and positioning history before layout.
+- Smooth Android composer transitions and keep the voice or send button anchored while the input expands and collapses.
+- Refine Android long-press menus with lighter styling, touch-aware placement, and smooth opening and closing animations.
+- Reduce flashing during Android history loading with a delayed loading indicator and a subtle message fade-in.
+- Use a deeper yellow in dark mode, and give inline code the same black border on phones as on desktop.
+- Keep iOS composer actions anchored during expansion and collapse, and reduce conversation loading flashes with preserved messages and delayed loading feedback.
+- See a conversation's plan and context usage from the phone, and choose appearance, text size, haptics and language in the mobile app's settings.
+- Tables, cards, buttons and forms the agent shows now appear in the mobile chat, and you can answer them from your phone.
+- iOS and Android now use a thicker layered gray assembly scan matching desktop.
+- While pairing, the phone no longer shows a code to check; it waits for you to click Allow on your computer.
+- Show live connection stages and a dual-node magnetic stream indicator while reconnecting to a desktop.
+- Regent's chat on the phone no longer repeats the logo and name already shown in the header.
+
 ## [mobile-v0.7.2] - 2026-11-07
 
 ### Release notes
