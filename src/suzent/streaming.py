@@ -380,10 +380,12 @@ def _first_event_timeout(
     learned = _observed_prefill_k.get(model_id or "")
     if learned is not None:
         k = max(k, learned)
-    return min(
+    # A provider's silence budget also covers thinking before its first event.
+    timeout = min(
         _FIRST_STREAM_EVENT_TIMEOUT_SECONDS + k * _prefill_shape(tokens),
         _MAX_FIRST_STREAM_EVENT_TIMEOUT_SECONDS,
     )
+    return max(timeout, _stream_idle_timeout(model_id)) if model_id else timeout
 
 
 def _serialize_tool_output(output: Any) -> str:
@@ -1173,7 +1175,7 @@ async def _iter_stream_events_with_timeout(
                         # A tool-result wait is not: the model is idle by
                         # definition while our own tool runs.
                         event = await _await_model_event(
-                            stream, timeout, _probe, chat_id
+                            stream, timeout, _probe, chat_id, control
                         )
                     elif timeout == math.inf:
                         event = await anext(stream)
