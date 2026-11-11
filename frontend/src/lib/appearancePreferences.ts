@@ -202,6 +202,7 @@ export function applyAppearancePreferencesToDocument(
   const replyStack = resolveReplyFontStack(preferences.replyFont, uiStack);
   const fontMetrics = CHAT_FONT_METRICS[preferences.chatFontSize] ?? CHAT_FONT_METRICS.medium;
   const widthMetrics = CHAT_WIDTH_VALUES[preferences.chatWidth] ?? CHAT_WIDTH_VALUES.medium;
+  const effectiveMotion: MotionMode = isReducedMotionActive(preferences) ? 'reduced' : 'system';
 
   root.dataset.uiFont = preferences.uiFont;
   if (preferences.customUiFontFamily) {
@@ -212,7 +213,8 @@ export function applyAppearancePreferencesToDocument(
   root.dataset.replyFont = preferences.replyFont;
   root.dataset.chatFontSize = preferences.chatFontSize;
   root.dataset.chatWidth = preferences.chatWidth;
-  root.dataset.motion = preferences.motion;
+  root.dataset.motionPreference = preferences.motion;
+  root.dataset.motion = effectiveMotion;
 
   root.style.setProperty('--suzent-font-ui', uiStack);
   root.style.setProperty('--suzent-font-reply', replyStack);
@@ -330,7 +332,10 @@ export function useAppearancePreferences(): AppearancePreferencesApi {
     } catch {
       return;
     }
-    const onChange = (event: MediaQueryListEvent) => setSystemReduced(event.matches);
+    const onChange = (event: MediaQueryListEvent) => {
+      setSystemReduced(event.matches);
+      applyAppearancePreferencesToDocument(readAppearancePreferences());
+    };
     setSystemReduced(query.matches);
     query.addEventListener('change', onChange);
     return () => query.removeEventListener('change', onChange);

@@ -170,14 +170,28 @@ describe('appearancePreferences', () => {
     expect(fakeRoot.dataset.replyFont).toBe('serif');
     expect(fakeRoot.dataset.chatFontSize).toBe('large');
     expect(fakeRoot.dataset.chatWidth).toBe('narrow');
+    expect(fakeRoot.dataset.motionPreference).toBe('reduced');
     expect(fakeRoot.dataset.motion).toBe('reduced');
 
     expect(styleMap.get('--suzent-font-ui')).toBe(`"MiSans", ${UI_FONT_STACKS.sans}`);
     expect(styleMap.get('--suzent-font-reply')).toBe(REPLY_SERIF_FONT_STACK);
     expect(styleMap.get('--suzent-chat-font-size')).toBe(CHAT_FONT_METRICS.large.fontSize);
     expect(styleMap.get('--suzent-chat-line-height')).toBe(CHAT_FONT_METRICS.large.lineHeight);
+    expect(styleMap.get('--suzent-chat-code-font-size')).toBe(CHAT_FONT_METRICS.large.codeFontSize);
+    expect(styleMap.get('--suzent-chat-code-line-height')).toBe(
+      CHAT_FONT_METRICS.large.codeLineHeight
+    );
     expect(styleMap.get('--suzent-chat-max-width')).toBe(CHAT_WIDTH_VALUES.narrow.assistant);
     expect(styleMap.get('--suzent-chat-user-max-width')).toBe(CHAT_WIDTH_VALUES.narrow.user);
+
+    // When motion is 'system' and the OS requests prefers-reduced-motion: reduce,
+    // data-motion resolves to 'reduced' while data-motion-preference stays 'system'.
+    vi.stubGlobal('window', {
+      matchMedia: () => ({ matches: true }),
+    });
+    applyAppearancePreferencesToDocument({ ...prefs, motion: 'system' }, fakeRoot);
+    expect(fakeRoot.dataset.motionPreference).toBe('system');
+    expect(fakeRoot.dataset.motion).toBe('reduced');
   });
 
   it('persists updates and resolves reduced motion from either explicit setting or system media query', () => {

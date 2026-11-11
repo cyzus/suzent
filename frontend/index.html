@@ -47,13 +47,16 @@
               : uiStack;
           var chatSize = app.chatFontSize === 'small' || app.chatFontSize === 'large' ? app.chatFontSize : 'medium';
           var chatWidth = app.chatWidth === 'narrow' || app.chatWidth === 'wide' ? app.chatWidth : 'medium';
-          var motion = app.motion === 'reduced' ? 'reduced' : 'system';
+          var motionPref = app.motion === 'reduced' ? 'reduced' : 'system';
+          var sysReduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+          var motion = motionPref === 'reduced' || sysReduced ? 'reduced' : 'system';
           var root = document.documentElement;
           root.dataset.uiFont = uiFont;
           if (customFont) root.dataset.customUiFont = customFont;
           root.dataset.replyFont = replyFont;
           root.dataset.chatFontSize = chatSize;
           root.dataset.chatWidth = chatWidth;
+          root.dataset.motionPreference = motionPref;
           root.dataset.motion = motion;
           root.style.setProperty('--suzent-font-ui', uiStack);
           root.style.setProperty('--suzent-font-reply', replyStack);

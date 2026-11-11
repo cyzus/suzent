@@ -117,6 +117,15 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     applyAppearancePreferencesToDocument(readAppearancePreferences());
+    let query: MediaQueryList;
+    try {
+      query = window.matchMedia('(prefers-reduced-motion: reduce)');
+    } catch {
+      return;
+    }
+    const onMotionChange = () => applyAppearancePreferencesToDocument(readAppearancePreferences());
+    query.addEventListener('change', onMotionChange);
+    return () => query.removeEventListener('change', onMotionChange);
   }, []);
 
   useEffect(() => {

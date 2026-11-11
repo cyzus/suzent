@@ -3280,6 +3280,12 @@ button.activity-turn-duration:focus-visible {
   line-height: var(--suzent-chat-line-height, 1.75);
 }
 
+.chat-msg-row-assistant .prose:not(.markdown-compact) pre,
+.chat-msg-row-assistant .prose:not(.markdown-compact) pre code {
+  font-size: var(--suzent-chat-code-font-size, 0.75rem);
+  line-height: var(--suzent-chat-code-line-height, 1.55);
+}
+
 .chat-msg-row-user > div > div,
 .chat-msg-row-compact > div {
   max-width: var(--suzent-chat-user-max-width, min(100%, 48rem));
@@ -3348,4 +3354,54 @@ html[data-motion='reduced'] .reasoning-thinking-label {
 
 html[data-motion='reduced'] .reasoning-thinking-label::after {
   content: none !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html:not([data-motion='normal']) *,
+  html:not([data-motion='normal']) *::before,
+  html:not([data-motion='normal']) *::after {
+    transition-duration: 0.01ms !important;
+    transition-delay: 0ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  html:not([data-motion='normal']) :not(.streaming-caret):not(.animate-brutal-blink),
+  html:not([data-motion='normal']) :not(.streaming-caret):not(.animate-brutal-blink)::before,
+  html:not([data-motion='normal']) :not(.streaming-caret):not(.animate-brutal-blink)::after {
+    animation-duration: 0.01ms !important;
+    animation-delay: 0ms !important;
+    animation-iteration-count: 1 !important;
+  }
+
+  html:not([data-motion='normal'])
+    .streaming-caret
+    > :is(p, h1, h2, h3, h4, h5, h6):last-child::after,
+  html:not([data-motion='normal'])
+    .streaming-caret
+    > :is(ul, ol):last-child
+    > li:last-child:not(:has(ul, ol, p))::after,
+  html:not([data-motion='normal'])
+    .streaming-caret
+    > :is(ul, ol):last-child
+    > li:last-child
+    > p:last-child::after,
+  html:not([data-motion='normal']) .streaming-caret > blockquote:last-child > p:last-child::after,
+  html:not([data-motion='normal']) .streaming-caret > div:last-child pre code::after,
+  html:not([data-motion='normal'])
+    .streaming-caret
+    > div:last-child
+    table
+    tbody
+    tr:last-child
+    td:last-child::after {
+    animation: streamCaretBlink 1s step-end infinite !important;
+  }
+
+  html:not([data-motion='normal']) .animate-brutal-blink {
+    animation: brutalBlink 1s step-end infinite !important;
+  }
+
+  html:not([data-motion='normal']) .activity-rail-dot-active {
+    animation: activity-rail-dot-fade 1.2s ease-in-out infinite !important;
+  }
 }
