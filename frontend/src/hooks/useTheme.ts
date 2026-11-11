@@ -7,6 +7,10 @@ import {
   type ReactNode,
 } from 'react';
 import presentation from '../../../packages/presentation/tokens.json';
+import {
+  applyAppearancePreferencesToDocument,
+  readAppearancePreferences,
+} from '../lib/appearancePreferences';
 
 export type Theme = 'light' | 'dark';
 /**
@@ -110,6 +114,10 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     document.documentElement.classList.toggle('dark', theme === 'dark');
   }, [theme]);
+
+  useEffect(() => {
+    applyAppearancePreferencesToDocument(readAppearancePreferences());
+  }, []);
 
   useEffect(() => {
     try {

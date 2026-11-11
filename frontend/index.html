@@ -17,13 +17,47 @@
         document.documentElement.dataset.scheme = scheme;
 
         var colors = {
-          warm:  { light: '#FFE666', dark: '#FFE666' },
+          warm:  { light: '#FFE666', dark: '#E8C200' },
           cold:  { light: '#7DD3FC', dark: '#38BDF8' },
           green: { light: '#86EFAC', dark: '#4ADE80' },
           ember: { light: '#FFA64D', dark: '#FF6600' },
         };
         var c = colors[scheme] || colors.warm;
         document.documentElement.style.setProperty('--brutal-yellow', isDark ? c.dark : c.light);
+
+        try {
+          var rawApp = localStorage.getItem('suzent-appearance-preferences');
+          var app = rawApp ? JSON.parse(rawApp) : {};
+          var uiStacks = {
+            system: '-apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif',
+            sans: 'Inter, "Helvetica Neue", Arial, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Source Han Sans SC", "Noto Sans CJK SC", sans-serif',
+            mono: 'Consolas, "JetBrains Mono", "Fira Code", "SFMono-Regular", Menlo, Monaco, "Liberation Mono", "Ubuntu Mono", "DejaVu Sans Mono", "PingFang SC", "Microsoft YaHei", monospace',
+          };
+          var uiFont = uiStacks[app.uiFont] ? app.uiFont : 'system';
+          var customFont = typeof app.customUiFontFamily === 'string'
+            ? app.customUiFontFamily.replace(/["'\\;\n\r]/g, '').trim()
+            : '';
+          if (customFont.startsWith('@')) customFont = '';
+          var uiStack = customFont ? '"' + customFont + '", ' + uiStacks[uiFont] : uiStacks[uiFont];
+          var replyFont = app.replyFont === 'serif' || app.replyFont === 'mono' ? app.replyFont : 'match-ui';
+          var replyStack = replyFont === 'serif'
+            ? 'Georgia, "Songti SC", "SimSun", "Source Han Serif SC", "Noto Serif CJK SC", "Times New Roman", serif'
+            : replyFont === 'mono'
+              ? uiStacks.mono
+              : uiStack;
+          var chatSize = app.chatFontSize === 'small' || app.chatFontSize === 'large' ? app.chatFontSize : 'medium';
+          var chatWidth = app.chatWidth === 'narrow' || app.chatWidth === 'wide' ? app.chatWidth : 'medium';
+          var motion = app.motion === 'reduced' ? 'reduced' : 'system';
+          var root = document.documentElement;
+          root.dataset.uiFont = uiFont;
+          if (customFont) root.dataset.customUiFont = customFont;
+          root.dataset.replyFont = replyFont;
+          root.dataset.chatFontSize = chatSize;
+          root.dataset.chatWidth = chatWidth;
+          root.dataset.motion = motion;
+          root.style.setProperty('--suzent-font-ui', uiStack);
+          root.style.setProperty('--suzent-font-reply', replyStack);
+        } catch (e) {}
       })();
     </script>
   </head>

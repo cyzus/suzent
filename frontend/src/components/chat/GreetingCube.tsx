@@ -1,5 +1,6 @@
 import React from 'react';
 import { SuzentLogo } from '../SuzentLogo';
+import { isReducedMotionActive } from '../../lib/appearancePreferences';
 import {
   COMET_SEGMENTS,
   ORBIT_RINGS,
@@ -201,7 +202,7 @@ export const GreetingCube: React.FC<GreetingCubeProps> = React.memo(({ engaged =
     };
 
     wakeOrbitsRef.current = () => {
-      if (reducedMotion.matches) {
+      if (reducedMotion.matches || isReducedMotionActive()) {
         settleOrbits(state, engagedRef.current || hoveredRef.current);
         renderOrbits(layers, state);
         applyPose(0, 0, engagedRef.current, hoveredRef.current);

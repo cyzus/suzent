@@ -1506,6 +1506,38 @@ export const zhCN = {
       colorScheme: '颜色方案',
       colorSchemeDesc: '选择浅色与深色模式使用的强调色。',
       schemes: { warm: '暖色', cold: '冷色', green: '绿色', ember: '琥珀' },
+      uiFont: '界面字体',
+      uiFonts: {
+        system: '系统默认',
+        sans: '无衬线',
+        mono: '等宽',
+        chooseLocal: '从本机选择…',
+        localGroup: '本机字体',
+        presetGroup: '预设',
+      },
+      replyFont: '回复字体',
+      replyFonts: {
+        'match-ui': '与界面一致',
+        serif: '衬线',
+        mono: '等宽',
+      },
+      chatFontSize: '对话记录文字大小',
+      chatFontSizes: {
+        small: '小',
+        medium: '中',
+        large: '大',
+      },
+      chatWidth: '对话记录宽度',
+      chatWidths: {
+        narrow: '窄',
+        medium: '中',
+        wide: '宽',
+      },
+      motion: '动效',
+      motions: {
+        system: '跟随系统',
+        reduced: '减弱',
+      },
     },
     notifications: {
       title: '通知',

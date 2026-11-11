@@ -3255,3 +3255,97 @@ button.activity-turn-duration:focus-visible {
     flex-basis: 100%;
   }
 }
+
+/* ── Chat transcript typography & width customization ─────────────────────── */
+.chat-transcript-column {
+  max-width: var(--suzent-chat-max-width, min(100%, 56rem));
+  width: 100%;
+}
+
+.chat-msg-row-assistant > div > .group {
+  max-width: var(--suzent-chat-max-width, min(100%, 56rem));
+  font-size: var(--suzent-chat-font-size, 0.875rem);
+  line-height: var(--suzent-chat-line-height, 1.75);
+}
+
+.chat-msg-row-assistant .prose:not(.markdown-compact) {
+  font-family: var(--suzent-font-reply, var(--suzent-font-ui));
+  font-size: var(--suzent-chat-font-size, 0.875rem);
+  line-height: var(--suzent-chat-line-height, 1.75);
+}
+
+.chat-msg-row-assistant .prose:not(.markdown-compact) p,
+.chat-msg-row-assistant .prose:not(.markdown-compact) li,
+.chat-msg-row-assistant .prose:not(.markdown-compact) blockquote {
+  line-height: var(--suzent-chat-line-height, 1.75);
+}
+
+.chat-msg-row-user > div > div,
+.chat-msg-row-compact > div {
+  max-width: var(--suzent-chat-user-max-width, min(100%, 48rem));
+}
+
+.chat-msg-row-user .prose {
+  font-family: var(--suzent-font-ui);
+  font-size: var(--suzent-chat-font-size, 0.875rem);
+  line-height: var(--suzent-chat-line-height, 1.75);
+}
+
+/* ── Reduced motion mode (explicit setting or OS preference when on system) ─ */
+/* Removes translate/scale/fade transitions for instant state switches while
+   preserving essential status indicators such as the streaming cursor blink. */
+html[data-motion='reduced'] *,
+html[data-motion='reduced'] *::before,
+html[data-motion='reduced'] *::after {
+  transition-duration: 0.01ms !important;
+  transition-delay: 0ms !important;
+  scroll-behavior: auto !important;
+}
+
+html[data-motion='reduced'] :not(.streaming-caret):not(.animate-brutal-blink),
+html[data-motion='reduced'] :not(.streaming-caret):not(.animate-brutal-blink)::before,
+html[data-motion='reduced'] :not(.streaming-caret):not(.animate-brutal-blink)::after {
+  animation-duration: 0.01ms !important;
+  animation-delay: 0ms !important;
+  animation-iteration-count: 1 !important;
+}
+
+html[data-motion='reduced'] .streaming-caret > :is(p, h1, h2, h3, h4, h5, h6):last-child::after,
+html[data-motion='reduced']
+  .streaming-caret
+  > :is(ul, ol):last-child
+  > li:last-child:not(:has(ul, ol, p))::after,
+html[data-motion='reduced']
+  .streaming-caret
+  > :is(ul, ol):last-child
+  > li:last-child
+  > p:last-child::after,
+html[data-motion='reduced'] .streaming-caret > blockquote:last-child > p:last-child::after,
+html[data-motion='reduced'] .streaming-caret > div:last-child pre code::after,
+html[data-motion='reduced']
+  .streaming-caret
+  > div:last-child
+  table
+  tbody
+  tr:last-child
+  td:last-child::after {
+  animation: streamCaretBlink 1s step-end infinite !important;
+}
+
+html[data-motion='reduced'] .animate-brutal-blink {
+  animation: brutalBlink 1s step-end infinite !important;
+}
+
+html[data-motion='reduced'] .activity-rail-dot-active {
+  animation: activity-rail-dot-fade 1.2s ease-in-out infinite !important;
+}
+
+html[data-motion='reduced'] .reasoning-thinking-label {
+  background-image: none !important;
+  -webkit-text-fill-color: currentColor !important;
+  animation: none !important;
+}
+
+html[data-motion='reduced'] .reasoning-thinking-label::after {
+  content: none !important;
+}

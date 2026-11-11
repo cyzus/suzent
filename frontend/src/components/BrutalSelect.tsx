@@ -26,6 +26,10 @@ interface BrutalSelectProps {
   hideChevron?: boolean;
   /** `ghost` drops the border, shadow and fill so the trigger sits inside a toolbar. */
   variant?: 'framed' | 'ghost';
+  /** Optional override for the trigger label when a custom display string is needed. */
+  selectedLabel?: string;
+  /** Keep dropdown open after selecting an option when `onChange` returns `true`. */
+  keepOpenOnSelect?: (value: string) => boolean;
   className?: string;
   buttonClassName?: string;
   dropdownClassName?: string;
@@ -43,6 +47,8 @@ export const BrutalSelect: React.FC<BrutalSelectProps> = ({
   disabled = false,
   hideChevron = false,
   variant = 'framed',
+  selectedLabel,
+  keepOpenOnSelect,
   className = '',
   buttonClassName = '',
   dropdownClassName = '',
@@ -82,7 +88,7 @@ export const BrutalSelect: React.FC<BrutalSelectProps> = ({
     const margin = 8;
     const gap = 4;
     const dropdownHeight = Math.min(dropdown.scrollHeight + 6, 240);
-    const dropdownWidth = dropdown.offsetWidth;
+    const dropdownWidth = Math.max(rect.width, dropdown.offsetWidth);
     const spaceAbove = Math.max(0, rect.top - gap - margin);
     const spaceBelow = Math.max(0, window.innerHeight - rect.bottom - gap - margin);
     const preferredSpace = dropUp ? spaceAbove : spaceBelow;
@@ -172,7 +178,9 @@ export const BrutalSelect: React.FC<BrutalSelectProps> = ({
                 onClick={() => {
                   if (option.disabled) return;
                   onChange(option.value);
-                  setIsOpen(false);
+                  if (!keepOpenOnSelect?.(option.value)) {
+                    setIsOpen(false);
+                  }
                 }}
                 className={`group w-full text-left px-3 py-2 font-bold text-sm uppercase transition-colors border-b-2 border-neutral-100 dark:border-zinc-700 last:border-0 ${
                   option.disabled
@@ -228,7 +236,7 @@ export const BrutalSelect: React.FC<BrutalSelectProps> = ({
         } ${buttonClassName}`}
       >
         <span className="truncate">
-          {selectedOption ? selectedOption.label : effectivePlaceholder}
+          {selectedLabel ?? (selectedOption ? selectedOption.label : effectivePlaceholder)}
         </span>
         {!hideChevron && (
           <svg

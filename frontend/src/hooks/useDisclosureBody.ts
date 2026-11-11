@@ -31,6 +31,16 @@ export function useDisclosureBody(
       return undefined;
     }
     if (keepMounted) return undefined;
+    const reducedMotion =
+      typeof document !== 'undefined' &&
+      (document.documentElement.dataset.motion === 'reduced' ||
+        (typeof window !== 'undefined' &&
+          typeof window.matchMedia === 'function' &&
+          window.matchMedia('(prefers-reduced-motion: reduce)').matches));
+    if (reducedMotion) {
+      setMounted(false);
+      return undefined;
+    }
     const timer = window.setTimeout(() => setMounted(false), holdMs);
     return () => window.clearTimeout(timer);
   }, [expanded, keepMounted, holdMs]);
