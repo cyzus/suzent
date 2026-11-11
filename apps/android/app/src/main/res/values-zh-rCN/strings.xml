@@ -322,4 +322,8 @@
     <string name="reconnect_finding">正在寻找可用连接</string>
     <string name="reconnect_verifying">正在验证连接</string>
     <string name="reconnect_syncing">正在同步桌面</string>
+    <string name="media_loading">正在加载 %1$s…</string>
+    <string name="media_unavailable">无法打开 %1$s，它可能已在电脑上被移动或删除。</string>
+    <string name="media_play">播放 %1$s</string>
+    <string name="media_pause">暂停 %1$s</string>
 </resources>

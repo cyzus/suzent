@@ -14,6 +14,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.currentCoroutineContext
@@ -180,6 +181,29 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
     suspend fun overview(chatId: String): ChatOverview? {
         val api = client?.takeIf { it.supportsChatOverview && chatId.isNotEmpty() } ?: return null
         return try { api.overview(chatId) } catch (failure: CancellationException) { throw failure } catch (_: Exception) { null }
+    }
+
+    private val mediaDownloads = mutableMapOf<String, kotlinx.coroutines.Deferred<java.io.File?>>()
+
+    /** A tool's image, video or audio, downloaded once into the cache; null when it can't be fetched. */
+    suspend fun mediaFile(chatId: String, item: MediaItem): java.io.File? {
+        val api = client ?: return null
+        // Ids are per desktop path, so each desktop keeps its own folder.
+        val desktop = Integer.toHexString((desktops.activeId ?: "demo").hashCode())
+        val directory = java.io.File(getApplication<Application>().cacheDir, "media/$desktop").apply { mkdirs() }
+        val file = java.io.File(directory, "${item.id}.${item.extension.ifEmpty { "bin" }}")
+        if (file.isFile) return file
+        val download = synchronized(mediaDownloads) {
+            mediaDownloads.getOrPut(file.path) {
+                viewModelScope.async(Dispatchers.IO) {
+                    try { api.media(chatId, item.id, file); file }
+                    catch (failure: CancellationException) { throw failure }
+                    catch (_: Exception) { null }
+                    finally { synchronized(mediaDownloads) { mediaDownloads.remove(file.path) } }
+                }
+            }
+        }
+        return download.await()
     }
 
     val voiceUnavailableReason: Int? get() = when {

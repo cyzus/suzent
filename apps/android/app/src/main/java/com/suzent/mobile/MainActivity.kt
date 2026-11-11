@@ -1108,7 +1108,8 @@ private fun ColumnScope.Conversation(model: MobileModel) {
             }
         }
     }
-    CompositionLocalProvider(LocalRailChoices provides railChoices) {
+    val mediaLoader: suspend (MediaItem) -> java.io.File? = remember(chat.id) { { item -> model.mediaFile(chat.id, item) } }
+    CompositionLocalProvider(LocalRailChoices provides railChoices, LocalMediaLoader provides mediaLoader) {
     BoxWithConstraints(Modifier.weight(1f).fillMaxWidth().clipToBounds()) {
     val viewportHeight = maxHeight
     Column(Modifier.fillMaxWidth().requiredHeight(viewportHeight).offset(y = -trayHeight)) {

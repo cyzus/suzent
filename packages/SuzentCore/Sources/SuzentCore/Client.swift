@@ -319,6 +319,24 @@ public final class SuzentClient: Sendable {
         return try JSONDecoder().decode(Chat.self, from: await data("mobile/client/chats/\(id)"))
     }
 
+    public func media(_ chatID: String, mediaID: String, to destination: URL) async throws {
+        guard !chatID.contains("/"), chatID != ".", chatID != "..",
+              MediaItem(id: mediaID, kind: "image", name: "").isValid else { throw ClientError.invalidResponse }
+        let request = try request("mobile/client/chats/\(chatID)/media/\(mediaID)")
+        let fileManager = FileManager.default
+        try? fileManager.removeItem(at: destination)
+        if tunnel == nil {
+            let (location, response) = try await session.download(for: request)
+            try validate(response)
+            try fileManager.moveItem(at: location, to: destination)
+        } else {
+            // The relay's URLProtocol answers data tasks, as uploads do.
+            let (data, response) = try await session.data(for: request)
+            try validate(response)
+            try data.write(to: destination, options: .atomic)
+        }
+    }
+
     /// Uploads files for one conversation and returns the ids the backend issued for them.
     public func upload(_ attachments: [PendingAttachment], chatID: String) async throws -> [String] {
         guard !chatID.contains("/"), chatID != ".", chatID != ".." else { throw ClientError.invalidResponse }
