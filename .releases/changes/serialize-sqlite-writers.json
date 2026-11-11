@@ -1,0 +1,1 @@
+{"products": {"desktop": "patch"}, "summary": "Queue concurrent database writes to prevent chats from losing saved progress during slow saves and report slow write owners."}

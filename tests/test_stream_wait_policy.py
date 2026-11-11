@@ -90,6 +90,60 @@ async def test_idle_wait_uses_model_override(monkeypatch: pytest.MonkeyPatch) ->
     assert len(events) == 2
 
 
+@pytest.mark.parametrize("model_id", ["gemini/model", "google/model"])
+def test_first_event_respects_provider_wait(model_id: str) -> None:
+    assert streaming._first_event_timeout({}, model_id) >= 300
+
+
+def test_first_event_respects_model_override(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(CONFIG, "stream_idle_timeout_overrides", {"gemini/model": 420})
+    assert streaming._first_event_timeout({}, "gemini/model") >= 420
+    monkeypatch.setenv("SUZENT_FIRST_EVENT_TIMEOUT_S", "90")
+    assert streaming._first_event_timeout({}, "gemini/model") == 90
+
+
+async def test_stream_iterator_allows_extending_first_event_wait(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from suzent.core import stream_registry
+    from suzent.core.stream_registry import StreamControl
+
+    monkeypatch.setattr(streaming, "_first_event_timeout", lambda *_args: 0.3)
+    monkeypatch.setattr(CONFIG, "stream_wait_notice_seconds", 0.05)
+    monkeypatch.setattr(CONFIG, "stream_wait_slow_seconds", 0.1)
+    monkeypatch.setattr(CONFIG, "stream_wait_extension_seconds", 2.0)
+    control = StreamControl()
+    stages: list[str] = []
+
+    async def push(_chat_id: str, _name: str, value: dict) -> None:
+        if value.get("active"):
+            stages.append(value["stage"])
+            if value["stage"] == "slow":
+                assert value["can_extend"] is True
+                assert control.model_wait.extend()
+
+    monkeypatch.setattr(stream_registry, "push_custom_event", push)
+
+    class SlowAgent:
+        @asynccontextmanager
+        async def run_stream_events(self, *_args: object, **_kwargs: object):
+            async def events():
+                await asyncio.sleep(0.6)
+                yield SimpleNamespace(event_kind="part_start")
+
+            yield events()
+
+    events = [
+        event
+        async for event in streaming._iter_stream_events_with_timeout(
+            SlowAgent(), "hi", {}, control=control, chat_id="chat"
+        )
+    ]
+    assert len(events) == 1
+    assert stages[-2:] == ["slow", "extended"]
+    assert control.model_wait is None
+
+
 async def test_wait_notice_clears_on_resume_and_cancellation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -186,9 +240,9 @@ async def test_slow_wait_only_extends_after_user_choice(
     from suzent.core import stream_registry
     from suzent.core.stream_registry import StreamControl
 
-    monkeypatch.setattr(CONFIG, "stream_wait_notice_seconds", 0.005)
-    monkeypatch.setattr(CONFIG, "stream_wait_slow_seconds", 0.01)
-    monkeypatch.setattr(CONFIG, "stream_wait_extension_seconds", 0.2)
+    monkeypatch.setattr(CONFIG, "stream_wait_notice_seconds", 0.05)
+    monkeypatch.setattr(CONFIG, "stream_wait_slow_seconds", 0.1)
+    monkeypatch.setattr(CONFIG, "stream_wait_extension_seconds", 2.0)
     control = StreamControl()
     stages: list[str] = []
 
@@ -204,10 +258,10 @@ async def test_slow_wait_only_extends_after_user_choice(
     monkeypatch.setattr(stream_registry, "push_custom_event", push)
 
     async def source():
-        await asyncio.sleep(0.06)
+        await asyncio.sleep(0.6)
         yield "finished"
 
-    result = await streaming._await_model_event(source(), 0.03, None, "chat", control)
+    result = await streaming._await_model_event(source(), 0.3, None, "chat", control)
     assert result == "finished"
     assert stages == ["waiting", "slow", "extended"]
     assert control.model_wait is None
@@ -219,9 +273,9 @@ async def test_slow_notice_does_not_extend_deadline(
     from suzent.core import stream_registry
     from suzent.core.stream_registry import StreamControl
 
-    monkeypatch.setattr(CONFIG, "stream_wait_notice_seconds", 0.005)
-    monkeypatch.setattr(CONFIG, "stream_wait_slow_seconds", 0.01)
-    monkeypatch.setattr(CONFIG, "stream_wait_extension_seconds", 0.2)
+    monkeypatch.setattr(CONFIG, "stream_wait_notice_seconds", 0.05)
+    monkeypatch.setattr(CONFIG, "stream_wait_slow_seconds", 0.1)
+    monkeypatch.setattr(CONFIG, "stream_wait_extension_seconds", 2.0)
     stages = []
 
     async def push(_chat_id: str, _name: str, value: dict) -> None:
@@ -235,7 +289,7 @@ async def test_slow_notice_does_not_extend_deadline(
         yield "never"
 
     with pytest.raises(asyncio.TimeoutError):
-        await streaming._await_model_event(source(), 0.03, None, "chat", control)
+        await streaming._await_model_event(source(), 0.3, None, "chat", control)
     assert [notice.get("stage") for notice in stages] == ["waiting", "slow", None]
     assert stages[-1]["active"] is False
     assert control.model_wait is None
