@@ -99,9 +99,10 @@ describe('collectChatArtifacts', () => {
         file_changes: [
           {
             path: '/workspace/a.txt',
-            diff: '--- a/a.txt\n+++ /dev/null\n@@ -1 +0,0 @@\n-x',
+            diff: '--- a/a.txt\n+++ b/a.txt\n@@ -1 +0,0 @@\n-x',
             additions: 0,
             deletions: 1,
+            after_exists: false,
           },
         ],
       }),

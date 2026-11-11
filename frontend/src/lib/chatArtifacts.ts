@@ -1,5 +1,5 @@
 import type { AGUIPart } from '../types/agui';
-import type { Message, MessageFileChange } from '../types/api';
+import type { Message } from '../types/api';
 import { splitAssistantContent } from './chatUtils';
 import { parseToolResultEnvelope } from '../components/chat/ToolCallBlock';
 
@@ -76,10 +76,6 @@ function legacyPaths(content: string): string[] {
   );
 }
 
-function isDeletion(change: MessageFileChange): boolean {
-  return /^\+\+\+ \/dev\/null$/m.test(change.diff);
-}
-
 /**
  * Files the agent produced in this conversation, newest first, one entry per path.
  *
@@ -110,7 +106,7 @@ export function collectChatArtifacts(messages: Message[]): ChatArtifact[] {
     for (const path of paths) add(path, index);
     if (message.file_changes_undone) return;
     for (const change of message.file_changes ?? []) {
-      if (isDeletion(change)) byPath.delete(change.path);
+      if (change.after_exists === false) byPath.delete(change.path);
       else add(change.path, index, change.display_path || change.path);
     }
   });
