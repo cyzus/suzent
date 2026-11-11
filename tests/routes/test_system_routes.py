@@ -156,8 +156,12 @@ class _WorkspaceResolver:
 
 
 def _host_path_client(monkeypatch, tmp_path) -> TestClient:
+    from suzent.routes import sandbox_routes
+
     monkeypatch.setattr(
-        system_routes, "_get_resolver", lambda _chat_id: _WorkspaceResolver(tmp_path)
+        sandbox_routes,
+        "_get_resolver_for_request",
+        lambda _chat_id: _WorkspaceResolver(tmp_path),
     )
     app = Starlette(
         routes=[Route("/system/host_path", system_routes.host_path, methods=["POST"])]
