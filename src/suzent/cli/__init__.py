@@ -5,6 +5,7 @@ This package splits CLI commands into focused modules:
 - main:   start, doctor, update, upgrade, setup-build-tools
 - node:   list, status, describe, invoke (companion devices)
 - agent:  chat, status
+- run:    one non-interactive agent task
 - config: show, get, set
 - memory: lint, cleanup
 """
@@ -27,6 +28,7 @@ from suzent.cli.main import (
     _configure_console_encoding,
 )
 from suzent.cli.cron import cron_app
+from suzent.cli.run import register_run_command
 from suzent.cli.heartbeat import heartbeat_app
 from suzent.cli.mcp import mcp_app
 from suzent.cli.memory import memory_app
@@ -80,6 +82,7 @@ def main(
 # Register top-level commands (start, doctor, update, upgrade, setup-build_tools)
 register_commands(app)
 register_acp_command(app)
+register_run_command(app)
 
 # Attach subcommand groups
 app.add_typer(node_app, name="nodes")

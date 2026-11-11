@@ -1,0 +1,4 @@
+{
+  "products": {"desktop": "minor"},
+  "summary": "Add `suzent run`, which runs one task from the command line without a chat session and can report token usage as JSON."
+}
