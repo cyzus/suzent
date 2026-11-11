@@ -19,7 +19,7 @@ function useEnvironment() {
   return {
     model: config?.model || prefs?.model || backendConfig?.models?.[0] || null,
     sandbox: !!(config?.sandbox_enabled ?? prefs?.sandbox_enabled ?? backendConfig?.sandboxEnabled),
-    permissionMode: config?.permission_mode ?? 'default',
+    permissionMode: config?.permission_mode ?? 'auto',
     // Volumes are "host:container"; the host side is what the user picked.
     volumes: (config?.sandbox_volumes ?? []).map((volume) =>
       volume.includes(':', 2) ? volume.substring(0, volume.lastIndexOf(':')) : volume

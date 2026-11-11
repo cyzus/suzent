@@ -21,8 +21,8 @@ Pick a mode per conversation from the mode selector next to the message box.
 
 | Mode | What happens |
 |---|---|
-| **Ask** (default) | Read-only actions run. Anything that changes files or the outside world asks you first. |
-| **Smart** | Clearly low-risk actions run on their own. Anything else is reviewed by a separate security model, which approves it, blocks it, or asks you. |
+| **Ask** | Read-only actions run. Anything that changes files or the outside world asks you first. |
+| **Smart** (default) | Clearly low-risk actions run on their own. Anything else is reviewed by a separate security model, which approves it, blocks it, or asks you. |
 | **Full Access** | Actions run without asking. |
 
 In every mode, your explicit "deny" rules and Suzent's built-in safety checks
