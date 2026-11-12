@@ -446,6 +446,7 @@ def create_agent(config: Dict[str, Any]) -> Agent[AgentDeps, str]:
     from suzent.core.prompt_cache import (
         ForkPrefixCapability,
         PromptCacheRoutingCapability,
+        RequestRecorderCapability,
     )
 
     if config.get("code_mode"):
@@ -458,6 +459,7 @@ def create_agent(config: Dict[str, Any]) -> Agent[AgentDeps, str]:
     capabilities.append(ContextUsageCapability(model_id=model_id))
     capabilities.append(PromptCacheRoutingCapability())
     capabilities.append(ForkPrefixCapability())
+    capabilities.append(RequestRecorderCapability())
 
     agent = Agent(
         model,

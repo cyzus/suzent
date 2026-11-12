@@ -11,6 +11,18 @@ function renderReminder(content: string): string {
 }
 
 describe('NoticeMessage', () => {
+  it('holds the compaction animation back so a pass that finishes at once never flashes it', () => {
+    const html = renderToStaticMarkup(
+      <I18nProvider>
+        <NoticeMessage message={{ role: 'notice', content: 'Auto compaction running...' }} />
+      </I18nProvider>
+    );
+
+    expect(html).toContain('Auto compaction running...');
+    expect(html).not.toContain('suzent-cc-scene');
+    expect(html).not.toContain('animate-pulse');
+  });
+
   it('labels a resolved historical failure and shows its original time', () => {
     const html = renderToStaticMarkup(
       <I18nProvider>

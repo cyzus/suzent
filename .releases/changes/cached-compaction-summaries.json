@@ -1,0 +1,1 @@
+{"products": {"desktop": "patch"}, "summary": "Context compaction now writes its summary from the prompt cache with the chat's own model, and prepares it in the background after a turn, so long chats compact faster and cheaper."}
