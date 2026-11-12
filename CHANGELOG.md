@@ -26,6 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Images, videos and speech the agent makes now show under its reply on the phone, with videos and audio playing inline.
 - On the phone, conversations and collapsed projects show when something is running or has replies you have not seen, like on desktop; opening a conversation marks it read on both.
 - Code blocks nested inside other code blocks, and empty code blocks, now render correctly in chat instead of breaking apart or showing [object Object].
+- The first message of a new chat now appears as soon as you send it, instead of after the chat is created.
 - Show deduplicated image thumbnails beside activity summaries and support zooming and panning image previews.
 - Simplify image preview navigation and hide duplicate thumbnails while tool details are expanded.
 - Refine the desktop header and right sidebar overview with a 1px divider, unified sidebar toggle glyph, and inline cache/task indicators.
