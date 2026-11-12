@@ -1023,6 +1023,14 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   // without this a second Enter during chat creation or file upload sent the
   // same prompt twice.
   const sendInFlightRef = useRef(false);
+  // A new chat's first message cannot join the store until POST /chats
+  // returns, which can take seconds while the backend is busy. Shown from here
+  // meanwhile so the send is answered at once. `chatId` follows the chat being
+  // created, keeping the bubble out of any other chat the user opens.
+  const [pendingFirstMessage, setPendingFirstMessage] = useState<{
+    chatId: string | null;
+    message: Message;
+  } | null>(null);
 
   // Ref for async callback access to current chatId
   const activeChatIdRef = useRef<string | null>(currentChatId);
@@ -1843,16 +1851,25 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     : undefined;
 
   // Safe values
+  const pendingFirstMessageHere =
+    pendingFirstMessage && pendingFirstMessage.chatId === currentChatId
+      ? pendingFirstMessage.message
+      : null;
   const reconciledMessages = useMemo(
     () =>
       reconcileToolCallMessages(
         hideLiveTriggerRows(
-          hideStreamingDrafts(messages || [], showTransientAssistant && streamingParts.length > 0),
+          hideStreamingDrafts(
+            pendingFirstMessageHere
+              ? [...(messages || []), pendingFirstMessageHere]
+              : messages || [],
+            showTransientAssistant && streamingParts.length > 0
+          ),
           showTransientAssistant ? streamingParts : []
         ),
         showTransientAssistant ? streamingParts : []
       ),
-    [messages, showTransientAssistant, streamingParts]
+    [messages, pendingFirstMessageHere, showTransientAssistant, streamingParts]
   );
   // `reconcileToolCallMessages` rebuilds the array on every streaming chunk,
   // and a token delta never touches a settled message. Handing a fresh identity
@@ -2860,12 +2877,36 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
 
     // Create chat if needed
     let chatIdForSend = currentChatId;
+    let abandonPendingFirstMessage = () => {};
     if (!chatIdForSend) {
+      const pendingMessage: Message = {
+        role: 'user',
+        content: prompt,
+        timestamp: new Date().toISOString(),
+      };
+      setPendingFirstMessage({ chatId: null, message: pendingMessage });
+      const draft = { input, files: [...selectedFiles], mentions: fileMentions };
+      if (!queued) {
+        setInput('');
+        clearFiles();
+        setFileMentions([]);
+      }
+      abandonPendingFirstMessage = () => {
+        setPendingFirstMessage(null);
+        if (queued) return;
+        // The composer was free while the chat was created, so it may hold a
+        // newer draft: put the failed one back in front of it, not over it.
+        setInput((current) => (current.trim() ? `${draft.input}\n\n${current}` : draft.input));
+        setSelectedFiles((current) => [...draft.files, ...current]);
+        setFileMentions((current) => [...draft.mentions, ...current]);
+      };
       chatIdForSend = await createNewChat();
       if (!chatIdForSend) {
+        abandonPendingFirstMessage();
         console.error('Unable to initialize chat before sending message.');
         return;
       }
+      setPendingFirstMessage({ chatId: chatIdForSend, message: pendingMessage });
     }
 
     // ACP sessions are not created here. Spawning the agent and running the
@@ -2879,6 +2920,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     // this check — the backend will return 409 if it's truly still busy, which gives
     // a cleaner error than blocking here during the brief cancel-propagation window.
     if (isBusStreaming(chatIdForSend) && isStreaming && activeStreamingChatId === chatIdForSend) {
+      abandonPendingFirstMessage();
       return;
     }
 
@@ -2900,13 +2942,16 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         imagePreviews = imagePreviewData.length > 0 ? imagePreviewData : undefined;
       } catch (error) {
         console.error('Error uploading files:', error);
+        abandonPendingFirstMessage();
         return;
       }
     }
 
     const resetFlag = shouldResetNext;
     if (resetFlag) consumeResetFlag();
-    if (!queued) {
+    // A new chat cleared the composer before creating itself; whatever is in
+    // it now was typed while that ran.
+    if (!queued && currentChatId) {
       setInput('');
       clearFiles();
       setFileMentions([]);
@@ -2923,6 +2968,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       },
       chatIdForSend
     );
+    setPendingFirstMessage(null);
 
     // Show loading indicator immediately before the network round-trip. Snapshot
     // first: a 409 means a turn is still streaming and these parts have to go back.
