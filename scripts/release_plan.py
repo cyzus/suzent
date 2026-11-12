@@ -43,8 +43,14 @@ VERSION = re.compile(r"(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)")
 
 
 def git(root: Path, *args: str, strip: bool = True) -> str:
+    # Git emits UTF-8; without an explicit encoding, Windows decodes it with the
+    # locale code page (GBK on Chinese systems) and fails on non-ASCII text.
     result = subprocess.run(
-        ["git", *args], cwd=root, check=True, capture_output=True, text=True
+        ["git", *args],
+        cwd=root,
+        check=True,
+        capture_output=True,
+        encoding="utf-8",
     ).stdout
     return result.strip() if strip else result
 
