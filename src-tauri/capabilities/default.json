@@ -19,6 +19,11 @@
         "core:window:allow-set-size",
         "fs:default",
         "notification:default",
+        "global-shortcut:allow-register",
+        "global-shortcut:allow-unregister",
+        "core:window:allow-show",
+        "core:window:allow-unminimize",
+        "core:window:allow-set-focus",
         {
             "identifier": "fs:allow-read",
             "allow": [

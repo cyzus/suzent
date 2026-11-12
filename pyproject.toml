@@ -105,6 +105,9 @@ feishu = ["lark-oapi>=1.5.3"]
 # Webcam capture for the local node's camera.snap, installed by the camera
 # plugin (plugins/camera/plugin.yaml). Headless: no GUI toolkit is needed.
 camera = ["opencv-python-headless>=4.8.0"]
+# Local wake-word spotting (voice/wake.py), installed by the wake-word plugin
+# (plugins/wake-word/plugin.yaml). Pinned exactly: it reads microphone audio.
+wake = ["sherpa-onnx==2.0.1", "pypinyin==0.55.0"]
 social = [
     "suzent[telegram,slack,discord,feishu]",
     "zstandard>=0.23.0",

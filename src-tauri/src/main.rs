@@ -1139,6 +1139,7 @@ fn main() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
         .run(|app, event| {
