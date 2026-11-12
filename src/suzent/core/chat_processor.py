@@ -1584,6 +1584,27 @@ class ChatProcessor:
                     f"Failed to persist pre-postprocess state snapshot for {chat_id}: {e}"
                 )
 
+            # The turn's prompt is still in the provider's cache now, so the
+            # next compaction summary is cheapest and costs the user no wait.
+            if (
+                not _stateless_chat
+                and not stream_failed
+                and not getattr(deps, "is_suspended", False)
+                and snapshot_messages
+            ):
+                from suzent.core.context_compressor import schedule_precompaction
+
+                try:
+                    schedule_precompaction(
+                        chat_id,
+                        snapshot_messages,
+                        model_id=getattr(agent, "_model_id", None),
+                        fallback_overhead=getattr(deps, "context_overhead_estimate", 0)
+                        or 0,
+                    )
+                except Exception as e:
+                    logger.warning(f"Could not schedule background compaction: {e}")
+
             # 9. Post-Processing (Background)
             # We use a background task so the SSE stream can close immediately
             # while heavy extraction/persistence runs.

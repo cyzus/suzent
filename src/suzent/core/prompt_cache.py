@@ -16,14 +16,20 @@ import weakref
 from collections import OrderedDict
 from dataclasses import dataclass, replace
 from enum import StrEnum
-from typing import Any, Sequence
+from contextlib import asynccontextmanager
+from typing import Any, AsyncGenerator, Sequence
 from urllib.parse import urlparse
 
 from pydantic_ai import RunContext
 from pydantic_ai.capabilities import AbstractCapability
 from pydantic_ai.capabilities.abstract import WrapModelRequestHandler
-from pydantic_ai.messages import InstructionPart, ModelResponse
-from pydantic_ai.models import Model, ModelRequestContext
+from pydantic_ai.messages import InstructionPart, ModelMessage, ModelResponse
+from pydantic_ai.models import (
+    Model,
+    ModelRequestContext,
+    ModelRequestParameters,
+    StreamedResponse,
+)
 from pydantic_ai.models.wrapper import WrapperModel
 from pydantic_ai.settings import ModelSettings
 from pydantic_ai.tools import ToolDefinition
@@ -145,10 +151,31 @@ class PrefixSignature:
     sections: tuple[tuple[str, str], ...]
 
 
+@dataclass(frozen=True)
+class RequestSnapshot:
+    """A chat's latest model request, as it went to the provider.
+
+    ``messages`` are the prepared messages the model was handed, so a request
+    that repeats them with the same model, settings and parameters matches the
+    provider's cached prefix byte for byte. ``history`` is the agent history
+    they were prepared from, to tell which part of a later history they cover.
+    """
+
+    model: Model
+    model_settings: ModelSettings | None
+    parameters: ModelRequestParameters
+    messages: tuple[ModelMessage, ...]
+    history: tuple[ModelMessage, ...]
+
+
 _TURN_CONFIGS: OrderedDict[str, dict[str, Any]] = OrderedDict()
 _LATEST_PREFIXES: OrderedDict[str, PrefixSnapshot] = OrderedDict()
 _FORK_PREFIXES: OrderedDict[str, PrefixSnapshot] = OrderedDict()
 _PREFIX_SIGNATURES: OrderedDict[str, PrefixSignature] = OrderedDict()
+# Whole histories are held here, so far fewer chats are kept than above.
+_MAX_RECORDED_REQUESTS = 32
+_LATEST_REQUESTS: OrderedDict[str, RequestSnapshot] = OrderedDict()
+_PENDING_HISTORIES: OrderedDict[str, tuple[ModelMessage, ...]] = OrderedDict()
 
 
 def _remember(store: OrderedDict, key: str, value: Any) -> None:
@@ -175,6 +202,10 @@ def record_turn_config(
 def turn_config(chat_id: str) -> dict[str, Any] | None:
     config = _TURN_CONFIGS.get(chat_id)
     return dict(config) if config is not None else None
+
+
+def latest_request(chat_id: str) -> RequestSnapshot | None:
+    return _LATEST_REQUESTS.get(chat_id) if chat_id else None
 
 
 def pin_fork_prefix(fork_chat_id: str, parent_chat_id: str) -> bool:
@@ -374,3 +405,100 @@ class ForkPrefixCapability(AbstractCapability[AgentDeps]):
                 usage.input_tokens,
             )
         return response
+
+
+# ─── Request recording ────────────────────────────────────────────────────────
+#
+# Compaction summarizes a chat by repeating its latest request with one more
+# instruction at the end, which the provider then serves from cache. That only
+# works with the exact messages the model was handed: the agent graph prepares
+# history before each request (framing, tool-search exchanges, the system
+# voice announcement), and the request a summary repeats must match that
+# prepared form, not the stored history.
+
+
+def _remember_request(chat_id: str, snapshot: RequestSnapshot) -> None:
+    _LATEST_REQUESTS[chat_id] = snapshot
+    _LATEST_REQUESTS.move_to_end(chat_id)
+    while len(_LATEST_REQUESTS) > _MAX_RECORDED_REQUESTS:
+        _LATEST_REQUESTS.popitem(last=False)
+
+
+class _RecordingModel(WrapperModel):
+    """Records each request it serves as the chat's latest one."""
+
+    def __init__(self, wrapped: Model, chat_id: str) -> None:
+        super().__init__(wrapped)
+        self._chat_id = chat_id
+
+    def _record(
+        self,
+        messages: list[ModelMessage],
+        model_settings: ModelSettings | None,
+        parameters: ModelRequestParameters,
+    ) -> None:
+        _remember_request(
+            self._chat_id,
+            RequestSnapshot(
+                model=self.wrapped,
+                model_settings=model_settings,
+                parameters=parameters,
+                messages=tuple(messages),
+                history=_PENDING_HISTORIES.get(self._chat_id, ()),
+            ),
+        )
+
+    async def request(
+        self,
+        messages: list[ModelMessage],
+        model_settings: ModelSettings | None,
+        model_request_parameters: ModelRequestParameters,
+    ) -> ModelResponse:
+        self._record(messages, model_settings, model_request_parameters)
+        return await super().request(messages, model_settings, model_request_parameters)
+
+    @asynccontextmanager
+    async def request_stream(
+        self,
+        messages: list[ModelMessage],
+        model_settings: ModelSettings | None,
+        model_request_parameters: ModelRequestParameters,
+        run_context: RunContext[Any] | None = None,
+    ) -> AsyncGenerator[StreamedResponse]:
+        self._record(messages, model_settings, model_request_parameters)
+        async with self.wrapped.request_stream(
+            messages, model_settings, model_request_parameters, run_context
+        ) as response_stream:
+            yield response_stream
+
+
+@dataclass
+class RequestRecorderCapability(AbstractCapability[AgentDeps]):
+    """Keep each chat's latest request, for compaction to repeat from cache.
+
+    Registered last: its model wrapper then sits innermost, around the model
+    that actually sends, and the history it records is final.
+    """
+
+    chat_id: str = ""
+
+    async def for_run(self, ctx: RunContext[AgentDeps]) -> "RequestRecorderCapability":
+        return RequestRecorderCapability(chat_id=getattr(ctx.deps, "chat_id", "") or "")
+
+    async def before_model_request(
+        self,
+        ctx: RunContext[AgentDeps],
+        request_context: ModelRequestContext,
+    ) -> ModelRequestContext:
+        if self.chat_id:
+            _remember(
+                _PENDING_HISTORIES,
+                self.chat_id,
+                tuple(request_context.messages),
+            )
+            while len(_PENDING_HISTORIES) > _MAX_RECORDED_REQUESTS:
+                _PENDING_HISTORIES.popitem(last=False)
+        return request_context
+
+    def get_wrapper_model(self, model: Model) -> Model | None:
+        return _RecordingModel(model, self.chat_id) if self.chat_id else None
