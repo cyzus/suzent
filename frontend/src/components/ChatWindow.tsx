@@ -2894,9 +2894,11 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       abandonPendingFirstMessage = () => {
         setPendingFirstMessage(null);
         if (queued) return;
-        setInput(draft.input);
-        setSelectedFiles(draft.files);
-        setFileMentions(draft.mentions);
+        // The composer was free while the chat was created, so it may hold a
+        // newer draft: put the failed one back in front of it, not over it.
+        setInput((current) => (current.trim() ? `${draft.input}\n\n${current}` : draft.input));
+        setSelectedFiles((current) => [...draft.files, ...current]);
+        setFileMentions((current) => [...draft.mentions, ...current]);
       };
       chatIdForSend = await createNewChat();
       if (!chatIdForSend) {
