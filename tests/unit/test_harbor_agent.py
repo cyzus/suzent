@@ -246,6 +246,7 @@ def test_run_passes_the_instruction_through_the_shell_untouched(kit, agent_modul
         "--tools",
         kit.common.CODING_TOOLS,
         "--no-code-mode",
+        "--keep-background-processes",
         "--",
         instruction,
     ]

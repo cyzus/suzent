@@ -157,6 +157,8 @@ def run_command(
         f"{SUZENT} run --json --permission-mode full_access "
         f"--model {shlex.quote(route.model)} --tools {shlex.quote(tools)} "
         f"{'--code-mode' if code_mode else '--no-code-mode'} "
+        # A task can ask for a server left running for the verifier.
+        "--keep-background-processes "
         f"-- {shlex.quote(instruction)} "
         f"> {LOGS_DIR}/{SUMMARY_FILE} 2> {LOGS_DIR}/suzent.log; "
         "status=$?; "
