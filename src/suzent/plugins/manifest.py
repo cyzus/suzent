@@ -9,7 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from suzent.plugins.binaries import BinarySpec
 
 MANIFEST_FILENAME = "plugin.yaml"
-PLUGIN_API_VERSION = 3
+PLUGIN_API_VERSION = 4
 
 
 class PluginManifest(BaseModel):

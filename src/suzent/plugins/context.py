@@ -8,6 +8,7 @@ from typing import Any, Awaitable, Callable
 
 from starlette.requests import Request
 from starlette.responses import Response
+from starlette.websockets import WebSocket
 
 from suzent.logger import get_logger
 from suzent.plugins.binaries import PluginBinary
@@ -21,6 +22,19 @@ class PluginRoute:
     path: str
     endpoint: Callable[[Request], Awaitable[Response]]
     methods: tuple[str, ...]
+
+
+@dataclass
+class PluginWebSocket:
+    path: str
+    endpoint: Callable[[WebSocket], Awaitable[None]]
+
+
+def _route_path(path: str) -> str:
+    path = path.strip("/")
+    if not path or any(part in ("", ".", "..") for part in path.split("/")):
+        raise ValueError(f"invalid route path {path!r}")
+    return path
 
 
 class PluginSecrets:
@@ -78,6 +92,7 @@ class PluginContext:
         self.commands: list[PendingCommand] = []
         self.integrations: list[Integration] = []
         self.routes: list[PluginRoute] = []
+        self.websockets: list[PluginWebSocket] = []
         self.secrets = PluginSecrets(manifest.id)
 
     @property
@@ -141,14 +156,25 @@ class PluginContext:
 
         The route goes away when the plugin is turned off.
         """
-        path = path.strip("/")
-        if not path or any(part in ("", ".", "..") for part in path.split("/")):
-            raise ValueError(f"invalid route path {path!r}")
+        path = _route_path(path)
         methods = tuple(m.upper() for m in methods)
         for route in self.routes:
             if route.path == path and set(route.methods) & set(methods):
                 raise ValueError(f"route {path!r} registered twice")
         self.routes.append(PluginRoute(path, endpoint, methods))
+
+    def register_websocket(
+        self, path: str, endpoint: Callable[[WebSocket], Awaitable[None]]
+    ) -> None:
+        """Serve ``endpoint`` at ``/plugins/<id>/ws/<path>``.
+
+        Only the local app and full-access devices reach it, and only from an
+        origin the app uses. The socket goes away when the plugin is turned off.
+        """
+        path = _route_path(path)
+        if any(socket.path == path for socket in self.websockets):
+            raise ValueError(f"websocket {path!r} registered twice")
+        self.websockets.append(PluginWebSocket(path, endpoint))
 
     def register_command(
         self, aliases: list[str], **options: Any
