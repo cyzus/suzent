@@ -1371,17 +1371,22 @@ async def create_chat(request: Request) -> JSONResponse:
             seed_default_permission_mode(config)
 
         db = get_database()
-        chat_id = db.create_chat(title, config, messages, project_id=project_id)
+        # Creating a chat waits for SQLite's write lock and fsyncs its log, which
+        # can take seconds while a turn is writing; off the loop, that wait no
+        # longer stalls every other request and stream.
+        chat_id = await asyncio.to_thread(
+            db.create_chat, title, config, messages, project_id=project_id
+        )
 
         if instructions is not None:
-            hb_path = get_database().get_project_dir(chat_id) / "heartbeat.md"
+            hb_path = db.get_project_dir(chat_id) / "heartbeat.md"
             try:
                 hb_path.parent.mkdir(parents=True, exist_ok=True)
                 hb_path.write_text(instructions, encoding="utf-8")
             except Exception as e:
                 logger.error(f"Failed to write initial heartbeat.md: {e}")
 
-        chat = db.get_chat(chat_id)
+        chat = await asyncio.to_thread(db.get_chat, chat_id)
         if not chat:
             return JSONResponse({"error": "Failed to create chat"}, status_code=500)
 
