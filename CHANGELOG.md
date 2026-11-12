@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Release notes
 - Add interface font, reply font, chat text size, chat width, and motion controls to Appearance settings.
 - A new Artifacts panel in the side panel collects the images, videos, speech and files the agent made in a chat, with previews.
+- Long conversations you return to after the provider's prompt cache has expired now resume from a prepared summary instead of resending the full history, and an hour-long Anthropic cache can be enabled with anthropic_prompt_cache_ttl.
 - Context compaction now writes its summary from the prompt cache with the chat's own model, and prepares it in the background after a turn, so long chats compact faster and cheaper.
 - Keep your reading position on macOS when a reply finishes while you are scrolled up, instead of jumping to the previous message.
 - The compaction animation now shows only on the chat card, and not at all for a compaction that finishes instantly.

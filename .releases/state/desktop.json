@@ -27,6 +27,7 @@
     ".releases/changes/background-task-wakeups.json",
     ".releases/changes/builtin-tool-color.json",
     ".releases/changes/builtin-tool-floor.json",
+    ".releases/changes/cache-aware-compaction.json",
     ".releases/changes/cached-compaction-summaries.json",
     ".releases/changes/camera-optional.json",
     ".releases/changes/canvas-page-dropdown.json",
