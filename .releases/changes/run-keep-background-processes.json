@@ -1,0 +1,1 @@
+{"products": {"desktop": "patch"}, "summary": "Add `suzent run --keep-background-processes` so a server the agent starts keeps running after a one-shot run ends."}

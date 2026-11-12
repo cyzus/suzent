@@ -263,3 +263,20 @@ def test_run_requires_a_task(invoke):
     result = invoke(FakeBackend(), "   ")
 
     assert result.exit_code == 2
+
+
+@pytest.mark.parametrize(
+    ("flags", "expected"), [(["--keep-background-processes"], True), ([], False)]
+)
+def test_run_keeps_background_processes_only_when_asked(
+    tmp_path: Path, flags, expected
+):
+    backend = FakeBackend([_text("ok")])
+    with (
+        patch("suzent.cli.run.get_client", return_value=backend.client),
+        patch("suzent.cli.run._backend", return_value=nullcontext()) as started,
+    ):
+        result = runner.invoke(app, ["run", "Do it", *flags, "--cwd", str(tmp_path)])
+
+    assert result.exit_code == 0
+    assert started.call_args.args[1] is expected
