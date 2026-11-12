@@ -1,11 +1,12 @@
 """Wake-word spotting, entirely on this machine.
 
-The desktop app streams 16 kHz microphone audio to ``/ws/wake`` while the
-wake word is on; a small sherpa-onnx keyword spotter listens for the phrases
-in the voice settings and tells the app when it hears one. Nothing reaches a
-model provider until the app then starts an ordinary voice call.
+The desktop app streams 16 kHz microphone audio to
+``/plugins/wake-word/ws/listen`` while the wake word is on; a small sherpa-onnx
+keyword spotter listens for the phrases in the voice settings and tells the app
+when it hears one. Nothing reaches a model provider until the app then starts
+an ordinary voice call.
 
-The packages (sherpa-onnx, pypinyin) come with the ``wake-word`` plugin. The
+The packages (sherpa-onnx, pypinyin) come with this plugin's ``wake`` extra. The
 model (about 9 MB of the 33 MB release) is downloaded on first use and each
 file is checked against the hash pinned here, whichever source served it.
 """

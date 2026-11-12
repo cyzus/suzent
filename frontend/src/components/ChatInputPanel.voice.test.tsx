@@ -2,7 +2,12 @@ import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ChatInputPanel } from './ChatInputPanel';
-import type { VoiceSession, VoiceSessionStatus, VoiceTranscript } from '../hooks/useVoiceSession';
+import type {
+  HandsFreeState,
+  VoiceSession,
+  VoiceSessionStatus,
+  VoiceTranscript,
+} from '../hooks/useVoiceSession';
 import type { ChatConfig } from '../types/api';
 
 vi.mock('../i18n', () => ({ useI18n: () => ({ t: (key: string) => key }) }));
@@ -38,7 +43,7 @@ const makeVoice = (
   playing: false,
   supported: true,
   micLevel: { current: 0 },
-  wakeListening: false,
+  handsFree: null,
   start: () => {},
   stop: () => {},
   interrupt: () => {},
@@ -146,15 +151,43 @@ describe('composer with voice mode', () => {
     expect(button(html, 'chatInput.sendMessage')).toMatch(DISABLED);
   });
 
-  it('marks the primary action while the wake phrase is listened for', () => {
-    expect(render(makeVoice('idle'), '')).not.toContain('data-testid="wake-listening"');
-    const mic = render(makeVoice('idle', { wakeListening: true }), '');
-    expect(mic).toContain('data-testid="wake-listening"');
-    expect(mic).toContain('title="voice.wake.listening"');
-    // Still shown while typing, when send replaces the mic.
-    expect(render(makeVoice('idle', { wakeListening: true }))).toContain(
-      'data-testid="wake-listening"'
+  it('shows hands-free starts on the mic button only', () => {
+    const handsFree = (extra: Partial<HandsFreeState>): HandsFreeState => ({
+      wake: 'listening',
+      wakeProblem: null,
+      phrase: '你好 Suzent',
+      hotkey: '',
+      ...extra,
+    });
+    expect(render(makeVoice('idle'), '')).not.toContain('data-testid="wake-');
+    expect(button(render(makeVoice('idle'), ''), 'voice.micButton')).toContain(
+      'title="voice.micButton"'
     );
+
+    const listening = render(makeVoice('idle', { handsFree: handsFree({}) }), '');
+    expect(listening).toContain('data-testid="wake-listening"');
+    expect(listening).toContain('voice.wake.sayPhrase');
+    // Send replaces the mic while typing; the dot does not move onto it.
+    expect(render(makeVoice('idle', { handsFree: handsFree({}) }))).not.toContain(
+      'data-testid="wake-'
+    );
+
+    const broken = render(
+      makeVoice('idle', {
+        handsFree: handsFree({ wake: 'error', wakeProblem: { key: 'voice.wake.errors.mic' } }),
+      }),
+      ''
+    );
+    expect(broken).toContain('data-testid="wake-problem"');
+    expect(broken).toContain('voice.wake.notListening');
+    expect(broken).not.toContain('voice.wake.sayPhrase');
+
+    const shortcut = render(
+      makeVoice('idle', { handsFree: handsFree({ wake: 'off', hotkey: 'Alt+Space' }) }),
+      ''
+    );
+    expect(shortcut).toContain('voice.shortcut.hint');
+    expect(shortcut).not.toContain('data-testid="wake-');
   });
 
   it('draws the mic meter once the mic is live, not while connecting', () => {

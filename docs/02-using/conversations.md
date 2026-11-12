@@ -136,14 +136,18 @@ Under **Settings → Voice & audio → Hands-free start**:
   "你好 Suzent" or "Hey Suzent", then starts voice mode in the chat you have
   open. The listening happens on your computer with a small offline model;
   no audio leaves it until voice mode starts. A green dot on the microphone
-  button shows when it is listening. The first time you save, Suzent installs
-  the Wake word plugin and downloads its model (about 25 MB together). Phrases
-  can be Chinese, English, or mixed; if an English word has no known
-  pronunciation, the settings page names it. Raise the sensitivity if it
-  misses you, lower it if it wakes by mistake. It listens only while Suzent
-  is open.
-- **Voice shortcut** (desktop app). Set a key combination such as
-  `CommandOrControl+Shift+Space` to start or end voice mode from any app.
+  button shows when it is listening; an amber dot means it can't, and hovering
+  the button says why. The first time you turn it on, Suzent installs the Wake
+  word plugin and downloads its model (about 25 MB together). Type a phrase
+  and press Enter to add it, up to 8; phrases can be Chinese, English, or
+  mixed. If an English word has no known pronunciation, its phrase turns red.
+  Raise the sensitivity if it misses you, lower it if it wakes by mistake. It
+  listens only while Suzent is open, and only while the Wake word plugin is
+  installed: removing it under **Settings → Plugins** stops the listening.
+- **Voice shortcut** (desktop app). Click the box and press a key combination,
+  such as Ctrl+Shift+Space (⌘⇧Space on a Mac), to start or end voice mode from
+  any app. **Remove** turns it off. Hovering the microphone button reminds you
+  of the shortcut and the wake phrase.
 
 ## When a turn goes wrong
 

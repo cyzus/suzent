@@ -107,6 +107,14 @@ downloaded until you agree. The download is pinned to one version and
 checked against a hash the plugin carries, and in mainland China it comes
 from npmmirror first.
 
+## Wake word
+
+The Wake word plugin listens for a phrase such as "Hey Suzent" and starts
+voice mode. Turning the wake word on under **Settings → Voice & audio**
+installs it and downloads its model. Removing the plugin stops the listening
+entirely, even if the setting is still on. See
+[Start voice mode without clicking](../02-using/conversations.md#start-voice-mode-without-clicking).
+
 ## Plugins from other people
 
 Put the plugin's folder (the one holding `plugin.yaml`) in the `plugins` folder

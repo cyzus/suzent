@@ -1,0 +1,1 @@
+{"products": {"desktop": "patch"}, "summary": "Voice settings now save as you change them, the voice shortcut is recorded by pressing it, wake phrases are added one at a time, the microphone button shows whether the wake word is listening, and turning on the wake word on Windows installs it instead of failing."}

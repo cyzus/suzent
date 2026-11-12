@@ -7,8 +7,11 @@ import { SettingsCard, SectionCardHeader } from './SettingsCard';
 import { ModelDropdown } from './ModelRolesTab';
 import { resetSpeechForModel, speechModelOptions } from './speechModels';
 import { speechQueue } from '../../lib/speechPlayback';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
+import { ShortcutRecorder } from './ShortcutRecorder';
+import { MAX_WAKE_PHRASES, WakePhraseEditor } from './WakePhraseEditor';
 import { getApiBase } from '../../lib/api';
+import { SaveSequence } from '../../lib/saveSequence';
 import { useI18n } from '../../i18n';
 import { useSystemVoices } from '../chat/SpeechPlayer';
 import { BrutalButton } from '../BrutalButton';
@@ -44,24 +47,32 @@ interface WakeStatus {
  * the model, as far as either is missing. Returns an i18n key and params for
  * what is still wrong, or null when the wake word can listen.
  */
-async function prepareWakeWord(
-  onInstalling: () => void
-): Promise<{ key: string; params?: Record<string, unknown> } | null> {
-  const base = getApiBase();
+interface WakeProblem {
+  key: string;
+  params?: Record<string, unknown>;
+  words?: string[];
+}
+
+const NOT_INSTALLED: WakeStatus = { packages: false, model: false, unknown_words: [] };
+
+async function prepareWakeWord(onInstalling: () => void): Promise<WakeProblem | null> {
+  const plugin = `${getApiBase()}/plugins/wake-word`;
+  // The plugin's API exists only while the plugin is on; 404 means not installed.
   const read = async (response: Response): Promise<WakeStatus> => {
+    if (response.status === 404) return NOT_INSTALLED;
     if (!response.ok) throw new Error();
     return (await response.json()) as WakeStatus;
   };
-  let status = await read(await fetch(`${base}/voice/wake`));
+  let status = await read(await fetch(`${plugin}/api/status`));
   if (!status.packages) {
     onInstalling();
-    const installed = await fetch(`${base}/plugins/wake-word/install`, { method: 'POST' });
+    const installed = await fetch(`${plugin}/install`, { method: 'POST' });
     if (!installed.ok) return { key: 'voice.wake.errors.install_failed' };
-    status = await read(await fetch(`${base}/voice/wake`));
+    status = await read(await fetch(`${plugin}/api/status`));
   }
   if (!status.model) {
     onInstalling();
-    const downloaded = await fetch(`${base}/voice/wake/model`, { method: 'POST' });
+    const downloaded = await fetch(`${plugin}/api/model`, { method: 'POST' });
     if (!downloaded.ok) return { key: 'voice.wake.errors.download_failed' };
     status = await read(downloaded);
   }
@@ -70,6 +81,7 @@ async function prepareWakeWord(
     return {
       key: 'voice.wake.errors.unknown_words',
       params: { words: status.unknown_words.join(', ') },
+      words: status.unknown_words,
     };
   return null;
 }
@@ -91,20 +103,20 @@ export function VoiceSettingsCard({
   unregisteredModels?: string[];
   onModelsSaved?: (models: string[]) => void;
 }): React.ReactElement {
-  const [models, setModels] = useState<string[]>([]);
+  const [models, setModelsState] = useState<string[]>([]);
   const [customVoice, setCustomVoice] = useState(false);
-  const [modelChanged, setModelChanged] = useState(false);
   const modelOptions = speechModelOptions(models[0] || '');
   const { t } = useI18n();
   const voices = useSystemVoices();
   const [settings, setSettings] = useState<VoiceSettings | null>(null);
   const [realtimeOptions, setRealtimeOptions] = useState<RealtimeOption[]>([]);
-  const [status, setStatus] = useState('');
-  const [wakeProblem, setWakeProblem] = useState<{
-    key: string;
-    params?: Record<string, unknown>;
-  } | null>(null);
-  const [saving, setSaving] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const [wakeProblem, setWakeProblem] = useState<WakeProblem | null>(null);
+  // Only edits are saved, not what was just loaded.
+  const dirty = useRef(false);
+  const pending = useRef<{ settings: VoiceSettings; models: string[] } | null>(null);
+  // The wake setup last checked, so slider moves do not re-run the install.
+  const wakeCheckedFor = useRef<string | null>(null);
   useEffect(() => {
     let cancelled = false;
     void fetch(`${getApiBase()}/config/voice`)
@@ -123,13 +135,12 @@ export function VoiceSettingsCard({
             data.engine === 'api'
               ? { ...resetSpeechForModel(data, tts_models[0] || ''), voice: data.voice }
               : data;
-          setSettings(compatible);
-          setModelChanged(
+          dirty.current =
             compatible.speed !== data.speed ||
-              compatible.response_format !== data.response_format ||
-              compatible.instructions !== data.instructions
-          );
-          setModels(tts_models);
+            compatible.response_format !== data.response_format ||
+            compatible.instructions !== data.instructions;
+          setSettings(compatible);
+          setModelsState(tts_models);
           setRealtimeOptions(realtime_options);
           setCustomVoice(
             !!data.voice && !speechModelOptions(tts_models[0] || '').voices.includes(data.voice)
@@ -137,47 +148,73 @@ export function VoiceSettingsCard({
         }
       })
       .catch(() => {
-        if (!cancelled) setStatus('speech.failed');
+        if (!cancelled) setFailed(true);
       });
     return () => {
       cancelled = true;
     };
   }, []);
   const update = (patch: Partial<VoiceSettings>) => {
+    dirty.current = true;
     setSettings((value) => (value ? { ...value, ...patch } : value));
-    setStatus('');
   };
-  const save = async () => {
-    setSaving(true);
+  const setModels = (next: string[]) => {
+    dirty.current = true;
+    setModelsState(next);
+  };
+  const persist = async (next: VoiceSettings, nextModels: string[]) => {
+    pending.current = null;
+    const ticket = saves.current.begin();
     try {
       const response = await fetch(`${getApiBase()}/config/voice`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...settings, tts_models: models }),
+        body: JSON.stringify({ ...next, tts_models: nextModels }),
       });
       if (!response.ok) throw new Error();
-      speechQueue.setAutoplay(settings?.autoplay !== false);
-      onModelsSaved?.(models);
-      setModelChanged(false);
-      setWakeProblem(null);
-      if (settings?.wake_word) {
-        setWakeProblem(
-          await prepareWakeWord(() => setWakeProblem({ key: 'voice.wake.installing' })).catch(
-            () => ({ key: 'voice.wake.errors.install_failed' })
-          )
-        );
-      }
-      // The chat window listens and registers the shortcut with these.
-      window.dispatchEvent(
-        new CustomEvent(VOICE_SETTINGS_EVENT, { detail: await response.json() })
-      );
-      setStatus('speech.saved');
+      saves.current.land(ticket, await response.json());
+      setFailed(false);
     } catch {
-      setStatus('speech.failed');
-    } finally {
-      setSaving(false);
+      if (saves.current.isNewest(ticket)) setFailed(true);
+      return;
     }
+    // A newer save is on its way and will set up and publish its own settings.
+    if (!saves.current.isNewest(ticket)) return;
+    speechQueue.setAutoplay(next.autoplay !== false);
+    onModelsSaved?.(nextModels);
+    const wakeSetup = next.wake_word ? JSON.stringify(next.wake_phrases ?? []) : null;
+    if (wakeSetup !== wakeCheckedFor.current) {
+      wakeCheckedFor.current = wakeSetup;
+      setWakeProblem(null);
+      if (wakeSetup) {
+        const problem = await prepareWakeWord(() => {
+          if (wakeCheckedFor.current === wakeSetup)
+            setWakeProblem({ key: 'voice.wake.installing' });
+        }).catch(() => ({ key: 'voice.wake.errors.install_failed' }));
+        if (wakeCheckedFor.current === wakeSetup) setWakeProblem(problem);
+      }
+    }
+    // The chat window listens and registers the shortcut with these. Always
+    // the newest saved settings: preparing the wake word can outlast later saves.
+    window.dispatchEvent(new CustomEvent(VOICE_SETTINGS_EVENT, { detail: saves.current.latest() }));
   };
+  const saves = useRef(new SaveSequence<unknown>());
+  const persistRef = useRef(persist);
+  persistRef.current = persist;
+  useEffect(() => {
+    if (!settings || !dirty.current) return;
+    pending.current = { settings, models };
+    const timer = window.setTimeout(() => void persistRef.current(settings, models), 600);
+    return () => window.clearTimeout(timer);
+  }, [settings, models]);
+  // Leaving the page within the debounce still saves the last edit.
+  useEffect(
+    () => () => {
+      const last = pending.current;
+      if (last) void persistRef.current(last.settings, last.models);
+    },
+    []
+  );
   const fieldClass =
     'mt-1 block w-full border-2 border-brutal-black bg-white px-3 py-2 text-sm font-normal dark:bg-zinc-800 focus:outline-none focus:border-brutal-blue';
   return (
@@ -189,15 +226,11 @@ export function VoiceSettingsCard({
           iconTone="blue"
         />
         {settings && (
-          <fieldset
-            disabled={saving}
-            className="grid grid-cols-1 gap-4 text-sm font-medium sm:grid-cols-2"
-          >
+          <fieldset className="grid grid-cols-1 gap-4 text-sm font-medium sm:grid-cols-2">
             <label className="flex items-center justify-between gap-4 border-b border-neutral-200 pb-4 text-xs font-bold uppercase tracking-wide dark:border-zinc-700 sm:col-span-2">
               {t('speech.autoplay')}
               <BrutalOnOff
                 checked={settings.autoplay !== false}
-                disabled={saving}
                 onChange={(autoplay) => update({ autoplay })}
               />
             </label>
@@ -231,7 +264,6 @@ export function VoiceSettingsCard({
                     setModels([model, ...models.slice(1).filter((id) => id !== model)]);
                     update(resetSpeechForModel(settings, model));
                     setCustomVoice(false);
-                    setModelChanged(true);
                   }}
                 />
                 {models.length > 0 && (
@@ -241,16 +273,10 @@ export function VoiceSettingsCard({
                       setModels([]);
                       update({ voice: '' });
                       setCustomVoice(false);
-                      setModelChanged(true);
                     }}
                   >
                     {t('settings.roles.clearRole')}
                   </BrutalButton>
-                )}
-                {modelChanged && (
-                  <p role="status" className="text-xs text-neutral-500 dark:text-neutral-400">
-                    {t('speech.modelChanged')}
-                  </p>
                 )}
                 {models.length > 1 && (
                   <p className="text-xs text-neutral-500 dark:text-neutral-400">
@@ -268,7 +294,6 @@ export function VoiceSettingsCard({
                   {t('speech.voice')}
                   <BrutalSelect
                     className="mt-1"
-                    disabled={saving}
                     value={settings.voice}
                     onChange={(voice) => update({ voice })}
                     options={[
@@ -302,7 +327,6 @@ export function VoiceSettingsCard({
                   {modelOptions.voices.length > 0 && (
                     <BrutalSelect
                       className="mt-1"
-                      disabled={saving}
                       value={customVoice ? '__custom__' : settings.voice}
                       onChange={(value) => {
                         setCustomVoice(value === '__custom__');
@@ -329,7 +353,6 @@ export function VoiceSettingsCard({
                   {t('speech.format')}
                   <BrutalSelect
                     className="mt-1"
-                    disabled={saving}
                     value={settings.response_format}
                     onChange={(response_format) => update({ response_format })}
                     options={modelOptions.formats.map((format) => ({
@@ -371,7 +394,6 @@ export function VoiceSettingsCard({
                 min={key === 'speed' ? 0.25 : 0}
                 max={key === 'speed' ? 4 : key === 'pitch' ? 2 : 1}
                 step={0.05}
-                disabled={saving}
                 onChange={(value) => update({ [key]: value })}
               />
             ))}
@@ -384,15 +406,11 @@ export function VoiceSettingsCard({
             title={t('voice.settings.title')}
             icon={<MicrophoneIcon className="h-5 w-5" aria-hidden="true" />}
           />
-          <fieldset
-            disabled={saving}
-            className="grid grid-cols-1 gap-4 text-sm font-medium sm:grid-cols-2"
-          >
+          <fieldset className="grid grid-cols-1 gap-4 text-sm font-medium sm:grid-cols-2">
             <label className="block">
               {t('voice.settings.model')}
               <BrutalSelect
                 className="mt-1"
-                disabled={saving}
                 value={settings.realtime_model}
                 onChange={(realtime_model) => update({ realtime_model })}
                 options={[
@@ -432,7 +450,6 @@ export function VoiceSettingsCard({
                 {t('voice.settings.sensitivity')}
                 <BrutalSelect
                   className="mt-1"
-                  disabled={saving}
                   value={settings.realtime_start_sensitivity ?? 'low'}
                   onChange={(value) =>
                     update({
@@ -460,16 +477,12 @@ export function VoiceSettingsCard({
             title={t('voice.wake.title')}
             icon={<MicrophoneIcon className="h-5 w-5" aria-hidden="true" />}
           />
-          <fieldset
-            disabled={saving}
-            className="grid grid-cols-1 gap-4 text-sm font-medium sm:grid-cols-2"
-          >
-            <div className="space-y-1 border-b border-neutral-200 pb-4 dark:border-zinc-700 sm:col-span-2">
+          <fieldset className="grid grid-cols-1 gap-4 text-sm font-medium">
+            <div className="space-y-1 border-b border-neutral-200 pb-4 dark:border-zinc-700">
               <label className="flex items-center justify-between gap-4 text-xs font-bold uppercase tracking-wide">
                 {t('voice.wake.enabled')}
                 <BrutalOnOff
                   checked={!!settings.wake_word}
-                  disabled={saving}
                   onChange={(wake_word) => update({ wake_word })}
                 />
               </label>
@@ -479,20 +492,37 @@ export function VoiceSettingsCard({
             </div>
             {settings.wake_word && (
               <>
-                <label className="block">
-                  {t('voice.wake.phrases')}
-                  <textarea
-                    className={fieldClass}
-                    rows={3}
-                    value={(settings.wake_phrases ?? []).join('\n')}
-                    onChange={(event) =>
-                      update({ wake_phrases: event.target.value.split('\n').slice(0, 8) })
-                    }
+                <div>
+                  <div className="flex items-baseline justify-between gap-2">
+                    <span id="wake-phrases-label">{t('voice.wake.phrases')}</span>
+                    <span className="text-xs font-normal tabular-nums text-neutral-500">
+                      {(settings.wake_phrases ?? []).filter((p) => p.trim()).length}/
+                      {MAX_WAKE_PHRASES}
+                    </span>
+                  </div>
+                  <WakePhraseEditor
+                    labelledBy="wake-phrases-label"
+                    value={settings.wake_phrases ?? []}
+                    onChange={(wake_phrases) => update({ wake_phrases })}
+                    invalidWords={wakeProblem?.words}
                   />
-                  <span className="mt-1 block text-xs font-normal text-neutral-600 dark:text-neutral-400">
-                    {t('voice.wake.phrasesHint')}
-                  </span>
-                </label>
+                  {wakeProblem ? (
+                    <p
+                      role="status"
+                      className={`mt-1 text-xs font-normal ${
+                        wakeProblem.key === 'voice.wake.installing'
+                          ? 'text-neutral-600 dark:text-neutral-400'
+                          : 'text-brutal-red'
+                      }`}
+                    >
+                      {t(wakeProblem.key, wakeProblem.params)}
+                    </p>
+                  ) : (
+                    <p className="mt-1 text-xs font-normal text-neutral-600 dark:text-neutral-400">
+                      {t('voice.wake.phrasesHint')}
+                    </p>
+                  )}
+                </div>
                 <div>
                   <BrutalRange
                     label={t('voice.wake.sensitivity')}
@@ -501,7 +531,6 @@ export function VoiceSettingsCard({
                     min={0}
                     max={1}
                     step={0.05}
-                    disabled={saving}
                     onChange={(wake_sensitivity) => update({ wake_sensitivity })}
                   />
                   <p className="mt-1 text-xs font-normal text-neutral-600 dark:text-neutral-400">
@@ -510,53 +539,29 @@ export function VoiceSettingsCard({
                 </div>
               </>
             )}
-            <label className="block sm:col-span-2">
-              {t('voice.wake.hotkey')}
-              <input
-                className={fieldClass}
+            <div
+              className={
+                settings.wake_word ? 'border-t border-neutral-200 pt-4 dark:border-zinc-700' : ''
+              }
+            >
+              <span id="voice-shortcut-label">{t('voice.wake.hotkey')}</span>
+              <ShortcutRecorder
+                labelledBy="voice-shortcut-label"
                 value={settings.voice_hotkey ?? ''}
-                maxLength={60}
-                placeholder="CommandOrControl+Shift+Space"
-                onChange={(event) => update({ voice_hotkey: event.target.value.trim() })}
+                onChange={(voice_hotkey) => update({ voice_hotkey })}
               />
               <span className="mt-1 block text-xs font-normal text-neutral-600 dark:text-neutral-400">
                 {t('voice.wake.hotkeyHint')}
               </span>
-            </label>
-            {wakeProblem && (
-              <p
-                role="status"
-                className={`text-xs sm:col-span-2 ${
-                  wakeProblem.key === 'voice.wake.installing'
-                    ? 'text-neutral-600 dark:text-neutral-400'
-                    : 'text-brutal-red'
-                }`}
-              >
-                {t(wakeProblem.key, wakeProblem.params)}
-              </p>
-            )}
+            </div>
           </fieldset>
         </SettingsCard>
       )}
-      <div className="flex flex-wrap items-center justify-end gap-3">
-        {status && (
-          <p
-            role="status"
-            className={
-              status === 'speech.failed'
-                ? 'text-sm text-red-600 dark:text-red-400'
-                : 'text-sm text-neutral-600 dark:text-neutral-400'
-            }
-          >
-            {t(status)}
-          </p>
-        )}
-        {settings && (
-          <BrutalButton variant="primary" onClick={() => void save()} disabled={saving}>
-            {t('common.save')}
-          </BrutalButton>
-        )}
-      </div>
+      {failed && (
+        <p role="alert" className="text-right text-sm text-red-600 dark:text-red-400">
+          {t('speech.failed')}
+        </p>
+      )}
     </div>
   );
 }

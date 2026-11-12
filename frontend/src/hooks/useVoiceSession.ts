@@ -6,6 +6,15 @@ import type { VoiceServerMessage, VoiceServerState } from '../lib/voice/types';
 import { VoiceClient } from '../lib/voice/voiceClient';
 
 export type VoiceSessionStatus = 'idle' | 'connecting' | VoiceServerState | 'error';
+export interface HandsFreeState {
+  wake: 'off' | 'starting' | 'listening' | 'error';
+  /** i18n key and params for why the wake word is not listening. */
+  wakeProblem: { key: string; params?: Record<string, unknown> } | null;
+  /** The first wake phrase, to suggest saying it. */
+  phrase: string;
+  /** Tauri accelerator, or '' when there is no shortcut. */
+  hotkey: string;
+}
 export interface VoiceTranscript {
   id: string;
   speaker: 'user' | 'assistant';
@@ -366,8 +375,8 @@ export function useVoiceSession(onChatBound: (chatId: string) => void) {
     micLevel: micLevelRef as { readonly current: number },
     active: state.status !== 'idle' && state.status !== 'error',
     supported: voiceSupported(),
-    /** The wake phrase is being listened for; the owner of the session sets it. */
-    wakeListening: false,
+    /** How voice mode can start without a click; the owner of the session sets it. */
+    handsFree: null as HandsFreeState | null,
     start,
     stop,
     interrupt,

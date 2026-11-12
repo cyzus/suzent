@@ -29,7 +29,24 @@ LOOPBACK_HOSTS = {"127.0.0.1", "::1", "localhost", "", "testclient"}
 
 # Paths reachable from remote without a token (they self-authenticate).
 _WS_EXEMPT_PATHS = {"/ws/node"}
-_WS_FULL_ONLY_PATHS = {"/ws/voice", "/ws/wake"}
+_WS_FULL_ONLY_PATHS = {"/ws/voice"}
+
+
+def is_plugin_websocket(path: str) -> bool:
+    """Whether ``path`` is a plugin's socket, ``/plugins/<id>/ws/<path>``."""
+    parts = path.split("/")
+    return (
+        len(parts) >= 5
+        and parts[0] == ""
+        and parts[1] == "plugins"
+        and bool(parts[2])
+        and parts[3] == "ws"
+    )
+
+
+def websocket_needs_full_access(path: str) -> bool:
+    return path in _WS_FULL_ONLY_PATHS or is_plugin_websocket(path)
+
 
 # HTTP bootstrap paths reachable from remote without a token. These issue no
 # secret — they only queue a control request an operator must approve, and the
@@ -170,19 +187,20 @@ def extract_token(headers: list[tuple[bytes, bytes]]) -> str:
 # browser history, so it is only worth it where a header is impossible. The
 # browser's `EventSource` is exactly that case — it cannot set request headers,
 # and these two endpoints are how the web UI receives everything the agent does.
-# Both are read-only GET streams.
+# Both are read-only GET streams. WebSockets are the same case: the browser's
+# WebSocket cannot set headers either, so /ws/voice and plugin sockets
+# (/plugins/<id>/ws/<path>) take one too.
 QUERY_TOKEN_PATHS = {
     "/events/stream",
     "/subagents/stream",
     "/background-tasks/stream",
     "/ws/voice",
-    "/ws/wake",
 }
 
 
 def extract_query_token(path: str, query_string: bytes | str) -> str:
     """Pull a token from the query string, for the few paths that allow it."""
-    if path not in QUERY_TOKEN_PATHS:
+    if path not in QUERY_TOKEN_PATHS and not is_plugin_websocket(path):
         return ""
     from urllib.parse import parse_qs
 
@@ -322,7 +340,7 @@ class AuthBoundaryMiddleware:
             return
 
         if scope["type"] == "websocket":
-            if path in _WS_FULL_ONLY_PATHS and tok_scope != "full":
+            if websocket_needs_full_access(path) and tok_scope != "full":
                 await send({"type": "websocket.close", "code": 1008})
                 return
             return await self.app(scope, receive, send)

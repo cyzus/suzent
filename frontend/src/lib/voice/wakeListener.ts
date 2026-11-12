@@ -21,6 +21,12 @@ export type OpenMic = (sampleRate: number, onPcm: (pcm: Int16Array) => void) => 
 
 type WebSocketConstructor = new (url: string) => WebSocket;
 
+/** Where the wake-word plugin listens; it exists only while the plugin is on. */
+export const WAKE_SOCKET_PATH = '/plugins/wake-word/ws/listen';
+
+/** The close code the server sends for a plugin socket that is not there. */
+export const PLUGIN_SOCKET_NOT_FOUND = 4404;
+
 /** Capture the default mic as 16-bit mono PCM at `sampleRate`, in ~30 ms frames. */
 export const openMic: OpenMic = async (sampleRate, onPcm) => {
   const stream = await navigator.mediaDevices.getUserMedia({
@@ -64,7 +70,7 @@ export const openMic: OpenMic = async (sampleRate, onPcm) => {
 };
 
 /**
- * Listens for the wake phrase: streams the mic to `/ws/wake`, where the
+ * Listens for the wake phrase: streams the mic to the wake-word plugin, whose
  * spotter runs on this machine, and reports each phrase it hears. The mic is
  * opened only once the server says it can listen, and released on `stop`.
  */
@@ -82,7 +88,7 @@ export class WakeListener {
   start(): void {
     const url = new URL(getApiBase() || window.location.href);
     url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
-    url.pathname = '/ws/wake';
+    url.pathname = WAKE_SOCKET_PATH;
     url.search = '';
     const socket = new this.Socket(withAuthQuery(url.toString()));
     this.socket = socket;
@@ -128,7 +134,8 @@ export class WakeListener {
       }
     };
     socket.onerror = () => fail('connection');
-    socket.onclose = () => fail('connection');
+    socket.onclose = (event?: CloseEvent) =>
+      fail(event?.code === PLUGIN_SOCKET_NOT_FOUND ? 'not_installed' : 'connection');
   }
 
   stop(): void {

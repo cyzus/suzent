@@ -2146,7 +2146,14 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       startVoiceHandsFree();
     }
   );
-  voice.wakeListening = wakeWord.status === 'listening';
+  voice.handsFree = {
+    wake: wakeWord.status,
+    wakeProblem: wakeWord.error
+      ? { key: `voice.wake.errors.${wakeWord.error}`, params: { words: wakeWord.detail } }
+      : null,
+    phrase: voiceTriggers?.wake_phrases?.find((phrase) => phrase.trim()) ?? '',
+    hotkey: voiceTriggers?.voice_hotkey ?? '',
+  };
   useVoiceHotkey(voiceTriggers?.voice_hotkey ?? '', () => {
     if (voice.active) voice.stop();
     else startVoiceHandsFree();

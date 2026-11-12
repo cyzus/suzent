@@ -386,6 +386,26 @@ class TestRebindingGuard:
         assert sent_bad == [{"type": "websocket.close", "code": 1008}]
 
     @pytest.mark.asyncio
+    async def test_plugin_ws_needs_a_full_scope_token(self, tmp_path):
+        store = DeviceTokenStore(path=tmp_path / "d.json")
+        _id, full_tok = store.mint("Browser", "web", scope="full")
+        _id2, agent_tok = store.mint("Peer", "agent", scope="agent")
+        path = "/plugins/wake-word/ws/listen"
+
+        async def connect(token):
+            scope = _scope("websocket", "100.64.0.5", path=path, store=store)
+            scope["query_string"] = f"token={token}".encode()
+            return await _run(scope)
+
+        called, _ = await connect(full_tok)
+        assert called
+        called, sent = await connect(agent_tok)
+        assert not called
+        assert sent == [{"type": "websocket.close", "code": 1008}]
+        called, _ = await _run(_scope("websocket", "127.0.0.1", path=path))
+        assert called
+
+    @pytest.mark.asyncio
     async def test_query_token_rejected_on_other_paths(self, tmp_path):
         store = DeviceTokenStore(path=tmp_path / "d.json")
         _id, token = store.mint("Browser", "web", scope="full")
@@ -394,3 +414,14 @@ class TestRebindingGuard:
         called, sent = await _run(scope)
         assert not called
         assert sent[0]["status"] == 401
+
+
+def test_plugin_websocket_paths():
+    from suzent.auth_boundary import is_plugin_websocket
+
+    assert is_plugin_websocket("/plugins/wake-word/ws/listen")
+    assert is_plugin_websocket("/plugins/x/ws/a/b")
+    assert not is_plugin_websocket("/plugins/x/ws")
+    assert not is_plugin_websocket("/plugins//ws/a")
+    assert not is_plugin_websocket("/plugins/x/api/a")
+    assert not is_plugin_websocket("/ws/voice")
