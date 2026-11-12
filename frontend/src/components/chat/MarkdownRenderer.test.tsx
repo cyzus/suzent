@@ -85,6 +85,24 @@ describe('MarkdownRenderer', () => {
     expect(html).not.toContain('[object Object]');
   });
 
+  it('keeps a fence with an unlisted language inside an outer fence', () => {
+    const html = render(
+      '- wrapped as:\n  ```markdown\n  # Core Memory Update\n  ...\n  ```diff\n  {diff}\n  ```\n  ```'
+    );
+
+    expect(html).toContain('{diff}');
+    expect(html).toContain('```diff');
+    expect(html).not.toMatch(/<p[^>]*>\{diff\}<\/p>/);
+    expect(html).not.toContain('[object Object]');
+  });
+
+  it('renders an empty code block as empty', () => {
+    const html = render('```\n```');
+
+    expect(html).toContain('<pre');
+    expect(html).not.toContain('[object Object]');
+  });
+
   it('uses sidebar-sized headings in compact streaming mode', () => {
     const html = render('# Project context', { isStreaming: true, compact: true });
 
