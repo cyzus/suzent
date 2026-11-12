@@ -156,6 +156,7 @@ def test_sync_command_shapes():
         "sync",
         "--frozen",
         "--inexact",
+        "--no-install-project",
         "--extra",
         "social",
         "--extra",
