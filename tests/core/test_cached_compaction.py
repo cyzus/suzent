@@ -65,7 +65,7 @@ class _FailingClient:
         return f"<summary>{SUMMARY}</summary>"
 
 
-def _agent(sent: list, replies: list) -> Agent:
+def _agent(sent: list, replies: list, model_id: str = "") -> Agent:
     """An agent whose requests are recorded; streamed requests are summaries."""
 
     def respond(messages, info: AgentInfo) -> ModelResponse:
@@ -88,7 +88,7 @@ def _agent(sent: list, replies: list) -> Agent:
         capabilities=[
             PromptCacheRoutingCapability(),
             ForkPrefixCapability(),
-            RequestRecorderCapability(),
+            RequestRecorderCapability(model_id=model_id),
         ],
     )
 
