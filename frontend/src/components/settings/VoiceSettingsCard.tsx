@@ -11,6 +11,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { ShortcutRecorder } from './ShortcutRecorder';
 import { MAX_WAKE_PHRASES, WakePhraseEditor } from './WakePhraseEditor';
 import { getApiBase } from '../../lib/api';
+import { SaveSequence } from '../../lib/saveSequence';
 import { useI18n } from '../../i18n';
 import { useSystemVoices } from '../chat/SpeechPlayer';
 import { BrutalButton } from '../BrutalButton';
@@ -159,7 +160,7 @@ export function VoiceSettingsCard({
   };
   const persist = async (next: VoiceSettings, nextModels: string[]) => {
     pending.current = null;
-    let saved: unknown;
+    const ticket = saves.current.begin();
     try {
       const response = await fetch(`${getApiBase()}/config/voice`, {
         method: 'POST',
@@ -167,12 +168,14 @@ export function VoiceSettingsCard({
         body: JSON.stringify({ ...next, tts_models: nextModels }),
       });
       if (!response.ok) throw new Error();
-      saved = await response.json();
+      saves.current.land(ticket, await response.json());
       setFailed(false);
     } catch {
-      setFailed(true);
+      if (saves.current.isNewest(ticket)) setFailed(true);
       return;
     }
+    // A newer save is on its way and will set up and publish its own settings.
+    if (!saves.current.isNewest(ticket)) return;
     speechQueue.setAutoplay(next.autoplay !== false);
     onModelsSaved?.(nextModels);
     const wakeSetup = next.wake_word ? JSON.stringify(next.wake_phrases ?? []) : null;
@@ -180,16 +183,18 @@ export function VoiceSettingsCard({
       wakeCheckedFor.current = wakeSetup;
       setWakeProblem(null);
       if (wakeSetup) {
-        setWakeProblem(
-          await prepareWakeWord(() => setWakeProblem({ key: 'voice.wake.installing' })).catch(
-            () => ({ key: 'voice.wake.errors.install_failed' })
-          )
-        );
+        const problem = await prepareWakeWord(() => {
+          if (wakeCheckedFor.current === wakeSetup)
+            setWakeProblem({ key: 'voice.wake.installing' });
+        }).catch(() => ({ key: 'voice.wake.errors.install_failed' }));
+        if (wakeCheckedFor.current === wakeSetup) setWakeProblem(problem);
       }
     }
-    // The chat window listens and registers the shortcut with these.
-    window.dispatchEvent(new CustomEvent(VOICE_SETTINGS_EVENT, { detail: saved }));
+    // The chat window listens and registers the shortcut with these. Always
+    // the newest saved settings: preparing the wake word can outlast later saves.
+    window.dispatchEvent(new CustomEvent(VOICE_SETTINGS_EVENT, { detail: saves.current.latest() }));
   };
+  const saves = useRef(new SaveSequence<unknown>());
   const persistRef = useRef(persist);
   persistRef.current = persist;
   useEffect(() => {
