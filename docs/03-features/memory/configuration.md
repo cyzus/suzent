@@ -116,6 +116,16 @@ it assumes 200k tokens.
 Set `max_context_tokens` to a non-zero value to cap that budget, for example to
 keep costs down. It can only lower the limit, never raise it.
 
+The summary that replaces older messages is written by the model you are
+chatting with, reusing the conversation it has already read, so most of it
+comes from the provider's prompt cache and costs a fraction of the normal price.
+Once a reply leaves the conversation at 70% of the window
+(`context_precompaction_trigger`), Suzent starts writing the next summary in the
+background, so you rarely wait for compaction when it happens. Set
+`context_precompaction_trigger: 0` to turn that off, or
+`compaction_reuse_prompt_cache: false` to have the memory extraction model write
+summaries instead.
+
 ## Rebuilding the search index
 
 The Markdown files are the real memory; the search index is built from them. If

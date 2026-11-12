@@ -223,6 +223,41 @@ byte-identical from one request to the next:
   Closing the gap for the other providers needs an upstream wire format, or
   sending every deferred schema up front.
 
+### Compaction summaries
+
+A compaction summary is written by repeating the chat's latest request with one
+instruction added at the end of its last message, so the provider serves the
+whole history from cache instead of a separate model re-reading a flattened
+transcript at full price (`summarize_on_cached_prefix()` in
+`core/context_compressor.py`).
+
+- **The exact request.** `RequestRecorderCapability` (`core/prompt_cache.py`,
+  registered last) wraps the model that actually sends, and records each chat's
+  latest request: model, settings, parameters, and the messages *after*
+  pydantic-ai prepared them (framing, tool-search exchanges, the system voice
+  announcement). Repeating the stored history instead would differ from the
+  wire and miss the cache. It also records the agent history the request was
+  prepared from, and the summary is only written that way when that history
+  covers everything being folded (compared by `history_fingerprint()`, which
+  ignores tool output so trimming between turns does not break the match).
+- **Nothing else changes.** Tools stay declared and `tool_choice` stays as it
+  was, because changing either invalidates Anthropic's cached messages; the
+  instruction tells the model not to call tools, and a reply that does is
+  retried once with a correction.
+- **Fallback.** No recorded request (first request after a restart), a history
+  over 95% of the window, a provider error or an unusable reply all fall back to
+  the extraction model on a flattened transcript. `compaction_reuse_prompt_cache:
+  false` turns the cached path off.
+- **Prepared at turn end.** When a finished turn leaves the context at or over
+  `context_precompaction_trigger` (0.70 by default), `ChatProcessor` starts the
+  next summary in the background while the cache is warm
+  (`schedule_precompaction()`). It is held in memory, not applied. When the
+  trigger is reached, the history processor applies it if its fingerprint
+  still matches, waits for it if it is still being written, and writes a fresh
+  one if it no longer matches or would leave the context over the trigger. A
+  summary that still covers the history is not rewritten on later turns until
+  the uncovered tail reaches half the window.
+
 ### Forked sub-agents
 
 A sub-agent spawned with `inherit_context=True` starts from its parent's

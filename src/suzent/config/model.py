@@ -223,6 +223,14 @@ class ConfigModel(BaseModel):
     compaction_keep_recent_turns: int = 3
     compaction_chunk_size: int = 20
     compaction_timeout_seconds: int = 180
+    # Write the compaction summary with the conversation's own model, tools and
+    # instructions, so the provider serves the history from its prompt cache.
+    # Off falls back to the memory extraction model on a flattened transcript.
+    compaction_reuse_prompt_cache: bool = True
+    # Share of the context at which a finished turn starts writing the next
+    # compaction summary in the background, while the prompt cache is warm.
+    # It is applied only once the compaction trigger is reached. 0 disables it.
+    context_precompaction_trigger: float = 0.70
 
     stream_idle_timeout_seconds: float = Field(default=120.0, gt=0, allow_inf_nan=False)
     stream_wait_notice_seconds: float = Field(default=15.0, gt=0, allow_inf_nan=False)
