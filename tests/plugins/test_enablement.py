@@ -182,5 +182,10 @@ def test_runs_by_path_without_importing_suzent(checkout, tmp_path):
 def test_the_repository_plugins_install_nothing_by_default(tmp_path):
     """A fresh install of this repository syncs no plugin extras: chat apps
     and the camera install their packages when the user sets them up."""
-    repo = Path(__file__).resolve().parents[2]
-    assert enablement.builtin_plugin_extras(repo, tmp_path / "none.json") == []
+    # Only the plugins: the real checkout may hold the developer's own
+    # config/social.json, which turns on the chat apps it sets up.
+    checkout = tmp_path / "checkout"
+    shutil.copytree(
+        Path(__file__).resolve().parents[2] / "plugins", checkout / "plugins"
+    )
+    assert enablement.builtin_plugin_extras(checkout, tmp_path / "none.json") == []
