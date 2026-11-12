@@ -27,6 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Show deduplicated image thumbnails beside activity summaries and support zooming and panning image previews.
 - Simplify image preview navigation and hide duplicate thumbnails while tool details are expanded.
 - Refine the desktop header and right sidebar overview with a 1px divider, unified sidebar toggle glyph, and inline cache/task indicators.
+- Add `suzent run --keep-background-processes` so a server the agent starts keeps running after a one-shot run ends.
 - Canvas panels can be saved as a web page in the project's artifacts folder, so a chart or table outlives the chat.
 - The agent can now hand you finished files with Send File: they arrive in the chat app you wrote from (Telegram, Slack, Discord, Feishu), under the reply on the computer, and on your phone, where you can download and share them.
 - Queue concurrent database writes to prevent chats from losing saved progress during slow saves and report slow write owners.

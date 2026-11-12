@@ -242,6 +242,7 @@
     ".releases/changes/retry-dispatched-agent-tasks.json",
     ".releases/changes/right-sidebar-header-polish.json",
     ".releases/changes/right-sidebar-overview.json",
+    ".releases/changes/run-keep-background-processes.json",
     ".releases/changes/save-canvas-as-file.json",
     ".releases/changes/scheduled-task-failures.json",
     ".releases/changes/send-file-tool.json",
