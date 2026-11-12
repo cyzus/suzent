@@ -162,6 +162,13 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
   onScrollToBottom,
 }) => {
   const isFocal = currentChatId === FOCAL_CHAT_ID;
+  // The mic is open for the wake phrase: shown on whichever primary action is up.
+  const wakeDot = voice.wakeListening ? (
+    <span
+      data-testid="wake-listening"
+      className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full bg-emerald-500 ring-2 ring-white dark:ring-zinc-900"
+    />
+  ) : null;
   // --- Volume Mounting Logic ---
   const { t } = useI18n();
   const queueKey = React.useMemo(
@@ -995,23 +1002,31 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
           ) : input.trim() || voice.active ? (
             <button
               type="submit"
-              className="w-9 h-9 inline-flex items-center justify-center border-2 border-brutal-black duration-100 p-0 text-sm font-bold disabled:opacity-50 disabled:cursor-not-allowed text-white uppercase shrink-0 bg-brutal-blue hover:bg-blue-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-brutal-blue"
+              className="relative w-9 h-9 inline-flex items-center justify-center border-2 border-brutal-black duration-100 p-0 text-sm font-bold disabled:opacity-50 disabled:cursor-not-allowed text-white uppercase shrink-0 bg-brutal-blue hover:bg-blue-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-brutal-blue"
               disabled={streamingForCurrentChat || !configReady || !input.trim()}
               title={t('chatInput.sendMessage')}
               aria-label={t('chatInput.sendMessage')}
             >
               <ArrowUpIcon className="w-5 h-5 stroke-[2.5]" aria-hidden="true" />
+              {wakeDot}
             </button>
           ) : (
             <button
               type="button"
               onClick={() => voice.start(currentChatId ?? null)}
-              className="w-9 h-9 inline-flex items-center justify-center border-2 border-brutal-black duration-100 p-0 text-sm font-bold disabled:opacity-50 disabled:cursor-not-allowed text-white uppercase shrink-0 bg-brutal-blue hover:bg-blue-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-brutal-blue"
+              className="relative w-9 h-9 inline-flex items-center justify-center border-2 border-brutal-black duration-100 p-0 text-sm font-bold disabled:opacity-50 disabled:cursor-not-allowed text-white uppercase shrink-0 bg-brutal-blue hover:bg-blue-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-brutal-blue"
               disabled={streamingForCurrentChat || !configReady || !voice.supported}
-              title={voice.supported ? t('voice.micButton') : t('voice.errors.micUnavailable')}
+              title={
+                !voice.supported
+                  ? t('voice.errors.micUnavailable')
+                  : voice.wakeListening
+                    ? t('voice.wake.listening')
+                    : t('voice.micButton')
+              }
               aria-label={voice.supported ? t('voice.micButton') : t('voice.errors.micUnavailable')}
             >
               <MicrophoneIcon className="w-5 h-5 stroke-2" aria-hidden="true" />
+              {wakeDot}
             </button>
           )}
         </div>

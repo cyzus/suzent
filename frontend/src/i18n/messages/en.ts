@@ -41,6 +41,32 @@ export const en = {
       sensitivityHigh: 'High · headphones',
       sensitivityHint: 'Gemini only. Lower sensitivity reduces triggers from speaker playback.',
     },
+    wake: {
+      title: 'Hands-free start',
+      enabled: 'Wake word',
+      enabledHint:
+        'Listens on this computer for the phrases below and starts voice mode when it hears one. No audio leaves the computer before that.',
+      listening: 'Listening for the wake word · start voice mode',
+      phrases: 'Wake phrases (one per line)',
+      phrasesHint: 'Chinese, English or both, e.g. 你好 Suzent. Up to 8.',
+      sensitivity: 'Wake sensitivity',
+      sensitivityHint: 'Higher wakes more readily, and more often by mistake.',
+      hotkey: 'Voice shortcut',
+      hotkeyHint:
+        'Desktop app: starts or ends voice mode from anywhere, e.g. CommandOrControl+Shift+Space. Leave empty to turn it off.',
+      installing: 'Installing the wake word (about 25 MB)…',
+      errors: {
+        not_installed: 'The wake-word plugin is not installed.',
+        no_model: 'The wake-word model has not been downloaded.',
+        no_keywords: 'Add at least one wake phrase.',
+        unknown_words: 'No pronunciation known for: {words}. Use other words or Chinese.',
+        download_failed:
+          'Could not download the wake-word model. Check the network and save again.',
+        install_failed: 'Could not install the wake-word plugin.',
+        mic: 'The microphone could not be opened for the wake word.',
+        connection: 'The wake word lost its connection; retrying.',
+      },
+    },
   },
   workspaceView: { fullscreen: 'Fullscreen', shrink: 'Shrink' },
   desktopMenu: {

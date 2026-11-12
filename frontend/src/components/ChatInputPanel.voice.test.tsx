@@ -38,6 +38,7 @@ const makeVoice = (
   playing: false,
   supported: true,
   micLevel: { current: 0 },
+  wakeListening: false,
   start: () => {},
   stop: () => {},
   interrupt: () => {},
@@ -143,6 +144,17 @@ describe('composer with voice mode', () => {
     expect(html.split('aria-label="voice.end"').length - 1).toBe(1);
     expect(html).not.toMatch(/<button[^>]*aria-label="voice\.micButton"/);
     expect(button(html, 'chatInput.sendMessage')).toMatch(DISABLED);
+  });
+
+  it('marks the primary action while the wake phrase is listened for', () => {
+    expect(render(makeVoice('idle'), '')).not.toContain('data-testid="wake-listening"');
+    const mic = render(makeVoice('idle', { wakeListening: true }), '');
+    expect(mic).toContain('data-testid="wake-listening"');
+    expect(mic).toContain('title="voice.wake.listening"');
+    // Still shown while typing, when send replaces the mic.
+    expect(render(makeVoice('idle', { wakeListening: true }))).toContain(
+      'data-testid="wake-listening"'
+    );
   });
 
   it('draws the mic meter once the mic is live, not while connecting', () => {
