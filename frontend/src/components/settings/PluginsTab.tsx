@@ -4,6 +4,7 @@ import {
   CameraIcon,
   ChatBubbleLeftRightIcon,
   EnvelopeIcon,
+  MicrophoneIcon,
   PlusIcon,
   PuzzlePieceIcon,
   TrashIcon,
@@ -32,6 +33,7 @@ import { SettingsHeader } from './SettingsHeader';
 /** Plugins that ship no logo of their own. */
 const FALLBACK_ICONS: Record<string, React.ComponentType<React.SVGProps<SVGSVGElement>>> = {
   camera: CameraIcon,
+  'wake-word': MicrophoneIcon,
   slack: ChatBubbleLeftRightIcon,
   feishu: ChatBubbleLeftRightIcon,
   email: EnvelopeIcon,

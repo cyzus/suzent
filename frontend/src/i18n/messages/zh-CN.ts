@@ -41,6 +41,31 @@ export const zhCN = {
       sensitivityHigh: '高 · 耳机',
       sensitivityHint: '仅适用于 Gemini；降低灵敏度可减少扬声器回声误触发。',
     },
+    wake: {
+      title: '免手动开启',
+      enabled: '语音唤醒',
+      enabledHint:
+        '在本机监听下面的唤醒词，听到就开启语音模式。在那之前不会有任何音频离开这台电脑。',
+      listening: '正在等待唤醒词 · 开启语音模式',
+      phrases: '唤醒词（每行一个）',
+      phrasesHint: '中文、英文或中英混合，例如“你好 Suzent”。最多 8 个。',
+      sensitivity: '唤醒灵敏度',
+      sensitivityHint: '越高越容易唤醒，也越容易误唤醒。',
+      hotkey: '语音快捷键',
+      hotkeyHint:
+        '桌面版：在任何地方按下即可开启或结束语音模式，例如 CommandOrControl+Shift+Space。留空则关闭。',
+      installing: '正在安装语音唤醒（约 25 MB）…',
+      errors: {
+        not_installed: '语音唤醒插件尚未安装。',
+        no_model: '语音唤醒模型尚未下载。',
+        no_keywords: '请至少填写一个唤醒词。',
+        unknown_words: '无法识别这些词的读音：{words}。请换个词或用中文。',
+        download_failed: '语音唤醒模型下载失败，请检查网络后再保存一次。',
+        install_failed: '语音唤醒插件安装失败。',
+        mic: '无法为语音唤醒打开麦克风。',
+        connection: '语音唤醒连接中断，正在重试。',
+      },
+    },
   },
   workspaceView: { fullscreen: '全屏', shrink: '缩小' },
   desktopMenu: {

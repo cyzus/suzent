@@ -12,6 +12,7 @@ import { getApiBase } from '../../lib/api';
 import { useI18n } from '../../i18n';
 import { useSystemVoices } from '../chat/SpeechPlayer';
 import { BrutalButton } from '../BrutalButton';
+import { VOICE_SETTINGS_EVENT } from '../../hooks/useWakeWord';
 
 interface VoiceSettings {
   autoplay: boolean;
@@ -26,6 +27,51 @@ interface VoiceSettings {
   realtime_model: string;
   realtime_voice: string;
   realtime_start_sensitivity?: 'auto' | 'low' | 'high';
+  wake_word?: boolean;
+  wake_phrases?: string[];
+  wake_sensitivity?: number;
+  voice_hotkey?: string;
+}
+
+interface WakeStatus {
+  packages: boolean;
+  model: boolean;
+  unknown_words: string[];
+}
+
+/**
+ * Make the wake word ready to listen: install the plugin's packages, then
+ * the model, as far as either is missing. Returns an i18n key and params for
+ * what is still wrong, or null when the wake word can listen.
+ */
+async function prepareWakeWord(
+  onInstalling: () => void
+): Promise<{ key: string; params?: Record<string, unknown> } | null> {
+  const base = getApiBase();
+  const read = async (response: Response): Promise<WakeStatus> => {
+    if (!response.ok) throw new Error();
+    return (await response.json()) as WakeStatus;
+  };
+  let status = await read(await fetch(`${base}/voice/wake`));
+  if (!status.packages) {
+    onInstalling();
+    const installed = await fetch(`${base}/plugins/wake-word/install`, { method: 'POST' });
+    if (!installed.ok) return { key: 'voice.wake.errors.install_failed' };
+    status = await read(await fetch(`${base}/voice/wake`));
+  }
+  if (!status.model) {
+    onInstalling();
+    const downloaded = await fetch(`${base}/voice/wake/model`, { method: 'POST' });
+    if (!downloaded.ok) return { key: 'voice.wake.errors.download_failed' };
+    status = await read(downloaded);
+  }
+  if (!status.packages) return { key: 'voice.wake.errors.not_installed' };
+  if (status.unknown_words.length)
+    return {
+      key: 'voice.wake.errors.unknown_words',
+      params: { words: status.unknown_words.join(', ') },
+    };
+  return null;
 }
 
 interface RealtimeOption {
@@ -54,6 +100,10 @@ export function VoiceSettingsCard({
   const [settings, setSettings] = useState<VoiceSettings | null>(null);
   const [realtimeOptions, setRealtimeOptions] = useState<RealtimeOption[]>([]);
   const [status, setStatus] = useState('');
+  const [wakeProblem, setWakeProblem] = useState<{
+    key: string;
+    params?: Record<string, unknown>;
+  } | null>(null);
   const [saving, setSaving] = useState(false);
   useEffect(() => {
     let cancelled = false;
@@ -109,6 +159,18 @@ export function VoiceSettingsCard({
       speechQueue.setAutoplay(settings?.autoplay !== false);
       onModelsSaved?.(models);
       setModelChanged(false);
+      setWakeProblem(null);
+      if (settings?.wake_word) {
+        setWakeProblem(
+          await prepareWakeWord(() => setWakeProblem({ key: 'voice.wake.installing' })).catch(
+            () => ({ key: 'voice.wake.errors.install_failed' })
+          )
+        );
+      }
+      // The chat window listens and registers the shortcut with these.
+      window.dispatchEvent(
+        new CustomEvent(VOICE_SETTINGS_EVENT, { detail: await response.json() })
+      );
       setStatus('speech.saved');
     } catch {
       setStatus('speech.failed');
@@ -388,6 +450,90 @@ export function VoiceSettingsCard({
             )}
             {!realtimeOptions.some((option) => option.configured) && (
               <p className="text-xs text-brutal-red">{t('voice.settings.noneConfigured')}</p>
+            )}
+          </fieldset>
+        </SettingsCard>
+      )}
+      {settings && (
+        <SettingsCard>
+          <SectionCardHeader
+            title={t('voice.wake.title')}
+            icon={<MicrophoneIcon className="h-5 w-5" aria-hidden="true" />}
+          />
+          <fieldset
+            disabled={saving}
+            className="grid grid-cols-1 gap-4 text-sm font-medium sm:grid-cols-2"
+          >
+            <div className="space-y-1 border-b border-neutral-200 pb-4 dark:border-zinc-700 sm:col-span-2">
+              <label className="flex items-center justify-between gap-4 text-xs font-bold uppercase tracking-wide">
+                {t('voice.wake.enabled')}
+                <BrutalOnOff
+                  checked={!!settings.wake_word}
+                  disabled={saving}
+                  onChange={(wake_word) => update({ wake_word })}
+                />
+              </label>
+              <p className="text-xs font-normal text-neutral-600 dark:text-neutral-400">
+                {t('voice.wake.enabledHint')}
+              </p>
+            </div>
+            {settings.wake_word && (
+              <>
+                <label className="block">
+                  {t('voice.wake.phrases')}
+                  <textarea
+                    className={fieldClass}
+                    rows={3}
+                    value={(settings.wake_phrases ?? []).join('\n')}
+                    onChange={(event) =>
+                      update({ wake_phrases: event.target.value.split('\n').slice(0, 8) })
+                    }
+                  />
+                  <span className="mt-1 block text-xs font-normal text-neutral-600 dark:text-neutral-400">
+                    {t('voice.wake.phrasesHint')}
+                  </span>
+                </label>
+                <div>
+                  <BrutalRange
+                    label={t('voice.wake.sensitivity')}
+                    value={settings.wake_sensitivity ?? 0.5}
+                    valueText={`${Math.round((settings.wake_sensitivity ?? 0.5) * 100)}%`}
+                    min={0}
+                    max={1}
+                    step={0.05}
+                    disabled={saving}
+                    onChange={(wake_sensitivity) => update({ wake_sensitivity })}
+                  />
+                  <p className="mt-1 text-xs font-normal text-neutral-600 dark:text-neutral-400">
+                    {t('voice.wake.sensitivityHint')}
+                  </p>
+                </div>
+              </>
+            )}
+            <label className="block sm:col-span-2">
+              {t('voice.wake.hotkey')}
+              <input
+                className={fieldClass}
+                value={settings.voice_hotkey ?? ''}
+                maxLength={60}
+                placeholder="CommandOrControl+Shift+Space"
+                onChange={(event) => update({ voice_hotkey: event.target.value.trim() })}
+              />
+              <span className="mt-1 block text-xs font-normal text-neutral-600 dark:text-neutral-400">
+                {t('voice.wake.hotkeyHint')}
+              </span>
+            </label>
+            {wakeProblem && (
+              <p
+                role="status"
+                className={`text-xs sm:col-span-2 ${
+                  wakeProblem.key === 'voice.wake.installing'
+                    ? 'text-neutral-600 dark:text-neutral-400'
+                    : 'text-brutal-red'
+                }`}
+              >
+                {t(wakeProblem.key, wakeProblem.params)}
+              </p>
             )}
           </fieldset>
         </SettingsCard>
