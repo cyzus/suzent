@@ -587,6 +587,23 @@ Voice mode needs an OpenAI, Google Gemini, xAI, or DashScope (Qwen) API key. Und
 voice, and how sensitive it is to speech. If Suzent hears its own voice from
 your speakers, set sensitivity to **Low** (Gemini only), or use headphones.
 
+### Start voice mode without clicking
+
+Under **Settings → Voice & audio → Hands-free start**:
+
+- **Wake word.** Turn it on and Suzent listens for a phrase such as
+  "你好 Suzent" or "Hey Suzent", then starts voice mode in the chat you have
+  open. The listening happens on your computer with a small offline model;
+  no audio leaves it until voice mode starts. A green dot on the microphone
+  button shows when it is listening. The first time you save, Suzent installs
+  the Wake word plugin and downloads its model (about 25 MB together). Phrases
+  can be Chinese, English, or mixed; if an English word has no known
+  pronunciation, the settings page names it. Raise the sensitivity if it
+  misses you, lower it if it wakes by mistake. It listens only while Suzent
+  is open.
+- **Voice shortcut** (desktop app). Set a key combination such as
+  `CommandOrControl+Shift+Space` to start or end voice mode from any app.
+
 ## When a turn goes wrong
 
 | What happened | What to do |
