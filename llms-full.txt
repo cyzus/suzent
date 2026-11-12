@@ -669,14 +669,18 @@ Under **Settings → Voice & audio → Hands-free start**:
   "你好 Suzent" or "Hey Suzent", then starts voice mode in the chat you have
   open. The listening happens on your computer with a small offline model;
   no audio leaves it until voice mode starts. A green dot on the microphone
-  button shows when it is listening. The first time you save, Suzent installs
-  the Wake word plugin and downloads its model (about 25 MB together). Phrases
-  can be Chinese, English, or mixed; if an English word has no known
-  pronunciation, the settings page names it. Raise the sensitivity if it
-  misses you, lower it if it wakes by mistake. It listens only while Suzent
-  is open.
-- **Voice shortcut** (desktop app). Set a key combination such as
-  `CommandOrControl+Shift+Space` to start or end voice mode from any app.
+  button shows when it is listening; an amber dot means it can't, and hovering
+  the button says why. The first time you turn it on, Suzent installs the Wake
+  word plugin and downloads its model (about 25 MB together). Type a phrase
+  and press Enter to add it, up to 8; phrases can be Chinese, English, or
+  mixed. If an English word has no known pronunciation, its phrase turns red.
+  Raise the sensitivity if it misses you, lower it if it wakes by mistake. It
+  listens only while Suzent is open, and only while the Wake word plugin is
+  installed: removing it under **Settings → Plugins** stops the listening.
+- **Voice shortcut** (desktop app). Click the box and press a key combination,
+  such as Ctrl+Shift+Space (⌘⇧Space on a Mac), to start or end voice mode from
+  any app. **Remove** turns it off. Hovering the microphone button reminds you
+  of the shortcut and the wake phrase.
 
 ## When a turn goes wrong
 
@@ -2632,6 +2636,14 @@ card shows an **Install** button for that program, and nothing is
 downloaded until you agree. The download is pinned to one version and
 checked against a hash the plugin carries, and in mainland China it comes
 from npmmirror first.
+
+## Wake word
+
+The Wake word plugin listens for a phrase such as "Hey Suzent" and starts
+voice mode. Turning the wake word on under **Settings → Voice & audio**
+installs it and downloads its model. Removing the plugin stops the listening
+entirely, even if the setting is still on. See
+[Start voice mode without clicking](https://suzent.com/docs/using/conversations#start-voice-mode-without-clicking).
 
 ## Plugins from other people
 
@@ -9413,6 +9425,13 @@ the per-chat Docker sandbox. It is the reference for both [Binaries](#binaries)
 and [Classifying tool calls](#classifying-tool-calls). See
 [Desktop apps](https://suzent.com/docs/features/tools/desktop).
 
+`plugins/wake-word` brings the `wake` extra (sherpa-onnx, pypinyin) and the
+keyword spotter that uses it. `register()` serves `GET status` and
+`POST model` with `register_route` and the `listen` socket with
+`register_websocket`, so all three go away when the plugin is off. The voice
+settings it reads (`wake_word`, `wake_phrases`, `wake_sensitivity`) stay in
+core. It is the reference for `register_websocket`.
+
 ## `PluginContext`
 
 | Method | What it does |
@@ -9422,6 +9441,7 @@ and [Classifying tool calls](#classifying-tool-calls). See
 | `register_integration(integration)` | Connects the agent to a hosted service through its MCP server, once the user signs in. See [Integrations](#integrations). Needs `api_version: 2`. |
 | `binary(name)` | A `PluginBinary` handle on a program declared under `binaries`. Its `locate()` returns `(path, source)` or `None` and never downloads. See [Binaries](#binaries). |
 | `register_route(path, endpoint, methods=("GET",))` | Serves a Starlette endpoint at `/plugins/<id>/api/<path>` while the plugin is loaded, for a settings page that needs more than the generic plugin card. See [Settings page and API](#settings-page-and-api). |
+| `register_websocket(path, endpoint)` | Serves a Starlette WebSocket endpoint at `/plugins/<id>/ws/<path>` while the plugin is loaded. Remote callers need a full-access device token, and the Origin is checked before the endpoint runs. See [Settings page and API](#settings-page-and-api). Needs `api_version: 4`. |
 | `secrets` | A `PluginSecrets` with `get`, `set` and `delete`, namespaced to the plugin. Values are stored as `SUZENT_PLUGIN::<id>::<name>`, a private prefix that `inject_all_to_env` skips, so the agent's shell commands never inherit them. |
 | `register_command(aliases, **options)` | Decorator with the same signature and handler contract as `suzent.core.commands.base.register_command`. |
 | `id`, `manifest`, `path`, `logger` | The plugin's id, parsed manifest, directory (`None` for pip packages) and a logger bound to `suzent.plugins.<id>`. |
@@ -9667,6 +9687,7 @@ for `suzent plugin status` and the settings page.
 | `POST /plugins/{name}/remove` | Disables and `deactivate()`s a plugin, and for one that brought packages, rebuilds the social stack so its chat app stops. |
 | `POST /plugins/{name}/binaries/{binary}/install` | Downloads a declared binary. Refuses with `400` unless the body is `{"confirmed": true}`; a failed download or checksum returns `502`. |
 | `/plugins/{name}/api/{path}` | Dispatches to a route the plugin registered with `register_route`, matched on path and method. `404` while the plugin is not loaded, so turning a plugin off takes its API away with its tools. |
+| `WS /plugins/{name}/ws/{path}` | Dispatches to a socket the plugin registered with `register_websocket`. A socket from an origin other than the app's (`voice_origin_allowed`) is refused with `1008`. While the plugin is not loaded, or for a path it did not register, the socket is accepted and closed at once with code `4404`, because a browser cannot see why a handshake was refused. The auth boundary lets only loopback and full-scope tokens through, and accepts the token as a `token` query parameter, since a browser WebSocket cannot set headers. |
 
 `suzent plugin install` and `remove` call these routes when a server answers
 (`suzent.client`, `PluginsAPI`), so a change from the terminal applies to the
