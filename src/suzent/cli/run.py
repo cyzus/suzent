@@ -81,8 +81,12 @@ def _fail(message: str, code: int) -> typer.Exit:
 
 
 @contextmanager
-def _backend(startup_timeout: float) -> Iterator[None]:
-    """Use the running backend, or run one for the life of this command."""
+def _backend(startup_timeout: float, keep_background: bool = False) -> Iterator[None]:
+    """Use the running backend, or run one for the life of this command.
+
+    A running backend keeps its own background commands; only a backend started
+    here can be told to leave them running when the command ends.
+    """
     from suzent.cli.main import (
         _is_suzent_server_running,
         _terminate_process_gracefully,
@@ -98,6 +102,10 @@ def _backend(startup_timeout: float) -> Iterator[None]:
         raise _fail(f"No Suzent server answers at {url}.", EXIT_RUN_FAILED)
 
     env = {**os.environ, "SUZENT_HOST": host, "SUZENT_PORT": str(port)}
+    if keep_background:
+        from suzent.tools.shell.host_process_registry import KEEP_BACKGROUND_ENV
+
+        env[KEEP_BACKGROUND_ENV] = "1"
     # The reply owns stdout, so the server's own output goes to stderr.
     process = subprocess.Popen(
         [sys.executable, "-m", "suzent.server"], env=env, stdout=sys.stderr
@@ -281,6 +289,14 @@ def register_run_command(app: typer.Typer) -> None:
             "--json",
             help="Print one JSON object (reply, token usage, chat id) when done",
         ),
+        keep_background: bool = typer.Option(
+            False,
+            "--keep-background-processes",
+            help=(
+                "Leave commands the agent started in the background running "
+                "after the run ends, such as a server the task asks for"
+            ),
+        ),
         startup_timeout: float = typer.Option(
             120.0,
             "--startup-timeout",
@@ -319,7 +335,7 @@ def register_run_command(app: typer.Typer) -> None:
             )
             return await _run(prompt.strip(), config, quiet=as_json)
 
-        with _backend(startup_timeout):
+        with _backend(startup_timeout, keep_background):
             try:
                 result = asyncio.run(_execute())
             except ClientError as e:

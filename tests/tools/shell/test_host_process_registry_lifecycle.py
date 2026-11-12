@@ -78,3 +78,73 @@ def test_start_detaches_stdin(tmp_path, monkeypatch):
         pass
 
     assert captured["stdin"] is registry_module.subprocess.DEVNULL
+
+
+def _start_sleeper(registry: HostProcessRegistry, seconds: int = 60) -> int:
+    import os
+    import sys
+
+    process_id = registry.start(
+        "chat",
+        [sys.executable, "-c", f"import time; time.sleep({seconds})"],
+        ".",
+        {**os.environ},
+    )
+    return registry._processes[process_id].process.pid
+
+
+def _alive(pid: int) -> bool:
+    import psutil
+
+    try:
+        return psutil.Process(pid).status() != psutil.STATUS_ZOMBIE
+    except psutil.NoSuchProcess:
+        return False
+
+
+def test_shutdown_stops_background_commands_by_default(monkeypatch):
+    monkeypatch.delenv(registry_module.KEEP_BACKGROUND_ENV, raising=False)
+    registry = HostProcessRegistry()
+    registry._processes.clear()
+    pid = _start_sleeper(registry)
+
+    registry.shutdown()
+
+    assert not _alive(pid)
+
+
+def test_shutdown_leaves_background_commands_running_when_kept(monkeypatch):
+    import psutil
+
+    monkeypatch.setenv(registry_module.KEEP_BACKGROUND_ENV, "1")
+    registry = HostProcessRegistry()
+    registry._processes.clear()
+    pid = _start_sleeper(registry)
+    try:
+        registry.shutdown()
+
+        assert _alive(pid)
+        assert registry._processes == {}
+    finally:
+        psutil.Process(pid).kill()
+
+
+def test_kept_command_output_is_readable_without_a_capture_thread(monkeypatch):
+    import os
+    import sys
+
+    monkeypatch.setenv(registry_module.KEEP_BACKGROUND_ENV, "1")
+    registry = HostProcessRegistry()
+    registry._processes.clear()
+    process_id = registry.start(
+        "chat", [sys.executable, "-c", "print('hello')"], ".", {**os.environ}
+    )
+    entry = registry._processes[process_id]
+    entry.process.wait(timeout=10)
+
+    result = registry.poll("chat", process_id, 0)
+
+    assert entry.capture_thread is None
+    assert result["output"].strip() == "hello"
+    assert result["done"] is True
+    registry.evict("chat", process_id)

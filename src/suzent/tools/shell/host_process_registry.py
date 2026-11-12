@@ -36,6 +36,16 @@ _MAX_ACTIVE_PROCESSES = 64
 _MAX_RETAINED_PROCESSES = 256
 _COMPLETED_PROCESS_TTL_SECONDS = 10 * 60
 _MAX_OUTPUT_BYTES = 16 * 1024 * 1024
+KEEP_BACKGROUND_ENV = "SUZENT_KEEP_BACKGROUND_PROCESSES"
+
+
+def keep_background_processes() -> bool:
+    """Whether background commands should outlive this server.
+
+    A one-shot run is judged by what it leaves behind, so a server the agent
+    started has to keep running after the run's own backend exits.
+    """
+    return os.environ.get(KEEP_BACKGROUND_ENV, "").lower() in ("1", "true", "yes")
 
 
 def _capture_output(stream: BinaryIO, output_file: Path, max_bytes: int) -> None:
@@ -169,33 +179,49 @@ class HostProcessRegistry:
         out_file = Path(out_path)
         os.close(out_fd)
 
+        keep = keep_background_processes()
+        popen_args = {
+            "cwd": cwd,
+            "env": env,
+            # Commands that read stdin would otherwise block forever on the
+            # server's inherited stdin.
+            "stdin": subprocess.DEVNULL,
+            "close_fds": True,
+        }
+        capture_thread: threading.Thread | None = None
         try:
-            proc = subprocess.Popen(
-                cmd,
-                cwd=cwd,
-                env=env,
-                # Commands that read stdin would otherwise block forever on the
-                # server's inherited stdin.
-                stdin=subprocess.DEVNULL,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                bufsize=0,
-                # Detach from our process group so it survives if the parent
-                # thread exits, matching CC's non-blocking semantics.
-                close_fds=True,
-            )
+            if keep:
+                # No pipe back to this server and a session of its own, so the
+                # command keeps running (and writing) after the server exits.
+                if os.name == "nt":
+                    popen_args["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
+                else:
+                    popen_args["start_new_session"] = True
+                with out_file.open("wb") as log:
+                    proc = subprocess.Popen(
+                        cmd, stdout=log, stderr=subprocess.STDOUT, **popen_args
+                    )
+            else:
+                proc = subprocess.Popen(
+                    cmd,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    bufsize=0,
+                    **popen_args,
+                )
         except Exception:
             out_file.unlink(missing_ok=True)
             raise
 
-        assert proc.stdout is not None
-        capture_thread = threading.Thread(
-            target=_capture_output,
-            args=(proc.stdout, out_file, _MAX_OUTPUT_BYTES),
-            name=f"suzent-output-{process_id}",
-            daemon=True,
-        )
-        capture_thread.start()
+        if not keep:
+            assert proc.stdout is not None
+            capture_thread = threading.Thread(
+                target=_capture_output,
+                args=(proc.stdout, out_file, _MAX_OUTPUT_BYTES),
+                name=f"suzent-output-{process_id}",
+                daemon=True,
+            )
+            capture_thread.start()
 
         entry = _HostProcess(
             process=proc,
@@ -264,9 +290,17 @@ class HostProcessRegistry:
         return len(removed)
 
     def shutdown(self) -> None:
-        """Terminate every owned process and remove its temporary output."""
+        """Terminate every owned process and remove its temporary output.
+
+        When background commands are kept, they and their output files are
+        left for whoever started this server.
+        """
         with self._lock:
             entries = list(self._processes.items())
+        if keep_background_processes():
+            with self._lock:
+                self._processes.clear()
+            return
         for process_id, entry in entries:
             try:
                 entry.kill()
