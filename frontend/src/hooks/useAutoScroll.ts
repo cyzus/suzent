@@ -514,7 +514,21 @@ export function useAutoScroll(dependencies: unknown[], options: UseAutoScrollOpt
       }
       captureAnchor();
     };
-    el.addEventListener('scroll', captureAnchor, { passive: true });
+    // A turn finishing can lay out a briefly shorter transcript mid-commit, and
+    // WebKit clamps scrollTop to it. That scroll event arrives in the same frame
+    // as, and before, the resize that should undo it, so capturing here would
+    // overwrite the reader's anchor with the clamped spot. Only a user's own
+    // scroll is captured at once; any other waits until the resize has run.
+    let captureTimer: ReturnType<typeof setTimeout> | undefined;
+    const onAnchorScroll = () => {
+      clearTimeout(captureTimer);
+      if (userScrollIntentRef.current || isSelectionDragActive()) {
+        captureAnchor();
+        return;
+      }
+      captureTimer = setTimeout(captureAnchor, 0);
+    };
+    el.addEventListener('scroll', onAnchorScroll, { passive: true });
 
     const resizeObserver = new ResizeObserver(() => {
       if (needsResizeRepaint) {
@@ -550,7 +564,8 @@ export function useAutoScroll(dependencies: unknown[], options: UseAutoScrollOpt
     mutationObserver.observe(el, { childList: true });
 
     return () => {
-      el.removeEventListener('scroll', captureAnchor);
+      el.removeEventListener('scroll', onAnchorScroll);
+      clearTimeout(captureTimer);
       cancelAnimationFrame(settleFrame);
       cancelPendingRepaint();
       mutationObserver.disconnect();
