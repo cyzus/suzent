@@ -1,6 +1,6 @@
 # Mobile changelog
 
-## [mobile-v0.9.0] - 2026-11-11
+## [mobile-v0.9.0] - 2026-11-12
 
 ### Release notes
 - Fix inline code in Android tables missing its yellow background in dark mode.
