@@ -1115,9 +1115,9 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
 
       if (payload.event !== 'auto_compaction') return;
       upsertCompactNotice(formatCompactLifecycleNotice(payload), payload.stage);
-      // Publish the pass to the store so the context-window panel animates for
-      // agent-triggered compaction too — the panel's own `useCompact` progress
-      // only ever covers a compaction started from its button.
+      // Publish the pass to the store so the context-window panel shows its
+      // state for agent-triggered compaction too — the panel's own `useCompact`
+      // progress only ever covers a compaction started from its button.
       setCompaction({
         active: payload.stage === 'start',
         stage: payload.stage,

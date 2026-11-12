@@ -5,7 +5,6 @@ import { useContextUsageStore } from '../../hooks/useContextUsageStore';
 import { useContextUsageStats } from '../../hooks/useContextUsageStats';
 import { useI18n } from '../../i18n';
 import { formatPercent, formatTokens, usageBarColor } from '../../lib/contextFormat';
-import { CompactionCube, CompactionSweep } from '../chat/CompactionCube';
 
 const RUNNING_STAGES: CompactionStage[] = ['loading', 'analyzing', 'summarizing', 'saving'];
 
@@ -48,12 +47,11 @@ export function ContextHeaderButton({
     >
       <span className="h-1.5 w-10 overflow-hidden rounded-full bg-neutral-300 dark:bg-zinc-600">
         <span
-          className={`block h-full rounded-full transition-all ${usageBarColor(measuredPercent)}`}
+          className={`block h-full rounded-full transition-all ${usageBarColor(measuredPercent)} ${compacting ? 'animate-pulse' : ''}`}
           style={{ width: `${measuredPercent}%` }}
         />
       </span>
       <span>{formatPercent(measuredPercent)}</span>
-      {compacting && <CompactionCube size={12} />}
       {measuredPercent >= 80 && !compacting && (
         <span className="hidden uppercase tracking-wider text-brutal-red md:inline">
           {t('contextPanel.compactHint')}
@@ -186,10 +184,8 @@ export function ContextWindowStats({ chatId }: { chatId: string }): JSX.Element 
           className={`overflow-hidden rounded border text-[11px] ${failed ? 'border-brutal-red text-brutal-red' : 'border-neutral-200 text-neutral-600 dark:border-zinc-700 dark:text-neutral-300'}`}
         >
           <div className="flex items-center gap-1.5 px-2 py-1">
-            {compacting && <CompactionCube size={14} />}
             <span className="min-w-0 flex-1">{compaction.label}</span>
           </div>
-          {compacting && <CompactionSweep className="text-neutral-500 dark:text-neutral-400" />}
         </div>
       )}
       <div className="font-mono text-[11px]">
