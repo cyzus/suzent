@@ -1065,9 +1065,12 @@ class ContextCompressor:
         try:
             summary = await entry.task
         except asyncio.CancelledError:
-            if entry.task.cancelled():
-                return None
-            raise
+            # Awaiting the task cancels it along with us, so the task's own
+            # state cannot tell a timeout or a stopped chat from a discard.
+            current = asyncio.current_task()
+            if current is not None and current.cancelling():
+                raise
+            return None
         except Exception as e:
             logger.warning(f"Background compaction summary failed: {e}")
             return None

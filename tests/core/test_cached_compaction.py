@@ -479,3 +479,30 @@ async def test_anthropic_summary_request_keeps_the_cached_prefix() -> None:
     assert summary["messages"][:-1] == turn["messages"][:-1]
     assert summary["messages"][-1]["content"][:-1] == turn["messages"][-1]["content"]
     assert summary["messages"][-1]["content"][-1]["text"] == CACHED_SUMMARY_PROMPT
+
+
+async def test_timeout_while_waiting_for_a_prepared_summary_is_not_swallowed(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(CONFIG, "max_context_tokens", 7_500, raising=False)
+    started_fresh: list = []
+
+    async def never(self, messages, end_index, focus=None):
+        await asyncio.Event().wait()
+
+    async def fresh(self, *args, **kwargs):
+        started_fresh.append(True)
+        return args[0]
+
+    monkeypatch.setattr(ContextCompressor, "_summarize_history", never)
+    monkeypatch.setattr(ContextCompressor, "_perform_compression", fresh)
+    history = _long_history()
+    assert schedule_precompaction("timeout", history)
+    current = history + [ModelRequest(parts=[UserPromptPart(content="y " * 200)])]
+    monkeypatch.setattr(CONFIG, "compaction_timeout_seconds", 0.05, raising=False)
+    ctx = SimpleNamespace(deps=SimpleNamespace(chat_id="timeout", user_id="u"))
+
+    out = await make_compaction_history_processor()(ctx, current)
+
+    assert out is current
+    assert started_fresh == []
