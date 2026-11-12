@@ -15,6 +15,8 @@ interface FileViewerProps {
   chatId: string | null;
   onClose: () => void;
   controlAnchor?: DOMRect;
+  /** Send the open chat's mount overrides; off when the file belongs to another chat. */
+  inheritChatVolumes?: boolean;
 }
 
 export const FileViewer: React.FC<FileViewerProps> = ({
@@ -23,9 +25,11 @@ export const FileViewer: React.FC<FileViewerProps> = ({
   chatId,
   onClose,
   controlAnchor,
+  inheritChatVolumes = true,
 }) => {
   const { t } = useI18n();
   const { config } = useChatStore();
+  const volumes = inheritChatVolumes ? config.sandbox_volumes : undefined;
   const [fileContent, setFileContent] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -57,7 +61,7 @@ export const FileViewer: React.FC<FileViewerProps> = ({
         setError('Backend not ready');
         return;
       }
-      const params = getSandboxParams(chatId, filePath, config.sandbox_volumes);
+      const params = getSandboxParams(chatId, filePath, volumes);
       const response = await fetch(`${base}/sandbox/read_file?${params}`);
       if (!response.ok) {
         const text = await response.text();
@@ -131,6 +135,7 @@ export const FileViewer: React.FC<FileViewerProps> = ({
               content={fileContent}
               chatId={chatId}
               path={filePath}
+              inheritChatVolumes={inheritChatVolumes}
             />
           )}
         </div>

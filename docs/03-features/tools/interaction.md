@@ -51,6 +51,12 @@ to the agent as a new message, and it responds. This tool is **Render UI** in
 the **Interaction** group of the tool picker. It's off by default, but the
 agent can switch it on when it needs it.
 
+To keep a panel, such as a chart or a table of results, click the download
+button in its header. It is saved as a web page in the project's
+`artifacts/canvas/` folder, named after the panel, and shows up on the
+**Artifacts** page. Buttons and forms are left out of the saved copy, since they
+only work inside the chat. Saving the same panel again replaces the file.
+
 ## Receiving files
 
 When the agent finishes something you should have, such as a report, a

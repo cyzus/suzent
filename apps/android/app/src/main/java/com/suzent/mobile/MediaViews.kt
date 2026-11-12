@@ -29,7 +29,6 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -39,6 +38,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
@@ -158,22 +158,31 @@ private fun MediaTile(item: MediaItem, loader: suspend (MediaItem) -> File?) {
 private fun ImageTile(file: File, image: Bitmap, name: String, modifier: Modifier) {
     var viewing by remember(file) { mutableStateOf(false) }
     var actions by remember(file) { mutableStateOf(false) }
+    var menuAnchor by remember(file) { mutableStateOf<Offset?>(null) }
+    var pressAt by remember(file) { mutableLongStateOf(0L) }
     Box {
         Image(image.asImageBitmap(), contentDescription = name, contentScale = ContentScale.Fit,
-            modifier = modifier.heightIn(max = 360.dp).combinedClickable(
+            modifier = modifier.heightIn(max = 360.dp).recordPressInWindow {
+                menuAnchor = it
+                pressAt = android.os.SystemClock.uptimeMillis()
+            }.combinedClickable(
                 onClickLabel = stringResource(R.string.media_open, name),
                 onLongClickLabel = stringResource(R.string.media_actions),
-                onClick = { viewing = true }, onLongClick = { actions = true }))
-        ImageActions(file, actions) { actions = false }
+                onClick = { viewing = true }, onLongClick = {
+                    // Accessibility actions have no current touch to anchor to.
+                    if (android.os.SystemClock.uptimeMillis() - pressAt > 1_500L) menuAnchor = null
+                    actions = true
+                }))
+        ImageActions(file, actions, menuAnchor) { actions = false }
     }
     if (viewing) ImageViewer(file, name) { viewing = false }
 }
 
 @Composable
-private fun ImageActions(file: File, expanded: Boolean, dismiss: () -> Unit) {
+private fun ImageActions(file: File, expanded: Boolean, anchorInWindow: Offset?, dismiss: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    DropdownMenu(expanded = expanded, onDismissRequest = dismiss) {
+    SuzentMenu(expanded = expanded, onDismissRequest = dismiss, anchorInWindow = anchorInWindow) {
         if (canSaveToPhotos()) DropdownMenuItem(text = { Text(stringResource(R.string.media_save)) }, onClick = {
             dismiss()
             scope.launch { announceSave(context, saveToPhotos(context, file)) }
@@ -194,11 +203,13 @@ private fun ImageViewer(file: File, name: String, close: () -> Unit) {
     var scale by remember(file) { mutableFloatStateOf(1f) }
     var offset by remember(file) { mutableStateOf(Offset.Zero) }
     var actions by remember(file) { mutableStateOf(false) }
+    var menuAnchor by remember(file) { mutableStateOf<Offset?>(null) }
     Dialog(onDismissRequest = close, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Box(Modifier.fillMaxSize().background(Color.Black)) {
             image?.let { bitmap ->
                 Image(bitmap.asImageBitmap(), contentDescription = name, contentScale = ContentScale.Fit,
                     modifier = Modifier.fillMaxSize()
+                        .recordPressInWindow { menuAnchor = it }
                         .pointerInput(file) {
                             detectTransformGestures { _, pan, zoom, _ ->
                                 scale = (scale * zoom).coerceIn(1f, 6f)
@@ -231,8 +242,8 @@ private fun ImageViewer(file: File, name: String, close: () -> Unit) {
                     Icon(painterResource(R.drawable.ic_share), contentDescription = null, tint = Color.White,
                         modifier = Modifier.size(20.dp))
                 }
-                Box { ImageActions(file, actions) { actions = false } }
             }
+            ImageActions(file, actions, menuAnchor) { actions = false }
         }
     }
 }

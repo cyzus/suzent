@@ -23,6 +23,7 @@ import {
   useSurfaceSlot,
 } from '../a2ui/InlineSurfaceContext';
 import { WorkspacePanel } from '../WorkspacePanel';
+import { SaveSurfaceButton } from '../a2ui/SaveSurfaceButton';
 import { useI18n } from '../../i18n';
 
 interface CanvasViewProps {
@@ -139,7 +140,8 @@ export const CanvasView: React.FC<CanvasViewProps> = ({ canvas, onDispatch }) =>
       <div className="flex flex-col h-full min-h-0 min-w-0">
         <div className="flex items-center border-b-2 border-brutal-black shrink-0 bg-white dark:bg-zinc-800">
           <div className="flex-1 min-w-0 pl-1">{surfaceNav}</div>
-          <div className="px-3 py-2 flex items-start justify-center shrink-0">
+          <div className="px-3 py-2 flex items-start justify-center gap-2 shrink-0">
+            <SaveSurfaceButton surface={activeSurface} />
             <FullscreenButton
               expanded={sidebarExpansion?.expanded}
               onClick={() => (sidebarExpansion ? sidebarExpansion.toggle() : setIsFullscreen(true))}

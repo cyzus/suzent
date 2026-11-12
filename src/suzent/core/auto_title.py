@@ -21,6 +21,10 @@ def should_generate_auto_title(chat: Any) -> bool:
     # Regent keeps its name: it is one standing conversation, not a topic.
     if is_focal_chat(chat):
         return False
+    # A caller that names its own chats, such as `suzent run`, opts out: the
+    # title costs a model call that a scripted run has no reader for.
+    if (getattr(chat, "config", None) or {}).get("auto_title") is False:
+        return False
     turn_count = getattr(chat, "turn_count", 0) or 0
     if turn_count == 0:
         return True

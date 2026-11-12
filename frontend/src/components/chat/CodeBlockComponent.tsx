@@ -130,7 +130,11 @@ export const CodeBlockComponent: React.FC<CodeBlockComponentProps> = ({
         ) : (
           <pre
             ref={preRef}
-            className={`max-w-full text-[12px] text-brutal-black dark:text-neutral-100 px-3 py-2.5 leading-5 overflow-x-auto !bg-transparent whitespace-pre font-mono m-0`}
+            style={{
+              fontSize: 'var(--suzent-chat-code-font-size, 0.75rem)',
+              lineHeight: 'var(--suzent-chat-code-line-height, 1.55)',
+            }}
+            className="max-w-full text-[12px] text-brutal-black dark:text-neutral-100 px-3 py-2.5 leading-5 overflow-x-auto !bg-transparent whitespace-pre font-mono m-0"
           >
             <code className={`language-${safeLang}`}>
               {content}

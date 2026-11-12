@@ -10,6 +10,7 @@ Endpoints:
 - ``DELETE /projects/{id}``          delete an empty, non-system project
 - ``GET    /projects/{id}/folders``  folders the project's chats recently used
 - ``POST   /chats/{id}/project``     move a chat to a different project
+- ``GET    /artifacts``              every project's deliverables
 """
 
 import re
@@ -391,3 +392,13 @@ async def move_chat_to_project(request: Request) -> JSONResponse:
             "projectName": target.name,
         }
     )
+
+
+async def list_artifacts(_request: Request) -> JSONResponse:
+    """Every project's deliverables, with the chat that made each one."""
+    from starlette.concurrency import run_in_threadpool
+
+    from suzent.core.artifact_index import build_artifact_index
+
+    index = await run_in_threadpool(build_artifact_index)
+    return JSONResponse(index.model_dump())

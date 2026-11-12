@@ -104,6 +104,13 @@ Ordinary edits, such as code or notes it changed while working, stay on the
 listed, and neither are changes you undid. The **Overview** shows how many
 artifacts there are and the latest few images.
 
+To see everything it has made across all your chats, click **Artifacts** in the
+left sidebar. Files are grouped by project, so pick a project on the left to see
+only its files, or filter to images, video and audio, or other files, and search
+by file name or chat title. Each file shows the chat that made it; click the chat
+name to jump back to that conversation. Files you put in a project's
+`artifacts/` folder yourself show up too, marked as in the project library.
+
 ## Talk instead of typing
 
 When the message box is empty, its send button shows a microphone. Click it to
