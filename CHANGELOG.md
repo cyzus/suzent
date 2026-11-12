@@ -34,7 +34,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Open sidebar images in the shared zoomable overlay with navigation between images in the loaded folder.
 - Simplify sidebar project styling and show running status only on chat rows.
 - Remove the heavy offset shadow from running tool and sub-agent headers so expanding them looks clean.
+- Voice settings now save as you change them, the voice shortcut is recorded by pressing it, wake phrases are added one at a time, the microphone button shows whether the wake word is listening, and turning on the wake word on Windows installs it instead of failing.
 - Start voice mode hands-free: an optional wake word ("你好 Suzent" / "Hey Suzent") spotted on your computer, and an optional desktop-wide voice shortcut.
+- The wake word now runs entirely inside the Wake word plugin, so removing the plugin stops it listening and removes its endpoints.
 - Videos (MP4, MOV, WebM) in the workspace file panel now play in place instead of opening as text, and video and audio players in the installed app are no longer blocked by its content security policy.
 
 ## [v0.25.0] - 2026-11-09
