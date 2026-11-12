@@ -30,6 +30,40 @@ from suzent.logger import get_logger
 logger = get_logger(__name__)
 
 
+def estimate_cost_usd(
+    model: str,
+    *,
+    input_tokens: int,
+    output_tokens: int,
+    cache_write_tokens: int = 0,
+    cache_read_tokens: int = 0,
+) -> Optional[float]:
+    """Price of one call in USD from genai-prices, or None for an unpriced model.
+
+    ``input_tokens`` counts every input token, cache reads and writes included.
+    """
+    try:
+        from genai_prices import calc_price
+        from genai_prices.types import Usage as GPUsage
+
+        gp_usage = GPUsage(
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            cache_write_tokens=cache_write_tokens or None,
+            cache_read_tokens=cache_read_tokens or None,
+        )
+        # Our model IDs are "provider/model-ref"; genai-prices wants them split
+        if "/" in model:
+            provider_id, model_ref = model.split("/", 1)
+        else:
+            provider_id, model_ref = None, model
+        return float(
+            calc_price(gp_usage, model_ref, provider_id=provider_id).total_price
+        )
+    except Exception:
+        return None
+
+
 class CostTracker:
     """Unified cost tracker — writes to SQLite via ChatDatabase."""
 
@@ -44,26 +78,16 @@ class CostTracker:
         cache_read_tokens: int = 0,
     ) -> None:
         """Record a single LLM call's cost, estimated via genai-prices."""
-        try:
-            from genai_prices import calc_price
-            from genai_prices.types import Usage as GPUsage
-
-            gp_usage = GPUsage(
+        cost_usd = (
+            estimate_cost_usd(
+                model,
                 input_tokens=input_tokens,
                 output_tokens=output_tokens,
-                cache_write_tokens=cache_write_tokens or None,
-                cache_read_tokens=cache_read_tokens or None,
+                cache_write_tokens=cache_write_tokens,
+                cache_read_tokens=cache_read_tokens,
             )
-            # Our model IDs are "provider/model-ref"; genai-prices wants them split
-            if "/" in model:
-                provider_id, model_ref = model.split("/", 1)
-            else:
-                provider_id, model_ref = None, model
-            cost_usd = float(
-                calc_price(gp_usage, model_ref, provider_id=provider_id).total_price
-            )
-        except Exception:
-            cost_usd = 0.0
+            or 0.0
+        )
 
         try:
             loop = asyncio.get_running_loop()

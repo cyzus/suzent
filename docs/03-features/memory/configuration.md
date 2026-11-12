@@ -119,12 +119,31 @@ keep costs down. It can only lower the limit, never raise it.
 The summary that replaces older messages is written by the model you are
 chatting with, reusing the conversation it has already read, so most of it
 comes from the provider's prompt cache and costs a fraction of the normal price.
-Once a reply leaves the conversation at 70% of the window
+Once a reply leaves the conversation at half the window
 (`context_precompaction_trigger`), Suzent starts writing the next summary in the
-background, so you rarely wait for compaction when it happens. Set
-`context_precompaction_trigger: 0` to turn that off, or
-`compaction_reuse_prompt_cache: false` to have the memory extraction model write
-summaries instead.
+background, so you rarely wait for compaction when it happens.
+
+Providers only keep that cache for a while (Anthropic 5 minutes, OpenAI and
+Gemini about 5 minutes, DeepSeek hours). If you come back to a conversation
+after its cache has expired and it is still at least half full, Suzent sends
+the prepared summary instead of the full history, since the full history would
+be billed at the normal price again. While the cache is still warm, nothing
+changes until the 80% point. Suzent also learns from your own usage: when a
+provider still serves the cache after a longer pause, it trusts that longer
+lifetime from then on.
+
+When a summary has to be written on a cold cache, Suzent compares the price of
+the conversation's model against the memory extraction model and uses the
+cheaper one.
+
+Other settings:
+
+- `anthropic_prompt_cache_ttl: 1h` asks Anthropic to keep the cache for an hour
+  instead of 5 minutes. Writing to it costs twice the input price instead of
+  1.25 times, so it pays off when you often pause between messages.
+- `context_precompaction_trigger: 0` turns preparing summaries off.
+- `compaction_reuse_prompt_cache: false` has the memory extraction model write
+  every summary.
 
 ## Rebuilding the search index
 
