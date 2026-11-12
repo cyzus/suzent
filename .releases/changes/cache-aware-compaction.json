@@ -1,0 +1,1 @@
+{"products": {"desktop": "patch"}, "summary": "Long conversations you return to after the provider's prompt cache has expired now resume from a prepared summary instead of resending the full history, and an hour-long Anthropic cache can be enabled with anthropic_prompt_cache_ttl."}

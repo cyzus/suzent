@@ -7,7 +7,7 @@ also import pydantic, the permissions schema and this loader. See
 
 import json
 from pathlib import Path
-from typing import Annotated, Any, Dict, List, Optional
+from typing import Annotated, Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, Field, ValidationError, field_validator
 
@@ -229,8 +229,13 @@ class ConfigModel(BaseModel):
     compaction_reuse_prompt_cache: bool = True
     # Share of the context at which a finished turn starts writing the next
     # compaction summary in the background, while the prompt cache is warm.
-    # It is applied only once the compaction trigger is reached. 0 disables it.
-    context_precompaction_trigger: float = 0.70
+    # It is applied once the compaction trigger is reached, or earlier when the
+    # user comes back after the provider's cache has expired and the history
+    # is still at least this full. 0 disables it.
+    context_precompaction_trigger: float = 0.50
+    # Lifetime Anthropic is asked to keep cached prompts: "5m" or "1h". An hour
+    # survives longer pauses, but writing to it costs 2x input instead of 1.25x.
+    anthropic_prompt_cache_ttl: Literal["5m", "1h"] = "5m"
 
     stream_idle_timeout_seconds: float = Field(default=120.0, gt=0, allow_inf_nan=False)
     stream_wait_notice_seconds: float = Field(default=15.0, gt=0, allow_inf_nan=False)

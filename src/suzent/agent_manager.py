@@ -459,7 +459,7 @@ def create_agent(config: Dict[str, Any]) -> Agent[AgentDeps, str]:
     capabilities.append(ContextUsageCapability(model_id=model_id))
     capabilities.append(PromptCacheRoutingCapability())
     capabilities.append(ForkPrefixCapability())
-    capabilities.append(RequestRecorderCapability())
+    capabilities.append(RequestRecorderCapability(model_id=model_id or ""))
 
     agent = Agent(
         model,

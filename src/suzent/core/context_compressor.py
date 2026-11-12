@@ -985,7 +985,11 @@ class ContextCompressor:
         The conversation's own model is tried first, on its cached prefix; the
         extraction model on a flattened transcript is the fallback.
         """
-        if CONFIG.compaction_reuse_prompt_cache and self.chat_id:
+        if (
+            CONFIG.compaction_reuse_prompt_cache
+            and self.chat_id
+            and self._prefer_cached_prefix(messages, end_index)
+        ):
             summary = await summarize_on_cached_prefix(
                 self.chat_id, messages, end_index, self.context_limit, focus
             )
@@ -1007,6 +1011,66 @@ class ContextCompressor:
                 messages_to_compress, chunk_size, focus
             )
         return await self._summarize_with_retry(messages_to_compress, focus)
+
+    def _prefer_cached_prefix(self, messages: list, end_index: int) -> bool:
+        """Whether to summarize on the chat's cached prefix or with the extraction model.
+
+        A warm cache makes the conversation's own model the better and usually
+        cheaper choice. Once it has likely expired, the whole history would be
+        paid for again at the full input price, so the cheaper of the two is
+        used. Unpriced models keep the cached path.
+        """
+        from suzent.core.cache_ttl import estimate_ttl_seconds
+        from suzent.core.cost_tracker import estimate_cost_usd
+        from suzent.core.prompt_cache import latest_request
+
+        snapshot = latest_request(self.chat_id or "")
+        if snapshot is None:
+            return True
+        model_id = snapshot.model_id or self.model_id or ""
+        idle = time.time() - snapshot.sent_at
+        ttl = estimate_ttl_seconds(model_id, snapshot.settings)
+        if idle < (ttl or UNKNOWN_CACHE_TTL_SECONDS):
+            return True
+
+        sent_tokens = estimate_tokens(
+            list(snapshot.messages), self.context_limit
+        ).estimated_tokens
+        cached_cost = estimate_cost_usd(
+            model_id,
+            input_tokens=sent_tokens,
+            output_tokens=SUMMARY_OUTPUT_TOKENS_ESTIMATE,
+            cache_write_tokens=sent_tokens,
+        )
+        extraction_model = getattr(self.llm_client, "model", None) or ""
+        extraction_cost = estimate_cost_usd(
+            extraction_model,
+            input_tokens=estimate_history_tokens(messages[1:end_index]),
+            output_tokens=SUMMARY_OUTPUT_TOKENS_ESTIMATE,
+        )
+        if cached_cost is None or extraction_cost is None:
+            logger.info(
+                "Compaction summary for {}: cache likely cold ({:.0f}s idle), "
+                "no price to compare, using {}",
+                self.chat_id,
+                idle,
+                model_id,
+            )
+            return True
+        prefer_cached = cached_cost <= extraction_cost
+        logger.info(
+            "Compaction summary for {}: cache likely cold ({:.0f}s idle, TTL ~{}); "
+            "{} on the full history ~${:.4f} vs {} ~${:.4f}, using {}",
+            self.chat_id,
+            idle,
+            f"{ttl:.0f}s" if ttl else "unknown",
+            model_id,
+            cached_cost,
+            extraction_model,
+            extraction_cost,
+            model_id if prefer_cached else extraction_model,
+        )
+        return prefer_cached
 
     def _apply_summary(self, messages: list, end_index: int, summary: str) -> list:
         """Replace ``messages[1:end_index]`` with ``summary``, if that is smaller."""
@@ -1385,14 +1449,17 @@ def make_compaction_history_processor(
         # between two readings of the same request.
         current_tokens = context_input_tokens(ctx, messages, model_id)
 
-        if current_tokens < trigger:
+        cold_cache = current_tokens < trigger
+        if cold_cache and not cold_cache_compaction_due(
+            chat_id, messages, current_tokens, limit
+        ):
             return messages
 
         # A previous pass on this chat completed and still left the estimate over
         # the trigger. Repeating it at the same size only burns a summarization
         # call per request; wait until the history actually grows past that point.
         ineffective_at = _COMPACTION_INEFFECTIVE_AT.get(chat_id)
-        if ineffective_at is not None:
+        if ineffective_at is not None and not cold_cache:
             if current_tokens <= ineffective_at:
                 return messages
             _COMPACTION_INEFFECTIVE_AT.pop(chat_id, None)
@@ -1422,6 +1489,8 @@ def make_compaction_history_processor(
 
         async def _compact() -> list:
             prepared = await compressor.take_precompaction(messages)
+            if cold_cache:
+                return messages if prepared is None else prepared
             # A long tool run since the summary was prepared can leave the
             # uncovered tail over the trigger on its own.
             if (
@@ -1492,7 +1561,7 @@ def make_compaction_history_processor(
             # No reduction (e.g. already compacted and nothing else to drop).
             # Nothing here will change until the history grows, and the pass
             # already paid for a summarization call, so stop re-running it.
-            if chat_id:
+            if chat_id and not cold_cache:
                 _COMPACTION_INEFFECTIVE_AT[chat_id] = current_tokens
             # This still has to report a terminal stage: a "start" was already
             # broadcast, and a surface that animates the running pass would spin
@@ -1575,7 +1644,7 @@ async def summarize_on_cached_prefix(
     Returns "" when that request does not cover ``messages[:end_index]`` or no
     usable summary came back; the caller then falls back to the extraction model.
     """
-    from suzent.core.prompt_cache import latest_request
+    from suzent.core.prompt_cache import latest_request, note_prefix_read
 
     snapshot = latest_request(chat_id)
     if snapshot is None or not snapshot.messages:
@@ -1602,6 +1671,7 @@ async def summarize_on_cached_prefix(
     correction = ""
     for attempt in range(CACHED_SUMMARY_ATTEMPTS):
         started = time.monotonic()
+        sent_at = time.time()
         try:
             async with snapshot.model.request_stream(
                 _with_trailing_prompt(sent, prompt + correction),
@@ -1620,6 +1690,7 @@ async def summarize_on_cached_prefix(
             return ""
 
         usage = response.usage
+        note_prefix_read(chat_id, sent_at, usage.cache_read_tokens)
         logger.info(
             "Compaction summary for {} on the cached prefix: {}/{} input tokens "
             "read from cache, {} output, {:.1f}s",
@@ -1671,9 +1742,13 @@ def _with_trailing_prompt(messages: list, prompt: str) -> list:
 # Background summaries prepared at turn end
 # ---------------------------------------------------------------------------
 
-#: A prepared summary is kept while the history after it stays under this share
-#: of the window; past that, applying it would leave too much to be useful.
-PRECOMPACTION_MAX_TAIL_SHARE = 0.5
+#: A prepared summary is rewritten once the history after it passes this share
+#: of the window, so applying it still frees most of the context.
+PRECOMPACTION_REFRESH_TAIL_SHARE = 0.15
+#: Assumed lifetime of a provider's cache when nothing better is known.
+UNKNOWN_CACHE_TTL_SECONDS = 300.0
+#: Typical length of a summary, for comparing what writing one costs.
+SUMMARY_OUTPUT_TOKENS_ESTIMATE = 3000
 _MAX_PRECOMPACTIONS = 64
 
 
@@ -1721,6 +1796,9 @@ class _Precompaction:
             or not (self.task.result())
         )
 
+    def ready(self) -> bool:
+        return self.task.done() and not self.failed()
+
 
 _PRECOMPACTIONS: "OrderedDict[str, _Precompaction]" = OrderedDict()
 
@@ -1735,8 +1813,10 @@ def schedule_precompaction(
     """Start writing the next compaction summary while the turn's cache is warm.
 
     Called once a turn has finished. Nothing is rewritten here: the history
-    processor applies the summary when the trigger is actually reached, and
-    a summary that no longer matches the history by then is discarded.
+    processor applies the summary when the trigger is actually reached, or
+    when the chat resumes after its cache has expired (see
+    :func:`cold_cache_compaction_due`); a summary that no longer matches the
+    history by then is discarded.
     """
     threshold = CONFIG.context_precompaction_trigger
     if not chat_id or not messages or threshold <= 0:
@@ -1758,7 +1838,7 @@ def schedule_precompaction(
             existing.covers(messages)
             and not existing.failed()
             and estimate_history_tokens(messages[existing.end_index :])
-            < limit * PRECOMPACTION_MAX_TAIL_SHARE
+            < limit * PRECOMPACTION_REFRESH_TAIL_SHARE
         ):
             return False
         existing.task.cancel()
@@ -1782,6 +1862,44 @@ def schedule_precompaction(
         budget.estimated_tokens,
         limit,
         end_index - 1,
+    )
+    return True
+
+
+def cold_cache_compaction_due(
+    chat_id: str, messages: list, tokens: int, limit: int
+) -> bool:
+    """Whether to apply the prepared summary before the trigger is reached.
+
+    When the provider has likely dropped the chat's cached prefix, the next
+    request pays full price for the whole history anyway; sending the prepared
+    summary instead is cheaper and loses nothing that a later compaction would
+    not. Only providers with a known cache lifetime qualify: a local model's
+    cache may never expire.
+    """
+    from suzent.core.cache_ttl import estimate_ttl_seconds
+    from suzent.core.prompt_cache import latest_request
+
+    threshold = CONFIG.context_precompaction_trigger
+    if not chat_id or threshold <= 0 or tokens < limit * threshold:
+        return False
+    entry = _PRECOMPACTIONS.get(chat_id)
+    if entry is None or not entry.ready() or not entry.covers(messages):
+        return False
+    snapshot = latest_request(chat_id)
+    if snapshot is None:
+        return False
+    ttl = estimate_ttl_seconds(snapshot.model_id, snapshot.settings)
+    idle = time.time() - snapshot.sent_at
+    if ttl is None or idle <= ttl:
+        return False
+    logger.info(
+        "Prompt cache for {} likely expired ({:.0f}s idle, TTL ~{:.0f}s); "
+        "applying the prepared summary at {:.0%} of the window",
+        chat_id,
+        idle,
+        ttl,
+        tokens / limit,
     )
     return True
 
