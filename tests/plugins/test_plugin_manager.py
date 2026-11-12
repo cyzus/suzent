@@ -365,3 +365,78 @@ def test_plugins_load_and_unload_without_a_restart(
     assert run("/hotcmd") is None
     assert not any(m.aliases == ["/hotcmd"] for m in commands_base._META)
     registry.reset_tool_caches()
+
+
+_SOCKET_PLUGIN = """
+async def echo(websocket):
+    await websocket.accept()
+    await websocket.send_text(await websocket.receive_text())
+
+
+def register(ctx):
+    ctx.register_websocket("echo", echo)
+"""
+
+
+def test_register_websocket_serves_only_while_the_plugin_is_on(tmp_path, monkeypatch):
+    from starlette.applications import Starlette
+    from starlette.routing import WebSocketRoute
+    from starlette.testclient import TestClient
+    from starlette.websockets import WebSocketDisconnect
+
+    from suzent.plugins import manager as plugin_manager
+    from suzent.routes import plugin_routes
+
+    root = tmp_path / "plugins"
+    _write_plugin(root, "sock", _SOCKET_PLUGIN)
+    manager = _manager(tmp_path, root, enabled=["sock"])
+    monkeypatch.setattr(plugin_manager, "_manager", manager)
+    monkeypatch.setattr(plugin_manager, "_refresh_live_registries", lambda: None)
+    client = TestClient(
+        Starlette(
+            routes=[
+                WebSocketRoute(
+                    "/plugins/{name}/ws/{path:path}", plugin_routes.plugin_websocket
+                )
+            ]
+        )
+    )
+
+    def closed_code(path: str) -> int:
+        with client.websocket_connect(path) as websocket:
+            with pytest.raises(WebSocketDisconnect) as excinfo:
+                websocket.receive_text()
+        return excinfo.value.code
+
+    with client.websocket_connect("/plugins/sock/ws/echo") as websocket:
+        websocket.send_text("hi")
+        assert websocket.receive_text() == "hi"
+
+    assert closed_code("/plugins/sock/ws/nope") == 4404
+    assert closed_code("/plugins/missing/ws/echo") == 4404
+
+    manager.set_enabled("sock", False)
+    manager.deactivate("sock")
+    assert closed_code("/plugins/sock/ws/echo") == 4404
+
+    with pytest.raises(WebSocketDisconnect):
+        with client.websocket_connect(
+            "/plugins/sock/ws/echo", headers={"origin": "https://evil.example"}
+        ):
+            pass
+
+
+def test_register_websocket_rejects_bad_and_duplicate_paths(tmp_path):
+    from suzent.plugins.context import PluginContext
+    from suzent.plugins.manifest import PluginManifest
+
+    async def endpoint(websocket):
+        return None
+
+    ctx = PluginContext(PluginManifest(id="sock"), tmp_path)
+    ctx.register_websocket("/listen/", endpoint)
+    assert [s.path for s in ctx.websockets] == ["listen"]
+    with pytest.raises(ValueError):
+        ctx.register_websocket("listen", endpoint)
+    with pytest.raises(ValueError):
+        ctx.register_websocket("a/../b", endpoint)

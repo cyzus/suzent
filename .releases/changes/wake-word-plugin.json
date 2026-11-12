@@ -1,0 +1,1 @@
+{"products": {"desktop": "patch"}, "summary": "The wake word now runs entirely inside the Wake word plugin, so removing the plugin stops it listening and removes its endpoints."}

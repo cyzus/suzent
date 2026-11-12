@@ -53,22 +53,26 @@ interface WakeProblem {
   words?: string[];
 }
 
+const NOT_INSTALLED: WakeStatus = { packages: false, model: false, unknown_words: [] };
+
 async function prepareWakeWord(onInstalling: () => void): Promise<WakeProblem | null> {
-  const base = getApiBase();
+  const plugin = `${getApiBase()}/plugins/wake-word`;
+  // The plugin's API exists only while the plugin is on; 404 means not installed.
   const read = async (response: Response): Promise<WakeStatus> => {
+    if (response.status === 404) return NOT_INSTALLED;
     if (!response.ok) throw new Error();
     return (await response.json()) as WakeStatus;
   };
-  let status = await read(await fetch(`${base}/voice/wake`));
+  let status = await read(await fetch(`${plugin}/api/status`));
   if (!status.packages) {
     onInstalling();
-    const installed = await fetch(`${base}/plugins/wake-word/install`, { method: 'POST' });
+    const installed = await fetch(`${plugin}/install`, { method: 'POST' });
     if (!installed.ok) return { key: 'voice.wake.errors.install_failed' };
-    status = await read(await fetch(`${base}/voice/wake`));
+    status = await read(await fetch(`${plugin}/api/status`));
   }
   if (!status.model) {
     onInstalling();
-    const downloaded = await fetch(`${base}/voice/wake/model`, { method: 'POST' });
+    const downloaded = await fetch(`${plugin}/api/model`, { method: 'POST' });
     if (!downloaded.ok) return { key: 'voice.wake.errors.download_failed' };
     status = await read(downloaded);
   }

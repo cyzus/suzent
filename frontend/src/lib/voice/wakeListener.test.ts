@@ -1,5 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { WakeListener, type OpenMic, type WakeErrorCode } from './wakeListener';
+import {
+  PLUGIN_SOCKET_NOT_FOUND,
+  WakeListener,
+  type OpenMic,
+  type WakeErrorCode,
+} from './wakeListener';
 
 vi.mock('../api', () => ({ getApiBase: () => 'http://127.0.0.1:8000' }));
 
@@ -11,7 +16,7 @@ class FakeSocket {
   closed = false;
   onmessage: ((event: MessageEvent) => void) | null = null;
   onerror: (() => void) | null = null;
-  onclose: (() => void) | null = null;
+  onclose: ((event?: { code: number }) => void) | null = null;
 
   constructor(url: string) {
     this.url = url;
@@ -73,7 +78,7 @@ describe('WakeListener', () => {
 
   it('opens the mic only once the server can listen, and streams PCM', async () => {
     const { socket, events, opened, feed } = setup();
-    expect(new URL(socket.url).pathname).toBe('/ws/wake');
+    expect(new URL(socket.url).pathname).toBe('/plugins/wake-word/ws/listen');
     expect(opened).toEqual([]);
     socket.emit({ type: 'ready', sample_rate: 16000 });
     await flush();
@@ -125,7 +130,13 @@ describe('WakeListener', () => {
 
   it('treats a dropped line as a connection error', () => {
     const { socket, errors } = setup();
-    socket.onclose?.();
+    socket.onclose?.({ code: 1006 });
     expect(errors).toEqual([['connection', '']]);
+  });
+
+  it('reads a socket the server does not have as the plugin being off', () => {
+    const { socket, errors } = setup();
+    socket.onclose?.({ code: PLUGIN_SOCKET_NOT_FOUND });
+    expect(errors).toEqual([['not_installed', '']]);
   });
 });

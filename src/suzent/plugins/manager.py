@@ -16,7 +16,7 @@ from pydantic import ValidationError
 
 from suzent.logger import get_logger
 from suzent.plugins import deps
-from suzent.plugins.context import PluginContext, PluginRoute
+from suzent.plugins.context import PluginContext, PluginRoute, PluginWebSocket
 from suzent.plugins.enablement import (  # channel_configured is re-exported
     channel_configured,  # noqa: F401
     is_enabled,
@@ -56,6 +56,7 @@ class PluginRecord:
     skill_dirs: list[Path] = field(default_factory=list)
     integrations: list[Integration] = field(default_factory=list)
     routes: list[PluginRoute] = field(default_factory=list)
+    websockets: list[PluginWebSocket] = field(default_factory=list)
     entry_point: EntryPoint | None = field(default=None, repr=False)
 
     @property
@@ -394,6 +395,7 @@ class PluginManager:
         record.tool_classes, record.command_names, record.skill_dirs = [], [], []
         record.integrations = []
         record.routes = []
+        record.websockets = []
         record.enabled, record.status, record.error = False, "disabled", None
         target = self.deps_dir(record)
         if target is not None and str(target) in sys.path:
@@ -443,6 +445,7 @@ class PluginManager:
         record.skill_dirs = list(ctx.skill_dirs)
         record.integrations = list(ctx.integrations)
         record.routes = list(ctx.routes)
+        record.websockets = list(ctx.websockets)
         for command in ctx.commands:
             if register_plugin_command(
                 command.handler, command.aliases, command.options
@@ -460,14 +463,24 @@ class PluginManager:
         self.load()
         return list(self._records.values())
 
-    def route(self, plugin_id: str, path: str, method: str) -> PluginRoute | None:
+    def _loaded_record(self, plugin_id: str) -> PluginRecord | None:
         record = next((r for r in self.records() if plugin_id in r.names()), None)
-        if record is None or record.status != "loaded":
+        return record if record is not None and record.status == "loaded" else None
+
+    def route(self, plugin_id: str, path: str, method: str) -> PluginRoute | None:
+        record = self._loaded_record(plugin_id)
+        if record is None:
             return None
         return next(
             (r for r in record.routes if r.path == path and method in r.methods),
             None,
         )
+
+    def websocket(self, plugin_id: str, path: str) -> PluginWebSocket | None:
+        record = self._loaded_record(plugin_id)
+        if record is None:
+            return None
+        return next((s for s in record.websockets if s.path == path), None)
 
     def tool_classes(self) -> list[type[Tool]]:
         return [cls for record in self.records() for cls in record.tool_classes]

@@ -7,8 +7,10 @@ POST /plugins/{name}/remove   -> disable a plugin and unload it
 POST /plugins/{name}/integrations/{id}/connect     -> start a sign-in, or save a token
 POST /plugins/{name}/integrations/{id}/disconnect  -> sign out and forget the credential
 POST /plugins/{name}/binaries/{binary}/install     -> download a declared program; body {"confirmed": true}
+     /plugins/{name}/api/{path}  -> a route the plugin registered
+WS   /plugins/{name}/ws/{path}   -> a WebSocket the plugin registered
 
-Both take effect in the running server: tools, commands and skills from the
+Install and remove take effect in the running server: tools, commands and skills from the
 next message on, chat apps once the social stack has been rebuilt.
 """
 
@@ -18,7 +20,9 @@ from typing import Any
 
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
+from starlette.websockets import WebSocket
 
+from suzent.auth_boundary import voice_origin_allowed
 from suzent.logger import get_logger
 from suzent.plugins import PluginRecord, get_plugin_manager
 from suzent.plugins.deps import DependencyError
@@ -272,3 +276,28 @@ async def plugin_api(request: Request) -> Response:
     if route is None:
         return JSONResponse({"error": "Not found"}, status_code=404)
     return await route.endpoint(request)
+
+
+# Sent after accepting, because a browser cannot read why a handshake was refused.
+PLUGIN_WEBSOCKET_NOT_FOUND = 4404
+
+
+async def plugin_websocket(websocket: WebSocket) -> None:
+    """Hand a WebSocket to the endpoint the named plugin registered.
+
+    Any web page can open a socket to loopback, so the Origin is checked here
+    for every plugin rather than left to each one.
+    """
+    if not voice_origin_allowed(
+        websocket.headers.get("origin"), websocket.headers.get("host", "")
+    ):
+        await websocket.close(code=1008)
+        return
+    socket = get_plugin_manager().websocket(
+        websocket.path_params["name"], websocket.path_params["path"]
+    )
+    if socket is None:
+        await websocket.accept()
+        await websocket.close(code=PLUGIN_WEBSOCKET_NOT_FOUND)
+        return
+    await socket.endpoint(websocket)

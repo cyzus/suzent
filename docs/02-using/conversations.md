@@ -142,7 +142,8 @@ Under **Settings → Voice & audio → Hands-free start**:
   and press Enter to add it, up to 8; phrases can be Chinese, English, or
   mixed. If an English word has no known pronunciation, its phrase turns red.
   Raise the sensitivity if it misses you, lower it if it wakes by mistake. It
-  listens only while Suzent is open.
+  listens only while Suzent is open, and only while the Wake word plugin is
+  installed: removing it under **Settings → Plugins** stops the listening.
 - **Voice shortcut** (desktop app). Click the box and press a key combination,
   such as Ctrl+Shift+Space (⌘⇧Space on a Mac), to start or end voice mode from
   any app. **Remove** turns it off. Hovering the microphone button reminds you
