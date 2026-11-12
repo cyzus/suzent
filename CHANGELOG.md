@@ -10,7 +10,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Release notes
 - Add interface font, reply font, chat text size, chat width, and motion controls to Appearance settings.
 - A new Artifacts panel in the side panel collects the images, videos, speech and files the agent made in a chat, with previews.
+- Context compaction now writes its summary from the prompt cache with the chat's own model, and prepares it in the background after a turn, so long chats compact faster and cheaper.
 - Keep your reading position on macOS when a reply finishes while you are scrolled up, instead of jumping to the previous message.
+- The compaction animation now shows only on the chat card, and not at all for a compaction that finishes instantly.
 - Make Smart mode the default permission mode for new chats, remove its confirmation dialog, and add concise inline descriptions to the mode selector.
 - Show image thumbnails beside individual tool rows when the activity rail is expanded.
 - The file preview in the side panel has buttons to show the file in Finder or File Explorer and to copy where it is saved on your computer.
