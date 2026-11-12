@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import time
 import weakref
 from collections import OrderedDict
 from dataclasses import dataclass, replace
@@ -35,6 +36,7 @@ from pydantic_ai.settings import ModelSettings
 from pydantic_ai.tools import ToolDefinition
 
 from suzent.core.agent_deps import AgentDeps
+from suzent.core.cache_ttl import observe_request
 from suzent.logger import get_logger
 
 logger = get_logger(__name__)
@@ -166,6 +168,16 @@ class RequestSnapshot:
     parameters: ModelRequestParameters
     messages: tuple[ModelMessage, ...]
     history: tuple[ModelMessage, ...]
+    #: Suzent model id ("provider/model"), "" when the agent did not say.
+    model_id: str = ""
+    #: Wall-clock time the request went out; the provider refreshes the cached
+    #: prefix as it reads it.
+    sent_at: float = 0.0
+
+    @property
+    def settings(self) -> dict[str, Any]:
+        """The model's own settings with the request's on top."""
+        return {**(self.model.settings or {}), **(self.model_settings or {})}
 
 
 _TURN_CONFIGS: OrderedDict[str, dict[str, Any]] = OrderedDict()
@@ -417,6 +429,17 @@ class ForkPrefixCapability(AbstractCapability[AgentDeps]):
 # prepared form, not the stored history.
 
 
+def note_prefix_read(chat_id: str, sent_at: float, cache_read_tokens: int) -> None:
+    """Count a request sent outside the agent run (a compaction summary) that
+    read the chat's cached prefix: reading it refreshes the provider's TTL."""
+    snapshot = _LATEST_REQUESTS.get(chat_id)
+    if snapshot is None:
+        return
+    observe_request(snapshot.model_id, sent_at, cache_read_tokens)
+    if sent_at > snapshot.sent_at:
+        _LATEST_REQUESTS[chat_id] = replace(snapshot, sent_at=sent_at)
+
+
 def _remember_request(chat_id: str, snapshot: RequestSnapshot) -> None:
     _LATEST_REQUESTS[chat_id] = snapshot
     _LATEST_REQUESTS.move_to_end(chat_id)
@@ -427,16 +450,18 @@ def _remember_request(chat_id: str, snapshot: RequestSnapshot) -> None:
 class _RecordingModel(WrapperModel):
     """Records each request it serves as the chat's latest one."""
 
-    def __init__(self, wrapped: Model, chat_id: str) -> None:
+    def __init__(self, wrapped: Model, chat_id: str, model_id: str) -> None:
         super().__init__(wrapped)
         self._chat_id = chat_id
+        self._model_id = model_id
 
     def _record(
         self,
         messages: list[ModelMessage],
         model_settings: ModelSettings | None,
         parameters: ModelRequestParameters,
-    ) -> None:
+    ) -> float:
+        sent_at = time.time()
         _remember_request(
             self._chat_id,
             RequestSnapshot(
@@ -445,8 +470,14 @@ class _RecordingModel(WrapperModel):
                 parameters=parameters,
                 messages=tuple(messages),
                 history=_PENDING_HISTORIES.get(self._chat_id, ()),
+                model_id=self._model_id,
+                sent_at=sent_at,
             ),
         )
+        return sent_at
+
+    def _observe(self, sent_at: float, response: ModelResponse) -> None:
+        observe_request(self._model_id, sent_at, response.usage.cache_read_tokens)
 
     async def request(
         self,
@@ -454,8 +485,12 @@ class _RecordingModel(WrapperModel):
         model_settings: ModelSettings | None,
         model_request_parameters: ModelRequestParameters,
     ) -> ModelResponse:
-        self._record(messages, model_settings, model_request_parameters)
-        return await super().request(messages, model_settings, model_request_parameters)
+        sent_at = self._record(messages, model_settings, model_request_parameters)
+        response = await super().request(
+            messages, model_settings, model_request_parameters
+        )
+        self._observe(sent_at, response)
+        return response
 
     @asynccontextmanager
     async def request_stream(
@@ -465,11 +500,12 @@ class _RecordingModel(WrapperModel):
         model_request_parameters: ModelRequestParameters,
         run_context: RunContext[Any] | None = None,
     ) -> AsyncGenerator[StreamedResponse]:
-        self._record(messages, model_settings, model_request_parameters)
+        sent_at = self._record(messages, model_settings, model_request_parameters)
         async with self.wrapped.request_stream(
             messages, model_settings, model_request_parameters, run_context
         ) as response_stream:
             yield response_stream
+        self._observe(sent_at, response_stream.get())
 
 
 @dataclass
@@ -481,9 +517,12 @@ class RequestRecorderCapability(AbstractCapability[AgentDeps]):
     """
 
     chat_id: str = ""
+    model_id: str = ""
 
     async def for_run(self, ctx: RunContext[AgentDeps]) -> "RequestRecorderCapability":
-        return RequestRecorderCapability(chat_id=getattr(ctx.deps, "chat_id", "") or "")
+        return RequestRecorderCapability(
+            chat_id=getattr(ctx.deps, "chat_id", "") or "", model_id=self.model_id
+        )
 
     async def before_model_request(
         self,
@@ -501,4 +540,6 @@ class RequestRecorderCapability(AbstractCapability[AgentDeps]):
         return request_context
 
     def get_wrapper_model(self, model: Model) -> Model | None:
-        return _RecordingModel(model, self.chat_id) if self.chat_id else None
+        if not self.chat_id:
+            return None
+        return _RecordingModel(model, self.chat_id, self.model_id)

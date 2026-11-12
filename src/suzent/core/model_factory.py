@@ -361,15 +361,22 @@ def anthropic_cache_settings(base_url: str | None) -> dict[str, Any]:
     instructions get their own breakpoints so a rewritten history still reuses
     them. Compatible third-party endpoints may not implement the top-level
     automatic breakpoint, so they get an explicit one on the last message instead.
+    Every breakpoint gets the configured TTL, since a longer-lived breakpoint may
+    not follow a shorter one.
     """
+    from suzent.config import CONFIG
+
+    ttl: bool | str = True
+    if CONFIG.anthropic_prompt_cache_ttl == "1h":
+        ttl = "1h"
     settings: dict[str, Any] = {
-        "anthropic_cache_tool_definitions": True,
-        "anthropic_cache_instructions": True,
+        "anthropic_cache_tool_definitions": ttl,
+        "anthropic_cache_instructions": ttl,
     }
     if base_url:
-        settings["anthropic_cache_messages"] = True
+        settings["anthropic_cache_messages"] = ttl
     else:
-        settings["anthropic_cache"] = True
+        settings["anthropic_cache"] = ttl
     return settings
 
 

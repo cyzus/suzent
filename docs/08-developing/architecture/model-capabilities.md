@@ -249,14 +249,49 @@ transcript at full price (`summarize_on_cached_prefix()` in
   the extraction model on a flattened transcript. `compaction_reuse_prompt_cache:
   false` turns the cached path off.
 - **Prepared at turn end.** When a finished turn leaves the context at or over
-  `context_precompaction_trigger` (0.70 by default), `ChatProcessor` starts the
+  `context_precompaction_trigger` (0.50 by default), `ChatProcessor` starts the
   next summary in the background while the cache is warm
   (`schedule_precompaction()`). It is held in memory, not applied. When the
   trigger is reached, the history processor applies it if its fingerprint
   still matches, waits for it if it is still being written, and writes a fresh
   one if it no longer matches or would leave the context over the trigger. A
   summary that still covers the history is not rewritten on later turns until
-  the uncovered tail reaches half the window.
+  the uncovered tail passes 15% of the window
+  (`PRECOMPACTION_REFRESH_TAIL_SHARE`).
+- **Applied early on a cold cache.** Each `RequestSnapshot` carries the Suzent
+  model id and the time it was sent. Before the trigger is reached,
+  `cold_cache_compaction_due()` applies a finished prepared summary when the
+  history is at or over `context_precompaction_trigger` and the time since the
+  chat's last request exceeds the cache TTL estimate: the next request would
+  pay full input price for the whole history anyway. Providers with no TTL
+  estimate (local models) never qualify.
+- **Choosing the writer.** `ContextCompressor._prefer_cached_prefix()` keeps
+  the cached path while the cache is likely warm. Once it has likely expired,
+  it prices both options with `estimate_cost_usd()` (genai-prices, the same
+  source as the cost ledger): the conversation's model on the whole prepared
+  request billed as a cache write, against the extraction model on the folded
+  messages, each with a typical summary's output. The cheaper one writes it;
+  if either model is unpriced, the cached path is kept. The choice and both
+  estimates are logged at INFO.
+
+#### Cache TTL estimate
+
+No provider reports how long it keeps a cached prefix, so
+`core/cache_ttl.py` estimates it per model:
+
+- **Anthropic** uses the TTL the request asked for: 5 minutes, or an hour with
+  `anthropic_prompt_cache_ttl: "1h"`, which `anthropic_cache_settings()` sets on
+  every breakpoint (a longer-lived breakpoint may not follow a shorter one).
+- **Other providers** start from `PROVIDER_DEFAULT_TTL_SECONDS`: OpenAI,
+  ChatGPT and Gemini 300s, DeepSeek 3600s. Anything else is unknown.
+- **Observed hits** raise the estimate. The recording wrapper reports every
+  response to `observe_request()`; a request that read at least 1,024 cached
+  tokens after the model had been idle (in any chat) for 60s or more proves the
+  cache lives at least that long. The longest such gap per model is kept in
+  `<data dir>/prompt_cache_ttl.json`. Misses never lower it, since a changed
+  prefix misses too. The cost ledger is not used for this: it stores one row
+  per turn, summing every request in it, so it cannot tell whether the first
+  request after a pause hit the cache.
 
 ### Forked sub-agents
 
