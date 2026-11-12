@@ -349,6 +349,78 @@ describe('message bottom scrolling', () => {
     if (cleanupListeners) cleanupListeners();
   });
 
+  it('undoes a clamp from a briefly shorter layout instead of anchoring to it', () => {
+    vi.useFakeTimers();
+    vi.stubGlobal('window', new EventTarget());
+    vi.stubGlobal('requestAnimationFrame', () => 1);
+    vi.stubGlobal('cancelAnimationFrame', vi.fn());
+    let onResize = () => {};
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        constructor(callback: () => void) {
+          onResize = callback;
+        }
+        observe = vi.fn();
+        disconnect = vi.fn();
+      }
+    );
+    vi.stubGlobal(
+      'MutationObserver',
+      class {
+        observe = vi.fn();
+        disconnect = vi.fn();
+      }
+    );
+    vi.stubGlobal('getComputedStyle', () => ({ position: 'static' }));
+    const box = (contentTop: number, height: number, children: unknown[] = []) => {
+      const node = {
+        contentTop,
+        height,
+        children,
+        isConnected: true,
+        getBoundingClientRect: () => ({
+          top: node.contentTop - container.scrollTop,
+          bottom: node.contentTop + node.height - container.scrollTop,
+          height: node.height,
+        }),
+      };
+      return node;
+    };
+    const paragraph = box(1600, 200);
+    const row = box(0, 2400, [box(0, 1500), paragraph]);
+    const container = Object.assign(new EventTarget(), {
+      children: [row],
+      scrollHeight: 2400,
+      clientHeight: 600,
+      clientWidth: 900,
+      scrollTop: 1800,
+      scrollTo: vi.fn(),
+      closest: () => null,
+      contains: () => true,
+      getBoundingClientRect: () => ({ top: 0, bottom: 600, height: 600 }),
+    });
+    const hook = useAutoScroll([], { smooth: false });
+    hook.scrollContainerRef.current = container as unknown as HTMLDivElement;
+    const cleanupListeners = effects[0]();
+    const cleanupResize = effects[2]();
+    container.dispatchEvent(Object.assign(new Event('wheel'), { deltaY: -100 }));
+    container.scrollTop = 1650;
+    container.dispatchEvent(new Event('scroll'));
+    vi.advanceTimersByTime(300);
+    // The turn finishing lays out a shorter transcript mid-commit; WebKit clamps
+    // scrollTop to it, and that scroll event lands before the resize.
+    container.scrollTop = 1300;
+    container.dispatchEvent(new Event('scroll'));
+    row.height = 2420;
+    container.scrollHeight = 2420;
+    onResize();
+    expect(container.scrollTop).toBe(1650);
+    expect(paragraph.getBoundingClientRect().top).toBe(-50);
+    if (cleanupResize) cleanupResize();
+    if (cleanupListeners) cleanupListeners();
+  });
+
   it('finds the paragraph being read again when the live message is swapped for the saved one', () => {
     vi.useFakeTimers();
     vi.stubGlobal('window', new EventTarget());
