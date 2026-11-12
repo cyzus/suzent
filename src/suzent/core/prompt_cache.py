@@ -429,6 +429,17 @@ class ForkPrefixCapability(AbstractCapability[AgentDeps]):
 # prepared form, not the stored history.
 
 
+def note_prefix_read(chat_id: str, sent_at: float, cache_read_tokens: int) -> None:
+    """Count a request sent outside the agent run (a compaction summary) that
+    read the chat's cached prefix: reading it refreshes the provider's TTL."""
+    snapshot = _LATEST_REQUESTS.get(chat_id)
+    if snapshot is None:
+        return
+    observe_request(snapshot.model_id, sent_at, cache_read_tokens)
+    if sent_at > snapshot.sent_at:
+        _LATEST_REQUESTS[chat_id] = replace(snapshot, sent_at=sent_at)
+
+
 def _remember_request(chat_id: str, snapshot: RequestSnapshot) -> None:
     _LATEST_REQUESTS[chat_id] = snapshot
     _LATEST_REQUESTS.move_to_end(chat_id)

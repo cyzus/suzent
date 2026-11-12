@@ -1644,7 +1644,7 @@ async def summarize_on_cached_prefix(
     Returns "" when that request does not cover ``messages[:end_index]`` or no
     usable summary came back; the caller then falls back to the extraction model.
     """
-    from suzent.core.prompt_cache import latest_request
+    from suzent.core.prompt_cache import latest_request, note_prefix_read
 
     snapshot = latest_request(chat_id)
     if snapshot is None or not snapshot.messages:
@@ -1671,6 +1671,7 @@ async def summarize_on_cached_prefix(
     correction = ""
     for attempt in range(CACHED_SUMMARY_ATTEMPTS):
         started = time.monotonic()
+        sent_at = time.time()
         try:
             async with snapshot.model.request_stream(
                 _with_trailing_prompt(sent, prompt + correction),
@@ -1689,6 +1690,7 @@ async def summarize_on_cached_prefix(
             return ""
 
         usage = response.usage
+        note_prefix_read(chat_id, sent_at, usage.cache_read_tokens)
         logger.info(
             "Compaction summary for {} on the cached prefix: {}/{} input tokens "
             "read from cache, {} output, {:.1f}s",

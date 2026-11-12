@@ -98,6 +98,17 @@ async def test_recorded_request_carries_the_model_and_send_time() -> None:
     assert snapshot.sent_at >= before
 
 
+async def test_a_summary_request_counts_as_a_cache_refresh() -> None:
+    sent: list = []
+    agent = _agent(sent, [f"<summary>{SUMMARY}</summary>"], model_id="openai/gpt-x")
+    history = await _run(agent, "refreshed")
+    first = latest_request("refreshed").sent_at
+
+    assert await cc.summarize_on_cached_prefix("refreshed", history, 1, 200_000)
+
+    assert latest_request("refreshed").sent_at > first
+
+
 # ── Applying the prepared summary once the cache has expired ─────────────────
 
 
