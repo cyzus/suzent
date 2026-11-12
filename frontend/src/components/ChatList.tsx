@@ -9,6 +9,7 @@ import {
   CircleStackIcon,
   ClockIcon,
   EllipsisVerticalIcon,
+  InboxStackIcon,
   PencilSquareIcon,
   PlusIcon,
   RectangleStackIcon,
@@ -111,7 +112,7 @@ function SidebarRowSkeleton({ compact = false }: { compact?: boolean }): React.R
   );
 }
 
-export type SidebarView = 'chat' | 'memory' | 'skills' | 'artifacts';
+export type SidebarView = 'chat' | 'mailbox' | 'memory' | 'skills' | 'artifacts';
 
 interface ChatListProps {
   mobile?: boolean;
@@ -1683,25 +1684,19 @@ export const ChatList: React.FC<ChatListProps> = ({
             >
               <button
                 type="button"
-                aria-expanded={showAutomation ? automationOpen : undefined}
-                onClick={() => (showAutomation ? toggleAutomationOpen() : onOpenAutomation?.())}
-                className={sidebarNavRowClass(false)}
+                aria-current={activeView === 'mailbox' ? 'page' : undefined}
+                onClick={() => (onOpenView ? onOpenView('mailbox') : onOpenAutomation?.())}
+                className={sidebarNavRowClass(activeView === 'mailbox')}
               >
-                <ClockIcon className="h-4 w-4 shrink-0" aria-hidden="true" />
-                <span className="flex-1 truncate">{t('chatList.sections.scheduled')}</span>
+                <InboxStackIcon className="h-4 w-4 shrink-0" aria-hidden="true" />
+                <span className="flex-1 truncate">{t('nav.mailbox')}</span>
                 {scheduledJobs.length + heartbeatSessions.length > 0 && (
                   <span className="text-[10px] tabular-nums text-neutral-400 dark:text-neutral-500">
                     {scheduledJobs.length + heartbeatSessions.length}
                   </span>
                 )}
-                {showAutomation && (
-                  <ChevronRightIcon
-                    className={`h-3 w-3 shrink-0 text-neutral-400 transition-transform ${automationOpen ? 'rotate-90' : ''}`}
-                    aria-hidden="true"
-                  />
-                )}
               </button>
-              {showAutomation && automationOpen && (
+              {false && showAutomation && automationOpen && (
                 <section className="pb-1">
                   {loadingAutomation ? (
                     <div>
@@ -2545,9 +2540,10 @@ export const ChatList: React.FC<ChatListProps> = ({
                 onClick: () => onSearchOpenChange?.(true),
               },
               {
-                label: t('chatList.sections.scheduled'),
-                Icon: ClockIcon,
-                onClick: () => onOpenAutomation?.(),
+                label: t('nav.mailbox'),
+                Icon: InboxStackIcon,
+                onClick: () => (onOpenView ? onOpenView('mailbox') : onOpenAutomation?.()),
+                selected: activeView === 'mailbox',
               },
               {
                 label: t('nav.memory'),

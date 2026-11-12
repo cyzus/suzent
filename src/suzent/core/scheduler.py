@@ -674,6 +674,26 @@ class SchedulerBrain(BaseBrain):
 
         self._in_flight.add(job_id)
         try:
+            try:
+                from suzent.core.mailbox import resolve_target_label
+
+                db.create_mailbox_item(
+                    source_kind="schedule",
+                    source_name=job.schedule_kind or "cron",
+                    event_type=job.cron_expr or f"every {job.interval_minutes}m"
+                    if job.interval_minutes
+                    else (job.schedule_kind or "schedule"),
+                    signature=f"schedule:job-{job.id}",
+                    summary=job.name,
+                    payload=job.prompt or "",
+                    route_status="routed",
+                    target_chat_id=chat_id,
+                    target_label=resolve_target_label(db, chat_id) or job.name,
+                    rule_origin="pinned",
+                    reason=f"Scheduled task #{job.id} triggered.",
+                )
+            except Exception as exc:
+                logger.debug(f"Could not record schedule mailbox item: {exc}")
             await self._run_scheduled_task(db, job, chat_id, bound=bound)
         finally:
             self._in_flight.discard(job_id)

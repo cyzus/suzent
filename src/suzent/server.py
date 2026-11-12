@@ -210,6 +210,16 @@ from suzent.routes.plugin_routes import (
     remove_plugin,
 )
 from suzent.routes.skill_routes import get_skills, reload_skills, toggle_skill
+from suzent.routes.mailbox_routes import (
+    delete_mailbox_item_route,
+    delete_mailbox_rule_route,
+    get_mailbox_endpoint_route,
+    list_mailbox_items_route,
+    list_mailbox_rules_route,
+    rotate_mailbox_endpoint_route,
+    route_mailbox_item_route,
+    update_mailbox_rule_route,
+)
 from suzent.routes.system_routes import (
     get_system_idle,
     get_system_version,
@@ -1569,6 +1579,34 @@ app = Starlette(
             methods=["POST"],
         ),
         Route("/hooks/{token}", receive_webhook, methods=["POST"]),
+        Route("/mailbox/items", list_mailbox_items_route, methods=["GET"]),
+        Route(
+            "/mailbox/items/{item_id:int}/route",
+            route_mailbox_item_route,
+            methods=["POST"],
+        ),
+        Route(
+            "/mailbox/items/{item_id:int}",
+            delete_mailbox_item_route,
+            methods=["DELETE"],
+        ),
+        Route("/mailbox/rules", list_mailbox_rules_route, methods=["GET"]),
+        Route(
+            "/mailbox/rules/{rule_id:int}",
+            update_mailbox_rule_route,
+            methods=["PUT"],
+        ),
+        Route(
+            "/mailbox/rules/{rule_id:int}",
+            delete_mailbox_rule_route,
+            methods=["DELETE"],
+        ),
+        Route("/mailbox/endpoint", get_mailbox_endpoint_route, methods=["GET"]),
+        Route(
+            "/mailbox/endpoint/rotate",
+            rotate_mailbox_endpoint_route,
+            methods=["POST"],
+        ),
         Route("/heartbeat/status", get_heartbeat_status, methods=["GET"]),
         Route("/heartbeat/enable", enable_heartbeat, methods=["POST"]),
         Route("/heartbeat/disable", disable_heartbeat, methods=["POST"]),

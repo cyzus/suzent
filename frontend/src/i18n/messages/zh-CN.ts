@@ -539,6 +539,7 @@ export const zhCN = {
   },
   nav: {
     chat: '对话',
+    mailbox: '收件箱',
     memory: '记忆',
     skills: '技能',
     artifacts: '产出',

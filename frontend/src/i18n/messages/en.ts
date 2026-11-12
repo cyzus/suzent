@@ -563,6 +563,7 @@ export const en = {
   },
   nav: {
     chat: 'Chat',
+    mailbox: 'Mailbox',
     memory: 'Memory',
     skills: 'Skills',
     artifacts: 'Artifacts',

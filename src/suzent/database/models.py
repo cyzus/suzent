@@ -476,6 +476,50 @@ class BackgroundNotificationModel(SQLModel, table=True):
     delivered_at: Optional[datetime] = Field(default=None, index=True)
 
 
+class MailboxRuleModel(SQLModel, table=True):
+    """Dynamic routing rule for inbound Mailbox events (auto-learned or user-pinned)."""
+
+    __tablename__ = "mailbox_rules"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    signature: str = Field(index=True, unique=True)
+    name: str
+    source_kind: str = Field(default="webhook", index=True)
+    action: str = Field(default="route")  # "route" | "none"
+    target_chat_id: Optional[str] = Field(default="focal-suzent", index=True)
+    target_label: Optional[str] = Field(default="Regent")
+    origin: str = Field(default="learned")  # "learned" | "pinned"
+    reason: Optional[str] = None
+    hit_count: int = Field(default=0)
+    created_at: datetime = Field(default_factory=lambda: datetime.now())
+    updated_at: datetime = Field(default_factory=lambda: datetime.now())
+
+
+class MailboxItemModel(SQLModel, table=True):
+    """Inbound event stored in the unified Mailbox (webhook, email, peer, or schedule)."""
+
+    __tablename__ = "mailbox_items"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    source_kind: str = Field(default="webhook", index=True)
+    source_name: str = Field(default="webhook")
+    event_type: str = Field(default="event")
+    signature: str = Field(index=True)
+    summary: str
+    headers_json: str = Field(default="{}")
+    payload: str = Field(default="")
+    route_status: str = Field(
+        default="routed", index=True
+    )  # "routed" | "unrouted" | "error"
+    target_chat_id: Optional[str] = Field(default=None, index=True)
+    target_label: Optional[str] = Field(default=None)
+    rule_origin: str = Field(default="learned")  # "learned" | "pinned" | "manual"
+    reason: Optional[str] = None
+    inbox_message_id: Optional[str] = Field(default=None, index=True)
+    spooled_at: Optional[str] = None
+    created_at: datetime = Field(default_factory=lambda: datetime.now(), index=True)
+
+
 class PostprocessJobModel(SQLModel, table=True):
     """Postprocess job tracking for chat turn completion.
 

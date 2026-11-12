@@ -427,6 +427,26 @@ async def suzent_channel_inbox(request: Request) -> JSONResponse:
                 "sender_agent_id": f"device:{peer_id}",
             },
         )
+        if created:
+            try:
+                from suzent.database import get_database
+
+                get_database().create_mailbox_item(
+                    source_kind="peer",
+                    source_name=trigger_label,
+                    event_type="peer.message",
+                    signature=f"peer:{peer_id}",
+                    summary=content.splitlines()[0][:240] if content else trigger_label,
+                    payload=content,
+                    route_status="routed",
+                    target_chat_id=chat_id,
+                    target_label=f"⇄ {trigger_label}",
+                    rule_origin="learned",
+                    reason="Peer device message delivered to dedicated peer session.",
+                    inbox_message_id=local_message_id,
+                )
+            except Exception:
+                pass
     except ValueError as exc:
         return JSONResponse({"error": str(exc)}, status_code=409)
     return JSONResponse(
