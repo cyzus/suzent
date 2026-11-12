@@ -1,0 +1,6 @@
+id: wake-word
+name: Wake word
+version: 1.0.0
+description: Start a voice call by saying "你好 Suzent" or "Hey Suzent". Listens on this computer only; nothing leaves it until the call starts.
+aliases: [wake, wakeword]
+extras: [wake]

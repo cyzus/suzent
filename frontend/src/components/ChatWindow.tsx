@@ -39,6 +39,8 @@ import { useAutoScroll } from '../hooks/useAutoScroll';
 import { useUnifiedFileUpload } from '../hooks/useUnifiedFileUpload';
 import { useVoiceSession } from '../hooks/useVoiceSession';
 import { useProjects } from '../hooks/useProjects';
+import { useVoiceHotkey, useVoiceTriggerSettings, useWakeWord } from '../hooks/useWakeWord';
+import { playNotificationSound } from '../lib/notificationSound';
 import { useToolApproval } from '../hooks/chat/useToolApproval';
 import { useInputSuggestion } from '../hooks/chat/useInputSuggestion';
 import {
@@ -2129,6 +2131,26 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   );
 
   const configReady = !!(safeBackendConfig && safeConfig.model && safeConfig.agent);
+
+  // Hands-free starts: the wake phrase, heard on this machine, and the
+  // desktop-wide shortcut. Both do what the composer's mic button does.
+  const voiceTriggers = useVoiceTriggerSettings();
+  const startVoiceHandsFree = () => {
+    if (configReady && !voice.active) voice.start(currentChatId ?? null);
+  };
+  const wakeWord = useWakeWord(
+    !!voiceTriggers?.wake_word && configReady && voice.supported && !voice.active,
+    JSON.stringify([voiceTriggers?.wake_phrases, voiceTriggers?.wake_sensitivity]),
+    () => {
+      playNotificationSound('ping');
+      startVoiceHandsFree();
+    }
+  );
+  voice.wakeListening = wakeWord.status === 'listening';
+  useVoiceHotkey(voiceTriggers?.voice_hotkey ?? '', () => {
+    if (voice.active) voice.stop();
+    else startVoiceHandsFree();
+  });
 
   const handleOpenSubAgentSidebar = useCallback(
     (taskId: string) => {

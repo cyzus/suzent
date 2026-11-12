@@ -1,0 +1,1 @@
+{"products": {"desktop": "patch"}, "summary": "Code blocks nested inside other code blocks, and empty code blocks, now render correctly in chat instead of breaking apart or showing [object Object]."}
