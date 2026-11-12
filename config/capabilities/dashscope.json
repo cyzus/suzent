@@ -1065,6 +1065,12 @@
       "supported_endpoints": [
         "/v1/audio/speech"
       ]
+    },
+    "dashscope/qwen-max-latest": {
+      "mode": "chat"
+    },
+    "dashscope/qwen-flash-latest": {
+      "mode": "chat"
     }
   }
 }

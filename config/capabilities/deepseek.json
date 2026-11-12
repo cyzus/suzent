@@ -111,6 +111,12 @@
     },
     "deepseek/search": {
       "mode": "chat"
+    },
+    "deepseek/deepseek-flash-latest": {
+      "mode": "chat"
+    },
+    "deepseek/deepseek-pro-latest": {
+      "mode": "chat"
     }
   }
 }

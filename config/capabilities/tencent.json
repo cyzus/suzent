@@ -189,6 +189,25 @@
         "/v1/images/generations",
         "/v1/images/edits"
       ]
+    },
+    "tencent/hy4": {
+      "mode": "chat",
+      "max_input_tokens": 960000,
+      "max_output_tokens": 64000,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
+    },
+    "tencent/hy4-preview": {
+      "mode": "chat",
+      "max_input_tokens": 960000,
+      "max_output_tokens": 64000,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
     }
   }
 }
