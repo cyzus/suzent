@@ -15,50 +15,6 @@ import { useI18n } from '../../i18n';
 import { getApiBase } from '../../lib/api';
 import { splitStreamingBlocks } from '../../lib/streamingMarkdown';
 
-const ALLOWED_LANGUAGES = new Set([
-  'python',
-  'javascript',
-  'typescript',
-  'java',
-  'cpp',
-  'c',
-  'go',
-  'rust',
-  'sql',
-  'html',
-  'css',
-  'json',
-  'yaml',
-  'xml',
-  'bash',
-  'shell',
-  'powershell',
-  'php',
-  'ruby',
-  'swift',
-  'kotlin',
-  'dart',
-  'r',
-  'matlab',
-  'scala',
-  'perl',
-  'lua',
-  'haskell',
-  'clojure',
-  'elixir',
-  'erlang',
-  'fsharp',
-  'ocaml',
-  'pascal',
-  'fortran',
-  'cobol',
-  'assembly',
-  'asm',
-  'text',
-  'plain',
-  'mermaid',
-]);
-
 export function sanitizeMarkdownCodeFenceLanguages(markdown: string): string {
   const repairedLooseUrlFences = markdown.replace(
     /^([ \t]{0,3})`{1,2}(https?:\/\/[^\n`]+)\n[ \t]*`{1,2}[ \t]*$/gm,
@@ -70,8 +26,11 @@ export function sanitizeMarkdownCodeFenceLanguages(markdown: string): string {
       String(info || '')
         .trim()
         .split(/\s+/)[0] || '';
+    if (!token) return fence;
+    // A fence with an info string can never close a block, so dropping the info
+    // string would turn an inner ```diff into the outer block's closing fence.
     const clean = token.replace(/[^a-zA-Z0-9_-]/g, '').toLowerCase();
-    return ALLOWED_LANGUAGES.has(clean) ? `${fence}${clean}` : fence;
+    return `${fence}${clean || 'text'}`;
   });
 }
 
@@ -176,10 +135,9 @@ function extractCodeText(children: React.ReactNode): string {
   if (typeof children === 'string') return children;
   if (Array.isArray(children)) return children.map(extractCodeText).join('');
   if (React.isValidElement(children)) {
-    const props = children.props as { children?: React.ReactNode };
-    if (props.children) return extractCodeText(props.children);
+    return extractCodeText((children.props as { children?: React.ReactNode }).children);
   }
-  return children == null ? '' : String(children);
+  return children == null || typeof children === 'boolean' ? '' : String(children);
 }
 
 function extractNodeText(children: React.ReactNode): string {
@@ -422,19 +380,6 @@ export const MarkdownRenderer = React.memo<MarkdownRendererProps>(
           const { inline, className, children, ...rest } = codeProps;
           const match = /language-([a-zA-Z0-9_-]+)/.exec(className || '');
           const lang = match ? match[1] : null;
-
-          // Extract text content
-          const extractCodeText = (children: any): string => {
-            if (typeof children === 'string') return children;
-            if (Array.isArray(children)) return children.map(extractCodeText).join('');
-            if (React.isValidElement(children)) {
-              const props = children.props as any;
-              if (props?.children) {
-                return extractCodeText(props.children);
-              }
-            }
-            return String(children);
-          };
 
           const codeContent = extractCodeText(children).replace(/\n$/, '');
 
