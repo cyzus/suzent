@@ -198,6 +198,7 @@ from suzent.routes.plugin_routes import (
     install_plugin,
     list_plugins,
     plugin_api,
+    plugin_websocket,
     remove_plugin,
 )
 from suzent.routes.skill_routes import get_skills, reload_skills, toggle_skill
@@ -223,9 +224,6 @@ from suzent.routes.browser_routes import (
 )
 from suzent.routes.voice_routes import (
     voice_websocket_endpoint,
-    wake_install_model,
-    wake_status,
-    wake_websocket_endpoint,
 )
 from suzent.routes.node_routes import (
     browser_node_page,
@@ -1432,6 +1430,7 @@ app = Starlette(
             plugin_api,
             methods=["GET", "POST", "PUT", "DELETE"],
         ),
+        WebSocketRoute("/plugins/{name}/ws/{path:path}", plugin_websocket),
         Route(
             "/plugins/{name}/integrations/{integration}/connect",
             connect_integration,
@@ -1457,9 +1456,6 @@ app = Starlette(
         Route("/browser/preview-tab", browser_preview_tab_endpoint, methods=["POST"]),
         WebSocketRoute("/ws/browser", browser_websocket_endpoint),
         WebSocketRoute("/ws/voice", voice_websocket_endpoint),
-        WebSocketRoute("/ws/wake", wake_websocket_endpoint),
-        Route("/voice/wake", wake_status, methods=["GET"]),
-        Route("/voice/wake/model", wake_install_model, methods=["POST"]),
         WebSocketRoute("/ws/node", node_websocket_endpoint),
         Route("/nodes", list_nodes, methods=["GET"]),
         # Specific paths must precede /nodes/{node_id} so they aren't captured

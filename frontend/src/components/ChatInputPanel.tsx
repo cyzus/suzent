@@ -32,6 +32,7 @@ import { ThinkingSlider } from './chat/ThinkingSlider';
 import { useAcpAgents } from '../hooks/useAcpAgents';
 import { buildEngineOptions, engineValue, parseEngineValue } from '../lib/engineOptions';
 import { detectDesktopPlatform } from '../lib/titleBarPlatform';
+import { acceleratorKeycaps } from '../lib/accelerator';
 import {
   MENTION_CATEGORIES,
   groupMentionSuggestions,
@@ -162,22 +163,32 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
   onScrollToBottom,
 }) => {
   const isFocal = currentChatId === FOCAL_CHAT_ID;
-  // The mic is open for the wake phrase: shown on whichever primary action is up.
-  const wakeDot = voice.wakeListening ? (
-    <span
-      data-testid="wake-listening"
-      className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full bg-emerald-500 ring-2 ring-white dark:ring-zinc-900"
-    />
-  ) : null;
   // --- Volume Mounting Logic ---
   const { t } = useI18n();
-  const queueKey = React.useMemo(
-    () =>
-      detectDesktopPlatform(navigator.userAgent, navigator.platform) === 'macos'
-        ? '⌘+Enter'
-        : 'Ctrl+Enter',
+  const isMac = React.useMemo(
+    () => detectDesktopPlatform(navigator.userAgent, navigator.platform) === 'macos',
     []
   );
+  const queueKey = isMac ? '⌘+Enter' : 'Ctrl+Enter';
+  const handsFree = voice.handsFree;
+  const wakeListening = handsFree?.wake === 'listening';
+  const wakeProblem = handsFree?.wake === 'error' ? handsFree.wakeProblem : null;
+  const micTitle = !voice.supported
+    ? t('voice.errors.micUnavailable')
+    : [
+        t('voice.micButton'),
+        wakeListening &&
+          handsFree?.phrase &&
+          t('voice.wake.sayPhrase', { phrase: handsFree.phrase }),
+        wakeProblem &&
+          t('voice.wake.notListening', { reason: t(wakeProblem.key, wakeProblem.params) }),
+        handsFree?.hotkey &&
+          t('voice.shortcut.hint', {
+            keys: acceleratorKeycaps(handsFree.hotkey.split('+'), isMac).join(isMac ? '' : '+'),
+          }),
+      ]
+        .filter(Boolean)
+        .join('\n');
   const [selectedSuggestion, setSelectedSuggestion] = React.useState(0);
   const [mentionSuggestions, setMentionSuggestions] = React.useState<FileMentionSuggestion[]>([]);
   const [mentionCategory, setMentionCategory] = React.useState<MentionCategory>('all');
@@ -1008,7 +1019,6 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
               aria-label={t('chatInput.sendMessage')}
             >
               <ArrowUpIcon className="w-5 h-5 stroke-[2.5]" aria-hidden="true" />
-              {wakeDot}
             </button>
           ) : (
             <button
@@ -1016,17 +1026,24 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
               onClick={() => voice.start(currentChatId ?? null)}
               className="relative w-9 h-9 inline-flex items-center justify-center border-2 border-brutal-black duration-100 p-0 text-sm font-bold disabled:opacity-50 disabled:cursor-not-allowed text-white uppercase shrink-0 bg-brutal-blue hover:bg-blue-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-brutal-blue"
               disabled={streamingForCurrentChat || !configReady || !voice.supported}
-              title={
-                !voice.supported
-                  ? t('voice.errors.micUnavailable')
-                  : voice.wakeListening
-                    ? t('voice.wake.listening')
-                    : t('voice.micButton')
-              }
+              title={micTitle}
               aria-label={voice.supported ? t('voice.micButton') : t('voice.errors.micUnavailable')}
+              aria-description={micTitle.split('\n').slice(1).join('. ') || undefined}
             >
               <MicrophoneIcon className="w-5 h-5 stroke-2" aria-hidden="true" />
-              {wakeDot}
+              {voice.supported && (wakeListening || wakeProblem) && (
+                <span
+                  data-testid={wakeListening ? 'wake-listening' : 'wake-problem'}
+                  aria-hidden="true"
+                  className={`absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full ring-2 ring-white dark:ring-zinc-900 ${
+                    wakeListening ? 'bg-emerald-500' : 'bg-amber-400'
+                  }`}
+                >
+                  {wakeListening && (
+                    <span className="absolute inset-0 animate-ping rounded-full bg-emerald-500 opacity-60 motion-reduce:hidden" />
+                  )}
+                </span>
+              )}
             </button>
           )}
         </div>

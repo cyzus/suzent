@@ -114,8 +114,9 @@ def sync_command(
     command = [uv, "sync", "--frozen"]
     if inexact:
         # Adds what is missing without removing anything, so it is safe while
-        # the backend is running from this environment.
-        command.append("--inexact")
+        # the backend is running from this environment. Skipping the project
+        # leaves Scripts/suzent.exe alone, which Windows locks while it runs.
+        command.extend(["--inexact", "--no-install-project"])
     for extra in dict.fromkeys([*extras, *(["dev"] if development else [])]):
         command.extend(["--extra", extra])
     return command

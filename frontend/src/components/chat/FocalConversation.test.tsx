@@ -20,7 +20,7 @@ const idleVoice: VoiceSession = {
   playing: false,
   supported: true,
   micLevel: { current: 0 },
-  wakeListening: false,
+  handsFree: null,
   start: () => {},
   stop: () => {},
   interrupt: () => {},

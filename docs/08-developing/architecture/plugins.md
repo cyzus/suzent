@@ -100,6 +100,13 @@ the per-chat Docker sandbox. It is the reference for both [Binaries](#binaries)
 and [Classifying tool calls](#classifying-tool-calls). See
 [Desktop apps](../../03-features/tools/desktop.md).
 
+`plugins/wake-word` brings the `wake` extra (sherpa-onnx, pypinyin) and the
+keyword spotter that uses it. `register()` serves `GET status` and
+`POST model` with `register_route` and the `listen` socket with
+`register_websocket`, so all three go away when the plugin is off. The voice
+settings it reads (`wake_word`, `wake_phrases`, `wake_sensitivity`) stay in
+core. It is the reference for `register_websocket`.
+
 ## `PluginContext`
 
 | Method | What it does |
@@ -109,6 +116,7 @@ and [Classifying tool calls](#classifying-tool-calls). See
 | `register_integration(integration)` | Connects the agent to a hosted service through its MCP server, once the user signs in. See [Integrations](#integrations). Needs `api_version: 2`. |
 | `binary(name)` | A `PluginBinary` handle on a program declared under `binaries`. Its `locate()` returns `(path, source)` or `None` and never downloads. See [Binaries](#binaries). |
 | `register_route(path, endpoint, methods=("GET",))` | Serves a Starlette endpoint at `/plugins/<id>/api/<path>` while the plugin is loaded, for a settings page that needs more than the generic plugin card. See [Settings page and API](#settings-page-and-api). |
+| `register_websocket(path, endpoint)` | Serves a Starlette WebSocket endpoint at `/plugins/<id>/ws/<path>` while the plugin is loaded. Remote callers need a full-access device token, and the Origin is checked before the endpoint runs. See [Settings page and API](#settings-page-and-api). Needs `api_version: 4`. |
 | `secrets` | A `PluginSecrets` with `get`, `set` and `delete`, namespaced to the plugin. Values are stored as `SUZENT_PLUGIN::<id>::<name>`, a private prefix that `inject_all_to_env` skips, so the agent's shell commands never inherit them. |
 | `register_command(aliases, **options)` | Decorator with the same signature and handler contract as `suzent.core.commands.base.register_command`. |
 | `id`, `manifest`, `path`, `logger` | The plugin's id, parsed manifest, directory (`None` for pip packages) and a logger bound to `suzent.plugins.<id>`. |
@@ -354,6 +362,7 @@ for `suzent plugin status` and the settings page.
 | `POST /plugins/{name}/remove` | Disables and `deactivate()`s a plugin, and for one that brought packages, rebuilds the social stack so its chat app stops. |
 | `POST /plugins/{name}/binaries/{binary}/install` | Downloads a declared binary. Refuses with `400` unless the body is `{"confirmed": true}`; a failed download or checksum returns `502`. |
 | `/plugins/{name}/api/{path}` | Dispatches to a route the plugin registered with `register_route`, matched on path and method. `404` while the plugin is not loaded, so turning a plugin off takes its API away with its tools. |
+| `WS /plugins/{name}/ws/{path}` | Dispatches to a socket the plugin registered with `register_websocket`. A socket from an origin other than the app's (`voice_origin_allowed`) is refused with `1008`. While the plugin is not loaded, or for a path it did not register, the socket is accepted and closed at once with code `4404`, because a browser cannot see why a handshake was refused. The auth boundary lets only loopback and full-scope tokens through, and accepts the token as a `token` query parameter, since a browser WebSocket cannot set headers. |
 
 `suzent plugin install` and `remove` call these routes when a server answers
 (`suzent.client`, `PluginsAPI`), so a change from the terminal applies to the
