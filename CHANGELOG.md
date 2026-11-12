@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [v0.26.0] - 2026-11-11
+## [v0.26.0] - 2026-11-12
 
 ### Release notes
 - Add interface font, reply font, chat text size, chat width, and motion controls to Appearance settings.
@@ -31,6 +31,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Open sidebar images in the shared zoomable overlay with navigation between images in the loaded folder.
 - Simplify sidebar project styling and show running status only on chat rows.
 - Remove the heavy offset shadow from running tool and sub-agent headers so expanding them looks clean.
+- Start voice mode hands-free: an optional wake word ("你好 Suzent" / "Hey Suzent") spotted on your computer, and an optional desktop-wide voice shortcut.
 - Videos (MP4, MOV, WebM) in the workspace file panel now play in place instead of opening as text, and video and audio players in the installed app are no longer blocked by its content security policy.
 
 ## [v0.25.0] - 2026-11-09
