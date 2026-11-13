@@ -102,9 +102,8 @@ async def test_first_seen_github_release_auto_learns_rule_and_routes_to_regent(d
 async def test_routine_ci_success_and_ping_auto_learn_unrouted_rule(db):
     token = get_or_create_mailbox_token()
     payload = {
-        "action": "completed",
+        "zen": "Design for failure.",
         "repository": {"full_name": "cyzus/suzent-relay"},
-        "workflow_run": {"name": "test (cloudflare)", "conclusion": "success"},
     }
     res = await receive_webhook(
         _request(
@@ -113,7 +112,7 @@ async def test_routine_ci_success_and_ping_auto_learn_unrouted_rule(db):
             body=json.dumps(payload).encode(),
             headers={
                 "content-type": "application/json",
-                "x-github-event": "workflow_run",
+                "x-github-event": "ping",
             },
             path_params={"token": token},
         )
@@ -123,8 +122,8 @@ async def test_routine_ci_success_and_ping_auto_learn_unrouted_rule(db):
     assert data["route_status"] == "unrouted"
     assert data["target_chat_id"] is None
 
-    # Rule should be wildcarded for quiet CI success across repos
-    rule = db.get_mailbox_rule_by_signature("github:workflow_run.success:*")
+    # Rule should be wildcarded for quiet ping across repos
+    rule = db.get_mailbox_rule_by_signature("github:ping:*")
     assert rule is not None
     assert rule.action == "none"
     assert rule.origin == "learned"

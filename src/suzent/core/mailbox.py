@@ -276,12 +276,11 @@ async def _llm_triage_first_seen(
 
     Returns ``(action, target_chat_id, reason)``.
     """
-    # Fast deterministic triage for obvious routine pings & passing CI checks
-    if source_name == "github" and event_type in _QUIET_GITHUB_EVENTS:
+    if event_type == "ping":
         return (
             "none",
             None,
-            f"Routine '{event_type}' event; stored in Mailbox without waking an agent.",
+            "Webhook verification ping; stored in Mailbox without waking an agent.",
         )
 
     if preferred_chat_id:
