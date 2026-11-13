@@ -1,5 +1,5 @@
 {
-  "version": "0.9.0",
+  "version": "0.9.1",
   "consumed": [
     ".releases/changes/activity-rail-streaming.json",
     ".releases/changes/anchor-long-press-menus.json",
@@ -50,6 +50,7 @@
     ".releases/changes/mobile-idle-direct-upgrade.json",
     ".releases/changes/mobile-image-menu-touch-position.json",
     ".releases/changes/mobile-image-viewer.json",
+    ".releases/changes/mobile-inline-code-image-previews.json",
     ".releases/changes/mobile-inline-surfaces.json",
     ".releases/changes/mobile-ipad-reading-width.json",
     ".releases/changes/mobile-layered-assembly-scan.json",
@@ -84,6 +85,7 @@
     ".releases/changes/mobile-tool-media.json",
     ".releases/changes/mobile-turn-badge-fix.json",
     ".releases/changes/mobile-unread-chats.json",
+    ".releases/changes/mobile-user-message-layout.json",
     ".releases/changes/mobile-voice-animation-actions.json",
     ".releases/changes/mobile-voice-canvas-presentation.json",
     ".releases/changes/mobile-voice-composer.json",
@@ -91,6 +93,8 @@
     ".releases/changes/mobile-websocket-message-size.json",
     ".releases/changes/product-release-plans.json",
     ".releases/changes/reduced-motion-assembly-conveyor.json",
+    ".releases/changes/regent-mobile-bubbles-status.json",
+    ".releases/changes/regent-mobile-work-queue.json",
     ".releases/changes/regent-single-identity.json",
     ".releases/changes/relay-mobile-contract.json",
     ".releases/changes/restructure-user-docs.json",

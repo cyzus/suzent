@@ -1,5 +1,13 @@
 # Mobile changelog
 
+## [mobile-v0.9.1] - 2026-11-13
+
+### Release notes
+- Fix mobile inline code wrapping and show previews for uploaded images.
+- Display uploaded images outside user text bubbles and match desktop message colors in light and dark mode.
+- Unify Regent conversation bubbles and make its status panel available on mobile.
+- Show Regent’s cross-conversation work queue instead of a per-chat plan in the mobile status panel.
+
 ## [mobile-v0.9.0] - 2026-11-13
 
 ### Release notes
