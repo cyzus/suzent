@@ -895,6 +895,9 @@ The Regent card in the sidebar shows, at a glance, how many chats are
 Projects and chats holding something that waits on you get a badge in the
 sidebar too.
 
+Regent can also look through your [Mailbox](https://suzent.com/zh-Hans/docs/features/mailbox#ask-regent-about-it):
+ask it what came in, and it can send an event on to a project or to you.
+
 Regent sits at the very top of the sidebar, above everything else, like a
 pinned contact; **New chat** and **Search** sit just above your projects. Open Regent and its row grows into a profile with Regent's picture,
 while the rest of the sidebar fades back until you point at it. The header
@@ -1675,6 +1678,18 @@ Click a row to see the event's details and earlier events of the same kind.
 
 If a rule points at a project or session that no longer exists, the event goes
 to Regent instead and the row says why.
+
+## Ask Regent about it
+
+[Regent](https://suzent.com/zh-Hans/docs/using/regent) can look through the whole Mailbox, including
+events that never reached it, so you can ask from anywhere, a chat app
+included: "anything important come in today?", "what was that CI failure
+about?". It can also send one event on: to a new session in a project, or to
+you as a notification. Moving one event doesn't change your rules; only you
+set those, here in the Mailbox.
+
+Regent reads every event as outside information, never as instructions, so an
+email that says "delete the repo" is only something it can tell you about.
 
 ## Keeping it safe
 
@@ -7402,7 +7417,8 @@ and overrides whatever the request asked for:
 - `tools` is set to `FOCAL_TOOL_NAMES`: agent list/read/stop,
   `FocalDispatchTool`, web search and fetch, memory and session search,
   ask-question, skills, read-only file tools, `FocalScheduleTool`, and
-  `FocalNotesTool`, `FocalMessageTool`, and `FocalReactionTool`. The plain
+  `FocalNotesTool`, `FocalMailboxTool`, `FocalMessageTool`, and
+  `FocalReactionTool`. The plain
   `AgentSendTool` is not in the set.
 - Every other registered tool goes into `denied_tools`. Unequipped tools would
   otherwise still be reachable through ToolSearch.
@@ -7414,9 +7430,13 @@ and overrides whatever the request asked for:
 Focal-only behavior lives in Focal-only tools, so other agents' schemas never
 carry it. They sit together in `suzent.tools.focal`: `FocalDispatchTool`
 (`agent_dispatch`, a subclass of `AgentSendTool`), `FocalScheduleTool`
-(`schedule_wakeup`, a subclass of `ScheduleTool`) and `FocalNotesTool`
-(`update_notes`). The two subclasses call their parents' internals, so a change
+(`schedule_wakeup`, a subclass of `ScheduleTool`), `FocalNotesTool`
+(`update_notes`) and `FocalMailboxTool` (`mailbox`). The two subclasses call their parents' internals, so a change
 to `AgentSendTool._deliver` or `ScheduleTool`'s helpers needs a look there too.
+`mailbox` lists and reads `mailbox_items`, wrapping contents as outside data,
+and its `reroute` calls `route_or_override_mailbox_item(pin_rule=False,
+actor="Regent")`: one item to a project or to the user, never a rule, and
+never back to Regent, an existing session, or the hidden system projects.
 These tools have an empty `group` and are
 not deferrable, so no other chat can equip or discover them, and all refuse
 any chat that is not the Focal Agent. Their descriptions say "you" rather than
