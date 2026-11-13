@@ -203,6 +203,10 @@ export const en = {
     cacheWrite: 'Cache write',
     cacheShareHint: 'Share of input tokens',
     apiRequests: 'API requests',
+    lastCompaction: 'Last compacted {time}',
+    lastCompactionFailed: 'Last compaction failed {time}',
+    precompactionRunning: 'Preparing a summary in the background',
+    precompactionReady: 'Summary ready · covers {count} messages',
     compactStages: {
       loading: 'Loading history…',
       analyzing: 'Analyzing conversation…',
@@ -2265,6 +2269,20 @@ export const en = {
   chatMessage: {
     notice: 'Notice',
     compactionResolved: 'Previous compaction failed · A later retry succeeded',
+    compaction: {
+      running: 'Compacting context…',
+      done: 'Context compacted',
+      doneManual: 'Compacted manually',
+      failed: 'Compaction failed',
+      timedOut: 'Compaction timed out',
+      skipped: 'Nothing to compact',
+      preserved: 'Original history kept',
+      viaPrepared: 'Used the summary prepared in advance',
+      viaColdCache:
+        'Away {minutes} min, the prompt cache expired, so the prepared summary was used',
+      showSummary: 'Show summary',
+      hideSummary: 'Hide summary',
+    },
     regentThinking: 'Regent is thinking',
     regentReaction: 'Regent reacted {emoji}',
     quietReply: 'Nothing needed from you',

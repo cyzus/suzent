@@ -14,6 +14,8 @@ import re
 import time
 from collections import OrderedDict
 from dataclasses import dataclass
+from datetime import datetime, timezone
+from functools import partial
 from typing import Any, Callable, Optional
 
 from pydantic_ai.messages import (
@@ -450,6 +452,7 @@ def persist_compaction_notice(
     messages_before: Optional[int] = None,
     messages_after: Optional[int] = None,
     message: Optional[str] = None,
+    details: Optional[dict[str, Any]] = None,
 ) -> str:
     notice = format_compaction_notice(
         stage=stage,
@@ -466,10 +469,12 @@ def persist_compaction_notice(
         notice_message = {
             "role": "notice",
             "content": notice,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "metadata": {
                 "kind": "context_compaction",
                 "source": source,
                 "stage": stage,
+                **(details or {}),
             },
         }
         db = get_database()
@@ -497,8 +502,17 @@ def build_compaction_event(
     messages_after: Optional[int] = None,
     tokens_after: Optional[int] = None,
     message: Optional[str] = None,
+    reason: Optional[str] = None,
+    idle_seconds: Optional[float] = None,
+    summary: Optional[str] = None,
 ) -> dict[str, Any]:
-    """Build a normalized context compaction lifecycle event."""
+    """Build a normalized context compaction lifecycle event.
+
+    ``reason`` says where a completed summary came from: ``prepared`` (written
+    in the background beforehand), ``cold_cache`` (prepared, and applied early
+    because the provider's cache had expired after ``idle_seconds``) or
+    ``fresh`` (written on the spot).
+    """
     payload: dict[str, Any] = {
         "event": "auto_compaction",
         "stage": stage,
@@ -513,6 +527,12 @@ def build_compaction_event(
         payload["tokens_after"] = tokens_after
     if message is not None:
         payload["message"] = message
+    if reason is not None:
+        payload["reason"] = reason
+    if idle_seconds is not None:
+        payload["idle_seconds"] = round(idle_seconds)
+    if summary:
+        payload["summary"] = summary
     return payload
 
 
@@ -528,6 +548,9 @@ def emit_compaction_event(
     message: Optional[str] = None,
     persist_result: bool = False,
     context_limit: Optional[int] = None,
+    reason: Optional[str] = None,
+    idle_seconds: Optional[float] = None,
+    summary: Optional[str] = None,
 ) -> dict[str, Any]:
     payload = build_compaction_event(
         chat_id=chat_id,
@@ -538,6 +561,9 @@ def emit_compaction_event(
         messages_after=messages_after,
         tokens_after=tokens_after,
         message=message,
+        reason=reason,
+        idle_seconds=idle_seconds,
+        summary=summary,
     )
 
     # On completion, attach the recomputed context-window usage so every surface
@@ -573,6 +599,19 @@ def emit_compaction_event(
             messages_before=messages_before,
             messages_after=messages_after,
             message=message,
+            details={
+                key: payload[key]
+                for key in (
+                    "tokens_before",
+                    "tokens_after",
+                    "messages_before",
+                    "messages_after",
+                    "reason",
+                    "idle_seconds",
+                    "summary",
+                )
+                if key in payload
+            },
         )
     return payload
 
@@ -863,6 +902,10 @@ class ContextCompressor:
         # Model the conversation runs on — decides how much context there is to
         # spend before compaction has to step in.
         self.model_id = model_id
+        # The summary this compressor last applied, and whether it was written
+        # beforehand ("prepared") or on the spot ("fresh"), for the chat notice.
+        self.last_summary = ""
+        self.summary_source = "fresh"
 
     @property
     def context_limit(self) -> int:
@@ -1105,6 +1148,7 @@ class ContextCompressor:
         logger.info(
             f"Message history compressed: {len(messages)} → {len(new_messages)} messages"
         )
+        self.last_summary = summary
         self._history_rewritten()
         return new_messages
 
@@ -1143,6 +1187,7 @@ class ContextCompressor:
         compressed = self._apply_summary(messages, entry.end_index, summary)
         if compressed is messages:
             return None
+        self.summary_source = "prepared"
         self._schedule_memory_flush()
         logger.info(
             "Applied the background compaction summary for {} ({} messages folded)",
@@ -1450,10 +1495,13 @@ def make_compaction_history_processor(
         current_tokens = context_input_tokens(ctx, messages, model_id)
 
         cold_cache = current_tokens < trigger
-        if cold_cache and not cold_cache_compaction_due(
-            chat_id, messages, current_tokens, limit
-        ):
-            return messages
+        idle_seconds = None
+        if cold_cache:
+            idle_seconds = cold_cache_compaction_due(
+                chat_id, messages, current_tokens, limit
+            )
+            if idle_seconds is None:
+                return messages
 
         # A previous pass on this chat completed and still left the estimate over
         # the trigger. Repeating it at the same size only burns a summarization
@@ -1515,6 +1563,7 @@ def make_compaction_history_processor(
                 messages_before=messages_before,
                 tokens_before=tokens_before,
                 message="Compaction timed out. Original history preserved.",
+                persist_result=bool(chat_id),
             )
             # A failed summary must not silently delete the agent's task state.
             # Pause if the request no longer fits; otherwise the run can proceed.
@@ -1532,6 +1581,7 @@ def make_compaction_history_processor(
                 messages_before=messages_before,
                 tokens_before=tokens_before,
                 message=str(e),
+                persist_result=bool(chat_id),
             )
             if current_tokens >= limit:
                 raise CompactionError(
@@ -1596,6 +1646,10 @@ def make_compaction_history_processor(
             tokens_before=tokens_before,
             tokens_after=tokens_after,
             context_limit=limit,
+            reason="cold_cache" if cold_cache else compressor.summary_source,
+            idle_seconds=idle_seconds,
+            summary=compressor.last_summary,
+            persist_result=bool(chat_id),
         )
         logger.info(
             f"Mid-run compaction: {messages_before} -> {len(compressed)} messages "
@@ -1846,6 +1900,8 @@ def schedule_precompaction(
     compressor = ContextCompressor(chat_id=chat_id, model_id=model_id)
     task = asyncio.create_task(compressor._summarize_history(messages, end_index))
     task.add_done_callback(_log_precompaction_failure)
+    task.add_done_callback(partial(_report_precompaction, chat_id, end_index - 1))
+    _emit_precompaction(chat_id, "start", end_index - 1)
     _PRECOMPACTIONS[chat_id] = _Precompaction(
         end_index=end_index,
         fingerprint=history_fingerprint(messages[:end_index]),
@@ -1868,8 +1924,9 @@ def schedule_precompaction(
 
 def cold_cache_compaction_due(
     chat_id: str, messages: list, tokens: int, limit: int
-) -> bool:
-    """Whether to apply the prepared summary before the trigger is reached.
+) -> Optional[float]:
+    """Seconds the chat has been idle, when its prepared summary should be
+    applied before the trigger is reached; None otherwise.
 
     When the provider has likely dropped the chat's cached prefix, the next
     request pays full price for the whole history anyway; sending the prepared
@@ -1882,17 +1939,17 @@ def cold_cache_compaction_due(
 
     threshold = CONFIG.context_precompaction_trigger
     if not chat_id or threshold <= 0 or tokens < limit * threshold:
-        return False
+        return None
     entry = _PRECOMPACTIONS.get(chat_id)
     if entry is None or not entry.ready() or not entry.covers(messages):
-        return False
+        return None
     snapshot = latest_request(chat_id)
     if snapshot is None:
-        return False
+        return None
     ttl = estimate_ttl_seconds(snapshot.model_id, snapshot.settings)
     idle = time.time() - snapshot.sent_at
     if ttl is None or idle <= ttl:
-        return False
+        return None
     logger.info(
         "Prompt cache for {} likely expired ({:.0f}s idle, TTL ~{:.0f}s); "
         "applying the prepared summary at {:.0%} of the window",
@@ -1901,7 +1958,33 @@ def cold_cache_compaction_due(
         ttl,
         tokens / limit,
     )
-    return True
+    return idle
+
+
+def _emit_precompaction(chat_id: str, stage: str, covered_messages: int) -> None:
+    """Tell the context panel how the background summary is doing."""
+    try:
+        from suzent.core.stream_registry import emit_bus_event
+
+        emit_bus_event(
+            {
+                "event": "precompaction",
+                "chat_id": chat_id,
+                "stage": stage,
+                "covered_messages": covered_messages,
+            }
+        )
+    except Exception as e:
+        logger.debug(f"Failed to emit precompaction event for {chat_id}: {e}")
+
+
+def _report_precompaction(
+    chat_id: str, covered_messages: int, task: "asyncio.Task[str]"
+) -> None:
+    if task.cancelled():
+        return
+    ready = task.exception() is None and bool(task.result())
+    _emit_precompaction(chat_id, "ready" if ready else "failed", covered_messages)
 
 
 def _log_precompaction_failure(task: "asyncio.Task[str]") -> None:
