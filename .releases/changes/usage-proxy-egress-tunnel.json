@@ -1,1 +1,5 @@
-{"products": {"desktop": "none", "reason": "Only the benchmark example's usage proxy changes."}, "summary": "Let the benchmark usage proxy reach the model provider through a container's egress proxy."}
+{
+  "products": {"desktop": "none"},
+  "summary": "Let the benchmark usage proxy reach the model provider through a container's egress proxy.",
+  "reason": "Only the benchmark example's usage proxy changes; no shipped desktop behavior is affected."
+}

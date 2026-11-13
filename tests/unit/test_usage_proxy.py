@@ -177,3 +177,21 @@ def test_upstream_skips_the_egress_proxy_for_hosts_in_no_proxy():
 
     assert connection.host == "api.example.com"
     assert connection._tunnel_host is None
+
+
+@pytest.mark.parametrize("no_proxy", ["*", "api.example.com:443", ".example.com"])
+def test_upstream_honors_the_standard_no_proxy_forms(no_proxy):
+    environ = {"HTTPS_PROXY": "http://agent:x@egress:8080", "NO_PROXY": no_proxy}
+
+    connection = usage_proxy.open_upstream(_origin("https://api.example.com"), environ)
+
+    assert connection.host == "api.example.com"
+    assert connection._tunnel_host is None
+
+
+def test_upstream_still_uses_the_proxy_when_no_proxy_names_another_host():
+    environ = {"HTTPS_PROXY": "http://egress:8080", "NO_PROXY": "other.test:443"}
+
+    connection = usage_proxy.open_upstream(_origin("https://api.example.com"), environ)
+
+    assert connection.host == "egress"

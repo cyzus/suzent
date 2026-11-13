@@ -21,6 +21,7 @@ import os
 import re
 import sys
 import time
+import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import unquote, urlsplit
@@ -63,14 +64,17 @@ def usage_record(status: int, usage: dict | None) -> dict:
     }
 
 
-def _tunnel_proxy(host: str, environ: dict[str, str]) -> str | None:
+def _tunnel_proxy(host: str, port: int, environ: dict[str, str]) -> str | None:
     """The HTTPS proxy to reach ``host`` through, or None when it is direct."""
     proxy = environ.get("HTTPS_PROXY") or environ.get("https_proxy")
-    no_proxy = environ.get("NO_PROXY") or environ.get("no_proxy") or ""
-    skipped = [item.strip().lstrip(".") for item in no_proxy.split(",") if item.strip()]
-    if not proxy or any(host == item or host.endswith("." + item) for item in skipped):
+    if not proxy:
         return None
-    return proxy
+    # The standard library's NO_PROXY rules: `*`, suffixes and `host:port`.
+    bypass = urllib.request.proxy_bypass_environment(
+        f"{host}:{port}",
+        {"no": environ.get("NO_PROXY") or environ.get("no_proxy") or ""},
+    )
+    return None if bypass else proxy
 
 
 def open_upstream(
@@ -81,7 +85,7 @@ def open_upstream(
     environ = dict(os.environ) if environ is None else environ
     if origin.scheme != "https":
         return http.client.HTTPConnection(origin.netloc, timeout=600)
-    proxy = _tunnel_proxy(origin.hostname or "", environ)
+    proxy = _tunnel_proxy(origin.hostname or "", origin.port or 443, environ)
     if not proxy:
         return http.client.HTTPSConnection(origin.netloc, timeout=600)
     via = urlsplit(proxy)
