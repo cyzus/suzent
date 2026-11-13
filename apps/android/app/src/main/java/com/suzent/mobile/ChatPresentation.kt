@@ -21,7 +21,9 @@ data class MediaItem(val id: String, val kind: String, val name: String) {
 }
 
 data class DisplayMessage(val role: String, val parts: List<MessagePart>, val citationSources: List<CitationSource> = emptyList(),
-    val model: String? = null, val timestamp: String? = null, val messageIndex: Int = 0, val files: List<FileAttachment> = emptyList(), val reaction: String? = null, val workedSeconds: Int? = null, val firstMessageIndex: Int? = null) {
+    val model: String? = null, val timestamp: String? = null, val messageIndex: Int = 0, val files: List<FileAttachment> = emptyList(), val reaction: String? = null, val workedSeconds: Int? = null, val firstMessageIndex: Int? = null,
+    /** On a trigger row, the merged run it stands for; on a reply, the run it answers. */
+    val triggers: List<TriggerEntry> = emptyList()) {
     val text: String get() = parts.filter { it.type == "text" }.joinToString("\n\n") { it.text }
 }
 
@@ -36,6 +38,100 @@ fun systemReminder(text: String): SystemReminder? {
     val first = lines.first().trim()
     val title = Regex("""^\*\*(.+?)\*\*$""").matchEntire(first)?.groupValues?.get(1)?.trim() ?: first
     return SystemReminder(clean, title, lines.drop(1).joinToString("\n").trim())
+}
+
+enum class TriggerKind { Agent, Scheduled, Goal, Other }
+
+/** What started a turn without the user, read the way desktop's triggerRows.ts reads it. */
+data class ParsedTrigger(val kind: TriggerKind, val source: String, val body: String, val key: String, val reference: String? = null)
+
+data class TriggerEntry(val trigger: ParsedTrigger, val timestamp: String?)
+
+private val inboxMarker = Regex("""<!--\s*suzent-agent-inbox:[\s\S]*?-->""", RegexOption.IGNORE_CASE)
+private val agentHeader = Regex("""^\[Agent message from (.+) \(([^)\n]+)\)]\s*""")
+private val scheduledHeader = Regex("""^\*\*Scheduled Task:\s*(.+?)\*\*\s*""")
+private val goalHeader = Regex("""^\[Goal mode]\s*""")
+
+fun parseTrigger(text: String): ParsedTrigger {
+    val raw = text.replace(inboxMarker, "").trim()
+    agentHeader.find(raw)?.let { match ->
+        val reference = match.groupValues[2].trim()
+        return ParsedTrigger(TriggerKind.Agent, match.groupValues[1].trim(), raw.substring(match.range.last + 1).trim(), "agent:$reference", reference)
+    }
+    scheduledHeader.find(raw)?.let { match ->
+        val source = match.groupValues[1].trim()
+        return ParsedTrigger(TriggerKind.Scheduled, source, raw.substring(match.range.last + 1).trim(), "scheduled:$source")
+    }
+    goalHeader.find(raw)?.let { match -> return ParsedTrigger(TriggerKind.Goal, "", raw.substring(match.range.last + 1).trim(), "goal") }
+    val lines = raw.split('\n')
+    val first = lines.first().trim()
+    val source = (Regex("""^\*\*(.+?)\*\*$""").matchEntire(first)?.groupValues?.get(1) ?: first).trim()
+    return ParsedTrigger(TriggerKind.Other, source, lines.drop(1).joinToString("\n").trim(), "other:$source")
+}
+
+/** The body's first line as plain text. Headings often repeat the sender, so prose wins over them. */
+fun triggerPreview(body: String): String {
+    val lines = body.split('\n').map(String::trim).filter { it.isNotEmpty() && !Regex("""^[-*_=#\s]+$""").matches(it) }
+    val line = lines.firstOrNull { !it.startsWith("#") } ?: lines.firstOrNull() ?: return ""
+    return line.replace(Regex("""^#+\s*"""), "").replace(Regex("""^[-*+>]\s+"""), "")
+        .replace(Regex("""\*\*(.+?)\*\*"""), "$1").replace(Regex("""`([^`]+)`"""), "$1")
+        .replace(Regex("""\[([^\]]+)]\([^)]*\)"""), "$1").trim()
+}
+
+/** Mirrors is_quiet_reply in suzent/core/heartbeat.py: the token a background turn answers with when it has nothing to report. */
+fun isQuietReply(text: String): Boolean {
+    val trimmed = text.trim()
+    val token = "HEARTBEAT_OK"
+    val aside = when {
+        trimmed.startsWith(token) -> trimmed.removePrefix(token)
+        trimmed.endsWith(token) -> trimmed.removeSuffix(token)
+        else -> return false
+    }
+    return aside.trim().length <= 300
+}
+
+private fun DisplayMessage.isTrigger(): Boolean = role in listOf("system_triggered", "trigger")
+
+/** A reply the user sees nothing of: only reasoning or a quiet token. */
+fun isSilentReply(row: DisplayMessage): Boolean = row.role == "assistant" && row.files.isEmpty() &&
+    row.parts.all { it.type == "reasoning" || (it.type == "text" && (it.text.isBlank() || isQuietReply(it.text))) }
+
+/**
+ * Fold background triggers into as few rows as possible, like desktop's buildTriggerPlan:
+ * repeats of one trigger that got no reply merge into one row, and a run the agent answered
+ * moves onto that answer.
+ */
+fun foldTriggers(rows: List<DisplayMessage>): List<DisplayMessage> {
+    val result = mutableListOf<DisplayMessage>()
+    var index = 0
+    while (index < rows.size) {
+        val row = rows[index]
+        if (!row.isTrigger()) { result.add(row); index++; continue }
+        val run = mutableListOf<TriggerEntry>()
+        var last: DisplayMessage
+        var cursor = index
+        var silentAfterLast: Boolean
+        while (true) {
+            last = rows[cursor]
+            val trigger = parseTrigger(last.text)
+            run.add(TriggerEntry(trigger, last.timestamp))
+            var next = cursor + 1
+            while (next < rows.size && isSilentReply(rows[next])) next++
+            silentAfterLast = next > cursor + 1
+            cursor = next
+            val following = rows.getOrNull(next)
+            if (following == null || !following.isTrigger() || parseTrigger(following.text).key != trigger.key) break
+        }
+        val reply = rows.getOrNull(cursor)
+        if (!silentAfterLast && reply != null && reply.role in listOf("assistant", "tool")) {
+            result.add(reply.copy(triggers = run))
+            index = cursor + 1
+        } else {
+            result.add(last.copy(triggers = run))
+            index = cursor
+        }
+    }
+    return result
 }
 
 private class CitationPattern(val regex: Regex, val needsKnownIds: Boolean = false)
@@ -121,10 +217,10 @@ fun presentMessages(messages: List<ChatMessage>, liveToolIds: Set<String> = empt
         } else grouped.add(row)
     }
     val legacy = legacyWorkedSeconds(messages)
-    return grouped.map { row ->
+    return foldTriggers(grouped.map { row ->
         val span = messages.subList(row.firstMessageIndex ?: row.messageIndex, row.messageIndex + 1)
         if (row.role in listOf("assistant", "tool")) row.copy(workedSeconds = if (hasRecordedTiming(span)) recordedWorkedSeconds(span) else legacy[row.messageIndex]) else row
-    }
+    })
 }
 
 fun normalizeParts(parts: List<MessagePart>): List<MessagePart> {

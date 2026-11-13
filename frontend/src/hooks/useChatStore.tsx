@@ -111,7 +111,6 @@ interface ChatCoreContextValue {
   backendConfig: ConfigOptions | null;
   refreshBackendConfig: () => Promise<void>;
   newAssistantMessage: (chatId?: string | null) => void;
-  setStepInfo: (stepInfo: string, chatId?: string | null) => void;
   resetChat: () => void;
   shouldResetNext: boolean;
   consumeResetFlag: () => void;
@@ -1167,22 +1166,6 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
     [currentChatId, setMessagesForChat]
   );
 
-  const setStepInfo = useCallback(
-    (stepInfo: string, chatId: string | null = currentChatId) => {
-      setMessagesForChat(chatId, (prev) => {
-        if (!prev.length) return prev;
-        const last = prev[prev.length - 1];
-        if (last.role === 'assistant') {
-          const updated = [...prev];
-          updated[updated.length - 1] = { ...last, stepInfo };
-          return updated;
-        }
-        return prev;
-      });
-    },
-    [currentChatId, setMessagesForChat]
-  );
-
   const removeEmptyAssistantMessage = useCallback(
     (chatId: string | null = currentChatId) => {
       setMessagesForChat(chatId, (prev) => {
@@ -1951,7 +1934,6 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
       backendConfig,
       refreshBackendConfig,
       newAssistantMessage,
-      setStepInfo,
       resetChat,
       shouldResetNext,
       consumeResetFlag,
@@ -2000,7 +1982,6 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
       backendConfig,
       refreshBackendConfig,
       newAssistantMessage,
-      setStepInfo,
       resetChat,
       shouldResetNext,
       consumeResetFlag,

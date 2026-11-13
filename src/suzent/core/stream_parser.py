@@ -88,13 +88,6 @@ class ErrorEvent(StreamEvent):
 
 
 @dataclass
-class FinalAnswer(StreamEvent):
-    """The final answer from the agent."""
-
-    content: str
-
-
-@dataclass
 class UsageUpdate(StreamEvent):
     """Token usage the run reported for the stream it closes."""
 
@@ -306,9 +299,6 @@ class StreamParser:
         elif evt_type == StreamEventType.ERROR:
             data = payload.get("data", {})
             yield ErrorEvent(str(data))
-        elif evt_type == StreamEventType.FINAL_ANSWER:
-            data = payload.get("data", {})
-            yield FinalAnswer(str(data))
 
     # --- Tool call assembly -------------------------------------------------
 
