@@ -33,6 +33,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The first message of a new chat now appears as soon as you send it, instead of after the chat is created.
 - Show deduplicated image thumbnails beside activity summaries and support zooming and panning image previews.
 - Simplify image preview navigation and hide duplicate thumbnails while tool details are expanded.
+- Direct messages from any chat app can now go to Regent as one shared conversation: replies come back to the app you wrote from, Regent's updates arrive as separate messages with its reactions, and /sess choices survive restarts.
 - Refine the desktop header and right sidebar overview with a 1px divider, unified sidebar toggle glyph, and inline cache/task indicators.
 - Add `suzent run --keep-background-processes` so a server the agent starts keeps running after a one-shot run ends.
 - Canvas panels can be saved as a web page in the project's artifacts folder, so a chart or table outlives the chat.
@@ -40,6 +41,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Queue concurrent database writes to prevent chats from losing saved progress during slow saves and report slow write owners.
 - Open sidebar images in the shared zoomable overlay with navigation between images in the loaded folder.
 - Simplify sidebar project styling and show running status only on chat rows.
+- Turning a chat app off or changing its settings now stops the running bot right away, instead of it still answering until Suzent restarts.
 - Remove the heavy offset shadow from running tool and sub-agent headers so expanding them looks clean.
 - Voice settings now save as you change them, the voice shortcut is recorded by pressing it, wake phrases are added one at a time, the microphone button shows whether the wake word is listening, and turning on the wake word on Windows installs it instead of failing.
 - Start voice mode hands-free: an optional wake word ("你好 Suzent" / "Hey Suzent") spotted on your computer, and an optional desktop-wide voice shortcut.
