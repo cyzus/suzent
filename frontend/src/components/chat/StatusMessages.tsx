@@ -5,6 +5,20 @@ import { MarkdownRenderer } from './MarkdownRenderer';
 import { CompactionDivider } from './CompactionDivider';
 import { compactionNoticeDetails } from '../../lib/compactionNotices';
 import { DisclosureChevron } from '../DisclosureChevron';
+import {
+  ArrowTurnDownRightIcon,
+  BoltIcon,
+  ChatBubbleLeftRightIcon,
+  ClockIcon,
+  FlagIcon,
+} from '@heroicons/react/24/outline';
+import {
+  parseTrigger,
+  triggerPreview,
+  type ParsedTrigger,
+  type TriggerEntry,
+  type TriggerKind,
+} from '../../lib/triggerRows';
 import './CoreConnectionIndicator.css';
 
 /**
@@ -88,77 +102,152 @@ export const LoadingIndicator: React.FC = () => {
   );
 };
 
-const LONG_REMINDER_CHARACTER_LIMIT = 600;
-const LONG_REMINDER_LINE_LIMIT = 8;
+const TRIGGER_ICONS: Record<TriggerKind, React.ComponentType<React.SVGProps<SVGSVGElement>>> = {
+  agent: ChatBubbleLeftRightIcon,
+  scheduled: ClockIcon,
+  goal: FlagIcon,
+  other: BoltIcon,
+};
 
-export function isLongSystemReminder(content: string): boolean {
-  return (
-    content.length > LONG_REMINDER_CHARACTER_LIMIT ||
-    content.split('\n').length > LONG_REMINDER_LINE_LIMIT
-  );
+function triggerSourceLabel(trigger: ParsedTrigger, t: (key: string) => string): string {
+  if (trigger.kind === 'goal') return t('chatMessage.trigger.goal');
+  return trigger.source || t('chatMessage.trigger.other');
 }
 
-export const SystemTriggeredMessage: React.FC<{
-  message: Message;
-  /** Start folded to the title line, e.g. in Regent's chat, where a reminder's
-   *  internal prompt is noise next to the conversation it starts. */
-  folded?: boolean;
-}> = ({ message, folded = false }) => {
-  // Delivery markers are persisted for inbox idempotency, but are transport
-  // metadata rather than reminder content.
-  const raw = (message.content || '').replace(/<!--\s*suzent-agent-inbox:[\s\S]*?-->/gi, '').trim();
+function formatTriggerTime(timestamp: string | undefined, locale: string): string | null {
+  if (!timestamp) return null;
+  const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) return null;
+  return date.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' });
+}
 
-  // Pull out the leading title: prefer a **bold** first line, else first line.
-  const lines = raw.split('\n');
-  const firstLine = lines[0].trim();
-  const boldMatch = firstLine.match(/^\*\*(.+?)\*\*$/);
-  const title = (boldMatch ? boldMatch[1] : firstLine).trim();
-  const body = lines.slice(1).join('\n').trim();
-  const collapsible = isLongSystemReminder(body);
-  const [expanded, setExpanded] = React.useState(!collapsible && !folded);
-  if (!raw) return null;
+const TriggerDetails: React.FC<{ entries: TriggerEntry[] }> = ({ entries }) => {
+  const { t, locale } = useI18n();
+  const showState = entries.length > 1;
+  return (
+    <div className="mt-1.5 max-h-80 space-y-3 overflow-x-hidden overflow-y-auto overscroll-contain border-l-2 border-neutral-200 pl-3 dark:border-zinc-700">
+      {entries.map((entry) => {
+        const time = formatTriggerTime(entry.timestamp, locale);
+        return (
+          <div key={entry.index} className="min-w-0">
+            {(time || showState) && (
+              <div className="mb-0.5 flex items-center gap-2 text-[11px] text-neutral-400 dark:text-neutral-500">
+                {time && <time dateTime={entry.timestamp}>{time}</time>}
+                {showState && <span>{t(`chatMessage.trigger.state.${entry.state}`)}</span>}
+              </div>
+            )}
+            {entry.trigger.body && (
+              <div className="text-[12px] leading-relaxed text-neutral-600 dark:text-neutral-300">
+                <MarkdownRenderer content={entry.trigger.body} />
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+};
+
+/**
+ * What started an agent turn without the user: another chat's message, a
+ * scheduled task, goal mode or a background result. One quiet line, because
+ * it is context for the reply rather than part of the conversation; repeats
+ * that got no reply arrive here merged as one row.
+ */
+export const TriggerRow: React.FC<{ entries: TriggerEntry[] }> = ({ entries }) => {
+  const { t, locale } = useI18n();
+  const [expanded, setExpanded] = React.useState(false);
+  const last = entries[entries.length - 1];
+  if (!last) return null;
+
+  const { trigger } = last;
+  const Icon = TRIGGER_ICONS[trigger.kind];
+  const preview = triggerPreview(trigger.body);
+  const time = formatTriggerTime(last.timestamp, locale);
+  const hasDetails = entries.some((entry) => entry.trigger.body);
 
   return (
-    <div className="w-full max-w-3xl my-1 pl-2 md:pl-4">
-      <div className="border-l-[3px] border-brutal-black/20 dark:border-neutral-700 px-4 py-2 opacity-50 hover:opacity-100 transition-opacity duration-300">
-        {/* Title */}
-        <button
-          type="button"
-          className={`w-full flex items-center gap-2 text-left ${body ? 'mb-1.5' : ''}`}
-          onClick={() => body && setExpanded((value) => !value)}
-          aria-expanded={body ? expanded : undefined}
+    <div className="w-full max-w-3xl pl-2 md:pl-4">
+      <button
+        type="button"
+        className="group/trigger flex w-full min-w-0 items-center gap-2 rounded-sm py-1 text-left text-[13px] text-neutral-500 hover:text-neutral-800 dark:text-neutral-400 dark:hover:text-neutral-100"
+        onClick={() => hasDetails && setExpanded((value) => !value)}
+        aria-expanded={hasDetails ? expanded : undefined}
+        title={t(`chatMessage.trigger.kind.${trigger.kind}`)}
+      >
+        <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
+        <span
+          className="shrink-0 truncate font-medium text-neutral-700 dark:text-neutral-200 max-w-[45%]"
+          title={trigger.reference}
         >
-          <span
-            className="text-brutal-black/60 dark:text-neutral-400 text-[10px] leading-none"
-            aria-hidden="true"
-          >
-            ⏱
-          </span>
-          <span className="font-mono text-[10px] font-bold uppercase tracking-wider text-brutal-black/60 dark:text-neutral-400 truncate">
-            {title}
-          </span>
-          {body && (
-            <DisclosureChevron
-              expanded={expanded}
-              className="ml-auto h-3 w-3 text-brutal-black/50 dark:text-neutral-500 transition-transform duration-200"
-            />
+          {triggerSourceLabel(trigger, t)}
+        </span>
+        {preview && <span className="min-w-0 truncate">{preview}</span>}
+        <span className="ml-auto flex shrink-0 items-center gap-2 pl-2 text-[11px] text-neutral-400 dark:text-neutral-500">
+          {entries.length > 1 && (
+            <span className="font-mono">
+              {t('chatMessage.trigger.count', { count: entries.length })}
+            </span>
           )}
-        </button>
-
-        {/* Body */}
-        {body && (
-          <div
-            className={`grid overflow-hidden transition-[grid-template-rows] duration-200 ${expanded ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'}`}
-          >
-            <div className="min-h-0 overflow-hidden">
-              <div className="text-[12px] leading-relaxed text-brutal-black/80 dark:text-neutral-300">
-                <MarkdownRenderer content={body} />
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
+          {time && <time dateTime={last.timestamp}>{time}</time>}
+          {hasDetails && (
+            <DisclosureChevron expanded={expanded} className="h-3 w-3 transition-transform" />
+          )}
+        </span>
+      </button>
+      {expanded && <TriggerDetails entries={entries} />}
     </div>
+  );
+};
+
+/** The trigger a reply answers, shown as one line at the top of that reply. */
+export const TriggerReference: React.FC<{ entries: TriggerEntry[]; className?: string }> = ({
+  entries,
+  className = 'pl-2 md:pl-4',
+}) => {
+  const { t } = useI18n();
+  const [expanded, setExpanded] = React.useState(false);
+  const last = entries[entries.length - 1];
+  if (!last) return null;
+
+  const { trigger } = last;
+  const Icon = TRIGGER_ICONS[trigger.kind];
+  const hasDetails = entries.some((entry) => entry.trigger.body);
+
+  return (
+    <div className={`chat-trigger-reference w-full max-w-3xl ${className}`}>
+      <button
+        type="button"
+        className="flex max-w-full min-w-0 items-center gap-1.5 py-0.5 text-left text-[12px] text-neutral-400 hover:text-neutral-700 dark:text-neutral-500 dark:hover:text-neutral-200"
+        onClick={() => hasDetails && setExpanded((value) => !value)}
+        aria-expanded={hasDetails ? expanded : undefined}
+        title={t(`chatMessage.trigger.kind.${trigger.kind}`)}
+      >
+        <ArrowTurnDownRightIcon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+        <Icon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+        <span className="min-w-0 truncate" title={trigger.reference}>
+          {t('chatMessage.trigger.repliesTo', { source: triggerSourceLabel(trigger, t) })}
+        </span>
+        {entries.length > 1 && (
+          <span className="shrink-0 font-mono text-[11px]">
+            {t('chatMessage.trigger.count', { count: entries.length })}
+          </span>
+        )}
+        {hasDetails && (
+          <DisclosureChevron expanded={expanded} className="h-3 w-3 transition-transform" />
+        )}
+      </button>
+      {expanded && <TriggerDetails entries={entries} />}
+    </div>
+  );
+};
+
+/** A single trigger row, for a trigger that arrives in the middle of a turn. */
+export const SystemTriggeredMessage: React.FC<{ message: Message }> = ({ message }) => {
+  const trigger = parseTrigger(message.content);
+  if (!trigger.source && !trigger.body && trigger.kind === 'other') return null;
+  return (
+    <TriggerRow entries={[{ index: 0, trigger, timestamp: message.timestamp, state: 'replied' }]} />
   );
 };
 

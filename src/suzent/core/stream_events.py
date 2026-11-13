@@ -59,7 +59,6 @@ class StreamEventType(str, Enum):
     STREAM_DELTA = "stream_delta"
     TOOL_OUTPUT = "tool_output"
     ERROR = "error"
-    FINAL_ANSWER = "final_answer"
 
 
 class CustomEventName(str, Enum):

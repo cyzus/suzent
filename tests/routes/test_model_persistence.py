@@ -36,7 +36,7 @@ async def test_chat_route_uses_user_prefs(mock_process_turn, mock_db):
 
     # Mock async generator — process_turn is an async generator function
     async def mock_gen(*args, **kwargs):
-        yield 'data: {"type": "final_answer", "data": "response"}\n\n'
+        yield 'data: {"type": "RUN_FINISHED"}\n\n'
 
     mock_process_turn.side_effect = mock_gen
 

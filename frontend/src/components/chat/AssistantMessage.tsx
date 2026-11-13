@@ -154,6 +154,8 @@ interface AssistantMessageProps {
   fallbackModel?: string;
   /** Chat containing this message's persisted file snapshot. */
   fileChangeChatId?: string;
+  /** What this reply answers, shown under the badge. */
+  replyContext?: React.ReactNode;
 }
 
 // Names that should be filtered out from tool call display
@@ -826,6 +828,7 @@ const AssistantMessageComponent: React.FC<AssistantMessageProps> = ({
   chatCitationSources,
   fallbackModel,
   fileChangeChatId,
+  replyContext,
 }) => {
   const { t } = useI18n();
   const [menuAnchor, setMenuAnchor] = useState<{ x: number; y: number } | null>(null);
@@ -1161,6 +1164,7 @@ const AssistantMessageComponent: React.FC<AssistantMessageProps> = ({
             </div>
           ))}
           {(!regent || !hasParts) && badgeContainer}
+          {replyContext}
 
           <div
             className={
@@ -1282,6 +1286,7 @@ const AssistantMessageComponent: React.FC<AssistantMessageProps> = ({
         {messageMenu}
         {/* Badge/Assembly Container is rendered at the top of the entire message timeline */}
         {badgeContainer}
+        {replyContext}
 
         <div
           className={
