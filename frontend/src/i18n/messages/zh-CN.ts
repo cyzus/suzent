@@ -89,6 +89,13 @@ export const zhCN = {
     promptPlaceholder: '每次投递时附带的指令（可选）',
     queued: '等待汇总',
     notified: '已通知你',
+    originLearned: '自动学习',
+    originPinned: '你设定的',
+    hits: '命中 {count} 次',
+    everyMinutes: '每 {minutes} 分钟',
+    targetLabel: '目标',
+    details: '汇总间隔和提示词',
+    delete: '删除规则',
   },
   desktopMenu: {
     label: '菜单',

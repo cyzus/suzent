@@ -90,6 +90,13 @@ export const en = {
     promptPlaceholder: 'Instructions sent along with each delivery (optional)',
     queued: 'Queued for digest',
     notified: 'Notified you',
+    originLearned: 'Learned',
+    originPinned: 'Set by you',
+    hits: '{count} hits',
+    everyMinutes: 'every {minutes} min',
+    targetLabel: 'Target',
+    details: 'Digest interval and prompt',
+    delete: 'Delete rule',
   },
   desktopMenu: {
     label: 'Menu',

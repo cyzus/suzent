@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  AdjustmentsHorizontalIcon,
   ArrowPathIcon,
   ArrowTopRightOnSquareIcon,
   CheckIcon,
@@ -42,6 +43,9 @@ import { BrutalIconButton } from '../BrutalButton';
 import { BrutalSegmentedTabs } from '../BrutalSegmentedTabs';
 import { BrutalSelect } from '../BrutalSelect';
 import { RefreshButton } from '../RefreshButton';
+
+const COMPACT_SELECT =
+  '!h-7 !gap-1 !px-2 !py-0 !text-[11px] !font-medium font-mono border border-neutral-300 bg-white hover:!border-brutal-black dark:border-zinc-600 dark:bg-zinc-900 [&>svg]:!h-3 [&>svg]:!w-3 [&>svg]:shrink-0 [&>svg]:text-neutral-400';
 
 export type MailboxTabId = 'inbox' | 'rules' | 'schedules';
 type InboxCategory = 'all' | 'external' | 'agent' | 'unrouted';
@@ -128,7 +132,7 @@ export function MailboxView({
   const [copiedUrl, setCopiedUrl] = useState(false);
   const [loading, setLoading] = useState(false);
   const [busyId, setBusyId] = useState<number | string | null>(null);
-  const [openRulePrompt, setOpenRulePrompt] = useState<number | null>(null);
+  const [openRuleDetails, setOpenRuleDetails] = useState<number | null>(null);
 
   const loadAll = useCallback(async () => {
     setLoading(true);
@@ -699,104 +703,128 @@ export function MailboxView({
               {rules.map((rule) => {
                 const target = ruleTarget(rule);
                 const routes = target !== '__none__';
-                const promptOpen = openRulePrompt === rule.id;
+
+                const detailsOpen = openRuleDetails === rule.id;
+                const hasDetails = routes && rule.delivery !== 'notify';
 
                 return (
                   <div
                     key={rule.id}
-                    className="px-3.5 py-2.5 hover:bg-neutral-50 dark:hover:bg-zinc-700/50"
+                    className="px-3.5 py-2 hover:bg-neutral-50 dark:hover:bg-zinc-700/40"
                   >
-                    <div className="flex flex-wrap items-center justify-between gap-3">
-                      <div className="flex min-w-0 flex-1 items-center gap-2.5">
-                        <span className="truncate font-mono text-xs">{rule.signature}</span>
-                        <span className="shrink-0 border border-neutral-300 bg-neutral-100 px-1.5 py-0.5 font-mono text-[10px] text-neutral-500 dark:border-zinc-600 dark:bg-zinc-900">
-                          {rule.origin} · {rule.hit_count}
-                        </span>
+                    <div className="grid grid-cols-1 items-center gap-x-2 gap-y-1.5 sm:grid-cols-[minmax(0,1fr)_11rem_8.5rem_1.75rem_1.75rem]">
+                      <div className="min-w-0" title={rule.signature}>
+                        <div className="truncate font-mono text-xs font-semibold text-brutal-black dark:text-neutral-100">
+                          {rule.name || rule.signature}
+                        </div>
+                        <div className="truncate font-mono text-[10px] text-neutral-500">
+                          {rule.origin === 'pinned'
+                            ? t('mailboxRules.originPinned')
+                            : t('mailboxRules.originLearned')}
+                          {' · '}
+                          {t('mailboxRules.hits', { count: String(rule.hit_count) })}
+                          {routes && rule.delivery === 'digest'
+                            ? ` · ${t('mailboxRules.everyMinutes', { minutes: String(rule.digest_minutes) })}`
+                            : ''}
+                        </div>
                       </div>
 
-                      <div className="flex shrink-0 flex-wrap items-center gap-2">
-                        <div className="w-44">
-                          <BrutalSelect
-                            value={target}
-                            ariaLabel="Rule target"
-                            variant="ghost"
-                            options={routeOptionsFor(
-                              target === '__none__' ? null : target,
-                              rule.target_label
-                            )}
-                            onChange={(val) => void saveRule(rule, { target: val })}
-                            buttonClassName="border border-neutral-300 dark:border-zinc-600 py-0.5 px-2 text-[11px] font-mono bg-neutral-50 dark:bg-zinc-900"
-                          />
-                        </div>
-                        {routes && (
-                          <div className="w-32">
-                            <BrutalSelect
-                              value={rule.delivery}
-                              ariaLabel={t('mailboxRules.deliveryLabel')}
-                              variant="ghost"
-                              options={[
-                                { value: 'wake', label: t('mailboxRules.deliveryWake') },
-                                { value: 'digest', label: t('mailboxRules.deliveryDigest') },
-                                { value: 'notify', label: t('mailboxRules.deliveryNotify') },
-                              ]}
-                              onChange={(val) =>
-                                void saveRule(rule, { delivery: val as MailboxDelivery })
-                              }
-                              buttonClassName="border border-neutral-300 dark:border-zinc-600 py-0.5 px-2 text-[11px] font-mono bg-neutral-50 dark:bg-zinc-900"
-                            />
-                          </div>
+                      <BrutalSelect
+                        value={target}
+                        ariaLabel={t('mailboxRules.targetLabel')}
+                        variant="ghost"
+                        options={routeOptionsFor(
+                          target === '__none__' ? null : target,
+                          rule.target_label
                         )}
-                        {routes && rule.delivery === 'digest' && (
-                          <input
-                            type="number"
-                            min={1}
-                            defaultValue={rule.digest_minutes}
-                            aria-label={t('mailboxRules.digestMinutes')}
-                            title={t('mailboxRules.digestMinutes')}
-                            onBlur={(e) => {
-                              const minutes = Math.max(1, Number(e.target.value) || 1);
-                              if (minutes !== rule.digest_minutes) {
-                                void saveRule(rule, { digest_minutes: minutes });
-                              }
-                            }}
-                            className="w-16 border border-neutral-300 bg-neutral-50 px-2 py-0.5 font-mono text-[11px] dark:border-zinc-600 dark:bg-zinc-900"
-                          />
-                        )}
-                        {routes && rule.delivery !== 'notify' && (
-                          <button
-                            type="button"
-                            onClick={() => setOpenRulePrompt(promptOpen ? null : rule.id)}
-                            className={`border px-2 py-0.5 font-mono text-[11px] ${
-                              rule.prompt
-                                ? 'border-brutal-black text-brutal-black dark:border-zinc-300 dark:text-white'
-                                : 'border-neutral-300 text-neutral-500 dark:border-zinc-600'
-                            }`}
-                          >
-                            {t('mailboxRules.prompt')}
-                          </button>
-                        )}
+                        onChange={(val) => void saveRule(rule, { target: val })}
+                        buttonClassName={COMPACT_SELECT}
+                      />
+
+                      {routes ? (
+                        <BrutalSelect
+                          value={rule.delivery}
+                          ariaLabel={t('mailboxRules.deliveryLabel')}
+                          variant="ghost"
+                          options={[
+                            { value: 'wake', label: t('mailboxRules.deliveryWake') },
+                            { value: 'digest', label: t('mailboxRules.deliveryDigest') },
+                            { value: 'notify', label: t('mailboxRules.deliveryNotify') },
+                          ]}
+                          onChange={(val) =>
+                            void saveRule(rule, { delivery: val as MailboxDelivery })
+                          }
+                          buttonClassName={COMPACT_SELECT}
+                        />
+                      ) : (
+                        <span className="hidden text-center font-mono text-[11px] text-neutral-300 sm:block dark:text-zinc-600">
+                          —
+                        </span>
+                      )}
+
+                      {hasDetails ? (
                         <button
                           type="button"
-                          onClick={() => void handleDeleteRule(rule.id)}
-                          title="Delete rule"
-                          className="p-1 text-neutral-400 hover:text-brutal-red"
+                          onClick={() => setOpenRuleDetails(detailsOpen ? null : rule.id)}
+                          title={t('mailboxRules.details')}
+                          aria-expanded={detailsOpen}
+                          className={`relative flex h-7 w-7 items-center justify-center border ${
+                            detailsOpen
+                              ? 'border-brutal-black text-brutal-black dark:border-zinc-300 dark:text-white'
+                              : 'border-neutral-300 text-neutral-500 hover:border-brutal-black hover:text-brutal-black dark:border-zinc-600 dark:hover:text-white'
+                          }`}
                         >
-                          <TrashIcon className="h-3.5 w-3.5" />
+                          <AdjustmentsHorizontalIcon className="h-3.5 w-3.5" />
+                          {rule.prompt && (
+                            <span className="absolute -right-0.5 -top-0.5 h-1.5 w-1.5 bg-brutal-yellow" />
+                          )}
                         </button>
-                      </div>
+                      ) : (
+                        <span className="hidden sm:block" />
+                      )}
+
+                      <button
+                        type="button"
+                        onClick={() => void handleDeleteRule(rule.id)}
+                        title={t('mailboxRules.delete')}
+                        className="flex h-7 w-7 items-center justify-center text-neutral-400 hover:text-brutal-red"
+                      >
+                        <TrashIcon className="h-3.5 w-3.5" />
+                      </button>
                     </div>
-                    {promptOpen && (
-                      <textarea
-                        defaultValue={rule.prompt ?? ''}
-                        placeholder={t('mailboxRules.promptPlaceholder')}
-                        rows={2}
-                        onBlur={(e) => {
-                          if (e.target.value.trim() !== (rule.prompt ?? '')) {
-                            void saveRule(rule, { prompt: e.target.value });
-                          }
-                        }}
-                        className="mt-2 w-full border border-neutral-300 bg-neutral-50 p-2 font-mono text-[11px] dark:border-zinc-600 dark:bg-zinc-900"
-                      />
+
+                    {hasDetails && detailsOpen && (
+                      <div className="mt-2 space-y-2 border-l-2 border-neutral-200 pl-3 dark:border-zinc-700">
+                        {rule.delivery === 'digest' && (
+                          <label className="flex items-center gap-2 font-mono text-[11px] text-neutral-600 dark:text-neutral-300">
+                            {t('mailboxRules.digestMinutes')}
+                            <input
+                              type="number"
+                              min={1}
+                              defaultValue={rule.digest_minutes}
+                              onBlur={(e) => {
+                                const minutes = Math.max(1, Number(e.target.value) || 1);
+                                if (minutes !== rule.digest_minutes) {
+                                  void saveRule(rule, { digest_minutes: minutes });
+                                }
+                              }}
+                              className="h-7 w-20 border border-neutral-300 bg-white px-2 font-mono text-[11px] dark:border-zinc-600 dark:bg-zinc-900"
+                            />
+                          </label>
+                        )}
+                        <textarea
+                          defaultValue={rule.prompt ?? ''}
+                          placeholder={t('mailboxRules.promptPlaceholder')}
+                          aria-label={t('mailboxRules.prompt')}
+                          rows={2}
+                          onBlur={(e) => {
+                            if (e.target.value.trim() !== (rule.prompt ?? '')) {
+                              void saveRule(rule, { prompt: e.target.value });
+                            }
+                          }}
+                          className="w-full border border-neutral-300 bg-white p-2 font-mono text-[11px] dark:border-zinc-600 dark:bg-zinc-900"
+                        />
+                      </div>
                     )}
                   </div>
                 );
