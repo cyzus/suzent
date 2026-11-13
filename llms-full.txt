@@ -3609,7 +3609,9 @@ In every mode, your explicit "deny" rules and Suzent's built-in safety checks
 mode, a shell command the safety checks would block is put to you instead of
 refused outright, and if the reviewer can't decide, it asks you. The reviewer uses the **Permission
 Review** model role, which falls back to **Decision**; see
-[Model roles](https://suzent.com/docs/models/model-roles).
+[Model roles](https://suzent.com/docs/models/model-roles). The reviewer explains its
+concern in the language you are writing in, and if you refuse a flagged action,
+the agent is told why so it doesn't simply try the same thing again.
 
 ## Answering a request
 
@@ -11172,6 +11174,16 @@ The frontend renders `decision.actions` in order, including feedback inputs and 
 After a user acts on an approval prompt, Suzent streams
 `tool_permission_resolution` with the selected action and scope. Older clients
 can ignore provenance events and still rely on `tool_approval_request`.
+
+The classifier writes `reason` in the language of the user's latest request
+(falling back to the delegated task's language, then English) and keeps tool
+names and arguments verbatim. What the agent sees for a refused call:
+
+- A policy or headless deny returns `ToolDenied("The tool call was denied: <reason>")`.
+- A user deny of a call whose persisted decision has `reasonCode`
+  `auto_classifier_high_risk` or `shell_policy_high_risk` returns the flagged
+  reason, any typed feedback, and an instruction not to retry the same action.
+- Any other user deny returns the feedback, or pydantic-ai's default message.
 
 ### Audit Trail
 
