@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Email can feed the Mailbox: switch on Watch inbox for a mailbox and new mail arrives there, sorted by the same rules as webhooks. Plugins can now run watchers and send events to the Mailbox.
 - Newly added MCP servers and newly connected services now start off; switch them on in Settings or a chat's Tools tab.
 - Fix mobile inline code wrapping and show previews for uploaded images.
+- Regent can look through the Mailbox, read any event and send one on to a project or to you.
 - Show Regent’s cross-conversation work queue instead of a per-chat plan in the mobile status panel.
 - Renaming a chat, task or project now edits the name in place in the sidebar (Enter or click away saves, Esc cancels), and archived chats are tucked behind the sidebar's more menu.
 - New Mailbox: one place for webhooks, scheduled runs, peer devices and agent messages, with a router that learns where each kind of event should go.
