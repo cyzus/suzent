@@ -821,7 +821,7 @@
     },
     "gemini/gemini-omni-1.1-flash": {
       "mode": "chat",
-      "max_input_tokens": 1048576,
+      "max_input_tokens": 131072,
       "max_output_tokens": 65536,
       "supports_vision": true,
       "supports_reasoning": true,
@@ -934,6 +934,45 @@
       "supports_response_schema": true,
       "supports_reasoning": true,
       "supports_prompt_caching": true
+    },
+    "gemini/gemini-omni-1.2-flash": {
+      "mode": "chat",
+      "supported_endpoints": [
+        "/v1beta/interactions"
+      ],
+      "max_input_tokens": 131072,
+      "max_output_tokens": 65536,
+      "supports_video": true,
+      "supports_vision": true,
+      "supports_reasoning": true
+    },
+    "gemini/gemini-4-carbon": {
+      "mode": "chat",
+      "supported_endpoints": [
+        "/v1/chat/completions",
+        "/v1/completions"
+      ],
+      "max_input_tokens": 1048576,
+      "max_output_tokens": 1048576,
+      "supports_video": true,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
+    },
+    "gemini/gemini-decision-1": {
+      "mode": "chat",
+      "supported_endpoints": [
+        "/v1/decisions"
+      ],
+      "max_input_tokens": 262144,
+      "supports_video": true,
+      "supports_vision": true,
+      "supports_function_calling": false,
+      "supports_response_schema": false,
+      "supports_reasoning": false,
+      "supports_prompt_caching": false
     }
   }
 }

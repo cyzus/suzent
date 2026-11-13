@@ -84,6 +84,17 @@
       "supported_endpoints": [
         "/v1/videos"
       ]
+    },
+    "minimax/MiniMax-M3.1-Flash": {
+      "mode": "chat",
+      "max_input_tokens": 1000000,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
+    },
+    "minimax/minimax-latest": {
+      "mode": "chat"
     }
   }
 }
