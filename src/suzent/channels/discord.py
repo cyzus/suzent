@@ -43,6 +43,8 @@ class DiscordChannel(SocialChannel):
 
     def __init__(self, config: Dict[str, Any]):
         super().__init__("discord", config)
+        # The bot's current reaction per message, so a new one can replace it.
+        self._reactions: dict[str, str] = {}
         self.token = config.get("token")
 
         if not discord:
@@ -108,6 +110,7 @@ class DiscordChannel(SocialChannel):
                 platform="discord",
                 timestamp=message.created_at.timestamp(),
                 thread_id=str(message.channel.id),  # Channel/Thread ID context
+                is_direct=message.guild is None,
                 attachments=attachments,
                 raw_data={
                     "channel_id": message.channel.id,
@@ -118,6 +121,22 @@ class DiscordChannel(SocialChannel):
             await self._invoke_callback(unified_msg)
         except Exception as e:
             logger.error(f"Error handling Discord message: {e}")
+
+    async def set_reaction(self, target_id: str, message_id: str, emoji: str) -> bool:
+        if not self.client or not self._connected:
+            return False
+        channel_id = int(target_id)
+        channel = self.client.get_channel(
+            channel_id
+        ) or await self.client.fetch_channel(channel_id)
+        message = await channel.fetch_message(int(message_id))
+        previous = self._reactions.pop(message_id, None)
+        if previous:
+            await message.remove_reaction(previous, self.client.user)
+        if emoji:
+            await message.add_reaction(emoji)
+            self._reactions[message_id] = emoji
+        return True
 
     async def send_message(self, target_id: str, content: str, **kwargs) -> bool:
         """

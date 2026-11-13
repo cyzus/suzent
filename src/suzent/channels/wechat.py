@@ -535,6 +535,7 @@ class WeChatChannel(SocialChannel):
             platform="wechat",
             timestamp=timestamp_value,
             thread_id=target_id if group_id else None,
+            is_direct=group_id is None,
             attachments=attachments,
             raw_data=raw_msg,
         )

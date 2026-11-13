@@ -35,6 +35,9 @@ except ImportError:
 
 logger = get_logger(__name__)
 
+# Telegram only allows its own reaction set; map Regent's onto the closest.
+_TELEGRAM_REACTIONS = {"❤️": "❤", "✅": "👌", "😂": "🤣"}
+
 
 def _to_html(text: str) -> str:
     """Convert Markdown to Telegram-compatible HTML via markdown + BeautifulSoup."""
@@ -232,6 +235,19 @@ class TelegramChannel(SocialChannel):
             return int(target_id)
         except ValueError:
             return target_id
+
+    async def set_reaction(self, target_id: str, message_id: str, emoji: str) -> bool:
+        if not self.app:
+            return False
+        from telegram import ReactionTypeEmoji
+
+        emoji = _TELEGRAM_REACTIONS.get(emoji, emoji)
+        await self.app.bot.set_message_reaction(
+            chat_id=self._parse_chat_id(target_id),
+            message_id=int(message_id),
+            reaction=[ReactionTypeEmoji(emoji)] if emoji else [],
+        )
+        return True
 
     async def send_message(self, target_id: str, content: str, **kwargs) -> bool:
         """Send a message to a chat ID, with MarkdownV2 and plain-text fallback."""
@@ -521,6 +537,9 @@ class TelegramChannel(SocialChannel):
                 platform="telegram",
                 timestamp=time.time(),
                 thread_id=thread_id,
+                is_direct=(
+                    query.message.chat.type == "private" if query.message else True
+                ),
             )
             await query.answer()
             try:
@@ -586,6 +605,7 @@ class TelegramChannel(SocialChannel):
             platform="telegram",
             timestamp=msg.date.timestamp() if msg.date else 0,
             thread_id=str(msg.chat.id),
+            is_direct=msg.chat.type == "private",
             raw_data=update.to_dict(),
         )
 
@@ -656,6 +676,8 @@ class TelegramChannel(SocialChannel):
             sender_id=str(user.id),
             sender_name=user.full_name or "Unknown",
             platform="telegram",
+            thread_id=str(msg.chat.id),
+            is_direct=msg.chat.type == "private",
             attachments=attachments,
             raw_data=update.to_dict(),
         )

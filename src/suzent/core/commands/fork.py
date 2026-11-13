@@ -18,7 +18,10 @@ def handle_fork(ctx: typer.Context):
         if cmd_ctx.surface == "social":
             from suzent.core.commands.sess import set_active_chat_id
 
-            set_active_chat_id(cmd_ctx.sender_id or cmd_ctx.chat_id, new_chat_id)
+            set_active_chat_id(
+                cmd_ctx.binding_key or cmd_ctx.sender_id or cmd_ctx.chat_id,
+                new_chat_id,
+            )
         return f"✓ Forked conversation to [{new_chat_id[-8:]}] ({new_chat_id})."
 
     return _impl

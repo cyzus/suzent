@@ -39,6 +39,25 @@ come back to the same conversation (see
 [Receiving files](../03-features/tools/interaction.md#receiving-files)); WeChat
 can't receive them yet.
 
+**Message updates arrive as separate messages.** When the agent sends you a
+note while it works, it shows up in the chat app as its own message, and its
+emoji reactions show on your message in Telegram, Slack and Discord.
+
+## Talk to Regent from any chat app
+
+By default each chat app, and each group, has its own conversation. To have
+your direct messages from every chat app go to
+[Regent](../02-using/regent.md) instead, open **Settings → Social Channels**
+and turn on **Direct messages go to Regent** under **Agent Capabilities**.
+
+- Wherever you write from, you continue the same conversation, and Regent
+  answers in the app you wrote from.
+- `/sess switch <id>` moves that one conversation to another session for all
+  your chat apps at once, and `/sess reset` brings it back to Regent.
+- Group chats keep their own sessions.
+- Everyone you allow on a chat app joins this conversation, so leave it off if
+  you have let other people in.
+
 ## Commands in a chat app
 
 Send these as messages to the bot:
@@ -48,7 +67,8 @@ Send these as messages to the bot:
 | `/approve` (or `/y`) | Approve the action the agent is waiting on. `/ya` also allows it for the rest of the conversation. |
 | `/deny` (or `/n`) | Refuse it. |
 | `/new [title]` | Start a fresh conversation. |
-| `/sess ls`, `/sess switch <id>`, `/sess info` | List your conversations, switch to another, or show the current one. |
+| `/sess ls`, `/sess switch <id>`, `/sess info` | List your conversations, switch to another, or show the current one. Your choice is kept after a restart. |
+| `/sess reset` | Go back to the default conversation. |
 | `/retry` | Redo the agent's last answer. |
 | `/model [id]` | Show or change the model for this conversation. |
 | `/goal <goal>` | Give the agent a [goal](../03-features/automation.md#goal-mode) to keep working on. |
