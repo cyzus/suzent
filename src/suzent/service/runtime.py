@@ -31,7 +31,9 @@ def run_service() -> None:
     os.environ["SUZENT_SERVICE_CONTROL_TOKEN"] = state.control_token
     logger.info("Suzent service starting with PID {} on port {}", state.pid, port)
     try:
-        runpy.run_module("suzent.server", run_name="__main__")
+        # alter_sys makes the server the real `__main__`, so it can register
+        # itself as `suzent.server` for the routes that import it.
+        runpy.run_module("suzent.server", run_name="__main__", alter_sys=True)
     finally:
         lock.release()
         logger.info("Suzent service stopped")
