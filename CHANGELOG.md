@@ -39,6 +39,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Canvas panels can be saved as a web page in the project's artifacts folder, so a chart or table outlives the chat.
 - The agent can now hand you finished files with Send File: they arrive in the chat app you wrote from (Telegram, Slack, Discord, Feishu), under the reply on the computer, and on your phone, where you can download and share them.
 - Queue concurrent database writes to prevent chats from losing saved progress during slow saves and report slow write owners.
+- On macOS, the first-run setup window now uses the native window buttons and no longer hides its title behind them.
 - Open sidebar images in the shared zoomable overlay with navigation between images in the loaded folder.
 - Simplify sidebar project styling and show running status only on chat rows.
 - Turning a chat app off or changing its settings now stops the running bot right away, instead of it still answering until Suzent restarts.
