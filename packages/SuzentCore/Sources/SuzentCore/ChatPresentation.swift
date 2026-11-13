@@ -71,7 +71,7 @@ public func mediaItems(_ parts: [MessagePart]) -> [MediaItem] {
 
 public struct DisplayMessage: Sendable {
     public let role: String
-    public let parts: [MessagePart]
+    public var parts: [MessagePart]
     public let citationSources: [CitationSource]
     public var model: String? = nil
     public var timestamp: String? = nil
@@ -80,6 +80,8 @@ public struct DisplayMessage: Sendable {
     public var reaction: String? = nil
     public var workedSeconds: Int? = nil
     public var firstMessageIndex: Int? = nil
+    /// On a trigger row, the merged run it stands for; on a reply, the run it answers.
+    public var triggers: [TriggerEntry] = []
     public var text: String { parts.filter { $0.type == "text" }.compactMap(\.text).joined(separator: "\n\n") }
 }
 
@@ -100,6 +102,122 @@ public struct SystemReminder: Sendable, Equatable {
             .trimmingCharacters(in: .whitespaces)
         body = lines.dropFirst().joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
     }
+}
+
+public enum TriggerKind: String, Sendable { case agent, scheduled, goal, other }
+
+/// What started a turn without the user, read the way desktop's triggerRows.ts reads it.
+public struct ParsedTrigger: Sendable, Equatable {
+    public let kind: TriggerKind
+    public let source: String
+    public let body: String
+    public let key: String
+    public let reference: String?
+
+    public init(kind: TriggerKind, source: String, body: String, key: String, reference: String? = nil) {
+        self.kind = kind; self.source = source; self.body = body; self.key = key; self.reference = reference
+    }
+}
+
+public struct TriggerEntry: Sendable, Equatable {
+    public let trigger: ParsedTrigger
+    public let timestamp: String?
+
+    public init(trigger: ParsedTrigger, timestamp: String?) { self.trigger = trigger; self.timestamp = timestamp }
+}
+
+private func stripped(_ text: String) -> String { text.trimmingCharacters(in: .whitespacesAndNewlines) }
+
+/// The groups of `pattern` matched at the start of `text`, the whole match first.
+private func prefixGroups(_ pattern: String, in text: String) -> [String]? {
+    guard let regex = try? NSRegularExpression(pattern: pattern),
+          let match = regex.firstMatch(in: text, options: [.anchored], range: NSRange(text.startIndex..., in: text)) else { return nil }
+    return (0..<match.numberOfRanges).map { index in Range(match.range(at: index), in: text).map { String(text[$0]) } ?? "" }
+}
+
+public func parseTrigger(_ text: String) -> ParsedTrigger {
+    let raw = stripped(text.replacingOccurrences(of: #"<!--\s*suzent-agent-inbox:[\s\S]*?-->"#, with: "", options: .regularExpression.union(.caseInsensitive)))
+    if let groups = prefixGroups(#"\[Agent message from (.+) \(([^)\n]+)\)\]\s*"#, in: raw) {
+        let reference = stripped(groups[2])
+        return ParsedTrigger(kind: .agent, source: stripped(groups[1]), body: stripped(String(raw.dropFirst(groups[0].count))), key: "agent:\(reference)", reference: reference)
+    }
+    if let groups = prefixGroups(#"\*\*Scheduled Task:\s*(.+?)\*\*\s*"#, in: raw) {
+        let source = stripped(groups[1])
+        return ParsedTrigger(kind: .scheduled, source: source, body: stripped(String(raw.dropFirst(groups[0].count))), key: "scheduled:\(source)")
+    }
+    if let groups = prefixGroups(#"\[Goal mode\]\s*"#, in: raw) {
+        return ParsedTrigger(kind: .goal, source: "", body: stripped(String(raw.dropFirst(groups[0].count))), key: "goal")
+    }
+    let lines = raw.components(separatedBy: "\n")
+    let first = lines[0].trimmingCharacters(in: .whitespaces)
+    let source = first.replacingOccurrences(of: #"^\*\*(.+?)\*\*$"#, with: "$1", options: .regularExpression).trimmingCharacters(in: .whitespaces)
+    return ParsedTrigger(kind: .other, source: source, body: stripped(lines.dropFirst().joined(separator: "\n")), key: "other:\(source)")
+}
+
+/// The body's first line as plain text. Headings often repeat the sender, so prose wins over them.
+public func triggerPreview(_ body: String) -> String {
+    let lines = body.components(separatedBy: "\n").map { $0.trimmingCharacters(in: .whitespaces) }
+        .filter { !$0.isEmpty && $0.range(of: #"^[-*_=#\s]+$"#, options: .regularExpression) == nil }
+    guard let line = lines.first(where: { !$0.hasPrefix("#") }) ?? lines.first else { return "" }
+    let rules = [(#"^#+\s*"#, ""), (#"^[-*+>]\s+"#, ""), (#"\*\*(.+?)\*\*"#, "$1"), (#"`([^`]+)`"#, "$1"), (#"\[([^\]]+)\]\([^)]*\)"#, "$1")]
+    return rules.reduce(line) { text, rule in text.replacingOccurrences(of: rule.0, with: rule.1, options: .regularExpression) }
+        .trimmingCharacters(in: .whitespaces)
+}
+
+/// Mirrors is_quiet_reply in suzent/core/heartbeat.py: the token a background turn answers with when it has nothing to report.
+public func isQuietReply(_ text: String) -> Bool {
+    let trimmed = stripped(text)
+    let token = "HEARTBEAT_OK"
+    let aside: String
+    if trimmed.hasPrefix(token) { aside = String(trimmed.dropFirst(token.count)) }
+    else if trimmed.hasSuffix(token) { aside = String(trimmed.dropLast(token.count)) }
+    else { return false }
+    return stripped(aside).utf16.count <= 300
+}
+
+private func isTrigger(_ row: DisplayMessage) -> Bool { ["system_triggered", "trigger"].contains(row.role) }
+
+/// A reply the user sees nothing of: only reasoning or a quiet token.
+public func isSilentReply(_ row: DisplayMessage) -> Bool {
+    row.role == "assistant" && row.files.isEmpty && row.parts.allSatisfy { part in
+        part.type == "reasoning" || (part.type == "text" && (stripped(part.text ?? "").isEmpty || isQuietReply(part.text ?? "")))
+    }
+}
+
+/// Fold background triggers into as few rows as possible, like desktop's buildTriggerPlan:
+/// repeats of one trigger that got no reply merge into one row, and a run the agent answered
+/// moves onto that answer.
+public func foldTriggers(_ rows: [DisplayMessage]) -> [DisplayMessage] {
+    var result: [DisplayMessage] = []
+    var index = 0
+    while index < rows.count {
+        guard isTrigger(rows[index]) else { result.append(rows[index]); index += 1; continue }
+        var run: [TriggerEntry] = []
+        var cursor = index
+        var last = rows[index]
+        var silentAfterLast = false
+        while true {
+            last = rows[cursor]
+            let trigger = parseTrigger(last.text)
+            run.append(TriggerEntry(trigger: trigger, timestamp: last.timestamp))
+            var next = cursor + 1
+            while next < rows.count, isSilentReply(rows[next]) { next += 1 }
+            silentAfterLast = next > cursor + 1
+            cursor = next
+            guard next < rows.count, isTrigger(rows[next]), parseTrigger(rows[next].text).key == trigger.key else { break }
+        }
+        if !silentAfterLast, cursor < rows.count, ["assistant", "tool"].contains(rows[cursor].role) {
+            var reply = rows[cursor]
+            reply.triggers = run
+            result.append(reply)
+            index = cursor + 1
+        } else {
+            last.triggers = run
+            result.append(last)
+            index = cursor
+        }
+    }
+    return result
 }
 
 public func presentMessages(_ messages: [ChatMessage], liveToolIds: Set<String> = []) -> [DisplayMessage] {
@@ -152,14 +270,14 @@ public func presentMessages(_ messages: [ChatMessage], liveToolIds: Set<String> 
         } else { grouped.append(row) }
     }
     let legacy = legacyWorkedSeconds(messages)
-    return grouped.map { row in
+    return foldTriggers(grouped.map { row in
         var result = row
         if row.role == "assistant" || row.role == "tool" {
             let span = Array(messages[(row.firstMessageIndex ?? row.messageIndex)...row.messageIndex])
             result.workedSeconds = hasRecordedTiming(span) ? recordedWorkedSeconds(span) : legacy[row.messageIndex]
         }
         return result
-    }
+    })
 }
 
 public func normalizeParts(_ parts: [MessagePart]) -> [MessagePart] {

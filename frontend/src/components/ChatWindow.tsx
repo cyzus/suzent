@@ -65,9 +65,11 @@ import {
   ChatMinimap,
   DragOverlay,
   LoadingIndicator,
-  SystemTriggeredMessage,
+  TriggerRow,
+  TriggerReference,
   NoticeMessage,
 } from './chat';
+import { buildTriggerPlan } from '../lib/triggerRows';
 import { planSendFailureRecovery, type SendAction } from './chat/sendRecovery';
 import { QueuedMessages, type QueuedMessage } from './chat/QueuedMessages';
 import { formatQuestionAnswer } from '../lib/questionAnswer';
@@ -535,9 +537,19 @@ const MessageList: React.FC<{
     [chatId, messages, reactionParts]
   );
   const { t, locale } = useI18n();
-  const { skipIndices, groupRenders, stepSummaryByMessageIndex } = useMemo(
-    () => buildMessageRenderPlan(messages),
-    [messages]
+  const renderPlan = useMemo(() => buildMessageRenderPlan(messages), [messages]);
+  const { groupRenders } = renderPlan;
+  const rows = useMemo(
+    () => (liveTurn ? [...messages, liveTurn.message] : messages),
+    [messages, liveTurn]
+  );
+  const triggerPlan = useMemo(
+    () => buildTriggerPlan(rows, renderPlan.skipIndices, liveTurn ? messages.length : undefined),
+    [rows, renderPlan.skipIndices, liveTurn, messages.length]
+  );
+  const skipIndices = useMemo(
+    () => new Set([...renderPlan.skipIndices, ...triggerPlan.skipIndices]),
+    [renderPlan.skipIndices, triggerPlan.skipIndices]
   );
   const resolvedCompactions = useMemo(() => resolvedCompactionFailures(messages), [messages]);
 
@@ -586,7 +598,7 @@ const MessageList: React.FC<{
     <div
       className={`chat-transcript-column mx-auto space-y-6 ${chatId === FOCAL_CHAT_ID ? 'regent-conversation-list' : ''}`}
     >
-      {(liveTurn ? [...messages, liveTurn.message] : messages).map((m, idx) => {
+      {rows.map((m, idx) => {
         if (skipIndices.has(idx)) return null; // Part of a group, rendered by representative
         const live = liveTurn && idx === messages.length ? liveTurn : undefined;
 
@@ -614,8 +626,17 @@ const MessageList: React.FC<{
         const isUser = m.role === 'user';
         const isNotice = m.role === 'notice';
         const isLastMessage = live ? true : idx === messages.length - 1;
-        const isAssistant = m.role === 'assistant';
         const group = groupRenders.get(idx);
+        const repliedTrigger = triggerPlan.replies.get(idx);
+        // Elsewhere the line goes inside the reply so it lines up with the badge
+        // under it; Regent replies have no leading badge to line up with.
+        const isFocal = chatId === FOCAL_CHAT_ID;
+        const triggerReference = isFocal && repliedTrigger && (
+          <TriggerReference entries={repliedTrigger} />
+        );
+        const replyContext = !isFocal && repliedTrigger && (
+          <TriggerReference entries={repliedTrigger} className="mb-2" />
+        );
 
         // Intermediate step group representative: badge shown here (top of the turn), tool pills below.
         if (group) {
@@ -633,6 +654,7 @@ const MessageList: React.FC<{
               data-message-index={globalIdx}
               className="chat-msg-row chat-msg-row-assistant w-full flex flex-col group/message"
             >
+              {triggerReference}
               <div className="flex justify-start w-full">
                 <AssistantMessage
                   conversational={chatId === FOCAL_CHAT_ID}
@@ -653,6 +675,7 @@ const MessageList: React.FC<{
                   onStopSubAgent={onStopSubAgent}
                   onForceWebContext={onForceWebContext}
                   fileChangeChatId={m.file_changes?.length ? chatId : undefined}
+                  replyContext={replyContext}
                   chatCitationSources={chatCitationSources}
                   fallbackModel={fallbackModel}
                 />
@@ -660,9 +683,6 @@ const MessageList: React.FC<{
             </div>
           );
         }
-
-        // Regular message rendering
-        const stepSummary = isAssistant ? stepSummaryByMessageIndex.get(idx) || null : null;
 
         // Canvas action message — lightweight dashed pill
         if (m.role === 'canvas_action') {
@@ -679,8 +699,7 @@ const MessageList: React.FC<{
           );
         }
 
-        // System-triggered turn (cron, heartbeat, wake-parent etc.) — compact card
-        // showing what kicked off this agent turn.
+        // Regent relays the user's requests as agent messages; they read as the user's.
         const focalRequest = m.role === 'system_triggered' ? focalRequestText(m.content) : null;
         if (focalRequest) {
           return withDate(
@@ -701,13 +720,15 @@ const MessageList: React.FC<{
         }
 
         if (m.role === 'system_triggered') {
+          const triggerRun = triggerPlan.rows.get(idx);
+          if (!triggerRun) return null;
           return withDate(
             <div
               key={globalIdx}
               data-message-index={globalIdx}
               className="chat-msg-row chat-msg-row-compact w-full flex justify-start"
             >
-              <SystemTriggeredMessage message={m} folded={chatId === FOCAL_CHAT_ID} />
+              <TriggerRow entries={triggerRun} />
             </div>
           );
         }
@@ -735,6 +756,7 @@ const MessageList: React.FC<{
                 isUser ? 'chat-msg-row-user' : 'chat-msg-row-assistant'
               } w-full flex flex-col group/message`}
             >
+              {triggerReference}
               <div className={`flex ${isUser ? 'justify-end' : 'justify-start'} w-full`}>
                 {isUser ? (
                   <UserMessage
@@ -787,19 +809,12 @@ const MessageList: React.FC<{
                         : undefined
                     }
                     fileChangeChatId={m.file_changes?.length ? chatId : undefined}
+                    replyContext={replyContext}
                     chatCitationSources={chatCitationSources}
                     fallbackModel={fallbackModel}
                   />
                 )}
               </div>
-              {isAssistant && stepSummary && (
-                <div className="flex justify-start w-full mt-2 pl-4">
-                  <div className="inline-flex items-center gap-2 text-[10px] text-brutal-black font-mono font-bold px-3 py-1 bg-neutral-100 border-2 border-brutal-black shadow-sm select-none">
-                    <span className="text-brutal-blue">⚡</span>
-                    <span>{stepSummary}</span>
-                  </div>
-                </div>
-              )}
             </div>
             {showForkOrigin && <ForkOriginMarker origin={forkOrigin} onOpen={onOpenForkOrigin} />}
           </React.Fragment>

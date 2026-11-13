@@ -17,5 +17,7 @@ export {
   DragOverlay,
   LoadingIndicator,
   SystemTriggeredMessage,
+  TriggerRow,
+  TriggerReference,
   NoticeMessage,
 } from './StatusMessages';

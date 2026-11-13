@@ -25,7 +25,6 @@ from suzent.client.base import ClientError, _is_loopback_url, get_server_url
 from suzent.core.stream_parser import (
     ApprovalRequest,
     ErrorEvent,
-    FinalAnswer,
     StreamParser,
     TextChunk,
     ToolCall,
@@ -189,7 +188,7 @@ async def _follow_stream(
 
     def handle(event: object) -> None:
         match event:
-            case TextChunk(content=content) | FinalAnswer(content=content):
+            case TextChunk(content=content):
                 result.text += content
                 if not quiet:
                     typer.echo(content, nl=False)
