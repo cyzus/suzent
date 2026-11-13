@@ -107,7 +107,7 @@ class DatabaseMigrationMixin:
             (
                 "mailbox_rules",
                 (
-                    ("delivery", "TEXT DEFAULT 'wake'"),
+                    ("delivery", "TEXT DEFAULT 'now'"),
                     ("digest_minutes", "INTEGER DEFAULT 60"),
                     ("target_project_id", "TEXT"),
                     ("prompt", "TEXT"),
@@ -124,6 +124,30 @@ class DatabaseMigrationMixin:
                         conn.execute(
                             text(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}")
                         )
+                if table == "mailbox_rules" and "destination" not in columns:
+                    # Rules said where (a session or project) and how (wake,
+                    # digest, notify) separately; "notify" was really a
+                    # destination, and sessions are no longer a rule's target.
+                    conn.execute(
+                        text("ALTER TABLE mailbox_rules ADD COLUMN destination TEXT")
+                    )
+                    conn.execute(
+                        text(
+                            "UPDATE mailbox_rules SET destination = CASE "
+                            "WHEN action = 'none' THEN 'none' "
+                            "WHEN delivery = 'notify' THEN 'user' "
+                            "WHEN target_project_id IS NOT NULL THEN 'project' "
+                            "WHEN target_chat_id IS NULL "
+                            "OR target_chat_id = 'focal-suzent' THEN 'regent' "
+                            "ELSE 'session' END"
+                        )
+                    )
+                    conn.execute(
+                        text(
+                            "UPDATE mailbox_rules SET delivery = 'now' "
+                            "WHERE delivery IN ('wake', 'notify')"
+                        )
+                    )
                 conn.commit()
 
         # Migration: goals gain a generation counter so a replacement can be

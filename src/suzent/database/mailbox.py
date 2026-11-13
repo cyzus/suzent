@@ -176,7 +176,8 @@ class MailboxOperationsMixin:
         target_chat_id: Optional[str] = "focal-suzent",
         target_label: Optional[str] = "Regent",
         target_project_id: Optional[str] = None,
-        delivery: str = "wake",
+        destination: str = "regent",
+        delivery: str = "now",
         digest_minutes: int = 60,
         prompt: Optional[str] = None,
         origin: str = "learned",
@@ -209,6 +210,7 @@ class MailboxOperationsMixin:
                 target_chat_id=target_chat_id,
                 target_label=target_label,
                 target_project_id=target_project_id,
+                destination=destination,
                 delivery=delivery,
                 digest_minutes=digest_minutes,
                 prompt=prompt,
@@ -232,7 +234,8 @@ class MailboxOperationsMixin:
         target_chat_id: Optional[str] = None,
         target_label: Optional[str] = None,
         target_project_id: Optional[str] = None,
-        delivery: str = "wake",
+        destination: str = "regent",
+        delivery: str = "now",
         digest_minutes: int = 60,
         prompt: Optional[str] = None,
         origin: str = "pinned",
@@ -248,6 +251,7 @@ class MailboxOperationsMixin:
                 target_chat_id=target_chat_id,
                 target_label=target_label,
                 target_project_id=target_project_id,
+                destination=destination,
                 delivery=delivery,
                 digest_minutes=digest_minutes,
                 prompt=prompt,
@@ -275,6 +279,7 @@ def _apply_routing(
     rule: MailboxRuleModel,
     *,
     action: str,
+    destination: str,
     target_chat_id: Optional[str],
     target_label: Optional[str],
     target_project_id: Optional[str],
@@ -282,12 +287,18 @@ def _apply_routing(
     digest_minutes: int,
     prompt: Optional[str],
 ) -> None:
-    """Set where a rule sends events and how; a rule that routes nowhere keeps no target."""
-    routes = action == "route"
-    rule.action = action
-    rule.target_project_id = target_project_id if routes else None
-    rule.target_chat_id = target_chat_id if routes and not target_project_id else None
-    rule.target_label = target_label if routes else None
-    rule.delivery = delivery
+    """Set where a rule sends events and when, keeping only the target fields its destination uses."""
+    if action == "none":
+        destination = "none"
+    rule.destination = destination
+    rule.action = "none" if destination == "none" else "route"
+    rule.target_project_id = (
+        target_project_id if destination in ("project", "project_regent") else None
+    )
+    rule.target_chat_id = (
+        target_chat_id if destination in ("regent", "session") else None
+    )
+    rule.target_label = target_label if destination != "none" else None
+    rule.delivery = delivery if delivery in ("now", "digest") else "now"
     rule.digest_minutes = max(1, digest_minutes)
     rule.prompt = (prompt or "").strip() or None

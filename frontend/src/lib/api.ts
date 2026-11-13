@@ -1750,12 +1750,11 @@ export async function fetchCronStatus(): Promise<{
   return res.json();
 }
 
-export interface MailboxTarget {
-  chat_id: string;
-  label: string;
-  kind: 'regent' | 'agent' | 'project';
-  title?: string;
-  project?: string | null;
+export interface MailboxDestination {
+  /** `regent`, `user`, `none`, `project:<id>` or `project_regent:<id>`. */
+  value: string;
+  kind: 'regent' | 'project' | 'project_regent' | 'user' | 'none';
+  project: string | null;
 }
 
 export interface MailboxItem {
@@ -1778,18 +1777,17 @@ export interface MailboxItem {
   created_at: string | null;
 }
 
-export type MailboxDelivery = 'wake' | 'digest' | 'notify';
+export type MailboxCadence = 'now' | 'digest';
 
 export interface MailboxRule {
   id: number;
   signature: string;
   name: string;
   source_kind: string;
-  action: 'route' | 'none';
-  target_chat_id: string | null;
-  target_project_id: string | null;
+  /** A MailboxDestination value, or `session:<id>` for an older rule. */
+  destination: string;
   target_label: string | null;
-  delivery: MailboxDelivery;
+  cadence: MailboxCadence;
   digest_minutes: number;
   prompt: string | null;
   origin: 'learned' | 'pinned';
@@ -1802,7 +1800,7 @@ export interface MailboxRule {
 export interface MailboxListResponse {
   items: MailboxItem[];
   counts: { all: number; routed: number; unrouted: number; unread: number };
-  targets: MailboxTarget[];
+  destinations: MailboxDestination[];
   endpoint: WebhookUrls;
 }
 
@@ -1867,7 +1865,7 @@ export async function deleteMailboxItem(itemId: number): Promise<void> {
 
 export async function fetchMailboxRules(): Promise<{
   rules: MailboxRule[];
-  targets: MailboxTarget[];
+  destinations: MailboxDestination[];
 }> {
   const res = await fetch(`${getApiBase()}/mailbox/rules`);
   if (!res.ok) throw new Error('Failed to fetch mailbox rules');
@@ -1877,9 +1875,8 @@ export async function fetchMailboxRules(): Promise<{
 export async function updateMailboxRule(
   ruleId: number,
   body: {
-    action: 'route' | 'none';
-    target_chat_id?: string | null;
-    delivery?: MailboxDelivery;
+    destination: string;
+    cadence?: MailboxCadence;
     digest_minutes?: number;
     prompt?: string | null;
     reason?: string;

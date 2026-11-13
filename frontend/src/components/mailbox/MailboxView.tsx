@@ -36,9 +36,9 @@ import {
   type CronJob,
   type HeartbeatStatus,
   type MailboxItem,
-  type MailboxDelivery,
+  type MailboxCadence,
   type MailboxRule,
-  type MailboxTarget,
+  type MailboxDestination,
   type WebhookUrls,
 } from '../../lib/api';
 import { FOCAL_CHAT_ID } from '../../lib/focalAgent';
@@ -333,9 +333,7 @@ export function MailboxView({
   const [rules, setRules] = useState<MailboxRule[]>([]);
   const [jobs, setJobs] = useState<CronJob[]>([]);
   const [heartbeatSessions, setHeartbeatSessions] = useState<HeartbeatSessionItem[]>([]);
-  const [targets, setTargets] = useState<MailboxTarget[]>([
-    { chat_id: FOCAL_CHAT_ID, label: 'Regent', kind: 'regent' },
-  ]);
+  const [destinations, setDestinations] = useState<MailboxDestination[]>([]);
   const [endpoint, setEndpoint] = useState<WebhookUrls>({});
   const [expandedThreads, setExpandedThreads] = useState<Set<string>>(new Set());
   const [copiedUrl, setCopiedUrl] = useState(false);
@@ -352,7 +350,7 @@ export function MailboxView({
         fetchHeartbeatStatus().catch(() => null),
       ]);
       setItems(itemRes.items);
-      if (itemRes.targets?.length) setTargets(itemRes.targets);
+      setDestinations(ruleRes.destinations ?? []);
       setEndpoint(itemRes.endpoint || {});
       setRules(ruleRes.rules);
       setJobs(jobList.filter((j) => j.source !== 'heartbeat' && j.schedule_kind !== 'webhook'));
@@ -538,20 +536,13 @@ export function MailboxView({
     }
   };
 
-  const ruleTarget = (rule: MailboxRule): string =>
-    rule.action !== 'route'
-      ? '__none__'
-      : rule.target_project_id
-        ? `project:${rule.target_project_id}`
-        : rule.target_chat_id || '__none__';
-
-  const deliveryOptions = (rule: MailboxRule) => {
+  const cadenceOptions = (rule: MailboxRule) => {
     const digestMinutes = [15, 60, 1440];
-    if (rule.delivery === 'digest' && !digestMinutes.includes(rule.digest_minutes)) {
+    if (rule.cadence === 'digest' && !digestMinutes.includes(rule.digest_minutes)) {
       digestMinutes.push(rule.digest_minutes);
     }
     return [
-      { value: 'wake', label: t('mailboxRules.deliveryWake') },
+      { value: 'now', label: t('mailboxRules.cadenceNow') },
       ...digestMinutes.map((minutes) => ({
         value: `digest:${minutes}`,
         label:
@@ -561,25 +552,22 @@ export function MailboxView({
               ? t('mailboxRules.digestDaily')
               : t('mailboxRules.digestEvery', { minutes: String(minutes) }),
       })),
-      { value: 'notify', label: t('mailboxRules.deliveryNotify') },
     ];
   };
 
   const saveRule = async (
     rule: MailboxRule,
     change: Partial<{
-      target: string;
-      delivery: MailboxDelivery;
+      destination: string;
+      cadence: MailboxCadence;
       digest_minutes: number;
       prompt: string;
     }>
   ) => {
-    const target = change.target ?? ruleTarget(rule);
     try {
       await updateMailboxRule(rule.id, {
-        action: target === '__none__' ? 'none' : 'route',
-        target_chat_id: target === '__none__' ? null : target,
-        delivery: change.delivery ?? rule.delivery,
+        destination: change.destination ?? rule.destination,
+        cadence: change.cadence ?? rule.cadence,
         digest_minutes: change.digest_minutes ?? rule.digest_minutes,
         prompt: change.prompt ?? rule.prompt,
       });
@@ -646,48 +634,76 @@ export function MailboxView({
     }
   };
 
-  const targetName = (tgt: MailboxTarget): string =>
-    tgt.kind === 'regent' ? 'Regent' : tgt.title || tgt.label;
-
-  const routeOptionsFor = (currentChatId?: string | null, currentLabel?: string | null) => {
-    const group = (kind: MailboxTarget['kind']) =>
-      kind === 'regent'
-        ? t('mailboxRules.groupRegent')
-        : kind === 'project'
-          ? t('mailboxRules.groupProject')
-          : t('mailboxRules.groupSession');
-    const opts = targets.map((tgt) => ({
-      value: tgt.chat_id,
-      label: targetName(tgt),
-      hint: tgt.kind === 'agent' ? (tgt.project ?? undefined) : undefined,
-      group: group(tgt.kind),
-    }));
-    if (currentChatId && !opts.some((o) => o.value === currentChatId)) {
-      opts.push({
-        value: currentChatId,
-        label: currentLabel || currentChatId,
-        hint: undefined,
-        group: t('mailboxRules.groupSession'),
+  const destinationOptions = (rule: MailboxRule) => {
+    const options: { value: string; label: string; group: string; hint?: string }[] = [];
+    for (const dest of destinations) {
+      switch (dest.kind) {
+        case 'regent':
+          options.push({
+            value: dest.value,
+            label: 'Regent',
+            hint: t('mailboxRules.regentHint'),
+            group: t('mailboxRules.groupAgents'),
+          });
+          break;
+        case 'project':
+          options.push({
+            value: dest.value,
+            label: t('mailboxRules.projectNew'),
+            group: dest.project ?? '',
+          });
+          break;
+        case 'project_regent':
+          options.push({
+            value: dest.value,
+            label: t('mailboxRules.projectRegent'),
+            group: dest.project ?? '',
+          });
+          break;
+        case 'user':
+          options.push({
+            value: dest.value,
+            label: t('mailboxRules.destUser'),
+            hint: t('mailboxRules.destUserHint'),
+            group: t('mailboxRules.groupOther'),
+          });
+          break;
+        case 'none':
+          options.push({
+            value: dest.value,
+            label: t('mailboxRules.destNone'),
+            group: t('mailboxRules.groupOther'),
+          });
+          break;
+      }
+    }
+    if (!options.some((option) => option.value === rule.destination)) {
+      options.unshift({
+        value: rule.destination,
+        label: rule.target_label || rule.destination,
+        group: t('mailboxRules.groupCurrent'),
       });
     }
-    opts.push({
-      value: '__none__',
-      label: t('mailboxView.status.unrouted'),
-      hint: undefined,
-      group: t('mailboxRules.groupNone'),
-    });
-    return opts;
+    return options;
   };
 
-  /** What a rule's target trigger reads, short enough for its column. */
-  const targetTriggerLabel = (value: string, fallback?: string | null): string => {
-    if (value === '__none__') return t('mailboxView.status.unrouted');
-    const tgt = targets.find((candidate) => candidate.chat_id === value);
-    if (!tgt) return fallback || value;
-    if (tgt.kind === 'project') {
-      return t('mailboxRules.newSessionIn', { project: targetName(tgt) });
+  /** What a rule's destination trigger reads, short enough for its column. */
+  const destinationLabel = (rule: MailboxRule): string => {
+    const dest = destinations.find((candidate) => candidate.value === rule.destination);
+    switch (dest?.kind) {
+      case 'regent':
+        return 'Regent';
+      case 'project':
+        return t('mailboxRules.newSessionIn', { project: dest.project ?? '' });
+      case 'project_regent':
+        return `Regent · ${dest.project ?? ''}`;
+      case 'user':
+        return t('mailboxRules.destUser');
+      case 'none':
+        return t('mailboxRules.destNone');
+      default:
+        return rule.target_label || rule.destination;
     }
-    return targetName(tgt);
   };
 
   const formatScheduleBadge = (job: CronJob): string => {
@@ -998,12 +1014,10 @@ export function MailboxView({
           ) : (
             <div className="divide-y divide-neutral-200 dark:divide-zinc-700">
               {rules.map((rule) => {
-                const target = ruleTarget(rule);
-                const routes = target !== '__none__';
-
-                const takesInstructions = routes && rule.delivery !== 'notify';
-                const deliveryValue =
-                  rule.delivery === 'digest' ? `digest:${rule.digest_minutes}` : rule.delivery;
+                const routes = rule.destination !== 'none';
+                const takesInstructions = routes && rule.destination !== 'user';
+                const cadenceValue =
+                  rule.cadence === 'digest' ? `digest:${rule.digest_minutes}` : 'now';
 
                 return (
                   <div
@@ -1025,15 +1039,12 @@ export function MailboxView({
                       </div>
 
                       <BrutalSelect
-                        value={target}
-                        ariaLabel={t('mailboxRules.targetLabel')}
+                        value={rule.destination}
+                        ariaLabel={t('mailboxRules.destinationLabel')}
                         variant="ghost"
-                        options={routeOptionsFor(
-                          target === '__none__' ? null : target,
-                          rule.target_label
-                        )}
-                        selectedLabel={targetTriggerLabel(target, rule.target_label)}
-                        onChange={(val) => void saveRule(rule, { target: val })}
+                        options={destinationOptions(rule)}
+                        selectedLabel={destinationLabel(rule)}
+                        onChange={(val) => void saveRule(rule, { destination: val })}
                         buttonClassName={COMPACT_SELECT}
                         menuSize="compact"
                         menuMinWidth={280}
@@ -1042,15 +1053,15 @@ export function MailboxView({
 
                       {routes ? (
                         <BrutalSelect
-                          value={deliveryValue}
-                          ariaLabel={t('mailboxRules.deliveryLabel')}
+                          value={cadenceValue}
+                          ariaLabel={t('mailboxRules.cadenceLabel')}
                           variant="ghost"
-                          options={deliveryOptions(rule)}
+                          options={cadenceOptions(rule)}
                           menuSize="compact"
                           onChange={(val) => {
-                            const [delivery, minutes] = val.split(':');
+                            const [cadence, minutes] = val.split(':');
                             void saveRule(rule, {
-                              delivery: delivery as MailboxDelivery,
+                              cadence: cadence as MailboxCadence,
                               ...(minutes ? { digest_minutes: Number(minutes) } : {}),
                             });
                           }}

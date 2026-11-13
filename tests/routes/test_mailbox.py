@@ -77,9 +77,9 @@ def _fake_router(monkeypatch, reply, *, delay: float = 0.0) -> list[str]:
     return calls
 
 
-def _decision(target=FOCAL_CHAT_ID, delivery="wake", action="route") -> str:
+def _decision(destination="regent", cadence="now") -> str:
     return json.dumps(
-        {"action": action, "target": target, "delivery": delivery, "reason": "Test."}
+        {"destination": destination, "cadence": cadence, "reason": "Test."}
     )
 
 
@@ -273,6 +273,7 @@ async def test_learned_route_to_a_deleted_session_goes_to_regent(db, monkeypatch
         signature="github:release.published:cyzus/suzent",
         name="github · release.published",
         action="route",
+        destination="session",
         target_chat_id="deleted-session",
         target_label="Old session",
         origin="learned",
@@ -420,7 +421,7 @@ async def test_failed_delivery_shows_as_error_and_items_can_be_deleted(db):
 
 @pytest.mark.asyncio
 async def test_notify_only_tells_the_user(db, monkeypatch):
-    _fake_router(monkeypatch, _decision(delivery="notify"))
+    _fake_router(monkeypatch, _decision(destination="user"))
 
     item = await _github_release()
 
@@ -435,7 +436,7 @@ async def test_notify_only_tells_the_user(db, monkeypatch):
 @pytest.mark.asyncio
 async def test_project_target_starts_a_new_session_per_event(db, monkeypatch):
     project_id = db.create_project("Suzent", "suzent")
-    _fake_router(monkeypatch, _decision(target=f"project:{project_id}"))
+    _fake_router(monkeypatch, _decision(destination=f"project:{project_id}"))
 
     first = await _github_release("v1")
     second = await _github_release("v2")
@@ -454,11 +455,12 @@ async def test_project_target_starts_a_new_session_per_event(db, monkeypatch):
 @pytest.mark.asyncio
 async def test_digest_batches_events_until_its_interval(db, monkeypatch):
     get_or_create_focal_chat()
-    _fake_router(monkeypatch, _decision(delivery="digest"))
+    _fake_router(monkeypatch, _decision(cadence="digest"))
     [rule] = [await _github_release("v1")] and db.list_mailbox_rules()
     db.update_mailbox_rule(
         rule.id,
         action="route",
+        destination="regent",
         target_chat_id=FOCAL_CHAT_ID,
         delivery="digest",
         digest_minutes=30,
@@ -483,7 +485,7 @@ async def test_digest_batches_events_until_its_interval(db, monkeypatch):
 async def test_queued_events_of_a_deleted_digest_rule_are_kept_unrouted(
     db, monkeypatch
 ):
-    _fake_router(monkeypatch, _decision(delivery="digest"))
+    _fake_router(monkeypatch, _decision(cadence="digest"))
     item = await _github_release()
     db.delete_mailbox_rule(item.rule_id)
 
@@ -514,9 +516,8 @@ async def test_rule_edits_set_project_target_delivery_and_prompt(db, monkeypatch
     res = await _put_rule(
         rule.id,
         {
-            "action": "route",
-            "target_chat_id": f"project:{project_id}",
-            "delivery": "digest",
+            "destination": f"project:{project_id}",
+            "cadence": "digest",
             "digest_minutes": 15,
             "prompt": "Triage it.",
         },
@@ -524,16 +525,15 @@ async def test_rule_edits_set_project_target_delivery_and_prompt(db, monkeypatch
 
     assert res.status_code == 200
     saved = json.loads(res.body)["rule"]
-    assert saved["target_project_id"] == project_id
-    assert saved["target_chat_id"] is None
+    assert saved["destination"] == f"project:{project_id}"
     assert saved["target_label"] == "New session in Suzent"
-    assert (saved["delivery"], saved["digest_minutes"], saved["prompt"]) == (
+    assert (saved["cadence"], saved["digest_minutes"], saved["prompt"]) == (
         "digest",
         15,
         "Triage it.",
     )
     assert saved["origin"] == "pinned"
-    bad = await _put_rule(rule.id, {"action": "route", "delivery": "shout"})
+    bad = await _put_rule(rule.id, {"destination": "regent", "cadence": "shout"})
     assert bad.status_code == 400
 
 
@@ -552,7 +552,7 @@ async def _unread() -> int:
 
 @pytest.mark.asyncio
 async def test_notifications_are_unread_until_marked(db, monkeypatch):
-    _fake_router(monkeypatch, _decision(delivery="notify"))
+    _fake_router(monkeypatch, _decision(destination="user"))
     first = await _github_release("v1")
     second = await _github_release("v2")
 
@@ -582,3 +582,90 @@ async def test_mark_read_rejects_bad_ids(db):
         _request("POST", "/mailbox/read", body=b'{"ids": "all"}')
     )
     assert res.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_project_regent_tells_regent_which_project(db, monkeypatch):
+    get_or_create_focal_chat()
+    project_id = db.create_project("Suzent", "suzent")
+    _fake_router(monkeypatch, _decision(destination=f"project_regent:{project_id}"))
+
+    item = await _github_release()
+
+    assert item.target_chat_id == FOCAL_CHAT_ID
+    [message] = db.list_agent_messages(target_chat_id=FOCAL_CHAT_ID)
+    assert "This concerns project 'Suzent'" in message["content"]
+
+
+@pytest.mark.asyncio
+async def test_notify_digest_sends_one_notification(db, monkeypatch):
+    _fake_router(monkeypatch, _decision(destination="user", cadence="digest"))
+    await _github_release("v1")
+    await _github_release("v2")
+    assert db.drain_background_notifications() == []
+
+    assert flush_due_digests(datetime.now() + timedelta(hours=2)) == 1
+
+    [note] = db.drain_background_notifications()
+    assert "v1" in note.result and "v2" in note.result
+    assert db.list_agent_messages() == []
+    assert await _unread() == 2
+
+
+@pytest.mark.asyncio
+async def test_router_cannot_pick_a_session_or_unknown_project(db, monkeypatch):
+    get_or_create_focal_chat()
+    chat_id = db.create_chat(title="Some chat", config={})
+    _fake_router(monkeypatch, _decision(destination=f"session:{chat_id}"))
+    await _github_release()
+    [rule] = db.list_mailbox_rules()
+    assert rule.destination == "regent"
+
+    db.delete_mailbox_rule(rule.id)
+    _fake_router(monkeypatch, _decision(destination="project:not-a-project"))
+    await _github_release("v2")
+    [rule] = db.list_mailbox_rules()
+    assert rule.destination == "regent"
+
+
+def test_migration_turns_old_rules_into_destinations(tmp_path):
+    import sqlite3
+
+    from suzent.database import ChatDatabase
+
+    path = tmp_path / "old.db"
+    conn = sqlite3.connect(path)
+    conn.execute(
+        "CREATE TABLE mailbox_rules (id INTEGER PRIMARY KEY, signature TEXT UNIQUE, "
+        "name TEXT, source_kind TEXT, action TEXT, target_chat_id TEXT, "
+        "target_label TEXT, origin TEXT, reason TEXT, hit_count INTEGER, "
+        "created_at DATETIME, updated_at DATETIME, delivery TEXT, "
+        "digest_minutes INTEGER, target_project_id TEXT, prompt TEXT)"
+    )
+    rows = [
+        ("a", "none", None, None, "wake"),
+        ("b", "route", FOCAL_CHAT_ID, None, "notify"),
+        ("c", "route", None, "p1", "digest"),
+        ("d", "route", FOCAL_CHAT_ID, None, "wake"),
+        ("e", "route", "chat-1", None, "wake"),
+    ]
+    for signature, action, chat, project, delivery in rows:
+        conn.execute(
+            "INSERT INTO mailbox_rules (signature, name, source_kind, action, "
+            "target_chat_id, origin, hit_count, created_at, updated_at, delivery, "
+            "digest_minutes, target_project_id) VALUES (?, ?, 'webhook', ?, ?, "
+            "'learned', 0, '2026-01-01', '2026-01-01', ?, 60, ?)",
+            (signature, signature, action, chat, delivery, project),
+        )
+    conn.commit()
+    conn.close()
+
+    rules = {r.signature: r for r in ChatDatabase(str(path)).list_mailbox_rules()}
+
+    assert {s: (r.destination, r.delivery) for s, r in rules.items()} == {
+        "a": ("none", "now"),
+        "b": ("user", "now"),
+        "c": ("project", "digest"),
+        "d": ("regent", "now"),
+        "e": ("session", "now"),
+    }

@@ -8,12 +8,12 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 
 from suzent.core.mailbox import (
+    DEST_NONE,
+    Destination,
     MissingTargetError,
-    split_target,
-    target_exists,
-    target_label_for,
+    routing_fields,
     get_mailbox_webhook_path,
-    list_routable_targets,
+    list_destinations,
     rotate_mailbox_token,
     route_or_override_mailbox_item,
 )
@@ -62,11 +62,9 @@ def _rule_to_dict(rule: MailboxRuleModel) -> dict:
         "signature": rule.signature,
         "name": rule.name,
         "source_kind": rule.source_kind,
-        "action": rule.action,
-        "target_chat_id": rule.target_chat_id,
-        "target_project_id": rule.target_project_id,
+        "destination": Destination.of_rule(rule).value,
         "target_label": rule.target_label,
-        "delivery": rule.delivery,
+        "cadence": rule.delivery,
         "digest_minutes": rule.digest_minutes,
         "prompt": rule.prompt,
         "origin": rule.origin,
@@ -118,7 +116,7 @@ async def list_mailbox_items_route(request: Request) -> JSONResponse:
                 "unrouted": counts.get("unrouted", 0),
                 "unread": db.count_unread_mailbox_notifications(),
             },
-            "targets": list_routable_targets(db),
+            "destinations": list_destinations(db),
             "endpoint": _endpoint_urls(request, get_mailbox_webhook_path()),
         }
     )
@@ -187,7 +185,7 @@ async def list_mailbox_rules_route(request: Request) -> JSONResponse:
     return JSONResponse(
         {
             "rules": [_rule_to_dict(r) for r in rules],
-            "targets": list_routable_targets(db),
+            "destinations": list_destinations(db),
         }
     )
 
@@ -200,46 +198,28 @@ async def update_mailbox_rule_route(request: Request) -> JSONResponse:
         return JSONResponse({"error": "Invalid JSON"}, status_code=400)
 
     db = get_database()
-    action = "none" if data.get("action") == "none" else "route"
-    chat_id, project_id = split_target(
-        data.get("target_chat_id") if action == "route" else None
-    )
-    if project_id and db.get_project(project_id) is None:
+    destination = Destination.parse(data.get("destination"))
+    if destination.missing(db):
         return JSONResponse(
-            {"error": str(MissingTargetError(f"project:{project_id}"))},
-            status_code=400,
+            {"error": str(MissingTargetError(destination.value))}, status_code=400
         )
-    if chat_id and not target_exists(db, chat_id):
-        return JSONResponse(
-            {"error": str(MissingTargetError(chat_id))}, status_code=400
-        )
-    if action == "route" and not (chat_id or project_id):
-        return JSONResponse({"error": "A routed rule needs a target"}, status_code=400)
-    delivery = str(data.get("delivery") or "wake")
-    if delivery not in ("wake", "digest", "notify"):
-        return JSONResponse(
-            {"error": f"Unknown delivery '{delivery}'"}, status_code=400
-        )
-    target_label = (
-        target_label_for(db, chat_id, project_id) if action == "route" else None
-    )
-
+    cadence = str(data.get("cadence") or "now")
+    if cadence not in ("now", "digest"):
+        return JSONResponse({"error": f"Unknown cadence '{cadence}'"}, status_code=400)
+    label = destination.label(db)
     updated = db.update_mailbox_rule(
         rule_id,
-        action=action,
-        target_chat_id=chat_id,
-        target_project_id=project_id,
-        target_label=target_label,
-        delivery=delivery,
+        delivery=cadence,
         digest_minutes=_safe_int(str(data.get("digest_minutes", 60)), 60),
-        prompt=data.get("prompt"),
+        prompt=data.get("prompt") if destination.reaches_agent else None,
         origin="pinned",
         reason=data.get("reason")
         or (
-            f"Pinned by user: route to {target_label}."
-            if action == "route"
-            else "Pinned by user: do not route (store in Inbox only)."
+            f"Pinned by user: send to {label}."
+            if destination.kind != DEST_NONE
+            else "Pinned by user: keep in the Mailbox only."
         ),
+        **routing_fields(db, destination),
     )
     if updated is None:
         return JSONResponse({"error": "Rule not found"}, status_code=404)
