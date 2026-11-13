@@ -154,7 +154,7 @@ interface AssistantMessageProps {
   fallbackModel?: string;
   /** Chat containing this message's persisted file snapshot. */
   fileChangeChatId?: string;
-  /** What this reply answers, shown under the badge. */
+  /** What this reply answers, shown above the badge. */
   replyContext?: React.ReactNode;
 }
 
@@ -1163,8 +1163,8 @@ const AssistantMessageComponent: React.FC<AssistantMessageProps> = ({
               <IncomingMessage text={part.text || ''} />
             </div>
           ))}
-          {(!regent || !hasParts) && badgeContainer}
           {replyContext}
+          {(!regent || !hasParts) && badgeContainer}
 
           <div
             className={
@@ -1285,8 +1285,8 @@ const AssistantMessageComponent: React.FC<AssistantMessageProps> = ({
       >
         {messageMenu}
         {/* Badge/Assembly Container is rendered at the top of the entire message timeline */}
-        {badgeContainer}
         {replyContext}
+        {badgeContainer}
 
         <div
           className={

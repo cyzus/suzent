@@ -628,14 +628,14 @@ const MessageList: React.FC<{
         const isLastMessage = live ? true : idx === messages.length - 1;
         const group = groupRenders.get(idx);
         const repliedTrigger = triggerPlan.replies.get(idx);
-        // Regent signs its replies at the bottom, so the line can lead the row;
-        // elsewhere the badge leads and the line belongs under it.
+        // Elsewhere the line goes inside the reply so it lines up with the badge
+        // under it; Regent replies have no leading badge to line up with.
         const isFocal = chatId === FOCAL_CHAT_ID;
         const triggerReference = isFocal && repliedTrigger && (
           <TriggerReference entries={repliedTrigger} />
         );
         const replyContext = !isFocal && repliedTrigger && (
-          <TriggerReference entries={repliedTrigger} className="-mt-1 mb-2" />
+          <TriggerReference entries={repliedTrigger} className="mb-2" />
         );
 
         // Intermediate step group representative: badge shown here (top of the turn), tool pills below.
