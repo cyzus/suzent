@@ -76,6 +76,11 @@ and which permissions to give. With Stripe you can connect a sandbox instead
 of your live account while you try it out. Stripe still asks you to confirm
 some actions, such as refunds, in its dashboard.
 
+A newly connected service starts out off, so its tools don't reach the agent
+yet. To turn it on, open the sidebar in a chat, choose the **Tools** tab, and
+switch it on under **Services**. It then stays on for every chat until you
+switch it off again.
+
 You stay signed in after a restart. Your sign-in and tokens are kept in your
 system keychain. The agent never sees them, and they are not passed to
 commands the agent runs.

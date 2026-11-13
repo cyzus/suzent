@@ -187,6 +187,41 @@ class PluginManager:
         if record is not None and record.manifest.channel:
             self._set_channel_enabled(record.manifest.channel, enabled)
 
+    def service_enabled(self, plugin_id: str, integration_id: str) -> bool:
+        """Whether a connected service offers its tools to the agent.
+
+        Connections made before this switch existed have no entry and stay on;
+        a new connection records off (see ``default_service_off``).
+        """
+        services = self._read_state().get(plugin_id, {}).get("services")
+        if not isinstance(services, dict) or integration_id not in services:
+            return True
+        return bool(services[integration_id])
+
+    def set_service_enabled(
+        self, plugin_id: str, integration_id: str, enabled: bool
+    ) -> None:
+        plugins = self._read_state()
+        entry = plugins.get(plugin_id)
+        if entry is None:
+            # An entry decides enablement, so a new one must carry the current state.
+            record = self.discover().get(plugin_id)
+            entry = {"enabled": bool(record and record.enabled)}
+            plugins[plugin_id] = entry
+        services = entry.get("services")
+        if not isinstance(services, dict):
+            services = {}
+        services[integration_id] = enabled
+        entry["services"] = services
+        self._write_state(plugins)
+
+    def default_service_off(self, plugin_id: str, integration_id: str) -> None:
+        """Start a newly connected service off, keeping an earlier choice."""
+        services = self._read_state().get(plugin_id, {}).get("services")
+        if isinstance(services, dict) and integration_id in services:
+            return
+        self.set_service_enabled(plugin_id, integration_id, False)
+
     def _set_channel_enabled(self, channel: str, enabled: bool) -> None:
         """Keep the chat app's own switch in social.json in step with its plugin,
         so Settings > Social never shows an app on whose plugin is removed."""

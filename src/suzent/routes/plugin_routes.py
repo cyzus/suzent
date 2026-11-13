@@ -6,6 +6,7 @@ POST /plugins/{name}/install  -> enable a plugin (by id or alias), install its p
 POST /plugins/{name}/remove   -> disable a plugin and unload it
 POST /plugins/{name}/integrations/{id}/connect     -> start a sign-in, or save a token
 POST /plugins/{name}/integrations/{id}/disconnect  -> sign out and forget the credential
+POST /plugins/{name}/integrations/{id}/enabled     -> {"enabled": bool}; new connections start off
 POST /plugins/{name}/binaries/{binary}/install     -> download a declared program; body {"confirmed": true}
      /plugins/{name}/api/{path}  -> a route the plugin registered
 WS   /plugins/{name}/ws/{path}   -> a WebSocket the plugin registered
@@ -179,6 +180,7 @@ async def connect_integration(request: Request) -> JSONResponse:
     if error is not None:
         return error
     integrations.forget_error(record.id, integration)
+    get_plugin_manager().default_service_off(record.id, integration.id)
     if integration.auth == "token":
         try:
             body = await request.json()
@@ -227,6 +229,26 @@ async def disconnect_integration(request: Request) -> JSONResponse:
     else:
         # Runs on the event loop: it cancels a sign-in task still waiting.
         sign_out(integrations.namespace(record.id, integration))
+    _rebuild_agent()
+    return JSONResponse(integrations.describe(record.id, integration))
+
+
+async def set_integration_enabled(request: Request) -> JSONResponse:
+    """Switch a connected service's tools on or off for every chat."""
+    from suzent.plugins import integrations
+
+    record, integration, error = _integration_or_error(request)
+    if error is not None:
+        return error
+    try:
+        payload = await request.json()
+    except Exception:
+        payload = None
+    if not isinstance(payload, dict) or not isinstance(payload.get("enabled"), bool):
+        return JSONResponse({"error": "Invalid request"}, status_code=400)
+    get_plugin_manager().set_service_enabled(
+        record.id, integration.id, payload["enabled"]
+    )
     _rebuild_agent()
     return JSONResponse(integrations.describe(record.id, integration))
 

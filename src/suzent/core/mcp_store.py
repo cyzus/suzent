@@ -62,7 +62,7 @@ def get(name: str) -> dict[str, Any] | None:
     return _load().get(name)
 
 
-def upsert(name: str, config: dict[str, Any], *, enabled: bool = True) -> None:
+def upsert(name: str, config: dict[str, Any], *, enabled: bool = False) -> None:
     servers = _load()
     existing = servers.get(name, {})
     entry: dict[str, Any] = {
@@ -81,7 +81,7 @@ def upsert(name: str, config: dict[str, Any], *, enabled: bool = True) -> None:
     _save(servers)
 
 
-def add(name: str, config: dict[str, Any], *, enabled: bool = True) -> bool:
+def add(name: str, config: dict[str, Any], *, enabled: bool = False) -> bool:
     servers = _load()
     if name in servers:
         return False

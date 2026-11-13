@@ -24,7 +24,8 @@ address (URL) or a program on your computer that Suzent starts (stdio).
 
 4. Click **Add Server**. Suzent connects right away and shows **Reachable** with
    the number of tools it found, or **Unreachable** with the reason. The server
-   is saved either way, and it starts out enabled.
+   is saved either way. It starts out off, so its tools reach the agent only
+   after you turn it on (see below).
 
 ## Testing and editing
 
