@@ -102,8 +102,10 @@ class FocalMailboxTool(Tool):
             Optional[str],
             Field(
                 description=(
-                    "For 'list': only this kind of source, e.g. 'webhook', "
-                    "'email', 'agent', 'schedule'."
+                    "For 'list': only this kind of source, as list shows it: "
+                    "'webhook', 'email', 'schedule', 'agent_inbox' (messages "
+                    "from your other agents), 'peer' (paired devices), or a "
+                    "plugin's id."
                 )
             ),
         ] = None,
@@ -135,37 +137,52 @@ class FocalMailboxTool(Tool):
         )
 
 
+# What Regent might naturally write for a source, mapped to the stored kind.
+_SOURCE_ALIASES = {"agent": "agent_inbox", "agents": "agent_inbox", "mail": "email"}
+
+
 def _list(
     status: Optional[str], source: Optional[str], unread_only: bool, limit: int
 ) -> ToolResult:
     db = get_database()
-    if unread_only:
-        status = "notified"
-    # Unread notifications are filtered after the query, so look further back.
-    fetch = MAX_LIST * 4 if unread_only else limit
+    source = (source or "").strip().lower() or None
     items = db.list_mailbox_items(
-        limit=fetch,
+        limit=limit,
         route_status=status,
-        source_kind=(source or "").strip().lower() or None,
+        source_kind=_SOURCE_ALIASES.get(source, source) if source else None,
+        unread_only=unread_only,
     )
-    if unread_only:
-        items = [item for item in items if item.read_at is None]
-    items = items[:limit]
     if not items:
         return ToolResult.success_result("No Mailbox events match.")
-    lines = [_OUTSIDE_DATA, ""] + [_line(item) for item in items]
+    failed = _failed_deliveries(items)
+    lines = [_OUTSIDE_DATA, ""] + [_line(item, item.id in failed) for item in items]
     return ToolResult.success_result("\n".join(lines))
 
 
-def _line(item: MailboxItemModel) -> str:
+def _failed_deliveries(items: list[MailboxItemModel]) -> set[int]:
+    """Items routed to an agent whose delivery has since failed."""
+    statuses = get_database().agent_message_statuses(
+        [item.inbox_message_id for item in items if item.inbox_message_id]
+    )
+    return {
+        item.id
+        for item in items
+        if item.route_status == "routed"
+        and statuses.get(item.inbox_message_id or "") == "failed"
+    }
+
+
+def _line(item: MailboxItemModel, delivery_failed: bool = False) -> str:
     where = _STATUS_TEXT.get(item.route_status, item.route_status)
     if item.route_status == "routed" and item.target_label:
         where = f"sent to {item.target_label}"
+    if delivery_failed:
+        where = f"failed: could not be delivered to {item.target_label or 'the agent'}"
     if item.route_status == "notified" and item.read_at is None:
         where += " (unread)"
     return (
-        f"#{item.id} · {_when(item.created_at)} · {item.source_name} · "
-        f"{item.event_type} · {item.summary} → {where}"
+        f"#{item.id} · {_when(item.created_at)} · {item.source_kind}: "
+        f"{item.source_name} · {item.event_type} · {item.summary} → {where}"
     )
 
 
@@ -184,7 +201,7 @@ def _read(item_id: Optional[int]) -> ToolResult:
         f"Mailbox event #{item.id}",
         f"From: {item.source_name} ({item.source_kind}) · {item.event_type}",
         f"Received: {_when(item.created_at)}",
-        f"Where it went: {_line(item).rsplit(' → ', 1)[1]}",
+        f"Where it went: {_line(item, item.id in _failed_deliveries([item])).rsplit(' → ', 1)[1]}",
     ]
     if item.reason:
         details.append(f"Why: {item.reason}")

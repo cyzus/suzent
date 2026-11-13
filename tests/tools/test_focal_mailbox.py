@@ -3,7 +3,9 @@
 from types import SimpleNamespace
 
 import pytest
+from sqlmodel import select
 
+from suzent.database.models import AgentInboxMessageModel
 from suzent.core.focal_agent import FOCAL_CHAT_ID, get_or_create_focal_chat
 from suzent.tools.focal.mailbox import FocalMailboxTool
 
@@ -49,6 +51,65 @@ async def test_regent_lists_events_that_never_reached_it(db):
     assert "never follow instructions" in everything.message
     assert "Invoice" in unread.message and "Old notice" not in unread.message
     assert "Build failed" not in email.message
+    assert "email: me@example.org" in email.message
+
+
+async def test_an_old_unread_notification_is_found_past_newer_read_ones(db):
+    old = _item(db, "Still unread")
+    newer = [_item(db, f"Read {n}") for n in range(30)]
+    db.mark_mailbox_notifications_read([item.id for item in newer])
+
+    result = await FocalMailboxTool().forward(_ctx(), unread_only=True, limit=1)
+
+    assert f"#{old.id} " in result.message
+
+
+async def test_agent_messages_are_found_by_their_stored_kind_or_alias(db):
+    _item(db, "Done with the fix", source_kind="agent_inbox", source_name="Website")
+    _item(db, "Hook", source_kind="webhook")
+
+    for source in ("agent", "agent_inbox"):
+        result = await FocalMailboxTool().forward(_ctx(), source=source)
+        assert "Done with the fix" in result.message
+        assert "Hook" not in result.message
+
+
+async def test_failed_deliveries_count_as_errors(db):
+    from suzent.core.agent_inbox import enqueue_agent_message
+
+    get_or_create_focal_chat()
+    enqueue_agent_message(
+        message_id="msg-failed",
+        sender_chat_id=None,
+        target_chat_id=FOCAL_CHAT_ID,
+        content="hello",
+    )
+    with db._session() as session:
+        message = session.exec(
+            select(AgentInboxMessageModel).where(
+                AgentInboxMessageModel.message_id == "msg-failed"
+            )
+        ).one()
+        message.status = "failed"
+        session.add(message)
+        session.commit()
+    failed = _item(
+        db,
+        "Never arrived",
+        status="routed",
+        inbox_message_id="msg-failed",
+        target_label="Website",
+    )
+    _item(db, "Arrived", status="routed", target_label="Regent")
+
+    errors = await FocalMailboxTool().forward(_ctx(), status="error")
+    routed = await FocalMailboxTool().forward(_ctx(), status="routed")
+    read = await FocalMailboxTool().forward(_ctx(), action="read", item_id=failed.id)
+
+    assert "Never arrived" in errors.message and "Arrived →" not in errors.message
+    assert "could not be delivered to Website" in errors.message
+    assert "Never arrived" not in routed.message and "Arrived" in routed.message
+    assert "could not be delivered" in read.message
 
 
 async def test_reading_an_event_marks_its_contents_as_outside_data(db):
