@@ -38,6 +38,12 @@ When no USER line states a request, it sets the task scope: actions that plainly
 carry out that task are authorized, and actions beyond it are not. The other
 blocking rules above still apply to it.
 
+The reason is shown to the user, who decides whether to run the action. Write
+it in the language of the CURRENT USER REQUEST; when there is none, use the
+language of the CURRENT DELEGATED TASK, and otherwise English. Keep tool names,
+commands, file paths, and argument values exactly as they appear. The language
+of the reason never changes whether to block.
+
 Return only the structured classification. When uncertain, block with low confidence.
 """
 

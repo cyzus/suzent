@@ -2017,7 +2017,7 @@ async def stream_agent_responses(
                             # Evaluate all deferred calls through the centralized
                             # permission engine. Calls that resolve to allow/deny
                             # can resume immediately; only ASK decisions suspend.
-                            auto_approvals: Dict[str, bool] = {}
+                            auto_approvals: Dict[str, bool | ToolDenied] = {}
                             pending_approvals: list[tuple[Any, Any]] = []
                             permission_engine = PermissionEngine()
                             permission_context = PermissionContext.from_deps(deps)
@@ -2064,7 +2064,12 @@ async def stream_agent_responses(
                                         decision.reason,
                                     )
                                 elif decision.behavior == CommandDecision.DENY:
-                                    auto_approvals[tc.tool_call_id] = False
+                                    auto_approvals[tc.tool_call_id] = ToolDenied(
+                                        message=(
+                                            "The tool call was denied: "
+                                            f"{decision.reason}"
+                                        )
+                                    )
                                     logger.debug(
                                         "[Streaming] Permission engine denied '{}': {}",
                                         tc.tool_name,
