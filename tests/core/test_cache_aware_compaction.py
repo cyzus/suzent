@@ -4,6 +4,7 @@ prepared summary is applied early, and which model writes a summary."""
 import asyncio
 import json
 import time
+from datetime import datetime
 from types import SimpleNamespace
 
 import pytest
@@ -152,6 +153,62 @@ async def test_cold_cache_applies_the_prepared_summary_early(monkeypatch) -> Non
     assert "cold" not in cc._PRECOMPACTIONS
 
 
+async def test_cold_cache_notice_says_why_and_keeps_the_summary(monkeypatch) -> None:
+    events: list = []
+    monkeypatch.setattr(
+        "suzent.core.stream_registry.emit_bus_event", lambda p: events.append(p)
+    )
+    persisted: list = []
+    monkeypatch.setattr(
+        cc, "persist_compaction_notice", lambda **kw: persisted.append(kw)
+    )
+    _stub_summaries(monkeypatch)
+    history = _long_history()
+    assert schedule_precompaction("why", history)
+    await asyncio.sleep(0)
+    _last_request(monkeypatch, "openai/gpt-x", idle=900)
+
+    await _resume("why", history)
+    await asyncio.sleep(0)
+
+    prep = [e["stage"] for e in events if e["event"] == "precompaction"]
+    assert prep == ["start", "ready"]
+    complete = next(
+        e
+        for e in events
+        if e["event"] == "auto_compaction" and e["stage"] == "complete"
+    )
+    assert complete["reason"] == "cold_cache"
+    assert 890 <= complete["idle_seconds"] <= 910
+    assert complete["summary"] == SUMMARY
+    (notice,) = persisted
+    assert notice["details"]["reason"] == "cold_cache"
+    assert notice["details"]["summary"] == SUMMARY
+
+
+async def test_prepared_summary_at_the_trigger_is_marked_prepared(monkeypatch) -> None:
+    events: list = []
+    monkeypatch.setattr(
+        "suzent.core.stream_registry.emit_bus_event", lambda p: events.append(p)
+    )
+    monkeypatch.setattr(cc, "persist_compaction_notice", lambda **kw: None)
+    monkeypatch.setattr(CONFIG, "max_context_tokens", 7_500, raising=False)
+    _stub_summaries(monkeypatch)
+    history = _long_history()
+    assert schedule_precompaction("trigger", history)
+    await asyncio.sleep(0)
+
+    await _resume("trigger", history + [ModelResponse(parts=[TextPart("y " * 200)])])
+
+    complete = next(
+        e
+        for e in events
+        if e["event"] == "auto_compaction" and e["stage"] == "complete"
+    )
+    assert complete["reason"] == "prepared"
+    assert "idle_seconds" not in complete
+
+
 @pytest.mark.parametrize(
     ("model_id", "idle"),
     [("openai/gpt-x", 60), ("ollama/llama3", 7200)],
@@ -238,3 +295,16 @@ def test_cold_cache_picks_the_cheaper_writer(monkeypatch, prices, cached) -> Non
     _prices(monkeypatch, prices)
 
     assert _compressor()._prefer_cached_prefix(_long_history(), 5) is cached
+
+
+def test_persisted_notice_records_when_it_happened(monkeypatch) -> None:
+    stored: list = []
+    db = SimpleNamespace(append_chat_message=lambda chat_id, row: stored.append(row))
+    monkeypatch.setattr("suzent.database.get_database", lambda: db)
+
+    cc.persist_compaction_notice(
+        chat_id="stamped", stage="complete", source="auto", tokens_before=9000
+    )
+
+    (row,) = stored
+    assert time.time() - datetime.fromisoformat(row["timestamp"]).timestamp() < 5
