@@ -46,6 +46,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Remove the heavy offset shadow from running tool and sub-agent headers so expanding them looks clean.
 - Voice settings now save as you change them, the voice shortcut is recorded by pressing it, wake phrases are added one at a time, the microphone button shows whether the wake word is listening, and turning on the wake word on Windows installs it instead of failing.
 - Start voice mode hands-free: an optional wake word ("你好 Suzent" / "Hey Suzent") spotted on your computer, and an optional desktop-wide voice shortcut.
+- The wake word no longer adds a dot to the mic button: the message box hints at your phrase, and a line below it says when the wake word can't listen.
 - The wake word now runs entirely inside the Wake word plugin, so removing the plugin stops it listening and removes its endpoints.
 - Videos (MP4, MOV, WebM) in the workspace file panel now play in place instead of opening as text, and video and audio players in the installed app are no longer blocked by its content security policy.
 
