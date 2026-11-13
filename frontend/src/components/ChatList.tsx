@@ -60,6 +60,7 @@ import { canStartRun } from '../lib/runNowGuard';
 import { ProjectSettingsDialog, SYSTEM_PROJECT_SLUGS } from './ProjectSettingsDialog';
 import { BrutalDialog } from './BrutalDialog';
 import { isImeComposing } from '../lib/ime';
+import { SidebarRenameInput } from './sidebar/SidebarRenameInput';
 import { hoverText } from '../lib/hoverText';
 
 const ALL_PROJECTS_FILTER = '__all__';
@@ -238,7 +239,6 @@ export const ChatList: React.FC<ChatListProps> = ({
   }, [activeStreams, unreadSummaryKey, refreshProjects]);
 
   const [renamingChatId, setRenamingChatId] = useState<string | null>(null);
-  const [renameValue, setRenameValue] = useState<string>('');
   const [showRefreshIndicator, setShowRefreshIndicator] = useState(false);
   const [localSearchQuery, setLocalSearchQuery] = useState<string>('');
   // Unified menu state: which chat's context menu is open, and where to anchor it.
@@ -255,7 +255,6 @@ export const ChatList: React.FC<ChatListProps> = ({
   } | null>(null);
   const [renamingProjectId, setRenamingProjectId] = useState<string | null>(null);
   const [settingsProjectId, setSettingsProjectId] = useState<string | null>(null);
-  const [projectRenameValue, setProjectRenameValue] = useState('');
   const [taskMenu, setTaskMenu] = useState<{
     jobId: number;
     anchor: { x: number; y: number } | { rect: DOMRect };
@@ -269,7 +268,6 @@ export const ChatList: React.FC<ChatListProps> = ({
   const heartbeatLockRef = useRef(new Set<string>());
   const [heartbeatLocks, setHeartbeatLocks] = useState<ReadonlySet<string>>(new Set());
   const [renamingTaskId, setRenamingTaskId] = useState<number | null>(null);
-  const [taskRenameValue, setTaskRenameValue] = useState('');
   const [organizationMenuOpen, setOrganizationMenuOpen] = useState(false);
   const platform = useMemo(
     () => detectDesktopPlatform(navigator.userAgent, navigator.platform),
@@ -308,7 +306,6 @@ export const ChatList: React.FC<ChatListProps> = ({
     () => new Set()
   );
   const [creatingProjectInline, setCreatingProjectInline] = useState(false);
-  const [newProjectName, setNewProjectName] = useState('');
   const sidebarBoundsRef = useRef<HTMLDivElement | null>(null);
   const [projectChats, setProjectChats] = useState<ChatSummary[]>([]);
   const [archivedOpen, setArchivedOpen] = useState(false);
@@ -1051,35 +1048,22 @@ export const ChatList: React.FC<ChatListProps> = ({
     }
   };
 
-  const handleRenameSubmit = async (chatId: string, e: React.FormEvent | React.KeyboardEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    const trimmed = renameValue.trim();
-    if (trimmed) await renameChat(chatId, trimmed);
+  const handleRenameSave = async (chatId: string, name: string): Promise<void> => {
     setRenamingChatId(null);
+    await renameChat(chatId, name);
   };
 
-  const handleRenameCancel = (e: React.MouseEvent | React.KeyboardEvent) => {
-    e.stopPropagation();
-    setRenamingChatId(null);
-  };
-
-  const handleTaskRenameSubmit = async (job: CronJob, event: React.FormEvent): Promise<void> => {
-    event.preventDefault();
-    event.stopPropagation();
-    const trimmed = taskRenameValue.trim();
-    if (trimmed && trimmed !== job.name) {
-      await updateCronJob(job.id, { name: trimmed });
-      if (getScheduledTaskChat(job).ownsChat && job.last_run_at) {
-        try {
-          await renameChat(`cron-${job.id}`, `Cron: ${trimmed}`);
-        } catch {
-          // The task may not have created its backing conversation yet.
-        }
-      }
-      await refreshAutomation();
-    }
+  const handleTaskRenameSave = async (job: CronJob, name: string): Promise<void> => {
     setRenamingTaskId(null);
+    await updateCronJob(job.id, { name });
+    if (getScheduledTaskChat(job).ownsChat && job.last_run_at) {
+      try {
+        await renameChat(`cron-${job.id}`, `Cron: ${name}`);
+      } catch {
+        // The task may not have created its backing conversation yet.
+      }
+    }
+    await refreshAutomation();
   };
 
   const handleRequestTaskDelete = (job: CronJob): void => {
@@ -1130,17 +1114,13 @@ export const ChatList: React.FC<ChatListProps> = ({
     setCreatingProjectInline(false);
   };
 
-  const handleCreateProjectInline = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const name = newProjectName.trim();
-    if (!name) return;
+  const handleCreateProjectInline = async (name: string): Promise<void> => {
+    setCreatingProjectInline(false);
     const project = await createProject(name);
     if (project) {
       setCurrentProjectId(project.id);
       setFilterId(project.id);
     }
-    setNewProjectName('');
-    setCreatingProjectInline(false);
   };
 
   const formatNextRun = (dateString: string): string => {
@@ -1386,14 +1366,29 @@ export const ChatList: React.FC<ChatListProps> = ({
       </span>
     ) : null;
     const hangKindIcon = kindIcon !== null && (nested || chatKind === 'subagent');
+    const isRenaming = renamingChatId === chat.id;
+    const renameInput = (
+      <SidebarRenameInput
+        initialValue={chat.title || ''}
+        ariaLabel={t('chatList.rename.placeholder')}
+        placeholder={t('chatList.rename.placeholder')}
+        onSave={(name) => void handleRenameSave(chat.id, name)}
+        onCancel={() => setRenamingChatId(null)}
+        className={compact ? '-ml-1.5 text-[11px]' : '-ml-1.5'}
+      />
+    );
     const rowContent = compact ? (
       <div className="flex min-w-0 items-center gap-2">
-        <h3
-          title={chat.title || t('chatList.untitled')}
-          className={`min-w-0 flex-1 truncate text-[11px] leading-5 ${unread > 0 ? 'font-extrabold text-neutral-950 dark:text-white' : 'font-medium text-neutral-700 dark:text-neutral-200'}`}
-        >
-          {chat.title || t('chatList.untitled')}
-        </h3>
+        {isRenaming ? (
+          renameInput
+        ) : (
+          <h3
+            title={chat.title || t('chatList.untitled')}
+            className={`min-w-0 flex-1 truncate text-[11px] leading-5 ${unread > 0 ? 'font-extrabold text-neutral-950 dark:text-white' : 'font-medium text-neutral-700 dark:text-neutral-200'}`}
+          >
+            {chat.title || t('chatList.untitled')}
+          </h3>
+        )}
         {chat.projectName && (
           <span
             title={chat.projectName}
@@ -1402,7 +1397,7 @@ export const ChatList: React.FC<ChatListProps> = ({
             {chat.projectName}
           </span>
         )}
-        {trailing}
+        {!isRenaming && trailing}
       </div>
     ) : (
       <div className="min-w-0 space-y-0.5">
@@ -1410,12 +1405,16 @@ export const ChatList: React.FC<ChatListProps> = ({
           {/* Indented rows hang the icon in their left padding so titles stay aligned. */}
           {kindIcon &&
             (hangKindIcon ? <span className="-ml-5 flex shrink-0">{kindIcon}</span> : kindIcon)}
-          <h3
-            className={`text-xs leading-snug truncate flex-1 min-w-0 transition-colors ${isUnread(chat) ? 'font-extrabold' : 'font-medium'} ${currentChatId === chat.id ? 'text-brutal-black dark:text-white' : isUnread(chat) ? 'text-neutral-950 dark:text-white' : 'text-neutral-700 dark:text-neutral-200 group-hover:text-brutal-black dark:group-hover:text-white'}`}
-          >
-            {chat.title || t('chatList.untitled')}
-          </h3>
-          {trailing}
+          {isRenaming ? (
+            renameInput
+          ) : (
+            <h3
+              className={`text-xs leading-snug truncate flex-1 min-w-0 transition-colors ${isUnread(chat) ? 'font-extrabold' : 'font-medium'} ${currentChatId === chat.id ? 'text-brutal-black dark:text-white' : isUnread(chat) ? 'text-neutral-950 dark:text-white' : 'text-neutral-700 dark:text-neutral-200 group-hover:text-brutal-black dark:group-hover:text-white'}`}
+            >
+              {chat.title || t('chatList.untitled')}
+            </h3>
+          )}
+          {!isRenaming && trailing}
         </div>
         {(hasCollapsedChildren || metaParts.length > 0) && (
           <div className="flex items-center gap-1.5 overflow-hidden text-[10px] text-neutral-500 dark:text-neutral-400">
@@ -1481,43 +1480,9 @@ export const ChatList: React.FC<ChatListProps> = ({
         }}
         className={`group relative transition-colors ${compact ? 'min-h-9 px-2.5 py-2 rounded-sm' : nested ? 'py-2 rounded-sm border-transparent' : 'py-2 border-b last:border-b-0'}
           ${compact ? '' : chatKind === 'subagent' ? (nested ? 'pl-10 pr-2' : 'pl-8 pr-3.5') : nested ? 'pl-7 pr-2' : 'px-3.5'}
-          ${renamingChatId ? (renamingChatId === chat.id ? 'cursor-default' : 'opacity-50 pointer-events-none') : 'cursor-pointer'}
+          ${renamingChatId === chat.id ? 'cursor-default' : 'cursor-pointer'}
           ${rowSurface} ${locatedChatId === chat.id ? 'chat-row-located' : ''}`}
       >
-        {renamingChatId === chat.id && (
-          <form
-            className="absolute inset-0 z-20 flex items-center gap-1 px-2 bg-white dark:bg-zinc-800 border-2 border-brutal-black dark:border-brutal-yellow"
-            onSubmit={(e) => handleRenameSubmit(chat.id, e)}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <input
-              autoFocus
-              type="text"
-              value={renameValue}
-              onChange={(e) => setRenameValue(e.target.value)}
-              onKeyDown={(e) => {
-                if (isImeComposing(e)) return;
-                if (e.key === 'Escape') handleRenameCancel(e);
-              }}
-              className="flex-1 min-w-0 px-2 py-1 text-xs font-bold bg-neutral-50 dark:bg-zinc-700 dark:text-white border-2 border-brutal-black focus:outline-none"
-              placeholder={t('chatList.rename.placeholder')}
-            />
-            <button
-              type="submit"
-              className="px-2 py-1 text-[10px] font-extrabold uppercase border-2 border-brutal-black bg-brutal-yellow hover:brightness-95 text-brutal-black transition-colors shrink-0"
-            >
-              {t('chatList.rename.confirm')}
-            </button>
-            <button
-              type="button"
-              onClick={handleRenameCancel}
-              className="px-2 py-1 text-[10px] font-extrabold uppercase border-2 border-brutal-black bg-white dark:bg-zinc-700 dark:text-white hover:bg-neutral-100 transition-colors shrink-0"
-            >
-              {t('chatList.rename.cancel')}
-            </button>
-          </form>
-        )}
-
         {rowContent}
 
         {/* Three-dot menu button — appears on hover; right-click anywhere on the row also opens it */}
@@ -1791,34 +1756,15 @@ export const ChatList: React.FC<ChatListProps> = ({
                                   }`}
                                 >
                                   {renamingTaskId === job.id ? (
-                                    <form
-                                      className="flex items-center gap-1 py-1 pl-6 pr-2"
-                                      onSubmit={(event) => void handleTaskRenameSubmit(job, event)}
-                                    >
-                                      <input
+                                    <div className="flex items-center py-1.5 pl-6 pr-2">
+                                      <SidebarRenameInput
+                                        initialValue={job.name}
+                                        ariaLabel={t('chatList.rename.placeholder')}
                                         autoFocus={!mobile}
-                                        value={taskRenameValue}
-                                        onChange={(event) => setTaskRenameValue(event.target.value)}
-                                        onKeyDown={(event) => {
-                                          if (isImeComposing(event)) return;
-                                          if (event.key === 'Escape') setRenamingTaskId(null);
-                                        }}
-                                        className="min-w-0 flex-1 border-2 border-brutal-black bg-white px-2 py-1 text-xs font-bold focus:outline-none dark:bg-zinc-700 dark:text-white"
+                                        onSave={(name) => void handleTaskRenameSave(job, name)}
+                                        onCancel={() => setRenamingTaskId(null)}
                                       />
-                                      <button
-                                        type="submit"
-                                        className="border-2 border-brutal-black bg-brutal-yellow px-2 py-1 text-[10px] font-extrabold"
-                                      >
-                                        ✓
-                                      </button>
-                                      <button
-                                        type="button"
-                                        onClick={() => setRenamingTaskId(null)}
-                                        className="border-2 border-brutal-black bg-white px-2 py-1 text-[10px] font-extrabold dark:bg-zinc-700 dark:text-white"
-                                      >
-                                        ✕
-                                      </button>
-                                    </form>
+                                    </div>
                                   ) : (
                                     <>
                                       <button
@@ -2294,6 +2240,25 @@ export const ChatList: React.FC<ChatListProps> = ({
                             : t('chatList.organization.singleList')}
                         </button>
                       ))}
+                      <div role="separator" className="my-1 h-px bg-neutral-200 dark:bg-zinc-700" />
+                      <button
+                        type="button"
+                        role="menuitemcheckbox"
+                        aria-checked={archivedOpen}
+                        onClick={() => {
+                          setArchivedOpen((open) => !open);
+                          setOrganizationMenuOpen(false);
+                        }}
+                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs font-bold text-brutal-black hover:bg-brutal-yellow dark:text-white dark:hover:text-brutal-black"
+                      >
+                        <span className="flex h-4 w-4 items-center justify-center">
+                          {archivedOpen && <CheckIcon className="h-4 w-4 stroke-[2.5]" />}
+                        </span>
+                        <span className="flex-1">{t('chatList.showArchived')}</span>
+                        <span className="text-[10px] tabular-nums text-neutral-400">
+                          {archivedCount}
+                        </span>
+                      </button>
                     </div>
                   )}
                 </div>
@@ -2301,42 +2266,16 @@ export const ChatList: React.FC<ChatListProps> = ({
                 {organization === 'projects' ? (
                   <>
                     {creatingProjectInline && (
-                      <form
-                        onSubmit={handleCreateProjectInline}
-                        className="flex items-center gap-1 px-3 pb-2"
-                      >
-                        <input
-                          autoFocus={!mobile}
-                          type="text"
-                          value={newProjectName}
-                          onChange={(event) => setNewProjectName(event.target.value)}
-                          onKeyDown={(event) => {
-                            if (isImeComposing(event)) return;
-                            if (event.key === 'Escape') {
-                              setCreatingProjectInline(false);
-                              setNewProjectName('');
-                            }
-                          }}
+                      <div className="flex items-center px-3 pb-2">
+                        <SidebarRenameInput
+                          initialValue=""
+                          ariaLabel={t('chatList.newProjectPlaceholder')}
                           placeholder={t('chatList.newProjectPlaceholder')}
-                          className="flex-1 min-w-0 px-2 py-1.5 text-xs font-bold bg-white dark:bg-zinc-700 dark:text-white border-2 border-brutal-black focus:outline-none"
+                          autoFocus={!mobile}
+                          onSave={(name) => void handleCreateProjectInline(name)}
+                          onCancel={() => setCreatingProjectInline(false)}
                         />
-                        <button
-                          type="submit"
-                          className="px-2 py-1.5 text-[10px] font-extrabold border-2 border-brutal-black bg-brutal-yellow"
-                        >
-                          ✓
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setCreatingProjectInline(false);
-                            setNewProjectName('');
-                          }}
-                          className="px-2 py-1.5 text-[10px] font-extrabold border-2 border-brutal-black bg-white dark:bg-zinc-700 dark:text-white"
-                        >
-                          ✕
-                        </button>
-                      </form>
+                      </div>
                     )}
 
                     <div className="space-y-0.5 px-2 pb-2">
@@ -2363,40 +2302,18 @@ export const ChatList: React.FC<ChatListProps> = ({
                               className={`group/proj relative grid min-h-8 grid-cols-[minmax(0,1fr)_24px] transition-colors hover:bg-neutral-100 dark:hover:bg-zinc-700`}
                             >
                               {isRenaming ? (
-                                <form
-                                  className="col-span-2 flex items-center gap-1 px-2 py-1"
-                                  onSubmit={async (event) => {
-                                    event.preventDefault();
-                                    const trimmed = projectRenameValue.trim();
-                                    if (trimmed && trimmed !== project.name)
-                                      await renameProject(project.id, trimmed);
-                                    setRenamingProjectId(null);
-                                  }}
-                                >
-                                  <input
+                                <div className="col-span-2 flex items-center px-2 py-1">
+                                  <SidebarRenameInput
+                                    initialValue={project.name}
+                                    ariaLabel={t('chatList.rename.placeholder')}
                                     autoFocus={!mobile}
-                                    value={projectRenameValue}
-                                    onChange={(event) => setProjectRenameValue(event.target.value)}
-                                    onKeyDown={(event) => {
-                                      if (isImeComposing(event)) return;
-                                      if (event.key === 'Escape') setRenamingProjectId(null);
+                                    onSave={(name) => {
+                                      setRenamingProjectId(null);
+                                      void renameProject(project.id, name);
                                     }}
-                                    className="flex-1 min-w-0 px-2 py-1 text-xs font-bold bg-white dark:bg-zinc-700 dark:text-white border-2 border-brutal-black focus:outline-none"
+                                    onCancel={() => setRenamingProjectId(null)}
                                   />
-                                  <button
-                                    type="submit"
-                                    className="px-2 py-1 text-[10px] font-extrabold border-2 border-brutal-black bg-brutal-yellow"
-                                  >
-                                    ✓
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => setRenamingProjectId(null)}
-                                    className="px-2 py-1 text-[10px] font-extrabold border-2 border-brutal-black bg-white dark:bg-zinc-700 dark:text-white"
-                                  >
-                                    ✕
-                                  </button>
-                                </form>
+                                </div>
                               ) : (
                                 <>
                                   <button
@@ -2511,7 +2428,7 @@ export const ChatList: React.FC<ChatListProps> = ({
                   </div>
                 )}
               </section>
-              {(archivedCount > 0 || archivedOpen) && (
+              {archivedOpen && (
                 <section
                   className={`order-2 border-t border-neutral-200 dark:border-zinc-700 ${regentRestClass}`}
                 >
@@ -2655,7 +2572,6 @@ export const ChatList: React.FC<ChatListProps> = ({
               onToggleArchive={() => void handleSetArchived([chat.id], !chat.archived)}
               onRename={() => {
                 setRenamingChatId(chat.id);
-                setRenameValue(chat.title || '');
               }}
               onDelete={() => {
                 setOpenMenu(null);
@@ -2699,7 +2615,6 @@ export const ChatList: React.FC<ChatListProps> = ({
                 void runTaskAction(job, () => triggerCronJob(job.id));
               }}
               onRename={() => {
-                setTaskRenameValue(job.name);
                 setRenamingTaskId(job.id);
               }}
               onDelete={() => handleRequestTaskDelete(job)}
@@ -2763,7 +2678,6 @@ export const ChatList: React.FC<ChatListProps> = ({
                 isSystem
                   ? undefined
                   : () => {
-                      setProjectRenameValue(p.name);
                       setRenamingProjectId(p.id);
                     }
               }

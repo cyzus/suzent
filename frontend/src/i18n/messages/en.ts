@@ -1999,6 +1999,7 @@ export const en = {
     archiveChat: 'Archive chat',
     unarchiveChat: 'Unarchive chat',
     archivedChats: 'Archived',
+    showArchived: 'Show archived chats',
     archivedEmpty: 'No archived chats',
     archiveError: 'Unable to update archive',
     archiveErrorMessage: 'Please try again.',
