@@ -4,9 +4,17 @@ import os
 import shutil
 import tempfile
 import uuid
+from collections.abc import Callable
 
 import pytest
 from cryptography.fernet import Fernet
+from pydantic_ai.models.decision import (
+    ChoiceAnswer,
+    DecisionModel,
+    DecisionRequest,
+    DecisionResponse,
+    NoulAnswer,
+)
 
 # suzent.config resolves DATA_DIR once at import, and test modules import the app
 # during collection, before any fixture runs. Without this, get_database() and
@@ -83,3 +91,64 @@ def temp_db(tmp_path, monkeypatch):
 def unique_id():
     """Generate a unique test ID."""
     return f"test-{uuid.uuid4().hex[:12]}"
+
+
+class FakeDecisionModel(DecisionModel):
+    """Picks ``choose(question_key, options)`` for each pick-one, "yes" for each yes/no.
+
+    ``requests`` keeps every request it was sent; ``fail`` makes every call raise.
+    """
+
+    def __init__(
+        self,
+        choose: Callable[[str, list[str]], str] | None = None,
+        *,
+        confidence: float = 0.9,
+        fail: bool = False,
+    ) -> None:
+        super().__init__()
+        self._choose = choose or (lambda _key, options: options[0])
+        self._confidence = confidence
+        self._fail = fail
+        self.requests: list[DecisionRequest] = []
+
+    @property
+    def model_name(self) -> str:
+        return "fake-decider"
+
+    @property
+    def system(self) -> str:
+        return "fake"
+
+    @property
+    def base_url(self) -> None:
+        return None
+
+    async def decide(
+        self, request: DecisionRequest, model_settings
+    ) -> DecisionResponse:
+        self.requests.append(request)
+        if self._fail:
+            raise RuntimeError("decision backend down")
+        answers = {}
+        for key, question in request.questions.items():
+            if question.type == "choice":
+                options = list(question.criteria)
+                pick = self._choose(key, options)
+                rest = (1 - self._confidence) / max(len(options) - 1, 1)
+                answers[key] = ChoiceAnswer(
+                    choice=pick,
+                    confidence=self._confidence,
+                    probabilities={
+                        o: self._confidence if o == pick else rest for o in options
+                    },
+                )
+            else:
+                answers[key] = NoulAnswer(noul=0.95)
+        return DecisionResponse(answers=answers, model_name=self.model_name)
+
+
+@pytest.fixture
+def fake_decision_model() -> type:
+    """A decision model that picks options a test chooses; see ``FakeDecisionModel``."""
+    return FakeDecisionModel

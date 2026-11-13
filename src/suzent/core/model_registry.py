@@ -199,6 +199,8 @@ _LITELLM_PRICES_URL = (
 )
 
 # LiteLLM mode → our mode (None = skip that entry)
+DECISIONS_ENDPOINT = "/v1/decisions"
+
 _LITELLM_MODE_MAP: dict[str, str | None] = {
     "chat": "chat",
     "completion": "chat",
@@ -528,6 +530,16 @@ class ModelRegistry:
         """
         caps = self.get_capabilities(model_id)
         return caps.supports_vision if caps is not None else False
+
+    def supports_decisions(self, model_id: str) -> bool:
+        """Whether a model answers typed questions through a Decisions endpoint."""
+        caps = self.get_capabilities(model_id)
+        return caps is not None and DECISIONS_ENDPOINT in caps.supported_endpoints
+
+    def decisions_only(self, model_id: str) -> bool:
+        """Whether a model can only answer typed questions, so it can't chat."""
+        caps = self.get_capabilities(model_id)
+        return caps is not None and caps.supported_endpoints == (DECISIONS_ENDPOINT,)
 
     def supports_video(self, model_id: str) -> bool:
         """Check whether a model accepts native video input."""

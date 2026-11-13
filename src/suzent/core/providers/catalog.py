@@ -69,6 +69,9 @@ class ProviderSpec:
     # China and Global accounts don't work at each other's endpoints, so the
     # picker tells the user to choose by where the key was made.
     split_accounts: bool = False
+    # The decision-model protocol the provider serves, if any: "openai"
+    # (/v1/decisions), "system_one" (/v1/systemone) or "gemini".
+    decisions_protocol: Optional[str] = None
 
     @property
     def is_compat(self) -> bool:
@@ -115,6 +118,7 @@ def _parse_provider(raw: dict[str, Any], *, user_defined: bool = False) -> Provi
         region_label=raw.get("region_label", "region"),
         group=raw.get("group"),
         split_accounts=raw.get("split_accounts", False),
+        decisions_protocol=raw.get("decisions_protocol"),
     )
 
 

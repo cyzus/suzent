@@ -30,7 +30,7 @@ classifiers = [
     "Topic :: Software Development :: Libraries :: Application Frameworks",
 ]
 dependencies = [
-    "pydantic-ai-slim[openai,anthropic,google,groq,mcp,ag-ui,web-fetch]>=2.64,<3",
+    "pydantic-ai-slim[openai,anthropic,google,groq,mcp,ag-ui,web-fetch]>=2.68,<3",
     # Exact pin: litellm 1.82.7/1.82.8 on PyPI were compromised (Mar 2026). Bump
     # deliberately, after checking the release and the uv.lock hashes.
     "litellm==1.81.13",
@@ -73,9 +73,9 @@ dependencies = [
     "prompt_toolkit>=3.0.0",
     "keyring>=25.0.0",
     "cryptography>=42.0.0",
-    "pydantic-ai-harness[codemode]>=0.64,<0.65",
+    "pydantic-ai-harness[codemode]>=0.68,<0.69",
     # Code mode's sandbox. Pinned exactly: upgrades are vetted by hand.
-    "pydantic-monty==1.4.0",
+    "pydantic-monty==1.5.0",
     "websockets>=15",
 ]
 

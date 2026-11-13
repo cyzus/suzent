@@ -4,6 +4,7 @@
   "providers": [
     {
       "id": "openai",
+      "decisions_protocol": "openai",
       "label": "OpenAI",
       "group": "global",
       "logo_url": "https://api.iconify.design/simple-icons:openai.svg?color=white",
@@ -54,6 +55,7 @@
     },
     {
       "id": "gemini",
+      "decisions_protocol": "gemini",
       "label": "Google Gemini",
       "group": "global",
       "stream_idle_timeout_seconds": 300,
@@ -475,6 +477,7 @@
     },
     {
       "id": "litellm_proxy",
+      "decisions_protocol": "openai",
       "label": "LiteLLM Proxy",
       "group": "relay",
       "logo_url": "https://github.com/BerriAI.png",
