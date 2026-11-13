@@ -250,10 +250,11 @@ transcript at full price (`summarize_on_cached_prefix()` in
   false` turns the cached path off.
 - **Thresholds.** `compaction_trigger_tokens()` and
   `precompaction_trigger_tokens()` take the smaller of a share of the window
-  and a fixed token count: by default 80% or 200k for compaction, 50% or 100k
-  for preparing a summary. The fixed count matters on large windows, where a
-  share alone would send hundreds of thousands of uncompacted tokens per
-  request.
+  and a fixed token count: by default 80% or 500k for compaction, 50% or 350k
+  for preparing a summary. The fixed count matters on 1M windows: published
+  multi-needle retrieval results (MRCR v2) for the strongest models stay
+  around 80% up to about 500k and fall to the 70s or lower toward 1M, while
+  mid-tier models fall off near 200k.
 - **Prepared in the background.** `schedule_precompaction()` starts the next
   summary while the cache is warm, from two places: `ChatProcessor` when a
   turn finishes, and the history processor before each request of a run that
