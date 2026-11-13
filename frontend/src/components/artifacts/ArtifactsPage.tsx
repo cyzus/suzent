@@ -406,7 +406,7 @@ export const ArtifactsPage: React.FC<ArtifactsPageProps> = ({ onOpenChat }) => {
         </div>
       ) : (
         <div className="space-y-6">
-          {visibleProjects.length > 1 && (
+          {(visibleProjects.length > 1 || projectId !== null) && (
             <nav
               aria-label={t('artifactsPage.projects')}
               className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1 scrollbar-thin md:flex-wrap md:overflow-visible"
