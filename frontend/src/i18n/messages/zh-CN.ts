@@ -1941,6 +1941,7 @@ export const zhCN = {
     archiveChat: '归档聊天',
     unarchiveChat: '取消归档',
     archivedChats: '已归档',
+    showArchived: '显示已归档聊天',
     archivedEmpty: '没有已归档的聊天',
     archiveError: '归档操作失败',
     archiveErrorMessage: '请重试。',
@@ -2079,7 +2080,7 @@ export const zhCN = {
     rename: {
       buttonTitle: '重命名对话',
       placeholder: '对话名称...',
-      confirm: '确定',
+      confirm: '保存',
       cancel: '取消',
     },
     untitled: '未命名对话',
