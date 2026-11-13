@@ -870,9 +870,10 @@ def route_or_override_mailbox_item(
         if routes
         else "Pinned by user: do not route (store in Inbox only)."
     )
+    existing = db.get_mailbox_rule_by_signature(item.signature)
     rule = MailboxRuleModel(
         signature=item.signature,
-        name=f"{item.source_name} · {item.event_type}",
+        name=existing.name if existing else f"{item.source_name} · {item.event_type}",
         source_kind=item.source_kind,
         action="route" if routes else "none",
         target_chat_id=chat_id if routes else None,
