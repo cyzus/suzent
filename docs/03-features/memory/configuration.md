@@ -108,12 +108,14 @@ session_idle_timeout_minutes: 0    # Reset after inactivity (0 = off)
 max_context_tokens: 0              # 0 = use whatever the active model supports
 ```
 
-Long conversations are compacted automatically once they reach 200k tokens or
+Long conversations are compacted automatically once they reach 500k tokens or
 80% of the model's context window, whichever comes first
 (`context_compaction_trigger_tokens`, `context_compaction_trigger`). A 128k model
-is compacted at about 102k; a 1M-token model at 200k, so it doesn't pay for
-hundreds of thousands of tokens on every message before anything is folded. If
-Suzent doesn't know a model's window, it assumes 200k tokens.
+is compacted at about 102k and a 200k model at 160k. A 1M-token model is
+compacted at 500k: past that, even the strongest models get noticeably worse at
+recalling several details from a long conversation, and every message pays for
+the whole history. If Suzent doesn't know a model's window, it assumes 200k
+tokens.
 
 Set `max_context_tokens` to a non-zero value to cap that budget, for example to
 keep costs down. It can only lower the limit, never raise it.
@@ -121,7 +123,7 @@ keep costs down. It can only lower the limit, never raise it.
 The summary that replaces older messages is written by the model you are
 chatting with, reusing the conversation it has already read, so most of it
 comes from the provider's prompt cache and costs a fraction of the normal price.
-Once the conversation reaches 100k tokens or half the window, whichever comes
+Once the conversation reaches 350k tokens or half the window, whichever comes
 first (`context_precompaction_trigger_tokens`, `context_precompaction_trigger`),
 Suzent starts writing the next summary in the background. That happens during a
 long run as well as when a reply finishes, so the summary is usually ready

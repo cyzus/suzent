@@ -1,0 +1,1 @@
+{"products": {"desktop": "patch"}, "summary": "Conversations on 1M-token models are now compacted at 500k tokens, with the summary prepared from 350k, so more of the long context is used before anything is folded."}
