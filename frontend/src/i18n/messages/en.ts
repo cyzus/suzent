@@ -2102,6 +2102,7 @@ export const en = {
     acpInstallHint: 'Not installed — add it in Settings › ACP Agents',
     removeFile: 'Remove file',
     placeholderReady: 'How can I help you today?',
+    placeholderWake: 'Type, or say “{phrase}”',
     suggestionAcceptKey: 'Tab',
     placeholderLoading: 'System loading...',
     attachFiles: 'Attach files (images, PDFs, documents, etc.)',

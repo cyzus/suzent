@@ -151,7 +151,7 @@ describe('composer with voice mode', () => {
     expect(button(html, 'chatInput.sendMessage')).toMatch(DISABLED);
   });
 
-  it('shows hands-free starts on the mic button only', () => {
+  it('shows hands-free starts in the placeholder and problems in the footer', () => {
     const handsFree = (extra: Partial<HandsFreeState>): HandsFreeState => ({
       wake: 'listening',
       wakeProblem: null,
@@ -165,12 +165,9 @@ describe('composer with voice mode', () => {
     );
 
     const listening = render(makeVoice('idle', { handsFree: handsFree({}) }), '');
-    expect(listening).toContain('data-testid="wake-listening"');
+    expect(listening).toContain('data-placeholder="chatInput.placeholderWake"');
     expect(listening).toContain('voice.wake.sayPhrase');
-    // Send replaces the mic while typing; the dot does not move onto it.
-    expect(render(makeVoice('idle', { handsFree: handsFree({}) }))).not.toContain(
-      'data-testid="wake-'
-    );
+    expect(listening).not.toContain('data-testid="wake-');
 
     const broken = render(
       makeVoice('idle', {
@@ -179,6 +176,7 @@ describe('composer with voice mode', () => {
       ''
     );
     expect(broken).toContain('data-testid="wake-problem"');
+    expect(broken).toContain('data-placeholder="chatInput.placeholderReady"');
     expect(broken).toContain('voice.wake.notListening');
     expect(broken).not.toContain('voice.wake.sayPhrase');
 
