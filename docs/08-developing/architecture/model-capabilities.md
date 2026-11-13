@@ -173,6 +173,44 @@ built-in cards after the registry reloads. The ChatGPT Subscription provider
 flow; its tokens live in Suzent's local config directory and are never returned
 by the HTTP status endpoint.
 
+## Decision models
+
+A decision model answers typed questions instead of writing text. It is built
+by `create_decision_model()` in `core/model_factory.py` from the provider's
+`decisions_protocol` in the provider registry:
+
+| `decisions_protocol` | Endpoint | pydantic-ai class | Shipped providers |
+|---|---|---|---|
+| `openai` | `/v1/decisions` | `OpenAIDecisionsModel` | `openai`, `litellm_proxy` |
+| `gemini` | Gemini Decisions API | `GoogleDecisionsModel` | `gemini` |
+| `system_one` | `/v1/systemone` | `SystemOneModel` | none; add one in `providers.user.json` |
+
+The role picker suggests catalog models whose `supported_endpoints` include
+`/v1/decisions`, and drops models whose only endpoint is that one from every chat
+role. Any other model ID can still be typed in.
+
+A System One provider, for TypeSafe's Jev or a self-hosted server, goes in
+`config/providers.user.json`:
+
+```json
+{
+  "providers": [
+    {
+      "id": "typesafe",
+      "label": "TypeSafe",
+      "api_type": "openai",
+      "base_url": "https://api.typesafe.ai",
+      "decisions_protocol": "system_one",
+      "env_keys": ["TYPESAFE_API_KEY"],
+      "fields": [{"key": "TYPESAFE_API_KEY", "label": "API Key", "type": "secret"}]
+    }
+  ]
+}
+```
+
+and is then chosen as `typesafe/jev-latest`. Set `"api_key_optional": true` for a
+local server without a key.
+
 ## Prompt caching
 
 Long agent runs resend the same prefix (tools, instructions, history) on every

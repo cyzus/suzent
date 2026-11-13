@@ -362,3 +362,12 @@ async def test_capability_records_overhead_for_the_next_trigger(
 
     assert deps.context_overhead_estimate > 0
     assert deps.context_overhead_estimate == deps.context_breakdown["overhead_estimate"]
+
+
+@pytest.mark.parametrize("tag", ["context", "pyai:context"])
+def test_context_element_matches_both_wrapper_names(tag: str) -> None:
+    from suzent.core.context_usage import _CONTEXT_ELEMENT
+
+    text = f'<{tag} id="capability:repo_context">\nbody text\n</{tag}>\ntrailing note'
+    match = _CONTEXT_ELEMENT.fullmatch(text)
+    assert match is not None and match.group("body") == "body text"

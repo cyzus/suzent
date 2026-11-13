@@ -47,10 +47,12 @@ saves that decision as a rule, and every later event of the same kind follows
 the rule without being looked at again. Routine noise such as webhook test
 pings is kept in the Mailbox without waking anyone.
 
-This first decision uses the **Decision** model from
-[Model roles](../04-models/model-roles.md). If no model is set up, or it can't
-decide in time, the event goes to Regent and no rule is saved, so the next event
-of that kind is looked at again.
+This first decision uses the **Decision model** from
+[Model roles](../04-models/model-roles.md#decision-models) if you set one up (a
+fast model that only picks between choices), and otherwise the **Decision**
+model. If no model can decide, it isn't sure, or it can't decide in time, the
+event goes to Regent and no rule is saved, so the next event of that kind is
+looked at again.
 
 Rules you change are marked **Set by you** and are never overwritten by Suzent.
 Rules Suzent made itself are marked **Learned**. Delete a rule to have the next
@@ -131,8 +133,9 @@ until you delete them.
 ## Troubleshooting
 
 **Every new kind of event goes to Regent.** The first decision needs a model:
-check that the **Decision** role, or the **Cheap** or **Primary** role it falls
-back to, is set in **Settings → Model Roles**.
+check that the **Decision model** or **Decision** role, or the **Cheap** or
+**Primary** role Decision falls back to, is set in **Settings → Model Roles**.
+With a decision model, the row's reason says when it wasn't sure enough.
 
 **A service says the webhook failed.** Check that Suzent is running and that the
 service can reach it; a service on the internet needs a

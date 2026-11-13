@@ -35,6 +35,9 @@ class ModelRole(StrEnum):
     SUGGESTION = "suggestion"
     MEMORY_EXTRACTION = "memory_extraction"
     DECISION = "decision"
+    # A decision model (OpenAI or Gemini Decisions), not a chat model. Optional:
+    # callers that can use it fall back to DECISION's chat model without it.
+    DECISION_MODEL = "decision_model"
     GOAL_JUDGE = "goal_judge"
     PERMISSION_REVIEW = "permission_review"
     DREAM = "dream"

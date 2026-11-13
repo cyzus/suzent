@@ -1,0 +1,1 @@
+{"products": {"desktop": "minor"}, "summary": "Optional decision models (OpenAI or Gemini Decisions) in Model Roles route new kinds of Mailbox events in a fraction of a second, falling back to the Decision model when unsure."}

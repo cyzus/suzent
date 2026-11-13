@@ -1078,6 +1078,8 @@ def _build_role_suggestions(
         model
         for model in enabled_models
         if model.partition("/")[0] in configured_providers
+        # A decisions-only model can't write text, so no chat role may use it.
+        and not registry.decisions_only(model)
     ]
     vision_models = [
         model for model in enabled_models if registry.supports_vision(model)
@@ -1124,6 +1126,9 @@ def _build_role_suggestions(
             model for model, cap in caps.items() if cap.mode == "video_generation"
         ),
         "tts": sorted(model for model, cap in caps.items() if cap.mode == "tts"),
+        "decision_model": sorted(
+            model for model in caps if registry.supports_decisions(model)
+        ),
         "_unregistered": unregistered_models,
     }
 
