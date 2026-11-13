@@ -1025,11 +1025,13 @@ def route_or_override_mailbox_item(
     action: str,
     target_chat_id: Optional[str] = None,
     pin_rule: bool = True,
+    actor: str = "user",
 ) -> Optional[MailboxItemModel]:
     """Manually route or replay a Mailbox item, optionally pinning a rule for its kind.
 
     ``target_chat_id`` is a destination value (or a bare session id, as an
     item's own target is); ``action="none"`` keeps the item in the Mailbox.
+    ``actor`` names who moved it in the item's reason.
     """
     db = get_database()
     item = db.get_mailbox_item(item_id)
@@ -1049,6 +1051,8 @@ def route_or_override_mailbox_item(
         if destination.kind != DEST_NONE
         else "Pinned by user: keep in the Mailbox only."
     )
+    if actor != "user":
+        reason = f"Re-routed by {actor}: send to {label or 'the Mailbox'}."
     existing = db.get_mailbox_rule_by_signature(item.signature)
     rule = MailboxRuleModel(
         signature=item.signature,

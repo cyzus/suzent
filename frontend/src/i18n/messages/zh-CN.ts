@@ -907,6 +907,10 @@ export const zhCN = {
           description:
             '把工作交给项目里的会话，或在项目中新开一个会话，可以由 ACP 编程智能体来做。',
         },
+        FocalMailboxTool: {
+          name: '查看收件箱',
+          description: '查看收件箱里收到的事件、读取某一条，或把某一条转给项目或通知你。',
+        },
         FocalNotesTool: {
           name: '记笔记',
           description: '维护 Regent 自己的笔记：你希望它怎么做事，不记项目状态。',
@@ -2710,6 +2714,8 @@ export const zhCN = {
       startSession: '新建会话',
       updateMemory: '更新记忆',
       updateNotes: '更新笔记',
+      checkMailbox: '查看收件箱',
+      rerouteMailbox: '转发事件',
       react: '回应',
       makeVideo: '生成视频',
       checkVideo: '查看视频进度',
@@ -2755,6 +2761,8 @@ export const zhCN = {
       startSession: '正在新建会话',
       updateMemory: '正在更新记忆',
       updateNotes: '正在更新笔记',
+      checkMailbox: '正在查看收件箱',
+      rerouteMailbox: '正在转发事件',
       react: '正在回应',
       makeVideo: '正在生成视频',
       checkVideo: '正在查看视频进度',
@@ -2800,6 +2808,8 @@ export const zhCN = {
       startSession: '已新建会话',
       updateMemory: '已更新记忆',
       updateNotes: '已更新笔记',
+      checkMailbox: '已查看收件箱',
+      rerouteMailbox: '已转发事件',
       react: '已回应',
       makeVideo: '已生成视频',
       checkVideo: '已查看视频进度',
