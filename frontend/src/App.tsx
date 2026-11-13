@@ -24,6 +24,7 @@ import { SettingsModal } from './components/settings/SettingsModal';
 import { Sidebar } from './components/sidebar/Sidebar';
 import { SkillsView } from './components/skills/SkillsView';
 import { ArtifactsPage } from './components/artifacts/ArtifactsPage';
+import { MailboxView } from './components/mailbox/MailboxView';
 import { ConversationIdentity, StatusBar } from './components/StatusBar';
 import { RegentLogoSlot } from './components/regent/RegentHeader';
 import { ChatProvider, useChatCoreStore } from './hooks/useChatStore';
@@ -248,7 +249,7 @@ function MacTrafficLightsSpacer(): React.ReactElement {
   return <div className="mr-3 h-10 w-[54px] shrink-0" aria-hidden="true" />;
 }
 
-type MainView = 'chat' | 'memory' | 'skills' | 'artifacts' | 'emotes';
+type MainView = 'chat' | 'mailbox' | 'memory' | 'skills' | 'artifacts' | 'emotes';
 
 const STAGED_UPDATE_POLL_MS = 5 * 60_000;
 // Matches the backend's agent idle window, so an untouched window and quiet
@@ -979,6 +980,20 @@ function AppInner(): React.ReactElement {
                   rightSidebarWideDefaultWidthPx={rightSidebarWideDefaultWidthPx}
                   viewportWidthPx={viewportWidth}
                   rightSidebarForceFullView={rightSidebarForceFullView}
+                />
+              </div>
+            )}
+            {mainView === 'mailbox' && (
+              <div
+                key="mailbox"
+                className="workspace-base-view flex-1 flex flex-col min-h-0 animate-view-fade"
+              >
+                <MailboxView
+                  onOpenChat={(chatId) => {
+                    void loadChat(chatId);
+                    setMainView('chat');
+                  }}
+                  onOpenSettings={() => openSettings('automation')}
                 />
               </div>
             )}

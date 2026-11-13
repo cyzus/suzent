@@ -229,6 +229,18 @@ class AgentInboxOperationsMixin:
             session.commit()
             return True
 
+    def agent_message_statuses(self, message_ids: list[str]) -> dict[str, str]:
+        """Current delivery status of each given message that exists."""
+        if not message_ids:
+            return {}
+        with self._session() as session:
+            rows = session.exec(
+                select(
+                    AgentInboxMessageModel.message_id, AgentInboxMessageModel.status
+                ).where(AgentInboxMessageModel.message_id.in_(message_ids))
+            ).all()
+            return {message_id: status for message_id, status in rows}
+
     def latest_agent_brief(
         self, target_chat_id: str, sender_chat_ids: frozenset[str]
     ) -> Optional[str]:

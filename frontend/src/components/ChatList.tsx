@@ -9,6 +9,7 @@ import {
   CircleStackIcon,
   ClockIcon,
   EllipsisVerticalIcon,
+  InboxStackIcon,
   PencilSquareIcon,
   PlusIcon,
   RectangleStackIcon,
@@ -35,6 +36,8 @@ import {
   triggerCronJob,
   disableHeartbeat,
   triggerHeartbeat,
+  fetchMailboxUnread,
+  MAILBOX_UNREAD_EVENT,
   type CronJob,
   type HeartbeatStatus,
 } from '../lib/api';
@@ -111,7 +114,7 @@ function SidebarRowSkeleton({ compact = false }: { compact?: boolean }): React.R
   );
 }
 
-export type SidebarView = 'chat' | 'memory' | 'skills' | 'artifacts';
+export type SidebarView = 'chat' | 'mailbox' | 'memory' | 'skills' | 'artifacts';
 
 interface ChatListProps {
   mobile?: boolean;
@@ -132,6 +135,35 @@ const ARCHIVED_PAGE_SIZE = 50;
 /** One row of the sidebar's top-level navigation (scheduled tasks, memory, skills). */
 function sidebarNavRowClass(selected: boolean): string {
   return `w-full flex items-center gap-2 px-2 py-1.5 text-left text-xs transition-colors ${selected ? 'bg-neutral-200/70 font-semibold text-brutal-black dark:bg-zinc-700 dark:text-white' : 'text-neutral-600 hover:bg-neutral-100 hover:text-brutal-black dark:text-neutral-300 dark:hover:bg-zinc-700 dark:hover:text-white'}`;
+}
+
+const MAILBOX_UNREAD_POLL_MS = 15_000;
+
+/** Unread Mailbox notifications, polled and refreshed when some are marked read. */
+function useMailboxUnread(): number {
+  const [unread, setUnread] = useState(0);
+  useEffect(() => {
+    let alive = true;
+    const refresh = () => {
+      void fetchMailboxUnread().then((count) => {
+        if (alive) setUnread(count);
+      });
+    };
+    const onChange = (event: Event) => {
+      const count = (event as CustomEvent<number>).detail;
+      if (typeof count === 'number') setUnread(count);
+      else refresh();
+    };
+    refresh();
+    const timer = window.setInterval(refresh, MAILBOX_UNREAD_POLL_MS);
+    window.addEventListener(MAILBOX_UNREAD_EVENT, onChange);
+    return () => {
+      alive = false;
+      window.clearInterval(timer);
+      window.removeEventListener(MAILBOX_UNREAD_EVENT, onChange);
+    };
+  }, []);
+  return unread;
 }
 
 export const ChatList: React.FC<ChatListProps> = ({
@@ -426,6 +458,7 @@ export const ChatList: React.FC<ChatListProps> = ({
   }, []);
 
   const { t } = useI18n();
+  const mailboxUnread = useMailboxUnread();
 
   const refreshAutomation = useCallback(async (): Promise<void> => {
     const [cronResult, heartbeatResult] = await Promise.allSettled([
@@ -1683,25 +1716,28 @@ export const ChatList: React.FC<ChatListProps> = ({
             >
               <button
                 type="button"
-                aria-expanded={showAutomation ? automationOpen : undefined}
-                onClick={() => (showAutomation ? toggleAutomationOpen() : onOpenAutomation?.())}
-                className={sidebarNavRowClass(false)}
+                aria-current={activeView === 'mailbox' ? 'page' : undefined}
+                onClick={() => (onOpenView ? onOpenView('mailbox') : onOpenAutomation?.())}
+                className={sidebarNavRowClass(activeView === 'mailbox')}
               >
-                <ClockIcon className="h-4 w-4 shrink-0" aria-hidden="true" />
-                <span className="flex-1 truncate">{t('chatList.sections.scheduled')}</span>
-                {scheduledJobs.length + heartbeatSessions.length > 0 && (
-                  <span className="text-[10px] tabular-nums text-neutral-400 dark:text-neutral-500">
-                    {scheduledJobs.length + heartbeatSessions.length}
+                <InboxStackIcon className="h-4 w-4 shrink-0" aria-hidden="true" />
+                <span className="flex-1 truncate">{t('nav.mailbox')}</span>
+                {mailboxUnread > 0 ? (
+                  <span
+                    className="min-w-[1.25rem] border border-brutal-black bg-brutal-yellow px-1 text-center text-[10px] font-bold tabular-nums text-brutal-black"
+                    aria-label={t('mailboxView.unreadCount', { count: String(mailboxUnread) })}
+                  >
+                    {mailboxUnread}
                   </span>
-                )}
-                {showAutomation && (
-                  <ChevronRightIcon
-                    className={`h-3 w-3 shrink-0 text-neutral-400 transition-transform ${automationOpen ? 'rotate-90' : ''}`}
-                    aria-hidden="true"
-                  />
+                ) : (
+                  scheduledJobs.length + heartbeatSessions.length > 0 && (
+                    <span className="text-[10px] tabular-nums text-neutral-400 dark:text-neutral-500">
+                      {scheduledJobs.length + heartbeatSessions.length}
+                    </span>
+                  )
                 )}
               </button>
-              {showAutomation && automationOpen && (
+              {false && showAutomation && automationOpen && (
                 <section className="pb-1">
                   {loadingAutomation ? (
                     <div>
@@ -2545,9 +2581,10 @@ export const ChatList: React.FC<ChatListProps> = ({
                 onClick: () => onSearchOpenChange?.(true),
               },
               {
-                label: t('chatList.sections.scheduled'),
-                Icon: ClockIcon,
-                onClick: () => onOpenAutomation?.(),
+                label: t('nav.mailbox'),
+                Icon: InboxStackIcon,
+                onClick: () => (onOpenView ? onOpenView('mailbox') : onOpenAutomation?.()),
+                selected: activeView === 'mailbox',
               },
               {
                 label: t('nav.memory'),
