@@ -1792,6 +1792,18 @@ When a summary has to be written on a cold cache, Suzent compares the price of
 the conversation's model against the memory extraction model and uses the
 cheaper one.
 
+### Seeing compaction
+
+In the chat, a compaction shows as a thin divider at the point where it
+happened, with the context size before and after. A line under it says when
+the summary was prepared in advance, or that it was used because you were away
+long enough for the cache to expire. **Show summary** opens what the older
+messages were folded into. A failed compaction shows in red and leaves the
+history as it was.
+
+The **Context** panel shows when the conversation was last compacted, and
+whether the next summary is being prepared or is ready.
+
 Other settings:
 
 - `anthropic_prompt_cache_ttl: 1h` asks Anthropic to keep the cache for an hour
@@ -9345,6 +9357,19 @@ transcript at full price (`summarize_on_cached_prefix()` in
   messages, each with a typical summary's output. The cheaper one writes it;
   if either model is unpriced, the cached path is kept. The choice and both
   estimates are logged at INFO.
+
+#### Events and notices
+
+Every pass emits an `auto_compaction` bus event (`start`, then `complete`,
+`skipped` or `error`). A completed one carries `reason`: `prepared` when a
+background summary was applied at the trigger, `cold_cache` when it was applied
+early (with `idle_seconds`), or `fresh` when it was written on the spot, plus
+the `summary` text. The history processor and `/compact` persist the terminal
+notice with those fields in its metadata, which the chat renders as a divider
+(`CompactionDivider`) and the context panel reads for its "last compacted"
+line. `schedule_precompaction()` emits a `precompaction` event (`start`, then
+`ready` or `failed`, with `covered_messages`) so the panel can show the
+summary being prepared.
 
 #### Cache TTL estimate
 
