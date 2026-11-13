@@ -31,6 +31,8 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Any, Dict, Optional, Set
 
+from pydantic_ai.tools import ToolDenied
+
 from suzent.core.stream_replay import StreamReplay
 
 
@@ -180,7 +182,7 @@ def get_background_turn_lock(chat_id: str) -> asyncio.Lock:
 
 # Cache policy-decided approvals for suspended streams so resume payloads
 # can merge explicit user decisions with backend auto-decisions.
-pending_auto_approvals: Dict[str, Dict[str, bool]] = {}
+pending_auto_approvals: Dict[str, Dict[str, bool | ToolDenied]] = {}
 _pending_auto_approval_times: Dict[str, float] = {}
 _MAX_PENDING_AUTO_APPROVAL_CHATS = 512
 _PENDING_AUTO_APPROVAL_TTL_SECONDS = 60 * 60
@@ -399,7 +401,9 @@ def claim_stream_control(chat_id: str, control: StreamControl) -> None:
         control.cancel_event.set()
 
 
-def merge_pending_auto_approvals(chat_id: str, approvals: Dict[str, bool]) -> None:
+def merge_pending_auto_approvals(
+    chat_id: str, approvals: Dict[str, bool | ToolDenied]
+) -> None:
     """Merge auto-approval decisions for a chat into the pending cache."""
     if not chat_id or not approvals:
         return
@@ -412,7 +416,7 @@ def merge_pending_auto_approvals(chat_id: str, approvals: Dict[str, bool]) -> No
     _prune_pending_auto_approvals(now)
 
 
-def pop_pending_auto_approvals(chat_id: str) -> Dict[str, bool]:
+def pop_pending_auto_approvals(chat_id: str) -> Dict[str, bool | ToolDenied]:
     """Return and clear cached auto-approvals for a chat."""
     if not chat_id:
         return {}

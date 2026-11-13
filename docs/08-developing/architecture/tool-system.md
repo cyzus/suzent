@@ -523,6 +523,16 @@ After a user acts on an approval prompt, Suzent streams
 `tool_permission_resolution` with the selected action and scope. Older clients
 can ignore provenance events and still rely on `tool_approval_request`.
 
+The classifier writes `reason` in the language of the user's latest request
+(falling back to the delegated task's language, then English) and keeps tool
+names and arguments verbatim. What the agent sees for a refused call:
+
+- A policy or headless deny returns `ToolDenied("The tool call was denied: <reason>")`.
+- A user deny of a call whose persisted decision has `reasonCode`
+  `auto_classifier_high_risk` or `shell_policy_high_risk` returns the flagged
+  reason, any typed feedback, and an instruction not to retry the same action.
+- Any other user deny returns the feedback, or pydantic-ai's default message.
+
 ### Audit Trail
 
 Permission evaluations and user resolutions are appended to `permission-audit.jsonl` in the user configuration directory. Entries include chat, run, tool-call, mode, decision, reason, user action, and classifier or matched-rule metadata.
