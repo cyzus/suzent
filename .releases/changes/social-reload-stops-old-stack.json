@@ -1,0 +1,1 @@
+{"products": {"desktop": "patch"}, "summary": "Turning a chat app off or changing its settings now stops the running bot right away, instead of it still answering until Suzent restarts."}

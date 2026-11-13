@@ -16,6 +16,12 @@ import asyncio
 import os
 import sys
 from contextlib import asynccontextmanager
+
+# Run as `python -m suzent.server`, this file is `__main__`. Routes that import
+# `suzent.server` must get this module, not a fresh copy whose social stack is
+# empty: reloading through a copy never stopped the running chat apps.
+if __name__ == "__main__":
+    sys.modules.setdefault("suzent.server", sys.modules[__name__])
 from dotenv import load_dotenv
 from starlette.applications import Starlette
 from starlette.middleware import Middleware
