@@ -347,8 +347,8 @@ class ContextUsageCapability(AbstractCapability[AgentDeps]):
         if ctx.deps.stateless:
             return await handler(request_context)
 
-        from suzent.config import CONFIG
         from suzent.core.context_compressor import (
+            compaction_trigger_tokens,
             emit_context_usage_event,
             resolve_context_limit,
         )
@@ -370,7 +370,7 @@ class ContextUsageCapability(AbstractCapability[AgentDeps]):
                     parameters,
                     ctx.deps.context_sources,
                     limit,
-                    CONFIG.context_compaction_trigger,
+                    compaction_trigger_tokens(limit) / limit if limit else 0.0,
                     response.usage.input_tokens if response is not None else None,
                 )
                 ctx.deps.context_breakdown = breakdown.model_dump()

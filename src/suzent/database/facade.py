@@ -10,6 +10,7 @@ from .memory_recalls import MemoryRecallOperationsMixin
 from .migrations import DatabaseMigrationMixin
 from .notifications import BackgroundNotificationOperationsMixin
 from .postprocess import PostprocessOperationsMixin
+from .prepared_summaries import PreparedSummaryOperationsMixin
 from .projects import ProjectOperationsMixin
 from .search import ChatSearchMixin
 from .settings import SettingsOperationsMixin
@@ -30,6 +31,7 @@ class ChatDatabase(
     InputSuggestionOperationsMixin,
     ChatStatusOperationsMixin,
     MemoryRecallOperationsMixin,
+    PreparedSummaryOperationsMixin,
     BackgroundNotificationOperationsMixin,
     CronOperationsMixin,
     ChatDatabaseBase,

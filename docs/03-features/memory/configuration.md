@@ -108,10 +108,12 @@ session_idle_timeout_minutes: 0    # Reset after inactivity (0 = off)
 max_context_tokens: 0              # 0 = use whatever the active model supports
 ```
 
-Long conversations are compacted automatically once they fill 80% of the
-model's context window (`context_compaction_trigger`). A 1M-token model gets a
-1M-token budget, a 128k model gets 128k. If Suzent doesn't know a model's window,
-it assumes 200k tokens.
+Long conversations are compacted automatically once they reach 200k tokens or
+80% of the model's context window, whichever comes first
+(`context_compaction_trigger_tokens`, `context_compaction_trigger`). A 128k model
+is compacted at about 102k; a 1M-token model at 200k, so it doesn't pay for
+hundreds of thousands of tokens on every message before anything is folded. If
+Suzent doesn't know a model's window, it assumes 200k tokens.
 
 Set `max_context_tokens` to a non-zero value to cap that budget, for example to
 keep costs down. It can only lower the limit, never raise it.
@@ -119,16 +121,19 @@ keep costs down. It can only lower the limit, never raise it.
 The summary that replaces older messages is written by the model you are
 chatting with, reusing the conversation it has already read, so most of it
 comes from the provider's prompt cache and costs a fraction of the normal price.
-Once a reply leaves the conversation at half the window
-(`context_precompaction_trigger`), Suzent starts writing the next summary in the
-background, so you rarely wait for compaction when it happens.
+Once the conversation reaches 100k tokens or half the window, whichever comes
+first (`context_precompaction_trigger_tokens`, `context_precompaction_trigger`),
+Suzent starts writing the next summary in the background. That happens during a
+long run as well as when a reply finishes, so the summary is usually ready
+before compaction is due and you don't wait for it. A prepared summary is kept
+on disk, so a restart doesn't throw it away.
 
 Providers only keep that cache for a while (Anthropic 5 minutes, OpenAI and
 Gemini about 5 minutes, DeepSeek hours). If you come back to a conversation
-after its cache has expired and it is still at least half full, Suzent sends
+after its cache has expired and it is still past that size, Suzent sends
 the prepared summary instead of the full history, since the full history would
 be billed at the normal price again. While the cache is still warm, nothing
-changes until the 80% point. Suzent also learns from your own usage: when a
+changes until compaction is due. Suzent also learns from your own usage: when a
 provider still serves the cache after a longer pause, it trusts that longer
 lifetime from then on.
 
@@ -154,6 +159,9 @@ Other settings:
   instead of 5 minutes. Writing to it costs twice the input price instead of
   1.25 times, so it pays off when you often pause between messages.
 - `context_precompaction_trigger: 0` turns preparing summaries off.
+- `context_compaction_trigger_tokens: 0` and
+  `context_precompaction_trigger_tokens: 0` drop the token sizes and use only the
+  share of the window.
 - `compaction_reuse_prompt_cache: false` has the memory extraction model write
   every summary.
 

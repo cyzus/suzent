@@ -34,6 +34,7 @@ from .models import (
     ChatSummaryModel,
     InputSuggestionModel,
     MemoryRecallModel,
+    PreparedSummaryModel,
     ProjectModel,
     _postprocess_metrics,
     messages_search_filter,
@@ -1218,6 +1219,11 @@ class ChatOperationsMixin:
         session.exec(
             delete(MemoryRecallModel).where(
                 col(MemoryRecallModel.chat_id).in_(chat_ids)
+            )
+        )
+        session.exec(
+            delete(PreparedSummaryModel).where(
+                col(PreparedSummaryModel.chat_id).in_(chat_ids)
             )
         )
 
