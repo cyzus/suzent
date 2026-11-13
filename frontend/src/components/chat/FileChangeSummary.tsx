@@ -107,7 +107,7 @@ export const FileChangeSummary: React.FC<FileChangeSummaryProps> = ({
   };
 
   return (
-    <section className="min-w-0 overflow-hidden border border-neutral-300 bg-white shadow-[2px_2px_0_0_rgba(0,0,0,0.06)] text-neutral-800 dark:border-zinc-600 dark:bg-zinc-900 dark:shadow-none dark:text-neutral-200">
+    <section className="min-w-0 overflow-hidden border border-neutral-300 bg-white shadow-brutal-sm shadow-black/[0.06] text-neutral-800 dark:border-zinc-600 dark:bg-zinc-900 dark:shadow-none dark:text-neutral-200">
       <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-b border-neutral-200 bg-neutral-100/70 px-3 py-1.5 dark:border-zinc-700 dark:bg-white/[0.035]">
         <div className="flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-1">
           <span className="break-normal text-xs font-bold">

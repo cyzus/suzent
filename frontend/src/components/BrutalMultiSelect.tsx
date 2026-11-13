@@ -166,8 +166,8 @@ export const BrutalMultiSelect: React.FC<BrutalMultiSelectProps> = ({
                 onClick={() => handleToggle(option.value)}
                 className={`flex items-center gap-3 px-3 py-2 border-2 text-xs font-bold uppercase transition-all duration-100 w-full min-w-0 text-left group disabled:cursor-not-allowed disabled:opacity-50 ${
                   active
-                    ? 'bg-brutal-green text-brutal-black dark:bg-emerald-400/10 dark:text-emerald-200 dark:border-emerald-400/30 border-brutal-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] translate-x-[-1px] translate-y-[-1px]'
-                    : 'border-brutal-black text-brutal-black dark:text-white bg-white dark:bg-zinc-800 hover:bg-neutral-100 dark:hover:bg-zinc-700 brutal-btn shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]'
+                    ? 'bg-brutal-green text-brutal-black dark:bg-emerald-400/10 dark:text-emerald-200 dark:border-emerald-400/30 border-brutal-black shadow-brutal-sm translate-x-[-1px] translate-y-[-1px]'
+                    : 'border-brutal-black text-brutal-black dark:text-white bg-white dark:bg-zinc-800 hover:bg-neutral-100 dark:hover:bg-zinc-700 brutal-btn shadow-brutal-sm'
                 }`}
               >
                 <div
@@ -218,7 +218,7 @@ export const BrutalMultiSelect: React.FC<BrutalMultiSelectProps> = ({
     createPortal(
       <div
         ref={dropdownRef}
-        className={`fixed z-[9999] bg-white dark:bg-zinc-800 dark:text-zinc-200 border-3 border-brutal-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] max-h-60 overflow-y-auto overflow-x-hidden animate-brutal-drop scrollbar-thin ${dropdownClassName}`}
+        className={`fixed z-[9999] bg-white dark:bg-zinc-800 dark:text-zinc-200 border-3 border-brutal-black shadow-brutal-overlay max-h-60 overflow-y-auto overflow-x-hidden animate-brutal-drop scrollbar-thin ${dropdownClassName}`}
         style={{
           top: effectiveDropUp ? 'auto' : dropdownPosition.top,
           bottom: effectiveDropUp
@@ -282,7 +282,7 @@ export const BrutalMultiSelect: React.FC<BrutalMultiSelectProps> = ({
         type="button"
         disabled={disabled}
         onClick={() => setIsOpen(!isOpen)}
-        className={`w-full bg-white dark:bg-zinc-800 dark:text-zinc-200 border-3 border-brutal-black px-3 py-2 font-bold text-sm text-left flex items-center justify-between transition-all duration-200 hover:bg-brutal-yellow dark:hover:bg-zinc-700 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50 ${isOpen ? 'shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] translate-x-[1px] translate-y-[1px]' : 'shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] brutal-btn'}`}
+        className={`w-full bg-white dark:bg-zinc-800 dark:text-zinc-200 border-3 border-brutal-black px-3 py-2 font-bold text-sm text-left flex items-center justify-between transition-all duration-200 hover:bg-brutal-yellow dark:hover:bg-zinc-700 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50 ${isOpen ? 'shadow-brutal-sm translate-x-[1px] translate-y-[1px]' : 'shadow-brutal-sm brutal-btn'}`}
       >
         <span className="truncate">{displayLabel}</span>
         <svg

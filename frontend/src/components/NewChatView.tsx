@@ -168,7 +168,7 @@ const ProjectPicker: React.FC = () => {
         ref={menuRef}
         role="dialog"
         aria-label={t('newChat.creatingIn')}
-        className="fixed z-[9999] flex flex-col bg-white dark:bg-zinc-800 border-2 border-brutal-black shadow-[3px_3px_0_0_#000]"
+        className="fixed z-[9999] flex flex-col bg-white dark:bg-zinc-800 border-2 border-brutal-black shadow-brutal-overlay"
         style={{
           // A drop-up menu hangs from its bottom edge so a short list stays
           // tucked against the trigger instead of floating above it.
@@ -241,7 +241,7 @@ const ProjectPicker: React.FC = () => {
         aria-haspopup="dialog"
         aria-expanded={open}
         onClick={() => setOpen(!open)}
-        className="inline-flex max-w-full items-center gap-2 px-3 py-1.5 text-xs font-extrabold uppercase tracking-wider border-2 border-brutal-black bg-white dark:bg-zinc-800 dark:text-white shadow-[2px_2px_0_0_#000] hover:bg-brutal-yellow hover:translate-y-[1px] hover:translate-x-[1px] hover:shadow-[1px_1px_0_0_#000] transition-all"
+        className="inline-flex max-w-full items-center gap-2 px-3 py-1.5 text-xs font-extrabold uppercase tracking-wider border-2 border-brutal-black bg-white dark:bg-zinc-800 dark:text-white hover:bg-brutal-yellow brutal-btn"
       >
         <svg
           className="w-3 h-3"

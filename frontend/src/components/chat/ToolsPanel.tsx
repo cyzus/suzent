@@ -226,7 +226,7 @@ function ToggleRow({
       onClick={onClick}
       disabled={disabled}
       aria-pressed={on}
-      className={`flex items-center gap-2.5 px-2.5 py-1.5 border-2 text-[10px] font-bold uppercase transition-all w-full text-left shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] disabled:opacity-50 ${
+      className={`flex items-center gap-2.5 px-2.5 py-1.5 border-2 text-[10px] font-bold uppercase transition-all w-full text-left shadow-brutal-sm disabled:opacity-50 ${
         on
           ? 'bg-brutal-green text-brutal-black border-brutal-black'
           : 'border-brutal-black text-brutal-black dark:text-white bg-white dark:bg-zinc-800 hover:bg-neutral-100 dark:hover:bg-zinc-700'

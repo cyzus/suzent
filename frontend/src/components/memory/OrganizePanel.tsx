@@ -77,7 +77,7 @@ export function OrganizePanel(): React.ReactElement {
 
   return (
     <div className="space-y-4">
-      <div className="border-3 border-brutal-black bg-white dark:bg-zinc-800 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] p-5">
+      <div className="border-3 border-brutal-black bg-white dark:bg-zinc-800 shadow-brutal p-5">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0">
             <h3 className="font-brutal text-xl uppercase tracking-tight leading-tight">

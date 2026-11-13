@@ -79,7 +79,7 @@ export const WebSearchSidebarView: React.FC<WebSearchSidebarViewProps> = ({ outp
               href={result.url}
               target="_blank"
               rel="noopener noreferrer"
-              className="block bg-white dark:bg-zinc-800 border-2 border-brutal-black dark:border-zinc-500 p-3 no-underline shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-[2px] hover:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:bg-brutal-yellow/5 dark:hover:bg-brutal-yellow/10 transition-all group"
+              className="block bg-white dark:bg-zinc-800 border-2 border-brutal-black dark:border-zinc-500 p-3 no-underline shadow-brutal-sm hover:-translate-y-[2px] hover:shadow-brutal hover:bg-brutal-yellow/5 dark:hover:bg-brutal-yellow/10 transition-all group"
             >
               <span className="flex items-center gap-1.5 min-w-0">
                 <ResultFavicon url={result.url} className="w-4 h-4" />

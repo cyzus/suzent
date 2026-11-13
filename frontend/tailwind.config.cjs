@@ -1,4 +1,10 @@
+const plugin = require('tailwindcss/plugin');
 const presentation = require('../packages/presentation/tokens.json');
+
+// Offsets come from the shared presentation tokens; the colour is a CSS variable
+// so one class per tier covers both themes and still accepts `shadow-<color>` tints.
+const brutalShadow = (offset, color = 'var(--brutal-shadow-color)') =>
+  `${offset}px ${offset}px 0 0 ${color}`;
 /**** @type {import('tailwindcss').Config} ****/
 module.exports = {
   darkMode: 'class',
@@ -40,12 +46,13 @@ module.exports = {
         }
       },
       boxShadow: {
-        'brutal-sm': `${presentation.shadowOffset}px ${presentation.shadowOffset}px 0px ${presentation.colors.black}`,
-        'brutal': '4px 4px 0px #000000',
-        'brutal-lg': '6px 6px 0px #000000',
-        'brutal-xl': '8px 8px 0px #000000',
-        'brutal-blue': '4px 4px 0px #0066FF',
-        'brutal-green': '4px 4px 0px #00FF00',
+        'brutal-sm': brutalShadow(presentation.shadowOffset),
+        'brutal-overlay': brutalShadow(presentation.shadowOffsetOverlay),
+        'brutal': brutalShadow(presentation.shadowOffsetHeavy),
+        'brutal-lg': brutalShadow(6),
+        'brutal-xl': brutalShadow(8),
+        'brutal-blue': brutalShadow(presentation.shadowOffsetHeavy, presentation.colors.blue),
+        'brutal-green': brutalShadow(presentation.shadowOffsetHeavy, presentation.colors.green),
       },
       borderWidth: {
         '3': '3px',
@@ -185,5 +192,13 @@ module.exports = {
       }
     }
   },
-  plugins: [require('@tailwindcss/typography')]
+  plugins: [
+    require('@tailwindcss/typography'),
+    plugin(({ addBase }) => {
+      addBase({
+        ':root': { '--brutal-shadow-color': presentation.colors.black },
+        '.dark': { '--brutal-shadow-color': presentation.colors['shadow-dark'] },
+      });
+    }),
+  ]
 };

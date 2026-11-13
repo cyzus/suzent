@@ -87,7 +87,7 @@ interface BrutalButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement
  * `.brutal-btn` class in styles.css) so every button presses identically.
  *
  * Reach for this instead of hand-writing
- * `border-2 border-brutal-black shadow-[2px_2px…] active:translate-…`.
+ * `border-2 border-brutal-black shadow-brutal-sm active:translate-…`.
  */
 export const BrutalButton: React.FC<BrutalButtonProps> = ({
   variant = 'default',

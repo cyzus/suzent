@@ -22,7 +22,7 @@ export const LogBlock: React.FC<LogBlockProps> = ({ title, content }) => {
   };
 
   return (
-    <div className="my-6 font-mono text-sm border-3 border-brutal-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] bg-white dark:bg-zinc-800 group">
+    <div className="my-6 font-mono text-sm border-3 border-brutal-black shadow-brutal-sm bg-white dark:bg-zinc-800 group">
       {/* Header Bar */}
       <div className="flex items-center justify-between px-3 py-2 bg-brutal-black border-b-3 border-brutal-black select-none overflow-hidden">
         <div className="flex items-center gap-3 min-w-0 flex-1">

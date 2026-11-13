@@ -359,7 +359,7 @@ export const ComposerAddMenu: React.FC<ComposerAddMenuProps> = ({
               maxHeight: position?.maxHeight,
               visibility: position ? 'visible' : 'hidden',
             }}
-            className={`fixed z-[9999] ${view === 'folders' ? 'w-80' : 'w-60'} max-w-[calc(100vw-32px)] overflow-y-auto bg-white dark:bg-zinc-800 border-3 border-brutal-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] py-1.5 animate-brutal-drop`}
+            className={`fixed z-[9999] ${view === 'folders' ? 'w-80' : 'w-60'} max-w-[calc(100vw-32px)] overflow-y-auto bg-white dark:bg-zinc-800 border-3 border-brutal-black shadow-brutal-overlay py-1.5 animate-brutal-drop`}
           >
             {view === 'folders' ? foldersView : rootView}
           </div>,

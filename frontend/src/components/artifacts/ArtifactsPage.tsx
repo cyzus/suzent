@@ -494,7 +494,7 @@ export const ArtifactsPage: React.FC<ArtifactsPageProps> = ({ onOpenChat }) => {
         }))}
         value={kind}
         onChange={setKind}
-        containerClassName="border-3 border-brutal-black bg-white dark:bg-zinc-800 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]"
+        containerClassName="border-3 border-brutal-black bg-white dark:bg-zinc-800 shadow-brutal-sm"
         tabClassName="flex-1 gap-1.5 px-2 py-2.5 font-bold text-[11px] md:text-sm"
       />
 

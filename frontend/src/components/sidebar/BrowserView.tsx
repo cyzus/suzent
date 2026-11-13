@@ -386,7 +386,7 @@ export function BrowserView({ onStreamActive, visible = true }: BrowserViewProps
               <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center backdrop-blur-[1px]">
                 <BrutalButton
                   onClick={toggleControl}
-                  className="uppercase tracking-widest text-sm shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]"
+                  className="uppercase tracking-widest text-sm shadow-brutal"
                 >
                   {t('browser.takeControl')}
                 </BrutalButton>
