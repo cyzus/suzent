@@ -83,7 +83,16 @@ export const en = {
   mailboxView: {
     messages: 'Messages',
     empty: 'Nothing here yet',
-    filter: { all: 'All', external: 'External', agent: 'Agents', unrouted: 'Unrouted' },
+    filter: {
+      all: 'All',
+      notifications: 'Notifications',
+      external: 'External',
+      agent: 'Agents',
+      unrouted: 'Unrouted',
+    },
+    markAllRead: 'Mark all read',
+    unreadCount: '{count} unread notifications',
+    unread: 'Unread',
     status: { unrouted: 'Not routed', error: 'Delivery failed' },
   },
   mailboxRules: {

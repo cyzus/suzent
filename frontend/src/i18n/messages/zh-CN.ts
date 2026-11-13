@@ -82,7 +82,16 @@ export const zhCN = {
   mailboxView: {
     messages: '消息',
     empty: '这里还没有消息',
-    filter: { all: '全部', external: '外部', agent: 'Agent', unrouted: '未路由' },
+    filter: {
+      all: '全部',
+      notifications: '通知',
+      external: '外部',
+      agent: 'Agent',
+      unrouted: '未路由',
+    },
+    markAllRead: '全部已读',
+    unreadCount: '{count} 条未读通知',
+    unread: '未读',
     status: { unrouted: '未路由', error: '投递失败' },
   },
   mailboxRules: {

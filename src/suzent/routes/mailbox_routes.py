@@ -51,6 +51,7 @@ def _item_to_dict(item: MailboxItemModel) -> dict:
         "reason": item.reason,
         "inbox_message_id": item.inbox_message_id,
         "spooled_at": item.spooled_at,
+        "read_at": item.read_at.isoformat() if item.read_at else None,
         "created_at": item.created_at.isoformat() if item.created_at else None,
     }
 
@@ -115,10 +116,35 @@ async def list_mailbox_items_route(request: Request) -> JSONResponse:
                 "all": sum(counts.values()),
                 "routed": counts.get("routed", 0),
                 "unrouted": counts.get("unrouted", 0),
+                "unread": db.count_unread_mailbox_notifications(),
             },
             "targets": list_routable_targets(db),
             "endpoint": _endpoint_urls(request, get_mailbox_webhook_path()),
         }
+    )
+
+
+async def mailbox_unread_route(request: Request) -> JSONResponse:
+    return JSONResponse({"unread": get_database().count_unread_mailbox_notifications()})
+
+
+async def mark_mailbox_read_route(request: Request) -> JSONResponse:
+    """Mark notifications read: the given ``ids``, or every unread one."""
+    try:
+        data = await request.json()
+    except Exception:
+        data = {}
+    ids = data.get("ids") if isinstance(data, dict) else None
+    if ids is not None and not (
+        isinstance(ids, list) and all(isinstance(i, int) for i in ids)
+    ):
+        return JSONResponse(
+            {"error": "ids must be a list of item ids"}, status_code=400
+        )
+    db = get_database()
+    marked = db.mark_mailbox_notifications_read(ids)
+    return JSONResponse(
+        {"marked": marked, "unread": db.count_unread_mailbox_notifications()}
     )
 
 

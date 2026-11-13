@@ -216,6 +216,8 @@ from suzent.routes.mailbox_routes import (
     get_mailbox_endpoint_route,
     list_mailbox_items_route,
     list_mailbox_rules_route,
+    mailbox_unread_route,
+    mark_mailbox_read_route,
     rotate_mailbox_endpoint_route,
     route_mailbox_item_route,
     update_mailbox_rule_route,
@@ -1591,6 +1593,8 @@ app = Starlette(
         ),
         Route("/hooks/{token}", receive_webhook, methods=["POST"]),
         Route("/mailbox/items", list_mailbox_items_route, methods=["GET"]),
+        Route("/mailbox/unread", mailbox_unread_route, methods=["GET"]),
+        Route("/mailbox/read", mark_mailbox_read_route, methods=["POST"]),
         Route(
             "/mailbox/items/{item_id:int}/route",
             route_mailbox_item_route,

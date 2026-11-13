@@ -350,7 +350,7 @@ async def test_agent_messages_are_recorded_once_when_sent(db, monkeypatch):
     assert mail["headers"]["from"] == regent_chat
     assert mail["headers"]["status"] == "pending"
     assert mail["inbox_message_id"] == "m-agent"
-    assert data["counts"] == {"all": 2, "routed": 2, "unrouted": 0}
+    assert data["counts"] == {"all": 2, "routed": 2, "unrouted": 0, "unread": 0}
 
 
 @pytest.mark.asyncio
@@ -535,3 +535,50 @@ async def test_rule_edits_set_project_target_delivery_and_prompt(db, monkeypatch
     assert saved["origin"] == "pinned"
     bad = await _put_rule(rule.id, {"action": "route", "delivery": "shout"})
     assert bad.status_code == 400
+
+
+async def _mark_read(body: dict | None = None) -> dict:
+    res = await mailbox_routes.mark_mailbox_read_route(
+        _request("POST", "/mailbox/read", body=json.dumps(body or {}).encode())
+    )
+    assert res.status_code == 200
+    return json.loads(res.body)
+
+
+async def _unread() -> int:
+    res = await mailbox_routes.mailbox_unread_route(_request("GET", "/mailbox/unread"))
+    return json.loads(res.body)["unread"]
+
+
+@pytest.mark.asyncio
+async def test_notifications_are_unread_until_marked(db, monkeypatch):
+    _fake_router(monkeypatch, _decision(delivery="notify"))
+    first = await _github_release("v1")
+    second = await _github_release("v2")
+
+    assert await _unread() == 2
+    listed = await _list()
+    assert listed["counts"]["unread"] == 2
+    assert {i["read_at"] for i in listed["items"]} == {None}
+
+    assert (await _mark_read({"ids": [first.id]})) == {"marked": 1, "unread": 1}
+    assert db.get_mailbox_item(first.id).read_at is not None
+    assert db.get_mailbox_item(second.id).read_at is None
+    assert (await _mark_read()) == {"marked": 1, "unread": 0}
+
+
+@pytest.mark.asyncio
+async def test_only_notifications_count_as_unread(db, monkeypatch):
+    get_or_create_focal_chat()
+    _fake_router(monkeypatch, _ROUTE_TO_REGENT)
+    await _github_release()
+
+    assert await _unread() == 0
+
+
+@pytest.mark.asyncio
+async def test_mark_read_rejects_bad_ids(db):
+    res = await mailbox_routes.mark_mailbox_read_route(
+        _request("POST", "/mailbox/read", body=b'{"ids": "all"}')
+    )
+    assert res.status_code == 400

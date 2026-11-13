@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ArrowPathIcon,
   BellIcon,
-  BoltIcon,
   ChatBubbleLeftRightIcon,
   ComputerDesktopIcon,
   QueueListIcon,
@@ -26,6 +25,7 @@ import {
   fetchCronJobs,
   fetchHeartbeatStatus,
   fetchMailboxItems,
+  markMailboxRead,
   fetchMailboxRules,
   routeMailboxItem,
   triggerCronJob,
@@ -146,17 +146,42 @@ function RuleInstructions({ value, onSave }: RuleInstructionsProps): React.React
   );
 }
 
-function sourceIcon(sourceKind: string): React.ComponentType<React.SVGProps<SVGSVGElement>> {
-  switch (sourceKind) {
-    case 'schedule':
-      return ClockIcon;
-    case 'agent_inbox':
-      return ChatBubbleLeftRightIcon;
-    case 'peer':
-      return ComputerDesktopIcon;
-    default:
-      return BoltIcon;
-  }
+// GitHub's mark, from Octicons (MIT).
+const GITHUB_MARK =
+  'M8 0c4.42 0 8 3.58 8 8a8.013 8.013 0 0 1-5.45 7.59c-.4.08-.55-.17-.55-.38 0-.27.01-1.13.01-2.2 0-.75-.25-1.23-.54-1.48 1.78-.2 3.65-.88 3.65-3.95 0-.88-.31-1.59-.82-2.15.08-.2.36-1.02-.08-2.12 0 0-.67-.22-2.2.82-.64-.18-1.32-.27-2-.27-.68 0-1.36.09-2 .27-1.53-1.03-2.2-.82-2.2-.82-.44 1.1-.16 1.92-.08 2.12-.51.56-.82 1.28-.82 2.15 0 3.06 1.86 3.75 3.64 3.95-.23.2-.44.55-.51 1.07-.46.21-1.61.55-2.33-.66-.15-.24-.6-.83-1.23-.82-.67.01-.27.38.01.53.34.19.73.9.82 1.13.16.45.68 1.31 2.69.94 0 .67.01 1.3.01 1.49 0 .21-.15.45-.55.38A7.995 7.995 0 0 1 0 8c0-4.42 3.58-8 8-8Z';
+
+/** What sent an inbox thread: a known mark, an icon, or the source's initials. */
+function SourceMark({ item, muted }: { item: MailboxItem; muted: boolean }) {
+  const KindIcon =
+    item.source_kind === 'schedule'
+      ? ClockIcon
+      : item.source_kind === 'agent_inbox'
+        ? ChatBubbleLeftRightIcon
+        : item.source_kind === 'peer'
+          ? ComputerDesktopIcon
+          : null;
+  return (
+    <span
+      aria-hidden="true"
+      className={`flex h-8 w-8 shrink-0 items-center justify-center border ${
+        muted
+          ? 'border-neutral-200 text-neutral-300 dark:border-zinc-700 dark:text-zinc-600'
+          : 'border-brutal-black bg-white text-brutal-black dark:border-zinc-400 dark:bg-zinc-900 dark:text-neutral-100'
+      }`}
+    >
+      {KindIcon ? (
+        <KindIcon className="h-4 w-4 stroke-2" />
+      ) : item.source_name === 'github' ? (
+        <svg viewBox="0 0 16 16" className="h-4 w-4" fill="currentColor">
+          <path d={GITHUB_MARK} />
+        </svg>
+      ) : (
+        <span className="font-brutal text-[11px] uppercase leading-none tracking-tight">
+          {(item.source_name || '?').replace(/[^a-z0-9]/gi, '').slice(0, 2) || '?'}
+        </span>
+      )}
+    </span>
+  );
 }
 
 interface StatusPillProps {
@@ -230,7 +255,7 @@ const COMPACT_SELECT =
   '!h-7 !gap-1 !px-2 !py-0 !text-[11px] !font-medium font-mono border border-neutral-300 bg-white hover:!border-brutal-black dark:border-zinc-600 dark:bg-zinc-900 [&>svg]:!h-3 [&>svg]:!w-3 [&>svg]:shrink-0 [&>svg]:text-neutral-400';
 
 export type MailboxTabId = 'inbox' | 'rules' | 'schedules';
-type InboxCategory = 'all' | 'external' | 'agent' | 'unrouted';
+type InboxCategory = 'all' | 'notifications' | 'external' | 'agent' | 'unrouted';
 type HeartbeatSessionItem = NonNullable<HeartbeatStatus['active_sessions']>[number];
 
 interface MailboxThread {
@@ -242,6 +267,8 @@ interface MailboxThread {
   items: MailboxItem[];
   primaryChatId: string | null;
   targetLabel: string;
+  isNotification: boolean;
+  unreadIds: number[];
 }
 
 function plainPreview(text?: string | null): string {
@@ -407,6 +434,10 @@ export function MailboxView({
         items: group,
         primaryChatId,
         targetLabel,
+        isNotification: group.some((g) => g.route_status === 'notified'),
+        unreadIds: group
+          .filter((g) => g.route_status === 'notified' && !g.read_at)
+          .map((g) => g.id),
       });
     }
     return result;
@@ -416,17 +447,20 @@ export function MailboxView({
     let external = 0;
     let agent = 0;
     let unrouted = 0;
+    let notifications = 0;
     for (const th of threads) {
       if (th.isUnrouted) unrouted++;
+      if (th.isNotification) notifications++;
       if (th.category === 'agent') agent++;
       else external++;
     }
-    return { all: threads.length, external, agent, unrouted };
+    return { all: threads.length, notifications, external, agent, unrouted };
   }, [threads]);
 
   const visibleThreads = useMemo(() => {
     if (category === 'all') return threads;
     if (category === 'unrouted') return threads.filter((t) => t.isUnrouted);
+    if (category === 'notifications') return threads.filter((t) => t.isNotification);
     return threads.filter((t) => t.category === category);
   }, [threads, category]);
 
@@ -447,7 +481,22 @@ export function MailboxView({
     }
   };
 
-  const toggleThread = (key: string) => {
+  const unreadCount = threads.reduce((sum, th) => sum + th.unreadIds.length, 0);
+
+  const markRead = async (ids?: number[]) => {
+    try {
+      await markMailboxRead(ids);
+      await loadAll();
+    } catch (err) {
+      console.error('Failed to mark notifications read:', err);
+    }
+  };
+
+  const toggleThread = (thread: MailboxThread) => {
+    const { key } = thread;
+    if (!expandedThreads.has(key) && thread.unreadIds.length > 0) {
+      void markRead(thread.unreadIds);
+    }
     setExpandedThreads((prev) => {
       const next = new Set(prev);
       if (next.has(key)) next.delete(key);
@@ -703,7 +752,17 @@ export function MailboxView({
               {t('mailboxView.messages')}
             </h3>
             <div className="flex flex-wrap items-center gap-1.5">
-              {(['all', 'external', 'agent', 'unrouted'] as const).map((id) => (
+              {unreadCount > 0 && (
+                <button
+                  type="button"
+                  onClick={() => void markRead()}
+                  className="mr-1 flex h-6 items-center gap-1 px-1.5 font-mono text-[11px] text-neutral-500 hover:text-brutal-black dark:text-neutral-400 dark:hover:text-white"
+                >
+                  <CheckIcon className="h-3 w-3 stroke-2" />
+                  {t('mailboxView.markAllRead')}
+                </button>
+              )}
+              {(['all', 'notifications', 'external', 'agent', 'unrouted'] as const).map((id) => (
                 <button
                   key={id}
                   type="button"
@@ -716,7 +775,13 @@ export function MailboxView({
                   }`}
                 >
                   {t(`mailboxView.filter.${id}`)}
-                  <span className="tabular-nums opacity-60">{categoryCounts[id]}</span>
+                  {id === 'notifications' && unreadCount > 0 ? (
+                    <span className="bg-brutal-yellow px-1 font-bold tabular-nums text-brutal-black">
+                      {unreadCount}
+                    </span>
+                  ) : (
+                    <span className="tabular-nums opacity-60">{categoryCounts[id]}</span>
+                  )}
                 </button>
               ))}
             </div>
@@ -732,7 +797,6 @@ export function MailboxView({
               {visibleThreads.map((thread) => {
                 const { latest } = thread;
                 const isOpen = expandedThreads.has(thread.key);
-                const SourceIcon = sourceIcon(latest.source_kind);
 
                 return (
                   <div key={thread.key}>
@@ -740,36 +804,36 @@ export function MailboxView({
                       role="button"
                       tabIndex={0}
                       aria-expanded={isOpen}
-                      onClick={() => toggleThread(thread.key)}
+                      onClick={() => toggleThread(thread)}
                       onKeyDown={(e) => {
                         if (e.key === 'Enter' || e.key === ' ') {
                           e.preventDefault();
-                          toggleThread(thread.key);
+                          toggleThread(thread);
                         }
                       }}
                       className={`grid cursor-pointer grid-cols-[auto_minmax(0,1fr)] items-center gap-x-3 gap-y-2 px-3.5 py-2.5 transition-colors hover:bg-neutral-50 sm:grid-cols-[auto_minmax(0,1fr)_8.5rem] dark:hover:bg-zinc-700/40 ${
                         isOpen ? 'bg-neutral-50 dark:bg-zinc-700/30' : ''
                       }`}
                     >
-                      <span
-                        className={`flex h-8 w-8 shrink-0 items-center justify-center border ${
-                          thread.isUnrouted
-                            ? 'border-neutral-200 text-neutral-300 dark:border-zinc-700 dark:text-zinc-600'
-                            : 'border-brutal-black bg-white text-brutal-black dark:border-zinc-400 dark:bg-zinc-900 dark:text-neutral-100'
-                        }`}
-                      >
-                        <SourceIcon className="h-4 w-4 stroke-2" />
-                      </span>
+                      <SourceMark item={latest} muted={thread.isUnrouted} />
 
                       <div className="min-w-0">
                         <div
-                          className={`truncate text-[13px] leading-snug ${
+                          className={`flex items-center gap-1.5 truncate text-[13px] leading-snug ${
+                            thread.unreadIds.length > 0 ? 'font-semibold' : ''
+                          } ${
                             thread.isUnrouted
                               ? 'text-neutral-500 dark:text-neutral-400'
                               : 'font-medium text-brutal-black dark:text-neutral-100'
                           }`}
                         >
-                          {compactSummary(latest.summary)}
+                          {thread.unreadIds.length > 0 && (
+                            <span
+                              className="h-2 w-2 shrink-0 bg-brutal-yellow ring-1 ring-brutal-black dark:ring-zinc-300"
+                              aria-label={t('mailboxView.unread')}
+                            />
+                          )}
+                          <span className="truncate">{compactSummary(latest.summary)}</span>
                         </div>
                         <div className="mt-0.5 flex min-w-0 items-center gap-1.5 font-mono text-[10px] text-neutral-500 dark:text-neutral-400">
                           <span className="truncate" title={thread.fromLabel}>

@@ -526,6 +526,8 @@ class MailboxItemModel(SQLModel, table=True):
     inbox_message_id: Optional[str] = Field(default=None, index=True)
     # The rule that queued it for a digest.
     rule_id: Optional[int] = Field(default=None, index=True)
+    # When the user saw a notification; unset means unread.
+    read_at: Optional[datetime] = Field(default=None, index=True)
     spooled_at: Optional[str] = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(), index=True)
 

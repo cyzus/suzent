@@ -82,6 +82,35 @@ class MailboxOperationsMixin:
             ).all()
             return {status: count for status, count in rows}
 
+    def count_unread_mailbox_notifications(self) -> int:
+        """Notifications the user has not seen yet."""
+        with self._session() as session:
+            return session.exec(
+                select(func.count()).where(
+                    MailboxItemModel.route_status == "notified",
+                    MailboxItemModel.read_at.is_(None),
+                )
+            ).one()
+
+    def mark_mailbox_notifications_read(
+        self, item_ids: Optional[List[int]] = None
+    ) -> int:
+        """Mark the given notifications read, or all of them; returns how many changed."""
+        with self._session() as session:
+            stmt = select(MailboxItemModel).where(
+                MailboxItemModel.route_status == "notified",
+                MailboxItemModel.read_at.is_(None),
+            )
+            if item_ids is not None:
+                stmt = stmt.where(MailboxItemModel.id.in_(item_ids))
+            items = session.exec(stmt).all()
+            now = datetime.now()
+            for item in items:
+                item.read_at = now
+                session.add(item)
+            session.commit()
+            return len(items)
+
     def get_mailbox_item(self, item_id: int) -> Optional[MailboxItemModel]:
         with self._session() as session:
             return session.get(MailboxItemModel, item_id)

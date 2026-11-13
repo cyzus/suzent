@@ -113,7 +113,7 @@ class DatabaseMigrationMixin:
                     ("prompt", "TEXT"),
                 ),
             ),
-            ("mailbox_items", (("rule_id", "INTEGER"),)),
+            ("mailbox_items", (("rule_id", "INTEGER"), ("read_at", "DATETIME"))),
         ):
             if table not in inspector.get_table_names():
                 continue

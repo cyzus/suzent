@@ -36,6 +36,8 @@ import {
   triggerCronJob,
   disableHeartbeat,
   triggerHeartbeat,
+  fetchMailboxUnread,
+  MAILBOX_UNREAD_EVENT,
   type CronJob,
   type HeartbeatStatus,
 } from '../lib/api';
@@ -133,6 +135,35 @@ const ARCHIVED_PAGE_SIZE = 50;
 /** One row of the sidebar's top-level navigation (scheduled tasks, memory, skills). */
 function sidebarNavRowClass(selected: boolean): string {
   return `w-full flex items-center gap-2 px-2 py-1.5 text-left text-xs transition-colors ${selected ? 'bg-neutral-200/70 font-semibold text-brutal-black dark:bg-zinc-700 dark:text-white' : 'text-neutral-600 hover:bg-neutral-100 hover:text-brutal-black dark:text-neutral-300 dark:hover:bg-zinc-700 dark:hover:text-white'}`;
+}
+
+const MAILBOX_UNREAD_POLL_MS = 15_000;
+
+/** Unread Mailbox notifications, polled and refreshed when some are marked read. */
+function useMailboxUnread(): number {
+  const [unread, setUnread] = useState(0);
+  useEffect(() => {
+    let alive = true;
+    const refresh = () => {
+      void fetchMailboxUnread().then((count) => {
+        if (alive) setUnread(count);
+      });
+    };
+    const onChange = (event: Event) => {
+      const count = (event as CustomEvent<number>).detail;
+      if (typeof count === 'number') setUnread(count);
+      else refresh();
+    };
+    refresh();
+    const timer = window.setInterval(refresh, MAILBOX_UNREAD_POLL_MS);
+    window.addEventListener(MAILBOX_UNREAD_EVENT, onChange);
+    return () => {
+      alive = false;
+      window.clearInterval(timer);
+      window.removeEventListener(MAILBOX_UNREAD_EVENT, onChange);
+    };
+  }, []);
+  return unread;
 }
 
 export const ChatList: React.FC<ChatListProps> = ({
@@ -1525,6 +1556,7 @@ export const ChatList: React.FC<ChatListProps> = ({
   // showing the row here as well listed every heartbeat twice. Regent's own
   // check-ins and wake-ups belong to it: they surface as new messages on its
   // card, not as tasks.
+  const mailboxUnread = useMailboxUnread();
   const scheduledJobs = cronJobs.filter(
     (job) => job.source !== 'heartbeat' && job.chat_id !== FOCAL_CHAT_ID
   );
@@ -1690,10 +1722,19 @@ export const ChatList: React.FC<ChatListProps> = ({
               >
                 <InboxStackIcon className="h-4 w-4 shrink-0" aria-hidden="true" />
                 <span className="flex-1 truncate">{t('nav.mailbox')}</span>
-                {scheduledJobs.length + heartbeatSessions.length > 0 && (
-                  <span className="text-[10px] tabular-nums text-neutral-400 dark:text-neutral-500">
-                    {scheduledJobs.length + heartbeatSessions.length}
+                {mailboxUnread > 0 ? (
+                  <span
+                    className="min-w-[1.25rem] border border-brutal-black bg-brutal-yellow px-1 text-center text-[10px] font-bold tabular-nums text-brutal-black"
+                    aria-label={t('mailboxView.unreadCount', { count: String(mailboxUnread) })}
+                  >
+                    {mailboxUnread}
                   </span>
+                ) : (
+                  scheduledJobs.length + heartbeatSessions.length > 0 && (
+                    <span className="text-[10px] tabular-nums text-neutral-400 dark:text-neutral-500">
+                      {scheduledJobs.length + heartbeatSessions.length}
+                    </span>
+                  )
                 )}
               </button>
               {false && showAutomation && automationOpen && (

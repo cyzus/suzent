@@ -1772,6 +1772,7 @@ export interface MailboxItem {
   reason: string | null;
   inbox_message_id: string | null;
   spooled_at: string | null;
+  read_at: string | null;
   created_at: string | null;
 }
 
@@ -1798,9 +1799,34 @@ export interface MailboxRule {
 
 export interface MailboxListResponse {
   items: MailboxItem[];
-  counts: { all: number; routed: number; unrouted: number };
+  counts: { all: number; routed: number; unrouted: number; unread: number };
   targets: MailboxTarget[];
   endpoint: WebhookUrls;
+}
+
+/** Fired after notifications are marked read, so the sidebar badge refreshes. */
+export const MAILBOX_UNREAD_EVENT = 'suzent:mailbox-unread';
+
+export async function fetchMailboxUnread(): Promise<number> {
+  try {
+    const res = await fetch(`${getApiBase()}/mailbox/unread`);
+    if (!res.ok) return 0;
+    return (await res.json()).unread ?? 0;
+  } catch {
+    return 0;
+  }
+}
+
+export async function markMailboxRead(ids?: number[]): Promise<number> {
+  const res = await fetch(`${getApiBase()}/mailbox/read`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(ids ? { ids } : {}),
+  });
+  if (!res.ok) throw new Error('Failed to mark notifications read');
+  const unread = (await res.json()).unread ?? 0;
+  window.dispatchEvent(new CustomEvent(MAILBOX_UNREAD_EVENT, { detail: unread }));
+  return unread;
 }
 
 export async function fetchMailboxItems(params?: {
