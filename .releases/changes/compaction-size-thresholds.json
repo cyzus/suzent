@@ -1,0 +1,1 @@
+{"products": {"desktop": "patch"}, "summary": "Long conversations on large-window models are now compacted at 200k tokens instead of 80% of the window, the next summary is prepared during long runs as well as after each reply, and a prepared summary survives a restart."}

@@ -248,20 +248,35 @@ transcript at full price (`summarize_on_cached_prefix()` in
   over 95% of the window, a provider error or an unusable reply all fall back to
   the extraction model on a flattened transcript. `compaction_reuse_prompt_cache:
   false` turns the cached path off.
-- **Prepared at turn end.** When a finished turn leaves the context at or over
-  `context_precompaction_trigger` (0.50 by default), `ChatProcessor` starts the
-  next summary in the background while the cache is warm
-  (`schedule_precompaction()`). It is held in memory, not applied. When the
-  trigger is reached, the history processor applies it if its fingerprint
-  still matches, waits for it if it is still being written, and writes a fresh
-  one if it no longer matches or would leave the context over the trigger. A
-  summary that still covers the history is not rewritten on later turns until
-  the uncovered tail passes 15% of the window
+- **Thresholds.** `compaction_trigger_tokens()` and
+  `precompaction_trigger_tokens()` take the smaller of a share of the window
+  and a fixed token count: by default 80% or 200k for compaction, 50% or 100k
+  for preparing a summary. The fixed count matters on large windows, where a
+  share alone would send hundreds of thousands of uncompacted tokens per
+  request.
+- **Prepared in the background.** `schedule_precompaction()` starts the next
+  summary while the cache is warm, from two places: `ChatProcessor` when a
+  turn finishes, and the history processor before each request of a run that
+  is past the precompaction threshold but under the trigger, when
+  `prefix_cache_warm()` says the chat's last request is likely still cached.
+  The summary is held in `_PRECOMPACTIONS`, not applied. When the trigger is
+  reached, the history processor applies it if its fingerprint still matches,
+  waits for it if it is still being written, and writes a fresh one if it no
+  longer matches or would leave the context over the trigger. A summary that
+  still covers the history, or one that failed, is not rewritten until the
+  uncovered tail passes 20% of the compaction trigger
   (`PRECOMPACTION_REFRESH_TAIL_SHARE`).
+- **Kept across restarts.** A finished summary is written to the
+  `prepared_summaries` table (chat id, `end_index`, fingerprint, text) and
+  deleted when it is applied or superseded. The first time the history
+  processor sees a chat past the precompaction threshold in a process,
+  `restore_precompaction()` loads it back. With no request recorded since the
+  restart, the cold-cache check measures idle time from the last reply's
+  timestamp.
 - **Applied early on a cold cache.** Each `RequestSnapshot` carries the Suzent
   model id and the time it was sent. Before the trigger is reached,
   `cold_cache_compaction_due()` applies a finished prepared summary when the
-  history is at or over `context_precompaction_trigger` and the time since the
+  history is at or over the precompaction threshold and the time since the
   chat's last request exceeds the cache TTL estimate: the next request would
   pay full input price for the whole history anyway. Providers with no TTL
   estimate (local models) never qualify.
