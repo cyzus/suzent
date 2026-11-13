@@ -1,15 +1,24 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { useChatCoreStore } from '../../hooks/useChatStore';
 import { useActivatedToolsStore } from '../../hooks/useActivatedToolsStore';
-import { deactivateTool, fetchMcpServers, fetchPlugins, setMcpServerEnabled } from '../../lib/api';
+import {
+  deactivateTool,
+  fetchMcpServers,
+  fetchPlugins,
+  setMcpServerEnabled,
+  setPluginIntegrationEnabled,
+} from '../../lib/api';
 import { CapabilityToolPicker } from '../tools/CapabilityToolPicker';
 import { useI18n } from '../../i18n';
 
 /** A service a plugin connected, such as Notion, keyed like the agent keys it. */
 type ConnectedService = {
   key: string;
+  pluginId: string;
+  integrationId: string;
   name: string;
   icon?: string | null;
+  enabled: boolean;
 };
 
 type MCPServer = {
@@ -40,8 +49,11 @@ export function ToolsPanel(): React.ReactElement | null {
                 .filter((integration) => integration.connected)
                 .map((integration) => ({
                   key: `${plugin.id}.${integration.id}`,
+                  pluginId: plugin.id,
+                  integrationId: integration.id,
                   name: integration.name,
                   icon: plugin.icon,
+                  enabled: integration.enabled !== false,
                 }))
             )
         )
@@ -113,14 +125,25 @@ export function ToolsPanel(): React.ReactElement | null {
     }
   };
 
-  const serviceOn = (key: string): boolean => config.mcp_enabled?.[key] !== false;
+  const serviceOn = (service: ConnectedService): boolean =>
+    config.mcp_enabled?.[service.key] ?? service.enabled;
 
-  const toggleService = (key: string): void => {
-    // A chat's mcp_enabled replaces the global one, so it must list every server.
-    const serverStates = Object.fromEntries(servers.map((s) => [s.name, s.enabled]));
-    update({
-      mcp_enabled: { ...config.mcp_enabled, ...serverStates, [key]: !serviceOn(key) },
-    });
+  const toggleService = async (service: ConnectedService): Promise<void> => {
+    const on = !serviceOn(service);
+    setMcpLoading(true);
+    try {
+      await setPluginIntegrationEnabled(service.pluginId, service.integrationId, on);
+      setServices((prev) =>
+        prev.map((s) => (s.key === service.key ? { ...s, enabled: on } : s))
+      );
+      // A chat's mcp_enabled replaces the global one, so it must list every server.
+      const serverStates = Object.fromEntries(servers.map((s) => [s.name, s.enabled]));
+      update({
+        mcp_enabled: { ...config.mcp_enabled, ...serverStates, [service.key]: on },
+      });
+    } finally {
+      setMcpLoading(false);
+    }
   };
 
   if (available.length === 0)
@@ -168,8 +191,9 @@ export function ToolsPanel(): React.ReactElement | null {
                 <ToggleRow
                   key={service.key}
                   label={service.name}
-                  on={serviceOn(service.key)}
-                  onClick={() => toggleService(service.key)}
+                  on={serviceOn(service)}
+                  disabled={mcpLoading}
+                  onClick={() => !mcpLoading && toggleService(service)}
                   icon={service.icon}
                   badge={t('toolsPanel.serviceBadge')}
                 />
