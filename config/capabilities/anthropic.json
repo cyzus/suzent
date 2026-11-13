@@ -223,6 +223,26 @@
       "supports_response_schema": true,
       "supports_reasoning": true,
       "supports_prompt_caching": true
+    },
+    "anthropic/claude-mythos-5-2": {
+      "mode": "chat",
+      "max_input_tokens": 1000000,
+      "max_output_tokens": 128000,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
+    },
+    "anthropic/claude-fable-5-2": {
+      "mode": "chat",
+      "max_input_tokens": 1000000,
+      "max_output_tokens": 128000,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
     }
   }
 }

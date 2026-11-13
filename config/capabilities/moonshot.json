@@ -190,6 +190,16 @@
       "supports_response_schema": true,
       "supports_reasoning": true,
       "supports_prompt_caching": true
+    },
+    "moonshot/kimi-k3.1-pro-highspeed": {
+      "mode": "chat",
+      "max_input_tokens": 1048576,
+      "max_output_tokens": 1048576,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
     }
   }
 }
