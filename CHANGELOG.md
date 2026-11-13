@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Long conversations you return to after the provider's prompt cache has expired now resume from a prepared summary instead of resending the full history, and an hour-long Anthropic cache can be enabled with anthropic_prompt_cache_ttl.
 - Context compaction now writes its summary from the prompt cache with the chat's own model, and prepares it in the background after a turn, so long chats compact faster and cheaper.
 - Keep your reading position on macOS when a reply finishes while you are scrolled up, instead of jumping to the previous message.
+- Conversations on 1M-token models are now compacted at 500k tokens, with the summary prepared from 350k, so more of the long context is used before anything is folded.
 - The compaction animation now shows only on the chat card, and not at all for a compaction that finishes instantly.
 - Compaction now shows as a quiet divider in the chat that says why it happened and can show the summary, and the Context panel shows the last compaction and whether the next summary is ready.
 - Long conversations on large-window models are now compacted at 200k tokens instead of 80% of the window, the next summary is prepared during long runs as well as after each reply, and a prepared summary survives a restart.
