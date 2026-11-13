@@ -23,6 +23,17 @@ except ImportError:
 
 logger = get_logger(__name__)
 
+_SLACK_REACTIONS = {
+    "👍": "thumbsup",
+    "❤️": "heart",
+    "👀": "eyes",
+    "✅": "white_check_mark",
+    "🎉": "tada",
+    "😂": "joy",
+    "🤔": "thinking_face",
+    "🙏": "pray",
+}
+
 
 class SlackChannel(SocialChannel):
     """
@@ -31,6 +42,8 @@ class SlackChannel(SocialChannel):
 
     def __init__(self, config: Dict[str, Any]):
         super().__init__("slack", config)
+        # The bot's current reaction per message, so a new one can replace it.
+        self._reactions: dict[tuple[str, str], str] = {}
         self.app_token = config.get("app_token")
         self.bot_token = config.get("bot_token")
 
@@ -136,6 +149,7 @@ class SlackChannel(SocialChannel):
                 platform="slack",
                 timestamp=float(ts),
                 thread_id=conversation_id,
+                is_direct=event.get("channel_type") == "im",
                 raw_data=event,
             )
 
@@ -143,6 +157,25 @@ class SlackChannel(SocialChannel):
 
         except Exception as e:
             logger.error(f"Error handling Slack event: {e}")
+
+    async def set_reaction(self, target_id: str, message_id: str, emoji: str) -> bool:
+        if not self.web_client:
+            return False
+        channel = target_id.split(":", 1)[0]
+        key = (channel, message_id)
+        previous = self._reactions.pop(key, None)
+        if previous:
+            await self.web_client.reactions_remove(
+                channel=channel, timestamp=message_id, name=previous
+            )
+        name = _SLACK_REACTIONS.get(emoji)
+        if not name:
+            return not emoji
+        await self.web_client.reactions_add(
+            channel=channel, timestamp=message_id, name=name
+        )
+        self._reactions[key] = name
+        return True
 
     async def send_message(self, target_id: str, content: str, **kwargs) -> bool:
         """

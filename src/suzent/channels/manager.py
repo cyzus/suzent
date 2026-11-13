@@ -6,7 +6,7 @@ Responsible for driver registry and message routing.
 import asyncio
 from typing import Dict
 from suzent.logger import get_logger
-from suzent.channels.base import SocialChannel, UnifiedMessage
+from suzent.channels.base import MESSAGE_BREAK, SocialChannel, UnifiedMessage
 from suzent.core.citation_codec import (
     CitationStreamRenderer,
     render_citations_plain_text,
@@ -172,30 +172,61 @@ class ChannelManager:
             logger.error(f"Cannot stream: Platform '{platform}' not configured.")
             return False
 
-        renderer = CitationStreamRenderer()
-        renderer.add_sources(citation_sources)
+        # MESSAGE_BREAK splits the stream into separate chat messages; a message
+        # starts only once it has text, so stray breaks never send an empty one.
+        source = stream.__aiter__()
+        ended = False
 
-        async def portable_stream():
-            async for chunk in stream:
-                rendered = renderer.feed(chunk)
-                if rendered:
+        async def next_text() -> str | None:
+            nonlocal ended
+            async for chunk in source:
+                if chunk is not MESSAGE_BREAK and chunk:
+                    return chunk
+            ended = True
+            return None
+
+        async def segment(first: str):
+            nonlocal ended
+            renderer = CitationStreamRenderer()
+            renderer.add_sources(citation_sources)
+            if rendered := renderer.feed(first):
+                yield rendered
+            async for chunk in source:
+                if chunk is MESSAGE_BREAK:
+                    break
+                if rendered := renderer.feed(chunk):
                     yield rendered
-            final = renderer.finish()
-            if final:
+            else:
+                ended = True
+            if final := renderer.finish():
                 yield final
 
         send_stream = getattr(channel, "send_stream", None)
-        if send_stream is None:
-            # Fallback: collect full content then send
-            chunks = []
-            async for chunk in portable_stream():
-                chunks.append(chunk)
-            return await channel.send_message(target_id, "".join(chunks))
+        ok = True
+        while not ended and (first := await next_text()) is not None:
+            try:
+                if send_stream is None:
+                    text = "".join([part async for part in segment(first)])
+                    sent = await channel.send_message(target_id, text)
+                else:
+                    sent = await send_stream(target_id, segment(first), **kwargs)
+            except Exception as e:
+                logger.error(f"Error streaming on {platform}: {e}")
+                sent = False
+            ok = ok and bool(sent)
+        return ok
 
+    async def set_reaction(
+        self, platform: str, target_id: str, message_id: str, emoji: str
+    ) -> bool:
+        """Route the bot's reaction on a message to the correct driver."""
+        channel = self.channels.get(platform)
+        if not channel or not message_id:
+            return False
         try:
-            return await send_stream(target_id, portable_stream(), **kwargs)
+            return await channel.set_reaction(target_id, message_id, emoji)
         except Exception as e:
-            logger.error(f"Error streaming on {platform}: {e}")
+            logger.warning(f"Could not set reaction on {platform}: {e}")
             return False
 
     async def send_options(

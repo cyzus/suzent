@@ -3,20 +3,30 @@ Social Brain: The bridge between Social Channels and the Suzent Agent.
 """
 
 import asyncio
+import functools
+import json
 from datetime import datetime, timezone
 import secrets
 import string
 import time
-from typing import Optional, Dict
+from typing import AsyncIterator, Awaitable, Callable, Optional, Dict
 
 from suzent.logger import get_logger
 from suzent.channels.manager import ChannelManager
-from suzent.channels.base import UnifiedMessage
+from suzent.channels.base import MESSAGE_BREAK, UnifiedMessage
 from suzent.config import CONFIG
 from suzent.core.base_brain import BaseBrain, get_active
 from suzent.core.approval_manager import PendingApprovalSession
 from suzent.core.prompt_row import display_name, prewrite_prompt
-from suzent.core.stream_parser import ApprovalRequest
+from suzent.channels.session_binding import SHARED_DIRECT_KEY, sender_key
+from suzent.core.citation_codec import CitationStreamRenderer
+from suzent.core.focal_agent import FOCAL_CHAT_ID, get_or_create_focal_chat
+from suzent.core.stream_parser import (
+    ApprovalRequest,
+    StreamParser,
+    TextChunk,
+    ToolOutput,
+)
 from suzent.core.run_state import ChatRunState
 from suzent.database import get_database
 from suzent.core.stream_registry import (
@@ -28,6 +38,74 @@ from suzent.core.stream_registry import (
 logger = get_logger(__name__)
 
 _TOKEN_CHARS = string.ascii_uppercase + string.digits
+
+
+async def channel_text_stream(
+    stream_queue: asyncio.Queue,
+    on_reaction: Optional[Callable[[str], Awaitable[None]]] = None,
+) -> AsyncIterator[str | object]:
+    """Yield the reply a social channel should show, from a turn's SSE queue.
+
+    Text comes through the shared parser so what Regent sends with send_message
+    reaches the channel too, each message on its own (split by MESSAGE_BREAK):
+    its final answer is often empty by design. Regent's reactions go to
+    ``on_reaction``.
+    """
+    parser = StreamParser()
+    sources: list[dict] = []
+    renderer = CitationStreamRenderer()
+    while True:
+        chunk = await stream_queue.get()
+        if chunk is None:
+            break
+        try:
+            for event in parser.parse([chunk]):
+                if isinstance(event, TextChunk) and event.regent_messages:
+                    # The text so far ends here as its own message.
+                    if pending := renderer.finish():
+                        yield pending
+                    renderer = CitationStreamRenderer()
+                    renderer.add_sources(sources)
+                    for text in event.regent_messages:
+                        yield MESSAGE_BREAK
+                        yield text
+                    yield MESSAGE_BREAK
+                elif isinstance(event, TextChunk) and event.content:
+                    if rendered := renderer.feed(event.content):
+                        yield rendered
+                elif (
+                    isinstance(event, ToolOutput)
+                    and event.tool_name == "react_to_message"
+                    and on_reaction is not None
+                ):
+                    emoji = _regent_reaction(event.output)
+                    if emoji is not None:
+                        await on_reaction(emoji)
+            if chunk.startswith("data: "):
+                data = json.loads(chunk[6:].strip())
+                if (
+                    data.get("type") in {"CUSTOM", "CUSTOM_EVENT"}
+                    and data.get("name") == "citation_sources"
+                ):
+                    new_sources = (data.get("value") or {}).get("sources", [])
+                    sources.extend(new_sources)
+                    renderer.add_sources(new_sources)
+        except (ValueError, AttributeError, TypeError):
+            continue
+    if final := renderer.finish():
+        yield final
+
+
+def _regent_reaction(output: str) -> Optional[str]:
+    """The emoji a successful react_to_message result set, or None."""
+    try:
+        result = json.loads(output)
+    except ValueError:
+        return None
+    if not isinstance(result, dict) or result.get("success") is not True:
+        return None
+    emoji = (result.get("metadata") or {}).get("regent_reaction")
+    return emoji if isinstance(emoji, str) else None
 
 
 def _pending_approval_payload(req: ApprovalRequest) -> dict:
@@ -113,6 +191,7 @@ class SocialBrain(BaseBrain):
         mcp_enabled: dict = None,
         handshake_enabled: bool = False,
         handshake_greeting: str = None,
+        regent_direct_messages: bool = False,
     ):
         super().__init__()
         self.channel_manager = channel_manager
@@ -125,6 +204,8 @@ class SocialBrain(BaseBrain):
         self.memory_enabled = memory_enabled
         self.tools = tools
         self.mcp_enabled = mcp_enabled
+        # Direct messages from every chat app share one binding, Regent by default.
+        self.regent_direct_messages = regent_direct_messages
         self._sessions: Dict[str, PendingApprovalSession] = {}  # chat_id -> session
         self._session_policies: Dict[
             str, Dict[str, str]
@@ -225,6 +306,18 @@ class SocialBrain(BaseBrain):
     def _sender_key(self, message: UnifiedMessage) -> str:
         return f"{message.platform}:{message.sender_id}"
 
+    def _conversation_route(self, message: UnifiedMessage) -> tuple[str, str]:
+        """Return ``(binding_key, default_chat_id)`` for an inbound message."""
+        from suzent.channels.utils import extract_target_id
+
+        if self.regent_direct_messages and message.is_direct:
+            return SHARED_DIRECT_KEY, FOCAL_CHAT_ID
+        target_id = extract_target_id(message)
+        return (
+            sender_key(message.platform, message.sender_id),
+            f"social-{message.platform}-{target_id}",
+        )
+
     async def _route_message(self, message: UnifiedMessage):
         """Route a message through the run state manager: steer, queue, or process."""
         # Handshake protocol: intercept unauthorized users before the hard deny
@@ -244,10 +337,7 @@ class SocialBrain(BaseBrain):
             )
             return
 
-        from suzent.channels.utils import extract_target_id
-
-        target_id = extract_target_id(message)
-        default_chat_id = f"social-{message.platform}-{target_id}"
+        binding_key, default_chat_id = self._conversation_route(message)
 
         # Unified slash command dispatch
         from suzent.core.commands import dispatch as dispatch_command, CommandContext
@@ -260,6 +350,7 @@ class SocialBrain(BaseBrain):
             platform=message.platform,
             sender_id=message.sender_id,
             channel_manager=self.channel_manager,
+            binding_key=binding_key,
         )
         cmd_result = await dispatch_command(ctx, message.content)
         if cmd_result is not None:
@@ -272,7 +363,7 @@ class SocialBrain(BaseBrain):
         await self.channel_manager.prepare_incoming_message(message)
 
         # Resolve active chat (may have been switched via /sess)
-        social_chat_id = get_active_chat_id(message.sender_id, default_chat_id)
+        social_chat_id = get_active_chat_id(binding_key, default_chat_id)
 
         state = self._get_run_state(social_chat_id)
 
@@ -669,6 +760,7 @@ class SocialBrain(BaseBrain):
                         platform=message.platform,
                         sender_id=message.sender_id,
                         channel_manager=self.channel_manager,
+                        binding_key=self._conversation_route(message)[0],
                     ),
                     message.content.strip(),
                 )
@@ -783,9 +875,7 @@ class SocialBrain(BaseBrain):
             # a control that never learned its run refuses such a stop.
             bind_producer_replay(stream_queue.replay)
 
-            # Check if this channel supports streaming
             channel = self.channel_manager.channels.get(message.platform)
-            supports_streaming = hasattr(channel, "send_stream")
             start_typing = getattr(channel, "start_typing", None)
             stop_typing = getattr(channel, "stop_typing", None)
             if callable(start_typing) and callable(stop_typing):
@@ -800,43 +890,9 @@ class SocialBrain(BaseBrain):
                         exc,
                     )
 
-            if supports_streaming and not is_steer:
-                # Run the LLM turn concurrently while piping text deltas to the channel
-                import json as _json
-                from suzent.core.citation_codec import CitationStreamRenderer
-
-                citation_renderer = CitationStreamRenderer()
-
-                async def _text_delta_stream():
-                    """Yield text deltas from the background stream queue."""
-                    while True:
-                        chunk = await stream_queue.get()
-                        if chunk is None:  # sentinel
-                            break
-                        try:
-                            if chunk.startswith("data: "):
-                                data = _json.loads(chunk[6:].strip())
-                                if data.get("type") == "TEXT_MESSAGE_CONTENT":
-                                    delta = data.get("delta", "")
-                                    if delta:
-                                        rendered = citation_renderer.feed(delta)
-                                        if rendered:
-                                            yield rendered
-                                elif (
-                                    data.get("type") in {"CUSTOM", "CUSTOM_EVENT"}
-                                    and data.get("name") == "citation_sources"
-                                ):
-                                    sources = (data.get("value") or {}).get(
-                                        "sources", []
-                                    )
-                                    citation_renderer.add_sources(sources)
-                        except Exception:
-                            pass
-                    final = citation_renderer.finish()
-                    if final:
-                        yield final
-
-                # Start the LLM turn as a background task
+            if not is_steer:
+                # Stream the reply while the turn runs; channels without live
+                # editing get each message whole as it completes.
                 process_task = asyncio.create_task(
                     processor.process_turn_text(
                         chat_id=social_chat_id,
@@ -852,7 +908,17 @@ class SocialBrain(BaseBrain):
 
                 try:
                     await self.channel_manager.send_stream(
-                        message.platform, target_id, _text_delta_stream()
+                        message.platform,
+                        target_id,
+                        channel_text_stream(
+                            stream_queue,
+                            on_reaction=functools.partial(
+                                self.channel_manager.set_reaction,
+                                message.platform,
+                                target_id,
+                                message.id,
+                            ),
+                        ),
                     )
                     full_response = await process_task
                 except Exception:
@@ -863,27 +929,15 @@ class SocialBrain(BaseBrain):
                     unregister_background_stream(social_chat_id, stream_queue)
             else:
                 try:
-                    if is_steer:
-                        full_response = await processor.process_steer_text(
-                            chat_id=social_chat_id,
-                            user_id=CONFIG.user_id,
-                            steer_message=enriched_content,
-                            config_override=config_override,
-                            on_event=on_event,
-                            _stream_queue=stream_queue,
-                            citation_sources_out=social_citation_sources,
-                        )
-                    else:
-                        full_response = await processor.process_turn_text(
-                            chat_id=social_chat_id,
-                            user_id=CONFIG.user_id,
-                            message_content=enriched_content,
-                            files=message.attachments,
-                            config_override=config_override,
-                            on_event=on_event,
-                            _stream_queue=stream_queue,
-                            citation_sources_out=social_citation_sources,
-                        )
+                    full_response = await processor.process_steer_text(
+                        chat_id=social_chat_id,
+                        user_id=CONFIG.user_id,
+                        steer_message=enriched_content,
+                        config_override=config_override,
+                        on_event=on_event,
+                        _stream_queue=stream_queue,
+                        citation_sources_out=social_citation_sources,
+                    )
                 finally:
                     bind_producer_replay(None)
                     unregister_background_stream(social_chat_id, stream_queue)
@@ -916,15 +970,8 @@ class SocialBrain(BaseBrain):
                     )
                 await self._prompt_next_approval(session)
 
-            # Send Final Response (non-streaming path, or steer)
-            if not supports_streaming and full_response.strip():
-                await self.channel_manager.send_message(
-                    message.platform,
-                    target_id,
-                    full_response,
-                    citation_sources=social_citation_sources,
-                )
-            elif is_steer and full_response.strip():
+            # A steer's reply was not streamed, so it is sent whole here.
+            if is_steer and full_response.strip():
                 await self.channel_manager.send_message(
                     message.platform,
                     target_id,
@@ -1184,6 +1231,9 @@ class SocialBrain(BaseBrain):
         self, chat_id: str, message: UnifiedMessage, target_id: str
     ):
         """Ensure a record exists in the DB for this chat."""
+        if chat_id == FOCAL_CHAT_ID:
+            get_or_create_focal_chat()
+            return
         db = get_database()
         is_group = target_id != message.sender_id
         if is_group:

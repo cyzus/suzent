@@ -37,6 +37,8 @@ class CommandContext:
     platform: str | None = None
     sender_id: str | None = None
     channel_manager: Any | None = None
+    # Key of the session binding /sess changes; falls back to sender_id.
+    binding_key: str | None = None
 
 
 # Global Typer registry for parsing

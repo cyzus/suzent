@@ -1707,6 +1707,9 @@ export const zhCN = {
       agentCapabilitiesTitle: '智能体能力',
       agentCapabilitiesDesc: '配置社交智能体可使用的工具。',
       enableMemoryTools: '启用记忆工具',
+      regentDirectMessages: '私聊消息交给 Regent',
+      regentDirectMessagesHint:
+        '所有聊天应用的私聊共用一段与 Regent 的对话，/sess 切换会同时作用于所有应用。你允许的每个人都会进入这段对话，如果允许了其他人，请保持关闭。群聊仍使用各自的会话。',
       tools: '工具',
       allTools: '所有工具',
       custom: '自定义',

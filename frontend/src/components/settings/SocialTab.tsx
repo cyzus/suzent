@@ -94,9 +94,15 @@ export function SocialTab({
   );
   const channels = Object.entries(socialConfig).filter(
     ([key, value]) =>
-      !['allowed_users', 'model', 'memory_enabled', 'tools', 'mcp_enabled', 'handshake'].includes(
-        key
-      ) &&
+      ![
+        'allowed_users',
+        'model',
+        'memory_enabled',
+        'tools',
+        'mcp_enabled',
+        'handshake',
+        'regent_direct_messages',
+      ].includes(key) &&
       value !== null &&
       typeof value === 'object' &&
       !Array.isArray(value)
@@ -501,6 +507,23 @@ export function SocialTab({
               checked={socialConfig.memory_enabled !== false}
               onChange={(checked) => onConfigChange({ ...socialConfig, memory_enabled: checked })}
             />
+          </div>
+
+          <div className="space-y-2">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <label className="text-sm font-bold uppercase text-neutral-800 dark:text-neutral-200">
+                {t('settings.social.regentDirectMessages')}
+              </label>
+              <BrutalOnOff
+                checked={socialConfig.regent_direct_messages === true}
+                onChange={(checked) =>
+                  onConfigChange({ ...socialConfig, regent_direct_messages: checked })
+                }
+              />
+            </div>
+            <p className="text-xs text-neutral-500 dark:text-neutral-400">
+              {t('settings.social.regentDirectMessagesHint')}
+            </p>
           </div>
 
           {/* Tools Section */}
