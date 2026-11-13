@@ -17,7 +17,6 @@ import { formatRelativeTime } from '../../lib/chatUtils';
 import { isImeComposing } from '../../lib/ime';
 import { BrutalIconButton } from '../BrutalButton';
 import { BrutalSegmentedTabs } from '../BrutalSegmentedTabs';
-import { BrutalSelect } from '../BrutalSelect';
 import { RefreshButton } from '../RefreshButton';
 import { FileViewer } from '../FileViewer';
 import { ImageViewer } from '../ImageViewer';
@@ -183,6 +182,7 @@ export const ArtifactsPage: React.FC<ArtifactsPageProps> = ({ onOpenChat }) => {
   const [previewing, setPreviewing] = useState<IndexedArtifact | null>(null);
   const [copiedPath, setCopiedPath] = useState<string | null>(null);
   const [view, setView] = useState<ViewMode>(readViewMode);
+  const [showAllProjects, setShowAllProjects] = useState(false);
 
   const changeView = (next: ViewMode): void => {
     setView(next);
@@ -415,9 +415,12 @@ export const ArtifactsPage: React.FC<ArtifactsPageProps> = ({ onOpenChat }) => {
   };
 
   const visibleProjects = projects.filter((project) => project.count > 0);
-  const chipProjects = visibleProjects.slice(0, MAX_PROJECT_CHIPS);
-  const moreProjects = visibleProjects.slice(MAX_PROJECT_CHIPS);
-  const selectedInMore = moreProjects.find((project) => project.id === projectId);
+  const hiddenProjects = showAllProjects ? [] : visibleProjects.slice(MAX_PROJECT_CHIPS);
+  const chipProjects = visibleProjects.filter(
+    (project, index) => showAllProjects || index < MAX_PROJECT_CHIPS || project.id === projectId
+  );
+  const hiddenCount = hiddenProjects.filter((project) => project.id !== projectId).length;
+  const canCollapse = showAllProjects && visibleProjects.length > MAX_PROJECT_CHIPS;
 
   return (
     <div className="h-full w-full overflow-y-auto scrollbar-thin px-4 md:px-8 py-8 space-y-6 max-w-7xl mx-auto">
@@ -508,24 +511,17 @@ export const ArtifactsPage: React.FC<ArtifactsPageProps> = ({ onOpenChat }) => {
             >
               {projectChip(null, t('artifactsPage.allProjects'), items.length)}
               {chipProjects.map((project) => projectChip(project.id, project.name, project.count))}
-              {moreProjects.length > 0 && (
-                <BrutalSelect
-                  value={selectedInMore?.id ?? ''}
-                  onChange={(value) => setProjectId(value)}
-                  ariaLabel={t('artifactsPage.moreProjects', { count: moreProjects.length })}
-                  options={moreProjects.map((project) => ({
-                    value: project.id,
-                    label: `${project.name} · ${project.count}`,
-                  }))}
-                  selectedLabel={
-                    selectedInMore
-                      ? `${selectedInMore.name} · ${selectedInMore.count}`
-                      : t('artifactsPage.moreProjects', { count: moreProjects.length })
-                  }
-                  className="shrink-0"
-                  buttonClassName={`!border-2 !py-1 !px-2.5 gap-2 text-xs !shadow-none ${selectedInMore ? '!bg-brutal-yellow !text-brutal-black !shadow-brutal-sm' : ''}`}
-                  dropdownClassName="!w-auto min-w-[12rem] [&_button]:normal-case [&_button]:text-xs"
-                />
+              {(hiddenCount > 0 || canCollapse) && (
+                <button
+                  type="button"
+                  aria-expanded={showAllProjects}
+                  onClick={() => setShowAllProjects((current) => !current)}
+                  className="shrink-0 border-2 border-dashed border-brutal-black px-2.5 py-1 font-mono text-xs font-bold text-brutal-black transition-colors hover:border-solid hover:bg-brutal-yellow dark:border-zinc-400 dark:text-white dark:hover:text-brutal-black"
+                >
+                  {showAllProjects
+                    ? t('artifactsPage.fewerProjects')
+                    : t('artifactsPage.moreProjects', { count: hiddenCount })}
+                </button>
               )}
             </nav>
           )}
