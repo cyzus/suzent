@@ -62,6 +62,7 @@
     ".releases/changes/compaction-history-safety.json",
     ".releases/changes/compaction-size-thresholds.json",
     ".releases/changes/compaction-summary-and-notices.json",
+    ".releases/changes/composer-add-menu.json",
     ".releases/changes/composer-message-queue.json",
     ".releases/changes/composer-voice-send-toggle.json",
     ".releases/changes/context-menu-actions.json",
