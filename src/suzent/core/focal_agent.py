@@ -43,6 +43,7 @@ FOCAL_TOOL_NAMES = (
     "GrepTool",
     "FocalScheduleTool",
     "FocalNotesTool",
+    "FocalMailboxTool",
     "FocalMessageTool",
     "FocalReactionTool",
 )

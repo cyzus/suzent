@@ -16,6 +16,7 @@ if TYPE_CHECKING:
     from suzent.tools.focal.conversation import FocalMessageTool as FocalMessageTool
     from suzent.tools.focal.conversation import FocalReactionTool as FocalReactionTool
     from suzent.tools.focal.dispatch import FocalDispatchTool as FocalDispatchTool
+    from suzent.tools.focal.mailbox import FocalMailboxTool as FocalMailboxTool
     from suzent.tools.focal.notes import FocalNotesTool as FocalNotesTool
     from suzent.tools.focal.schedule import FocalScheduleTool as FocalScheduleTool
 
@@ -23,6 +24,7 @@ _EXPORTS = {
     "FocalMessageTool": "suzent.tools.focal.conversation",
     "FocalReactionTool": "suzent.tools.focal.conversation",
     "FocalDispatchTool": "suzent.tools.focal.dispatch",
+    "FocalMailboxTool": "suzent.tools.focal.mailbox",
     "FocalNotesTool": "suzent.tools.focal.notes",
     "FocalScheduleTool": "suzent.tools.focal.schedule",
 }

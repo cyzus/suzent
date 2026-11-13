@@ -552,6 +552,10 @@ const BUILDERS: Record<string, Builder> = {
     verb: verb(t, 'updateMemory'),
     detail: firstOf(args, ['fact', 'retract']),
   }),
+  mailbox: (args, t) => ({
+    verb: verb(t, str(args.action) === 'reroute' ? 'rerouteMailbox' : 'checkMailbox'),
+    detail: args.item_id != null ? `#${String(args.item_id)}` : str(args.status),
+  }),
   update_notes: (args, t) => ({
     verb: verb(t, 'updateNotes'),
     detail: firstOf(args, ['section', 'new_text', 'old_text']),
