@@ -297,6 +297,7 @@ def _resolve_resume_approval_actions(
                 "approved": approved,
                 "remember": remember,
                 "_permission_updates": offered_action.get("permissionUpdates", []),
+                "_decision": decision,
             }
         )
     return resolved
@@ -449,17 +450,47 @@ def _expire_display_tool_parts(
     return expired
 
 
+# Reasons worth handing back on a denial: a specific risk the reviewer or the
+# shell policy found, rather than a generic "this tool needs approval".
+_FLAGGED_REASON_CODES = frozenset(
+    {"auto_classifier_high_risk", "shell_policy_high_risk"}
+)
+
+
+def _flagged_reason(approval: dict[str, Any]) -> str:
+    decision = approval.get("_decision")
+    if not isinstance(decision, dict):
+        return ""
+    if decision.get("reasonCode") not in _FLAGGED_REASON_CODES:
+        return ""
+    return str(decision.get("reason") or "").strip()
+
+
 def _deferred_approval_result(approval: dict[str, Any]) -> bool | ToolDenied:
-    """Build the pydantic-ai approval result, preserving rejection feedback."""
+    """Build the pydantic-ai approval result, preserving why it was refused.
+
+    Without the flagged reason the agent only learns that the call was denied,
+    and tends to retry the same call or a near copy of it.
+    """
     if approval.get("approved"):
         return True
 
     feedback = str(approval.get("feedback") or "").strip()
-    if not feedback:
-        return ToolDenied()
-    return ToolDenied(
-        message=(f"The user denied this tool call and provided guidance: {feedback}")
+    flagged = _flagged_reason(approval)
+    if not flagged:
+        if not feedback:
+            return ToolDenied()
+        return ToolDenied(
+            message=f"The user denied this tool call and provided guidance: {feedback}"
+        )
+    message = f"The user denied this tool call after it was flagged as risky: {flagged}"
+    if feedback:
+        message += f"\nThe user's guidance: {feedback}"
+    message += (
+        "\nDo not retry the same action. Address the concern another way, or ask "
+        "the user how to proceed."
     )
+    return ToolDenied(message=message)
 
 
 def _preserve_partial_response(messages: list, full_response: str) -> list:
