@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Awaitable, Callable
@@ -28,6 +29,19 @@ class PluginRoute:
 class PluginWebSocket:
     path: str
     endpoint: Callable[[WebSocket], Awaitable[None]]
+
+
+# Watchers poll outside services, so they never run more often than this.
+MIN_WATCHER_SECONDS = 60
+
+
+@dataclass
+class PluginWatcher:
+    """A check Suzent runs every ``every_seconds`` while the plugin is on."""
+
+    name: str
+    check: Callable[[], Awaitable[None]]
+    every_seconds: float
 
 
 def _route_path(path: str) -> str:
@@ -68,6 +82,42 @@ class PluginSecrets:
         get_secret_manager().delete(self._key(name))
 
 
+class PluginState:
+    """Small JSON values one plugin keeps between checks and restarts.
+
+    For bookkeeping such as which messages a watcher has already reported;
+    secrets belong in ``ctx.secrets``.
+    """
+
+    def __init__(self, plugin_id: str) -> None:
+        self._plugin_id = plugin_id
+
+    def _path(self) -> Path:
+        from suzent.config.paths import get_data_dir
+
+        return get_data_dir() / "plugins" / self._plugin_id / "state.json"
+
+    def _load(self) -> dict[str, Any]:
+        path = self._path()
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return {}
+        return data if isinstance(data, dict) else {}
+
+    def get(self, key: str, default: Any = None) -> Any:
+        return self._load().get(key, default)
+
+    def set(self, key: str, value: Any) -> None:
+        data = self._load()
+        data[key] = value
+        path = self._path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_suffix(".tmp")
+        tmp.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+        tmp.replace(path)
+
+
 @dataclass
 class PendingCommand:
     handler: Callable[..., Any]
@@ -93,7 +143,9 @@ class PluginContext:
         self.integrations: list[Integration] = []
         self.routes: list[PluginRoute] = []
         self.websockets: list[PluginWebSocket] = []
+        self.watchers: list[PluginWatcher] = []
         self.secrets = PluginSecrets(manifest.id)
+        self.state = PluginState(manifest.id)
 
     @property
     def id(self) -> str:
@@ -175,6 +227,63 @@ class PluginContext:
         if any(socket.path == path for socket in self.websockets):
             raise ValueError(f"websocket {path!r} registered twice")
         self.websockets.append(PluginWebSocket(path, endpoint))
+
+    def register_watcher(
+        self,
+        name: str,
+        check: Callable[[], Awaitable[None]],
+        *,
+        every_seconds: float = 300,
+    ) -> None:
+        """Run ``check`` every ``every_seconds`` (at least a minute) while the plugin is on.
+
+        A watcher looks for something new, such as unread mail, and reports it
+        with ``emit_event``. A check that raises is logged and tried again on
+        the next round; one still running is not started again.
+        """
+        if not name or any(w.name == name for w in self.watchers):
+            raise ValueError(f"watcher {name!r} is empty or registered twice")
+        if every_seconds < MIN_WATCHER_SECONDS:
+            raise ValueError(f"watchers run at most every {MIN_WATCHER_SECONDS}s")
+        self.watchers.append(PluginWatcher(name, check, float(every_seconds)))
+
+    async def emit_event(
+        self,
+        *,
+        event_type: str,
+        summary: str,
+        payload: Any = None,
+        source_name: str | None = None,
+        rule_key: str | None = None,
+    ) -> Any:
+        """Send an event to the Mailbox, where its rule decides where it goes.
+
+        Events with the same ``rule_key`` (default: ``event_type``) share a
+        rule. ``payload`` is shown to the agent as outside data, never as
+        instructions. Returns the Mailbox item.
+        """
+        from suzent.core.mailbox import DEST_USER, InboundEnvelope, route_inbound
+        from suzent.core.webhooks import format_webhook_payload
+
+        body = (
+            payload
+            if isinstance(payload, str)
+            else json.dumps(payload, ensure_ascii=False, default=str)
+        )
+        source = source_name or self.manifest.name
+        envelope = InboundEnvelope(
+            source_kind=self.id,
+            source_name=source,
+            event_type=event_type,
+            signature=f"{self.id}:{rule_key or event_type}",
+            summary=" ".join(summary.split())[:240],
+            rule_name=f"{self.manifest.name} · {rule_key or event_type}",
+            payload=format_webhook_payload((body or "").encode("utf-8"), {}),
+            # Anyone can cause a plugin event (anyone can send mail), so an
+            # event the router can't place only notifies the user.
+            fallback=DEST_USER,
+        )
+        return await route_inbound(envelope)
 
     def register_command(
         self, aliases: list[str], **options: Any

@@ -117,6 +117,9 @@ core. It is the reference for `register_websocket`.
 | `binary(name)` | A `PluginBinary` handle on a program declared under `binaries`. Its `locate()` returns `(path, source)` or `None` and never downloads. See [Binaries](#binaries). |
 | `register_route(path, endpoint, methods=("GET",))` | Serves a Starlette endpoint at `/plugins/<id>/api/<path>` while the plugin is loaded, for a settings page that needs more than the generic plugin card. See [Settings page and API](#settings-page-and-api). |
 | `register_websocket(path, endpoint)` | Serves a Starlette WebSocket endpoint at `/plugins/<id>/ws/<path>` while the plugin is loaded. Remote callers need a full-access device token, and the Origin is checked before the endpoint runs. See [Settings page and API](#settings-page-and-api). Needs `api_version: 4`. |
+| `register_watcher(name, check, every_seconds=300)` | Runs the async `check()` every `every_seconds` (at least 60) while the plugin is loaded, to poll an outside service. See [Watchers and Mailbox events](#watchers-and-mailbox-events). Needs `api_version: 5`. |
+| `emit_event(event_type=..., summary=..., payload=..., source_name=..., rule_key=...)` | Sends an event to the [Mailbox](../../03-features/mailbox.md), where its rule decides where it goes. Returns the Mailbox item. Needs `api_version: 5`. |
+| `state` | A `PluginState` with `get(key, default)` and `set(key, value)`: small JSON values kept per plugin in `<data dir>/plugins/<id>/state.json`, for bookkeeping such as what a watcher already reported. Needs `api_version: 5`. |
 | `secrets` | A `PluginSecrets` with `get`, `set` and `delete`, namespaced to the plugin. Values are stored as `SUZENT_PLUGIN::<id>::<name>`, a private prefix that `inject_all_to_env` skips, so the agent's shell commands never inherit them. |
 | `register_command(aliases, **options)` | Decorator with the same signature and handler contract as `suzent.core.commands.base.register_command`. |
 | `id`, `manifest`, `path`, `logger` | The plugin's id, parsed manifest, directory (`None` for pip packages) and a logger bound to `suzent.plugins.<id>`. |
@@ -128,6 +131,43 @@ reaches the live registries.
 Name clashes never replace existing behaviour: a tool whose `name` or
 `tool_name` is already taken, or a command with an alias already registered, is
 skipped with a warning.
+
+## Watchers and Mailbox events
+
+A watcher lets a plugin notice something new on its own, such as mail arriving,
+and hand it to the Mailbox. The email plugin's inbox watcher is the reference
+(`plugins/email/watch.py`).
+
+```python
+def register(ctx):
+    async def check() -> None:
+        for item in await fetch_new_items():
+            await ctx.emit_event(
+                event_type="item",
+                summary=item.title,
+                payload={"id": item.id, "body": item.body},
+                source_name=item.account,
+                rule_key=f"{item.account}:{item.kind}",
+            )
+
+    ctx.register_watcher("new-items", check, every_seconds=300)
+```
+
+- `PluginWatcherRunner` (`suzent/plugins/watchers.py`) runs on the server's
+  event loop. It only sees watchers of loaded plugins, so turning a plugin off
+  stops them. A watcher still running is not started again; a check that raises
+  or outlasts its interval is logged and retried on the next round.
+- `emit_event` builds an `InboundEnvelope` with `source_kind` set to the plugin
+  id and `signature` `<plugin id>:<rule_key>`, so events with the same
+  `rule_key` share one Mailbox rule. Choose a key that groups events a user
+  would route the same way (the email plugin uses account and sender domain).
+- The payload is shown to the agent wrapped as outside data. Since anyone can
+  cause a plugin event, an event the router can't place goes to the user as a
+  notification, not to Regent.
+- Keep what a watcher already reported in `ctx.state`, and save it after each
+  event, so a failure partway never reports something twice. On its first run
+  a watcher should only record what exists, so turning it on doesn't flood the
+  Mailbox with old items.
 
 ## Integrations
 

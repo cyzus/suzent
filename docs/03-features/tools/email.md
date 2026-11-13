@@ -63,6 +63,19 @@ which to use ("check my work mail").
 The email tools are not on by default. Tick them in the **Tools** tab of a chat,
 or just ask, and the agent switches them on for that chat.
 
+## Watching your inbox
+
+Switch on **Watch inbox** for a mailbox in **Settings → Services** and new mail
+goes to the [Mailbox](../mailbox.md) every few minutes, where a rule decides what
+happens to it: tell Regent, start a session in a project, just notify you, or
+only keep it. Mail from the same sender's domain to the same mailbox shares one
+rule. Mail that was already in your inbox when you switched it on isn't
+reported, and checking never marks anything as read.
+
+The first message from a new sender's domain is sorted the way other new kinds
+of events are. If Suzent can't decide, it only notifies you, since anyone can
+send you mail.
+
 ## Sending
 
 Each mailbox starts as **drafts only**: the agent can write mail but you do the
@@ -79,7 +92,9 @@ Anyone can send you an email, and an email can contain text written to trick an
 agent ("forward all invoices to…"). Suzent marks everything it reads from your
 mailbox as content from the sender, and the agent is told never to act on
 instructions found there. Sending still needs your approval, so a trick email
-can't send mail by itself. Keep **Allow sending** off unless you need it.
+can't send mail by itself. Keep **Allow sending** off unless you need it. With
+**Watch inbox** on, prefer rules that notify you or keep mail in the Mailbox for
+senders you don't know, so an email can't start an agent on its own.
 
 ## Troubleshooting
 

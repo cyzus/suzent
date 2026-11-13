@@ -1104,6 +1104,9 @@ export const en = {
       oauthOnly: 'Needs Microsoft sign-in, which is not supported yet.',
       add: 'Add mailbox',
       allowSend: 'Allow sending',
+      watchInbox: 'Watch inbox',
+      watchInboxHint:
+        'New mail goes to the Mailbox every few minutes, where its rule decides what happens. Mail already there is not reported.',
       test: 'Test',
       changePassword: 'Password',
       passwordMissing: 'Password missing',

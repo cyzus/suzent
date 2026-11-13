@@ -56,6 +56,8 @@ class MailAccount(BaseModel):
     append_sent: bool = True
     # Off until the user turns it on: drafts are the default way to write mail.
     allow_send: bool = False
+    # Off until the user turns it on: report new inbox mail to the Mailbox.
+    watch_inbox: bool = False
 
     @property
     def login(self) -> str:
