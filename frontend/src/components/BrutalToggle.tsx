@@ -16,7 +16,7 @@ export function BrutalToggle({
   return (
     <button
       onClick={() => onChange(!checked)}
-      className={`w-full flex items-center gap-3 p-3 border-4 border-brutal-black font-black uppercase text-sm tracking-wider transition-all shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-x-[2px] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:translate-x-[4px] active:translate-y-[4px] active:shadow-none ${
+      className={`w-full flex items-center gap-3 p-3 border-4 border-brutal-black font-black uppercase text-sm tracking-wider transition-all shadow-brutal hover:translate-x-[2px] hover:translate-y-[2px] hover:shadow-brutal-sm active:translate-x-[4px] active:translate-y-[4px] active:shadow-none ${
         checked
           ? 'bg-brutal-green text-brutal-black'
           : 'bg-white dark:bg-zinc-800 text-brutal-black dark:text-white hover:bg-neutral-100 dark:hover:bg-zinc-700'

@@ -612,7 +612,7 @@ const ToolCallBlockComponent: React.FC<ToolCallBlockProps> = ({
   ].join(' ');
 
   const approveButtonClass = inActivityRail
-    ? 'inline-flex items-center gap-1 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide bg-brutal-black text-white dark:bg-white dark:text-brutal-black border-2 border-brutal-black dark:border-white rounded-sm hover:-translate-y-[1px] hover:shadow-[3px_3px_0_#000] dark:hover:shadow-[3px_3px_0_#fff] active:translate-y-[1px] active:shadow-none transition-all'
+    ? 'inline-flex items-center gap-1 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide bg-brutal-black text-white dark:bg-white dark:text-brutal-black border-2 border-brutal-black dark:border-white rounded-sm hover:-translate-y-[1px] hover:shadow-brutal-sm active:translate-y-[1px] active:shadow-none transition-all'
     : 'inline-flex items-center gap-1 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide bg-green-50 text-green-700 border-2 border-green-600 rounded-sm hover:bg-green-100 transition-colors';
   const rememberSessionButtonClass = inActivityRail
     ? 'inline-flex items-center gap-1 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide bg-white dark:bg-zinc-900 text-brutal-black dark:text-white border-2 border-brutal-black dark:border-white rounded-sm hover:bg-neutral-100 dark:hover:bg-zinc-800 transition-colors'

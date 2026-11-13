@@ -91,7 +91,7 @@ export function BoardRowMenu({
         visibility: position ? 'visible' : 'hidden',
         zIndex: 9999,
       }}
-      className="min-w-[180px] max-w-[260px] border-2 border-brutal-black bg-white py-0.5 shadow-[3px_3px_0_0_#000] dark:bg-zinc-800"
+      className="min-w-[180px] max-w-[260px] border-2 border-brutal-black bg-white py-0.5 shadow-brutal-overlay dark:bg-zinc-800"
     >
       <p className="truncate border-b-2 border-brutal-black px-3 py-1.5 font-mono text-[10px] font-bold uppercase tracking-wider text-neutral-500 dark:text-zinc-400">
         {title}

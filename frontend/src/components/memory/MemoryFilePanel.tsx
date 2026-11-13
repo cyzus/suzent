@@ -88,7 +88,7 @@ export const MemoryFilePanel: React.FC = () => {
         <p className="text-sm text-brutal-black dark:text-neutral-300 font-mono mb-4">{error}</p>
         <button
           onClick={loadMemoryFile}
-          className="px-6 py-2 border-3 border-brutal-black bg-white dark:bg-zinc-700 hover:bg-neutral-100 dark:hover:bg-zinc-600 dark:text-white font-bold uppercase shadow-[2px_2px_0_0_#000] brutal-btn transition-all"
+          className="px-6 py-2 border-3 border-brutal-black bg-white dark:bg-zinc-700 hover:bg-neutral-100 dark:hover:bg-zinc-600 dark:text-white font-bold uppercase shadow-brutal-sm brutal-btn transition-all"
         >
           {t('common.retry')}
         </button>

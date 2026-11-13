@@ -114,7 +114,7 @@ const FileButton: React.FC<{
         e.stopPropagation();
         onFileClick(path, fileName, e.shiftKey);
       }}
-      className="inline-flex max-w-full items-center gap-1 bg-brutal-yellow border-2 border-brutal-black px-2 py-0.5 font-mono text-xs font-bold text-brutal-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] brutal-btn transition-all cursor-pointer"
+      className="inline-flex max-w-full items-center gap-1 bg-brutal-yellow border-2 border-brutal-black px-2 py-0.5 font-mono text-xs font-bold text-brutal-black shadow-brutal-sm brutal-btn transition-all cursor-pointer"
       title={t('fileLink.clickToView', { path })}
       role="button"
       tabIndex={0}

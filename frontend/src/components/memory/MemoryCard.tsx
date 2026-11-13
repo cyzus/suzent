@@ -279,7 +279,7 @@ export const MemoryCard: React.FC<MemoryCardProps> = ({
   }
 
   return (
-    <article className="border-3 border-brutal-black bg-white dark:bg-zinc-800 shadow-[2px_2px_0_0_#000] brutal-btn transition-all relative group">
+    <article className="border-3 border-brutal-black bg-white dark:bg-zinc-800 shadow-brutal-sm brutal-btn transition-all relative group">
       {/* Delete confirmation overlay */}
       {showConfirm && (
         <BrutalDeleteOverlay

@@ -74,7 +74,7 @@ export function GoalSummary({
         <button
           disabled={busy}
           onClick={() => void action(currentGoal.status === 'active' ? 'pause' : 'resume')}
-          className="border-2 border-brutal-black bg-white dark:bg-zinc-800 px-3 py-1.5 text-xs font-bold font-mono shadow-[2px_2px_0_0_#000] hover:bg-brutal-yellow/20 disabled:opacity-50"
+          className="border-2 border-brutal-black bg-white dark:bg-zinc-800 px-3 py-1.5 text-xs font-bold font-mono shadow-brutal-sm hover:bg-brutal-yellow/20 disabled:opacity-50"
         >
           {busy
             ? t('taskFlow.working')

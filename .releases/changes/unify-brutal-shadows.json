@@ -1,0 +1,1 @@
+{"products": {"desktop": "patch"}, "summary": "Drop shadows now use three consistent sizes for controls, menus and dialogs, with one shadow colour per theme."}

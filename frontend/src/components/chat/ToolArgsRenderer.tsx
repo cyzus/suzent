@@ -151,7 +151,7 @@ export const ToolArgsRenderer: React.FC<ToolArgsRendererProps & { toolName?: str
   return (
     <div className="w-full font-brutal bg-neutral-50/70 dark:bg-zinc-800/40 px-2.5 py-2 space-y-2 min-w-0 overflow-hidden">
       {primaryValue !== null && (
-        <div className="flex items-start gap-2 bg-white dark:bg-zinc-800 border-2 border-brutal-black dark:border-zinc-500 px-2.5 py-1.5 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] min-w-0">
+        <div className="flex items-start gap-2 bg-white dark:bg-zinc-800 border-2 border-brutal-black dark:border-zinc-500 px-2.5 py-1.5 shadow-brutal-sm min-w-0">
           <svg
             className="w-3.5 h-3.5 mt-0.5 stroke-[2.5] shrink-0 text-brutal-black dark:text-neutral-300"
             fill="none"
