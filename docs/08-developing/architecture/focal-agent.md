@@ -34,7 +34,8 @@ and overrides whatever the request asked for:
 - `tools` is set to `FOCAL_TOOL_NAMES`: agent list/read/stop,
   `FocalDispatchTool`, web search and fetch, memory and session search,
   ask-question, skills, read-only file tools, `FocalScheduleTool`, and
-  `FocalNotesTool`, `FocalMessageTool`, and `FocalReactionTool`. The plain
+  `FocalNotesTool`, `FocalMailboxTool`, `FocalMessageTool`, and
+  `FocalReactionTool`. The plain
   `AgentSendTool` is not in the set.
 - Every other registered tool goes into `denied_tools`. Unequipped tools would
   otherwise still be reachable through ToolSearch.
@@ -46,9 +47,13 @@ and overrides whatever the request asked for:
 Focal-only behavior lives in Focal-only tools, so other agents' schemas never
 carry it. They sit together in `suzent.tools.focal`: `FocalDispatchTool`
 (`agent_dispatch`, a subclass of `AgentSendTool`), `FocalScheduleTool`
-(`schedule_wakeup`, a subclass of `ScheduleTool`) and `FocalNotesTool`
-(`update_notes`). The two subclasses call their parents' internals, so a change
+(`schedule_wakeup`, a subclass of `ScheduleTool`), `FocalNotesTool`
+(`update_notes`) and `FocalMailboxTool` (`mailbox`). The two subclasses call their parents' internals, so a change
 to `AgentSendTool._deliver` or `ScheduleTool`'s helpers needs a look there too.
+`mailbox` lists and reads `mailbox_items`, wrapping contents as outside data,
+and its `reroute` calls `route_or_override_mailbox_item(pin_rule=False,
+actor="Regent")`: one item to a project or to the user, never a rule, and
+never back to Regent, an existing session, or the hidden system projects.
 These tools have an empty `group` and are
 not deferrable, so no other chat can equip or discover them, and all refuse
 any chat that is not the Focal Agent. Their descriptions say "you" rather than

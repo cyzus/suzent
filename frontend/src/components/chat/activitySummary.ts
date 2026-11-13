@@ -30,6 +30,7 @@ const CATEGORIES: Record<string, string> = {
   manage_goal: 'tasks',
   memory_update: 'memory',
   update_notes: 'memory',
+  mailbox: 'agents',
   skill_execute: 'skills',
 };
 
