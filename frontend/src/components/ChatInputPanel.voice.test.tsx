@@ -108,7 +108,7 @@ describe('composer with voice mode', () => {
       expect(html).toContain('data-value="typed draft"');
       expect(html).toContain('data-disabled="false"');
       expect(button(html, 'chatInput.sendMessage')).not.toMatch(DISABLED);
-      expect(button(html, 'chatInput.attachFiles')).not.toMatch(DISABLED);
+      expect(button(html, 'chatInput.addMenu')).not.toMatch(DISABLED);
       // State is shown exactly once, in the voice bar.
       expect(html.split(`voice.states.${status}`).length - 1).toBe(1);
     }
