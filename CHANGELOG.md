@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Messages from other chats, scheduled tasks and goal mode now show as one quiet line in the chat; repeats with no reply merge, and a reply notes what it answers.
 - Tidy the chat composer: attachments, working folders, slash commands and mentions now live under one + menu, with mounted folders shown as a small chip beside it.
 - Optional decision models (OpenAI or Gemini Decisions) in Model Roles route new kinds of Mailbox events in a fraction of a second, falling back to the Decision model when unsure.
+- Email can feed the Mailbox: switch on Watch inbox for a mailbox and new mail arrives there, sorted by the same rules as webhooks. Plugins can now run watchers and send events to the Mailbox.
 - Newly added MCP servers and newly connected services now start off; switch them on in Settings or a chat's Tools tab.
 - Fix mobile inline code wrapping and show previews for uploaded images.
 - Show Regent’s cross-conversation work queue instead of a per-chat plan in the mobile status panel.
