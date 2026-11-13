@@ -30,6 +30,9 @@ describe('brutal shadows', () => {
         .map((value) => `${relative(SRC_DIR, file)}: ${value}`);
     });
 
-    expect(offenders, 'use shadow-brutal-sm / -overlay / shadow-brutal from tailwind.config.cjs').toEqual([]);
+    expect(
+      offenders,
+      'use shadow-brutal-sm / -overlay / shadow-brutal from tailwind.config.cjs'
+    ).toEqual([]);
   });
 });
