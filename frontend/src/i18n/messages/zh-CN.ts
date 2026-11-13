@@ -1573,6 +1573,9 @@ export const zhCN = {
       imageGenerationDesc: '文生图。',
       tts: '语音合成',
       ttsDesc: '文字转语音。',
+      decisionModel: '快速决策模型',
+      decisionModelDesc:
+        '可选。只从固定选项中做选择的快速模型（OpenAI 或 Gemini Decisions），用于判断 Mailbox 中新类型事件的去向。不设置时由上面的「决策」模型完成。',
       modelsPlaceholder: 'provider/model（每行一个）',
       notConfigured: '未配置',
       fallbackHint: '每行输入一个模型 ID，第一行为主模型，其余为降级备选。',

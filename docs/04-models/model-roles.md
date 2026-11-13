@@ -23,6 +23,25 @@ small, cheap model while your conversations use the best one you have.
 | **Vision** | Reading images. | Primary, if it can see images |
 | **Embedding** | Memory search. | Nothing; assign one to use memory search |
 | **Image Generation**, **Image Editing**, **Video generation**, **TTS** | The [creative tools](../03-features/tools/media.md). | Nothing; assign one to use the tool |
+| **Decision model** | Optional. A [decision model](#decision-models) that routes new kinds of [Mailbox](../03-features/mailbox.md) events. | Decision does it |
+
+## Decision models
+
+A decision model doesn't write text: it picks from fixed choices and says how
+sure it is, in a few hundred milliseconds and for a fraction of a chat model's
+cost. Suzent supports two:
+
+- **OpenAI**: `openai/gpt-6-luna`, through OpenAI's Decisions API.
+- **Gemini**: `gemini/gemini-decision-1`, through the Gemini Decisions API.
+
+Both use the API key you added for that provider in **Settings → Providers**.
+Pick one under **Decision model** in **Settings → Model Roles**. Today it routes
+the first event of each new kind in the Mailbox. When it isn't sure of its
+choice, the event goes to Regent and no rule is saved, so the next event of that
+kind is decided again. If it fails or isn't set, the **Decision** role does the
+job instead.
+
+A decision model can't chat, so it is never offered for the other roles.
 
 ## Backups
 

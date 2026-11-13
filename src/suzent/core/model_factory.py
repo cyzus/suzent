@@ -656,6 +656,43 @@ def create_pydantic_ai_model(model_id: str) -> object:
     return handler(model_name, api_key or "", spec)
 
 
+def create_decision_model(model_id: str) -> object:
+    """Create a pydantic-ai decision model from a model ID.
+
+    Decision models answer typed questions instead of writing text: OpenAI's
+    Decisions API (``openai/gpt-6-luna``) or Gemini's (``gemini/gemini-decision-1``).
+    They use the provider's API key from Settings → Providers.
+    """
+    prefix, _, model_name = model_id.partition("/")
+    spec = PROVIDER_REGISTRY_BY_ID.get(prefix)
+    if spec is None or not model_name:
+        raise RuntimeError(f"Unknown decision model '{model_id}'.")
+    api_key = resolve_api_key(prefix)
+    if not api_key:
+        raise RuntimeError(
+            f"No API key configured for model '{model_id}'. "
+            f"Add your credentials in Settings → Providers."
+        )
+    if spec.api_type == "google":
+        from pydantic_ai.models.google_decisions import GoogleDecisionsModel
+        from pydantic_ai.providers.google import GoogleProvider
+
+        return GoogleDecisionsModel(
+            model_name, provider=GoogleProvider(api_key=api_key)
+        )
+    if spec.id == "openai":
+        from pydantic_ai.models.openai_decisions import OpenAIDecisionsModel
+        from pydantic_ai.providers.openai import OpenAIProvider
+
+        base_url = _resolve_base_url(spec) or os.environ.get("OPENAI_BASE_URL")
+        return OpenAIDecisionsModel(
+            model_name, provider=OpenAIProvider(api_key=api_key, base_url=base_url)
+        )
+    raise RuntimeError(
+        f"Provider '{prefix}' has no decision models; use OpenAI or Gemini."
+    )
+
+
 def create_fallback_model(model_ids: list[str]) -> object:
     """Create a FallbackModel from multiple model IDs.
 
