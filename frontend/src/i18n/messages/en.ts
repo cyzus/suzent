@@ -91,6 +91,9 @@ export const en = {
       unrouted: 'Unrouted',
     },
     markAllRead: 'Mark all read',
+    rotate: 'Issue a new webhook address',
+    rotateConfirm:
+      'Issue a new Mailbox webhook address? The current one stops working right away, so update every service that uses it.',
     unreadCount: '{count} unread notifications',
     unread: 'Unread',
     status: { unrouted: 'Not routed', error: 'Delivery failed' },

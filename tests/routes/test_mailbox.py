@@ -656,3 +656,25 @@ def test_migration_turns_old_rules_into_destinations(tmp_path):
         "d": ("regent", "now"),
         "e": ("session", "now"),
     }
+
+
+def test_old_items_are_pruned_but_unread_and_queued_ones_kept(db):
+    from suzent.database.mailbox import MAILBOX_RETENTION_DAYS
+
+    old = datetime.now() - timedelta(days=MAILBOX_RETENTION_DAYS + 1)
+
+    def item(signature: str, status: str, **fields):
+        created = db.create_mailbox_item(
+            signature=signature, summary=signature, route_status=status
+        )
+        return db.update_mailbox_item(created.id, created_at=old, **fields)
+
+    item("old-routed", "routed")
+    item("old-read", "notified", read_at=old)
+    item("old-unread", "notified")
+    item("old-queued", "queued")
+
+    db.create_mailbox_item(signature="fresh", summary="fresh", route_status="routed")
+
+    kept = {i.signature for i in db.list_mailbox_items(limit=50)}
+    assert kept == {"old-unread", "old-queued", "fresh"}

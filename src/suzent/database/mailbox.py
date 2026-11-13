@@ -2,12 +2,30 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import List, Optional
 
-from sqlmodel import func, select
+from sqlmodel import Session, col, delete, func, or_, select
 
 from .models import MailboxItemModel, MailboxRuleModel
+
+
+# How long the Mailbox keeps events. Unread notifications and events still
+# waiting for their digest are kept until they are read or sent.
+MAILBOX_RETENTION_DAYS = 30
+
+
+def _prune_old_items(session: Session, now: datetime) -> None:
+    session.exec(
+        delete(MailboxItemModel).where(
+            MailboxItemModel.created_at < now - timedelta(days=MAILBOX_RETENTION_DAYS),
+            MailboxItemModel.route_status != "queued",
+            or_(
+                MailboxItemModel.route_status != "notified",
+                col(MailboxItemModel.read_at).is_not(None),
+            ),
+        )
+    )
 
 
 class MailboxOperationsMixin:
@@ -51,6 +69,7 @@ class MailboxOperationsMixin:
                 created_at=now,
             )
             session.add(item)
+            _prune_old_items(session, now)
             session.commit()
             session.refresh(item)
             return item

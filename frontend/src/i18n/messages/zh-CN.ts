@@ -90,6 +90,9 @@ export const zhCN = {
       unrouted: '未路由',
     },
     markAllRead: '全部已读',
+    rotate: '换一个新的 webhook 地址',
+    rotateConfirm:
+      '要换一个新的 Mailbox webhook 地址吗？旧地址会立即失效，需要在用到它的每个服务里更新。',
     unreadCount: '{count} 条未读通知',
     unread: '未读',
     status: { unrouted: '未路由', error: '投递失败' },

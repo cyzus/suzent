@@ -11,6 +11,7 @@ import {
   Cog6ToothIcon,
   HeartIcon,
   InboxStackIcon,
+  KeyIcon,
   LinkIcon,
   PlayIcon,
   TrashIcon,
@@ -26,6 +27,7 @@ import {
   fetchHeartbeatStatus,
   fetchMailboxItems,
   markMailboxRead,
+  rotateMailboxEndpoint,
   fetchMailboxRules,
   routeMailboxItem,
   triggerCronJob,
@@ -479,6 +481,15 @@ export function MailboxView({
     }
   };
 
+  const handleRotateEndpoint = async () => {
+    if (!window.confirm(t('mailboxView.rotateConfirm'))) return;
+    try {
+      setEndpoint(await rotateMailboxEndpoint());
+    } catch (err) {
+      console.error('Failed to issue a new Mailbox address:', err);
+    }
+  };
+
   const unreadCount = threads.reduce((sum, th) => sum + th.unreadIds.length, 0);
 
   const markRead = async (ids?: number[]) => {
@@ -739,6 +750,14 @@ export function MailboxView({
               )}
             </BrutalIconButton>
           )}
+          {publicOrLocalUrl && (
+            <BrutalIconButton
+              onClick={() => void handleRotateEndpoint()}
+              label={t('mailboxView.rotate')}
+            >
+              <KeyIcon className="h-4 w-4 stroke-2" />
+            </BrutalIconButton>
+          )}
           <RefreshButton onClick={() => void loadAll()} spinning={loading} />
           {onOpenSettings && (
             <BrutalIconButton onClick={onOpenSettings} label="Automation settings">
@@ -941,6 +960,17 @@ export function MailboxView({
                           </div>
                         ) : (
                           <div className="space-y-2">
+                            {latest.reason && (
+                              <p
+                                className={`font-mono text-[11px] ${
+                                  latest.route_status === 'error'
+                                    ? 'text-brutal-red'
+                                    : 'text-neutral-500 dark:text-neutral-400'
+                                }`}
+                              >
+                                {latest.reason}
+                              </p>
+                            )}
                             <pre className="max-h-48 overflow-auto border border-neutral-300 bg-neutral-900 p-2.5 font-mono text-[11px] text-neutral-100 dark:border-zinc-700">
                               {latest.payload || latest.summary}
                             </pre>
