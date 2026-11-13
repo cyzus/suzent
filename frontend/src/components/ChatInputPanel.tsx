@@ -11,7 +11,6 @@ import {
 } from '../types/api';
 import { FileIcon } from './FileIcon';
 import {
-  PaperClipIcon,
   MicrophoneIcon,
   ArrowUpIcon,
   ArrowUturnRightIcon,
@@ -20,7 +19,7 @@ import {
   FolderIcon,
   ChatBubbleLeftRightIcon,
 } from '@heroicons/react/24/outline';
-import { FolderContextPicker } from './chat/FolderContextPicker';
+import { ComposerAddMenu } from './chat/ComposerAddMenu';
 import { FOCAL_CHAT_ID } from '../lib/focalAgent';
 import { useI18n } from '../i18n';
 import { useSlashCommands } from '../hooks/useSlashCommands';
@@ -930,18 +929,8 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
 
         {/* Button row */}
         <div className="chat-composer-toolbar flex flex-wrap items-center gap-2 px-1 pb-0.5">
-          {/* Left: folder + attachment. The Focal Agent works through project
-              sessions, which carry their own folders. */}
-          {!isFocal && (
-            <FolderContextPicker
-              onMount={handleMountFolder}
-              activeVolumes={config.sandbox_volumes || []}
-              onRemoveVolume={removeVolume}
-              disabled={!configReady || streamingForCurrentChat || isUploading}
-              dropUp={modelSelectDropUp}
-              compact={!!currentChatId}
-            />
-          )}
+          {/* Left: one "+" menu for attachments and the working directory. The
+              Focal Agent works through project sessions, which carry their own folders. */}
           <input
             ref={fileInputRef}
             type="file"
@@ -950,15 +939,24 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
             onChange={handleFileSelect}
             className="hidden"
           />
-          <button
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            className="w-9 h-9 flex items-center justify-center bg-transparent text-brutal-black dark:text-white hover:bg-neutral-200 dark:hover:bg-zinc-700 hover:text-brutal-blue transition-colors disabled:opacity-40 shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-brutal-blue"
-            title={t('chatInput.attachFiles')}
+          <ComposerAddMenu
+            onAttachFiles={() => fileInputRef.current?.click()}
+            onSlashCommand={() => editorRef.current?.appendText('/')}
+            slashCommandDisabled={input.length > 0}
+            onMention={() =>
+              editorRef.current?.appendText(input && !/\s$/.test(input) ? ' @' : '@')
+            }
+            folders={
+              isFocal
+                ? undefined
+                : {
+                    activeVolumes: config.sandbox_volumes || [],
+                    onMount: handleMountFolder,
+                    onRemoveVolume: removeVolume,
+                  }
+            }
             disabled={!configReady || streamingForCurrentChat || isUploading}
-          >
-            <PaperClipIcon className="w-5 h-5" />
-          </button>
+          />
 
           {/* Spacer */}
           <div className="flex-1" />
