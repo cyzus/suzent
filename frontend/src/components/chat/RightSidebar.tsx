@@ -8,7 +8,7 @@ import { TaskPanel } from '../sidebar/TaskPanel';
 import { SandboxFiles } from '../sidebar/SandboxFiles';
 import { WebActivitiesView } from '../sidebar/WebActivitiesView';
 import { CanvasView } from '../sidebar/CanvasView';
-import { useSurfaceEntry } from '../a2ui/InlineSurfaceContext';
+import { useInlineSurfaceContext, useSurfaceEntry } from '../a2ui/InlineSurfaceContext';
 import { BackgroundTaskView } from '../sidebar/BackgroundTaskView';
 import { useBackgroundTasks } from '../../hooks/useBackgroundTasks';
 import { BackgroundTaskList } from '../sidebar/BackgroundTaskList';
@@ -264,6 +264,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
   headerSlot,
 }) => {
   const { t } = useI18n();
+  const inlineSurfaces = useInlineSurfaceContext();
   const { taskStates } = useBackgroundTasks();
   const backgroundTasks = Object.values(taskStates).filter(
     (task) => task.parent_chat_id === currentChatId
@@ -295,13 +296,21 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
   const [sidebarWidth, setSidebarWidth] = useState<number | null>(null);
   const [coveringChat, setCoveringChat] = useState(false);
   const previousCanvasExpand = useRef(canvasExpandNonce);
+  // Fullscreen from chat borrows the sidebar; leaving it puts the sidebar back as it was.
+  const beforeCanvasExpand = useRef<{
+    open: boolean;
+    tab: TabId;
+    width: number | null;
+  } | null>(null);
+  const restoringFromExpand = useRef(false);
   useEffect(() => {
     if (canvasExpandNonce !== previousCanvasExpand.current) {
       previousCanvasExpand.current = canvasExpandNonce;
+      beforeCanvasExpand.current ??= { open: isOpen, tab: activeTab, width: sidebarWidth };
       setCoverWidth(null);
       setCoveringChat(true);
     }
-  }, [canvasExpandNonce]);
+  }, [canvasExpandNonce, isOpen, activeTab, sidebarWidth]);
 
   const [coverWidth, setCoverWidth] = useState<number | null>(null);
   const [chatAreaWidth, setChatAreaWidth] = useState(0);
@@ -540,9 +549,11 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
     if (!isOpen && shouldOpen) {
       onOpen();
     }
-    if (isOpen && shouldClose) {
+    // Leaving fullscreen already restored the sidebar; the surface going home must not close it.
+    if (isOpen && shouldClose && !restoringFromExpand.current) {
       onClose();
     }
+    restoringFromExpand.current = false;
 
     autoOpenRef.current = flags;
   }, [
@@ -815,7 +826,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
   const overviewPanel = (
     <div
       // A reserved gutter keeps expanding a section from narrowing every row.
-      className={`flex-1 h-full flex-col min-h-0 overflow-y-auto scrollbar-stable bg-neutral-50 dark:bg-zinc-900 ${activeTab === 'overview' ? 'flex' : 'hidden'}`}
+      className={`flex-1 h-full flex-col min-h-0 overflow-y-auto scrollbar-none bg-neutral-50 dark:bg-zinc-900 ${activeTab === 'overview' ? 'flex' : 'hidden'}`}
     >
       <SidebarOverview
         sections={overviewSections}
@@ -921,10 +932,25 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
     isCoveringChat,
   ]);
 
+  const sidebarExpanded = isOverlayMode ? coveringChat : isCoveringChat;
+  const wasSidebarExpanded = useRef(sidebarExpanded);
+  useEffect(() => {
+    const shrank = wasSidebarExpanded.current && !sidebarExpanded;
+    wasSidebarExpanded.current = sidebarExpanded;
+    const before = beforeCanvasExpand.current;
+    if (!shrank || !before) return;
+    beforeCanvasExpand.current = null;
+    restoringFromExpand.current = true;
+    inlineSurfaces?.workspace.returnToChat();
+    setActiveTab(before.tab);
+    setSidebarWidth(before.width);
+    if (!before.open && isOpen) onClose();
+  }, [sidebarExpanded, inlineSurfaces, isOpen, onClose]);
+
   return (
     <SidebarExpansionContext.Provider
       value={{
-        expanded: isOverlayMode ? coveringChat : isCoveringChat,
+        expanded: sidebarExpanded,
         toggle: () => {
           if (coveringChat) {
             dockSidebar(sidebarWidth ?? getDesktopDefaultWidth());

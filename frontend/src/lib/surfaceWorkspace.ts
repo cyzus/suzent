@@ -16,6 +16,7 @@ export class SurfaceWorkspace {
   private listeners = new Set<() => void>();
   private parking: HTMLElement | null = null;
   private scroll = new Map<string, number>();
+  private returning = new Set<string>();
 
   snapshot = (): SurfaceEntry[] => this.entries;
   subscribe = (listener: () => void): (() => void) => {
@@ -50,13 +51,27 @@ export class SurfaceWorkspace {
     this.notify();
   }
 
-  place(id: string, location: SurfaceLocation): void {
+  /** `returnToChat` sends the surface back inline once the expanded sidebar shrinks. */
+  place(id: string, location: SurfaceLocation, returnToChat = false): void {
+    if (returnToChat) this.returning.add(id);
+    else this.returning.delete(id);
     this.entries = this.entries.map((entry) =>
       entry.surface.id === id ? { ...entry, location } : entry
     );
     const entry = this.entries.find((item) => item.surface.id === id);
     if (entry) this.move(entry);
     this.notify();
+  }
+
+  locationOf(id: string): SurfaceLocation | undefined {
+    return this.entries.find((entry) => entry.surface.id === id)?.location;
+  }
+
+  /** Fullscreen from chat ended: put those surfaces back where they were. */
+  returnToChat(): void {
+    const ids = [...this.returning];
+    this.returning.clear();
+    ids.forEach((id) => this.place(id, 'inline'));
   }
 
   register(id: string, slot: SurfaceSlot, node: HTMLElement): () => void {
