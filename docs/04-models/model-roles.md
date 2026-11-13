@@ -29,12 +29,18 @@ small, cheap model while your conversations use the best one you have.
 
 A decision model doesn't write text: it picks from fixed choices and says how
 sure it is, in a few hundred milliseconds and for a fraction of a chat model's
-cost. Suzent supports two:
+cost. Suzent can use:
 
 - **OpenAI**: `openai/gpt-6-luna`, through OpenAI's Decisions API.
 - **Gemini**: `gemini/gemini-decision-1`, through the Gemini Decisions API.
+- **A LiteLLM proxy** you run: its decision models, such as Cloudflare's or
+  Databricks', as `litellm_proxy/<model>`.
+- **TypeSafe's Jev or a self-hosted decision model** that speaks the System One
+  protocol, added as a custom provider (see
+  [Model capabilities](../08-developing/architecture/model-capabilities.md#decision-models)).
 
-Both use the API key you added for that provider in **Settings → Providers**.
+Each uses the key and address you set for that provider in **Settings →
+Providers**.
 Pick one under **Decision model** in **Settings → Model Roles**. Today it routes
 the first event of each new kind in the Mailbox. When it isn't sure of its
 choice, the event goes to Regent and no rule is saved, so the next event of that

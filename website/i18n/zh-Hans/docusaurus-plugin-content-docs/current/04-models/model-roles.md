@@ -26,12 +26,14 @@ description: 决定每类工作由哪个模型负责，从日常对话到记忆�
 
 ## 决策模型
 
-决策模型不写文字，只从固定选项中选择，并给出有多确定。几百毫秒就能完成，成本只有聊天模型的一小部分。Suzent 支持两种：
+决策模型不写文字，只从固定选项中选择，并给出有多确定。几百毫秒就能完成，成本只有聊天模型的一小部分。Suzent 可以使用：
 
 - **OpenAI**：`openai/gpt-6-luna`，通过 OpenAI 的 Decisions API。
 - **Gemini**：`gemini/gemini-decision-1`，通过 Gemini Decisions API。
+- **你自己运行的 LiteLLM proxy**：使用它提供的决策模型，例如 Cloudflare、Databricks 的，写作 `litellm_proxy/<model>`。
+- **TypeSafe 的 Jev 或自己部署的决策模型**：只要使用 System One 协议，就可以作为自定义提供商添加（见[模型能力](../08-developing/architecture/model-capabilities.md#decision-models)）。
 
-两者都使用你在 **设置 → 提供商** 中为对应提供商添加的 API key。在 **设置 → 模型角色** 的 **快速决策模型** 中选择一个即可。目前它用于判断 Mailbox 中每种新类型事件第一次到达时的去向。不够确定时，事件交给 Regent，且不保存规则，下次同类事件会重新判断。调用失败或没有设置时，由 **决策** 角色完成。
+每种都使用你在 **设置 → 提供商** 中为对应提供商设置的 key 和地址。在 **设置 → 模型角色** 的 **快速决策模型** 中选择一个即可。目前它用于判断 Mailbox 中每种新类型事件第一次到达时的去向。不够确定时，事件交给 Regent，且不保存规则，下次同类事件会重新判断。调用失败或没有设置时，由 **决策** 角色完成。
 
 决策模型不能聊天，所以不会出现在其他角色的选项里。
 
