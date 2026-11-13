@@ -121,6 +121,10 @@ function BootstrapWindowBar(): React.ReactElement {
   const t = (key: string, params?: Record<string, string>) => tForLocale(locale, key, params);
   const appWindow = window.__TAURI__?.window.getCurrentWindow();
   const [isMaximized, setIsMaximized] = React.useState(false);
+  const isMac = React.useMemo(
+    () => detectDesktopPlatform(navigator.userAgent, navigator.platform) === 'macos',
+    []
+  );
 
   async function handleDrag(event: React.MouseEvent<HTMLDivElement>): Promise<void> {
     const target = event.target as HTMLElement;
@@ -140,40 +144,43 @@ function BootstrapWindowBar(): React.ReactElement {
       data-tauri-drag-region
     >
       <div className="flex items-center gap-2 pointer-events-none">
+        {isMac ? <MacTrafficLightsSpacer /> : null}
         <div className="w-2.5 h-2.5 bg-brutal-black" />
         <span className="font-brutal text-sm uppercase text-brutal-black">
           {t('bootstrap.windowTitle')}
         </span>
       </div>
-      <div className="flex h-full items-center text-brutal-black">
-        <button
-          type="button"
-          onMouseDown={(event) => event.stopPropagation()}
-          onClick={() => appWindow?.minimize()}
-          className="h-full w-10 flex items-center justify-center hover:bg-neutral-100"
-          title={t('titlebar.minimize')}
-        >
-          <span className="h-0.5 w-3 bg-current" />
-        </button>
-        <button
-          type="button"
-          onMouseDown={(event) => event.stopPropagation()}
-          onClick={handleMaximize}
-          className="h-full w-10 flex items-center justify-center hover:bg-neutral-100"
-          title={isMaximized ? t('titlebar.restore') : t('titlebar.maximize')}
-        >
-          <span className="h-3 w-3 border-2 border-current" />
-        </button>
-        <button
-          type="button"
-          onMouseDown={(event) => event.stopPropagation()}
-          onClick={() => appWindow?.close()}
-          className="h-full w-10 flex items-center justify-center hover:bg-brutal-red hover:text-white"
-          title={t('titlebar.close')}
-        >
-          <span className="text-lg leading-none">×</span>
-        </button>
-      </div>
+      {isMac ? null : (
+        <div className="flex h-full items-center text-brutal-black">
+          <button
+            type="button"
+            onMouseDown={(event) => event.stopPropagation()}
+            onClick={() => appWindow?.minimize()}
+            className="h-full w-10 flex items-center justify-center hover:bg-neutral-100"
+            title={t('titlebar.minimize')}
+          >
+            <span className="h-0.5 w-3 bg-current" />
+          </button>
+          <button
+            type="button"
+            onMouseDown={(event) => event.stopPropagation()}
+            onClick={handleMaximize}
+            className="h-full w-10 flex items-center justify-center hover:bg-neutral-100"
+            title={isMaximized ? t('titlebar.restore') : t('titlebar.maximize')}
+          >
+            <span className="h-3 w-3 border-2 border-current" />
+          </button>
+          <button
+            type="button"
+            onMouseDown={(event) => event.stopPropagation()}
+            onClick={() => appWindow?.close()}
+            className="h-full w-10 flex items-center justify-center hover:bg-brutal-red hover:text-white"
+            title={t('titlebar.close')}
+          >
+            <span className="text-lg leading-none">×</span>
+          </button>
+        </div>
+      )}
     </div>
   );
 }
