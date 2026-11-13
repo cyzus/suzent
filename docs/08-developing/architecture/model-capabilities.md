@@ -274,6 +274,19 @@ transcript at full price (`summarize_on_cached_prefix()` in
   if either model is unpriced, the cached path is kept. The choice and both
   estimates are logged at INFO.
 
+#### Events and notices
+
+Every pass emits an `auto_compaction` bus event (`start`, then `complete`,
+`skipped` or `error`). A completed one carries `reason`: `prepared` when a
+background summary was applied at the trigger, `cold_cache` when it was applied
+early (with `idle_seconds`), or `fresh` when it was written on the spot, plus
+the `summary` text. The history processor and `/compact` persist the terminal
+notice with those fields in its metadata, which the chat renders as a divider
+(`CompactionDivider`) and the context panel reads for its "last compacted"
+line. `schedule_precompaction()` emits a `precompaction` event (`start`, then
+`ready` or `failed`, with `covered_messages`) so the panel can show the
+summary being prepared.
+
 #### Cache TTL estimate
 
 No provider reports how long it keeps a cached prefix, so

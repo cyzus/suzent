@@ -163,6 +163,26 @@ function formatCompactLifecycleNotice(payload: any): string | null {
     : `${prefix} complete`;
 }
 
+/** What a live compaction event says, kept on its notice like a stored one. */
+function compactionNoticeMetadata(payload: any): Message['metadata'] {
+  const metadata: Message['metadata'] = {
+    kind: 'context_compaction',
+    stage: payload.stage,
+    source: String(payload.source || 'auto'),
+  };
+  for (const key of [
+    'tokens_before',
+    'tokens_after',
+    'reason',
+    'idle_seconds',
+    'summary',
+    'message',
+  ]) {
+    if (payload[key] !== undefined && payload[key] !== null) metadata[key] = payload[key];
+  }
+  return metadata;
+}
+
 // ── AGUIPart[] → Store Message conversion ────────────────────────────
 function escapeHtmlForStore(unsafe: string): string {
   return unsafe
@@ -1070,13 +1090,14 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   }, [messages]);
 
   const upsertCompactNotice = useCallback(
-    (content: string | null, stage?: string) => {
+    (content: string | null, payload: any) => {
       const notice = content?.trim();
       if (!notice || !currentChatId) return;
 
+      const stage: string | undefined = payload?.stage;
       if (stage === 'start') compactNoticeMessageRef.current = null;
       const existing = compactNoticeMessageRef.current;
-      const metadata = stage ? { kind: 'context_compaction', stage } : undefined;
+      const metadata = stage ? compactionNoticeMetadata(payload) : undefined;
       const currentMessages = messagesRef.current;
       const timestamp = new Date().toISOString();
 
@@ -1121,8 +1142,20 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         return;
       }
 
+      if (payload.event === 'precompaction') {
+        useContextUsageStore.getState().setPrecompaction(currentChatId, {
+          stage: payload.stage,
+          coveredMessages: Number(payload.covered_messages ?? 0),
+        });
+        return;
+      }
+
       if (payload.event !== 'auto_compaction') return;
-      upsertCompactNotice(formatCompactLifecycleNotice(payload), payload.stage);
+      upsertCompactNotice(formatCompactLifecycleNotice(payload), payload);
+      // Whatever summary was prepared has been used or superseded.
+      if (payload.stage === 'complete') {
+        useContextUsageStore.getState().setPrecompaction(currentChatId, null);
+      }
       // Publish the pass to the store so the context-window panel shows its
       // state for agent-triggered compaction too — the panel's own `useCompact`
       // progress only ever covers a compaction started from its button.
@@ -1350,7 +1383,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       if (storeMsg.content.trim() && !persistence?.confirmed) {
         addMessage(storeMsg, chatId!);
         if (/context compacted/i.test(storeMsg.content)) {
-          upsertCompactNotice('Context compacted');
+          upsertCompactNotice('Context compacted', null);
         }
       }
 

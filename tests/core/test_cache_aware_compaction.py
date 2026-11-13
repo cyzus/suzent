@@ -152,6 +152,62 @@ async def test_cold_cache_applies_the_prepared_summary_early(monkeypatch) -> Non
     assert "cold" not in cc._PRECOMPACTIONS
 
 
+async def test_cold_cache_notice_says_why_and_keeps_the_summary(monkeypatch) -> None:
+    events: list = []
+    monkeypatch.setattr(
+        "suzent.core.stream_registry.emit_bus_event", lambda p: events.append(p)
+    )
+    persisted: list = []
+    monkeypatch.setattr(
+        cc, "persist_compaction_notice", lambda **kw: persisted.append(kw)
+    )
+    _stub_summaries(monkeypatch)
+    history = _long_history()
+    assert schedule_precompaction("why", history)
+    await asyncio.sleep(0)
+    _last_request(monkeypatch, "openai/gpt-x", idle=900)
+
+    await _resume("why", history)
+    await asyncio.sleep(0)
+
+    prep = [e["stage"] for e in events if e["event"] == "precompaction"]
+    assert prep == ["start", "ready"]
+    complete = next(
+        e
+        for e in events
+        if e["event"] == "auto_compaction" and e["stage"] == "complete"
+    )
+    assert complete["reason"] == "cold_cache"
+    assert 890 <= complete["idle_seconds"] <= 910
+    assert complete["summary"] == SUMMARY
+    (notice,) = persisted
+    assert notice["details"]["reason"] == "cold_cache"
+    assert notice["details"]["summary"] == SUMMARY
+
+
+async def test_prepared_summary_at_the_trigger_is_marked_prepared(monkeypatch) -> None:
+    events: list = []
+    monkeypatch.setattr(
+        "suzent.core.stream_registry.emit_bus_event", lambda p: events.append(p)
+    )
+    monkeypatch.setattr(cc, "persist_compaction_notice", lambda **kw: None)
+    monkeypatch.setattr(CONFIG, "max_context_tokens", 7_500, raising=False)
+    _stub_summaries(monkeypatch)
+    history = _long_history()
+    assert schedule_precompaction("trigger", history)
+    await asyncio.sleep(0)
+
+    await _resume("trigger", history + [ModelResponse(parts=[TextPart("y " * 200)])])
+
+    complete = next(
+        e
+        for e in events
+        if e["event"] == "auto_compaction" and e["stage"] == "complete"
+    )
+    assert complete["reason"] == "prepared"
+    assert "idle_seconds" not in complete
+
+
 @pytest.mark.parametrize(
     ("model_id", "idle"),
     [("openai/gpt-x", 60), ("ollama/llama3", 7200)],

@@ -1,0 +1,1 @@
+{"products": {"desktop": "patch"}, "summary": "Compaction now shows as a quiet divider in the chat that says why it happened and can show the summary, and the Context panel shows the last compaction and whether the next summary is ready."}
