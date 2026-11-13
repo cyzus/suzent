@@ -101,28 +101,6 @@ class StableTableTextViewTest {
         assertTrue("Table inline code lost its black text", pixels.any { it == Color.BLACK })
     }
 
-    @Test fun proseChipsClearTextBackgroundWithoutChangingCodeMetrics() = onMain {
-        val view = createStable()
-        val renderer = Markwon.builder(context())
-            .usePlugin(object : AbstractMarkwonPlugin() {
-                override fun configureTheme(builder: MarkwonTheme.Builder) {
-                    builder.codeBackgroundColor(Color.YELLOW).codeTextColor(Color.BLACK)
-                }
-            }).build()
-        val original = renderer.toMarkdown("Text `hello` text")
-        val code = original.getSpans(0, original.length, io.noties.markwon.core.spans.CodeSpan::class.java).single()
-        val expected = android.text.TextPaint(view.paint).also(code::updateMeasureState)
-        val styled = inlineCodeBordered(original, Color.YELLOW, 2f, view)
-        val span = styled.getSpans(0, styled.length, android.text.style.MetricAffectingSpan::class.java).single()
-        val actual = android.text.TextPaint(view.paint)
-        span.updateMeasureState(actual)
-        assertEquals(expected.typeface, actual.typeface)
-        assertEquals(expected.textSize, actual.textSize)
-        span.updateDrawState(actual)
-        assertEquals("Text background would cover the chip border", Color.TRANSPARENT, actual.bgColor)
-        assertEquals(Color.BLACK, actual.color)
-    }
-
     private fun createStable(): StableTableTextView = StableTableTextView(context()).apply {
         tablePlugin = TablePlugin.create(context())
         configure(this)

@@ -131,6 +131,19 @@ class ChatPresentationTest {
         assertEquals("Weather [Forecast](<https://example.com/weather>)", markdownWithCitationLinks(row.text, row.citationSources))
     }
 
+    @Test fun attachmentPreviewsSurvivePresentationAndRejectInvalidIds() {
+        val id = "a".repeat(32)
+        val chat = Chat.parse(JSONObject("""{"id":"test","messages":[
+            {"role":"user","files":[
+                {"filename":"photo.png","mime_type":"image/png","media":{"id":"$id","kind":"image","name":"photo.png"}},
+                {"filename":"bad.png","media":{"id":"../bad","kind":"image","name":"bad.png"}}
+            ]}
+        ]}"""))
+        val files = presentMessages(chat.messages).single().files
+        assertEquals(MediaItem(id, "image", "photo.png"), files[0].media)
+        assertEquals(null, files[1].media)
+    }
+
     @Test fun attachmentsAreParsedOntoUserRows() {
         val chat = Chat.parse(JSONObject("""{"id":"test","messages":[
             {"role":"user","content":"","files":[{"filename":"photo.jpg","mime_type":"image/jpeg","path":"/workspace/uploads/photo.jpg"}]}

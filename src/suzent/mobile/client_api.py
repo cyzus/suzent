@@ -484,6 +484,39 @@ async def overview(request: Request) -> JSONResponse:
     stored_chat = db.get_chat(chat_id)
     if stored_chat is None:
         raise HTTPException(404, "Conversation unavailable")
+    if chat_id == FOCAL_CHAT_ID:
+        from suzent.core.chat_status import list_chat_states
+
+        rows = await asyncio.to_thread(list_chat_states)
+        active = [row for row in rows if row["state"] in ("waiting", "running")]
+        active.sort(
+            key=lambda row: (
+                row["state"] != "waiting",
+                row.get("waitingKind") not in ("question", "approval"),
+            )
+        )
+        return reply(
+            {
+                "goal": None,
+                "tasks": [],
+                "workQueue": [
+                    {
+                        key: row.get(key)
+                        for key in (
+                            "chatId",
+                            "title",
+                            "projectName",
+                            "state",
+                            "waitingKind",
+                            "waitingReason",
+                            "summary",
+                        )
+                    }
+                    for row in active
+                ],
+                "context": context_summary(stored_chat),
+            }
+        )
     project_id = db.get_chat_projects([chat_id]).get(chat_id, (None, None))[0]
     goal = db.get_goal(project_id, chat_id=chat_id) if project_id else None
     tasks = (

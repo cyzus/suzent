@@ -81,3 +81,25 @@ import Testing
     #expect(MediaItem(id: id, kind: "file", name: "..").safeName == "file.bin")
     #expect(MediaItem(id: id, kind: "file", name: "x").isValid)
 }
+
+@Test func attachmentPreviewsSurvivePresentation() throws {
+    let message = try JSONDecoder().decode(ChatMessage.self, from: Data(#"""
+        {"role":"user","files":[
+            {"filename":"photo.png","mime_type":"image/png","media":{"id":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","kind":"image","name":"photo.png"}},
+            {"filename":"bad.png","media":{"id":"../bad","kind":"image","name":"bad.png"}}
+        ]}
+        """#.utf8))
+    #expect(presentMessages([message]).first?.files.first?.media?.kind == "image")
+    #expect(message.files[1].media == nil)
+}
+
+@Test func regentQueueDistinguishesMissingFromEmptyAndPreservesReasons() throws {
+    let decoder = JSONDecoder()
+    let old = try decoder.decode(ChatOverview.self, from: Data(#"{"tasks":[],"context":{"categories":[]}}"#.utf8))
+    #expect(old.workQueue == nil)
+    let empty = try decoder.decode(ChatOverview.self, from: Data(#"{"tasks":[],"context":{"categories":[]},"workQueue":[]}"#.utf8))
+    #expect(empty.workQueue == [])
+    let active = try decoder.decode(ChatOverview.self, from: Data(#"{"tasks":[],"context":{"categories":[]},"workQueue":[{"chatId":"shared","title":"Ship","state":"waiting","projectName":"Project","waitingKind":"task","waitingReason":"Need access"}]}"#.utf8))
+    #expect(active.workQueue?.first?.waitingReason == "Need access")
+    #expect(active.workQueue?.first?.id == "shared")
+}

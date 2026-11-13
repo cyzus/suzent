@@ -1946,3 +1946,106 @@ def test_media_route_serves_only_reported_files_in_shared_chats(
         ).status_code
         == 404
     )
+
+
+def test_uploaded_image_preview_is_scoped_to_shared_conversation(
+    setup_client: tuple[TestClient, PairingStore],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    client, store = setup_client
+    from suzent.mobile.client_api import get_database
+
+    image = tmp_path / "photo.png"
+    image.write_bytes(b"image data")
+    get_database().get_chat("shared").messages = [
+        {"role": "user", "files": [{"filename": image.name, "path": str(image)}]}
+    ]
+    monkeypatch.setattr(
+        "suzent.routes.sandbox_routes._get_resolver_for_request",
+        lambda chat_id: SimpleNamespace(resolve=Path),
+    )
+    result = grant(store, chat_ids=["shared"])
+    client.headers["Authorization"] = f"Bearer {result['token']}"
+    response = client.get(f"/mobile/client/chats/shared/media/{media_id(str(image))}")
+    assert response.status_code == 200
+    assert response.content == b"image data"
+    assert response.headers["content-type"] == "image/png"
+    assert (
+        client.get(
+            f"/mobile/client/chats/private/media/{media_id(str(image))}"
+        ).status_code
+        == 403
+    )
+
+
+def test_regent_overview_uses_global_queue_and_requires_global_scope(
+    setup_client: tuple[TestClient, PairingStore], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client, store = setup_client
+    from suzent.mobile.client_api import get_database
+
+    db = get_database()
+    original = db.get_chat
+    focal = SimpleNamespace(id="focal-suzent", config={"platform": "focal"})
+    monkeypatch.setattr(
+        db, "get_chat", lambda cid: focal if cid == focal.id else original(cid)
+    )
+    monkeypatch.setattr(
+        "suzent.mobile.client_api.context_summary",
+        lambda chat: {"categories": [], "usedTokens": 123},
+    )
+    calls = []
+
+    def states() -> list[dict]:
+        calls.append(True)
+        return [
+            {
+                "chatId": "running",
+                "title": "Working",
+                "state": "running",
+                "projectName": "A",
+                "summary": "Building",
+            },
+            {
+                "chatId": "task",
+                "title": "Blocked",
+                "state": "waiting",
+                "waitingKind": "task",
+                "waitingReason": "Need access",
+                "internal": "omit",
+            },
+            {
+                "chatId": "approval",
+                "title": "Approve",
+                "state": "waiting",
+                "waitingKind": "approval",
+            },
+            {"chatId": "idle", "title": "Idle", "state": "idle"},
+            {"chatId": "resolved", "title": "Done", "state": "resolved"},
+        ]
+
+    monkeypatch.setattr("suzent.core.chat_status.list_chat_states", states)
+    limited = grant(store, chat_ids=[focal.id, "shared"])
+    client.headers["Authorization"] = f"Bearer {limited['token']}"
+    assert client.get(f"/mobile/client/chats/{focal.id}/overview").status_code == 403
+    assert not calls
+    allowed = grant(store, all_chats=True)
+    client.headers["Authorization"] = f"Bearer {allowed['token']}"
+    response = client.get(f"/mobile/client/chats/{focal.id}/overview")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["goal"] is None and body["tasks"] == []
+    assert [row["chatId"] for row in body["workQueue"]] == [
+        "approval",
+        "task",
+        "running",
+    ]
+    assert body["workQueue"][1]["waitingReason"] == "Need access"
+    assert "internal" not in body["workQueue"][1]
+    assert body["context"]["usedTokens"] == 123
+    monkeypatch.setattr("suzent.core.chat_status.list_chat_states", lambda: [])
+    assert (
+        client.get(f"/mobile/client/chats/{focal.id}/overview").json()["workQueue"]
+        == []
+    )

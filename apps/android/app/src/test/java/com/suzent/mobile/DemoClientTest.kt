@@ -37,6 +37,14 @@ class DemoClientTest {
         }
     }
 
+    @Test fun regentQueueDistinguishesMissingFromEmptyAndPreservesReasons() {
+        assertNull(ChatOverview.parse(org.json.JSONObject("{}")).workQueue)
+        assertEquals(emptyList<ChatOverview.WorkChat>(), ChatOverview.parse(org.json.JSONObject("""{"workQueue":[]}""")).workQueue)
+        val overview = ChatOverview.parse(org.json.JSONObject("""{"workQueue":[{"chatId":"shared","title":"Ship","state":"waiting","projectName":"Project","waitingKind":"task","waitingReason":"Need access","summary":"Blocked"}]}"""))
+        assertEquals("Need access", overview.workQueue!!.single().waitingReason)
+        assertEquals("shared", overview.workQueue.single().chatId)
+    }
+
     @Test fun overviewParsesMissingUsageAndCancelledTasks() {
         val overview = ChatOverview.parse(org.json.JSONObject("""{"goal":null,"tasks":[{"id":"1","title":"A","activeForm":null,"status":"cancelled"}],
             "context":{"usedTokens":null,"limit":100000,"percent":null,"reserveTokens":null,"categories":[]}}"""))

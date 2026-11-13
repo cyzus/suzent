@@ -333,4 +333,12 @@
     <string name="media_save">保存到相册</string>
     <string name="media_saved">已保存到相册</string>
     <string name="media_save_failed">保存到相册失败</string>
+    <string name="regent_work_queue">工作队列</string>
+    <string name="regent_queue_unavailable">暂时无法获取工作队列，请更新连接的桌面端。</string>
+    <string name="regent_queue_empty">目前没有待处理或运行中的会话。</string>
+    <string name="regent_queue_waiting">待你处理 · %1$d</string>
+    <string name="regent_queue_running">运行中 · %1$d</string>
+    <string name="regent_queue_question">等待你的回答</string>
+    <string name="regent_queue_approval">等待审批</string>
+    <string name="regent_queue_input">等待你的处理</string>
 </resources>
