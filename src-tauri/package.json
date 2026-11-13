@@ -1,6 +1,6 @@
 {
   "name": "suzent-desktop",
-  "version": "0.25.0",
+  "version": "0.26.0",
   "description": "SUZENT - Your Personal Agent (Desktop Application)",
   "private": true,
   "scripts": {

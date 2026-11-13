@@ -5,6 +5,53 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v0.26.0] - 2026-11-13
+
+### Release notes
+- Add interface font, reply font, chat text size, chat width, and motion controls to Appearance settings.
+- Images, audio and video opened from Artifacts now open reliably, audio files play in the file preview, and going back from a file opened from Artifacts returns to Artifacts.
+- A new Artifacts panel in the side panel collects the images, videos, speech and files the agent made in a chat, with previews.
+- The Artifacts page filters projects with a compact chip row instead of a sidebar, so the file grid uses the full width, and adds a list view.
+- Long conversations you return to after the provider's prompt cache has expired now resume from a prepared summary instead of resending the full history, and an hour-long Anthropic cache can be enabled with anthropic_prompt_cache_ttl.
+- Context compaction now writes its summary from the prompt cache with the chat's own model, and prepares it in the background after a turn, so long chats compact faster and cheaper.
+- Keep your reading position on macOS when a reply finishes while you are scrolled up, instead of jumping to the previous message.
+- Conversations on 1M-token models are now compacted at 500k tokens, with the summary prepared from 350k, so more of the long context is used before anything is folded.
+- The compaction animation now shows only on the chat card, and not at all for a compaction that finishes instantly.
+- Compaction now shows as a quiet divider in the chat that says why it happened and can show the summary, and the Context panel shows the last compaction and whether the next summary is ready.
+- Long conversations on large-window models are now compacted at 200k tokens instead of 80% of the window, the next summary is prepared during long runs as well as after each reply, and a prepared summary survives a restart.
+- Make Smart mode the default permission mode for new chats, remove its confirmation dialog, and add concise inline descriptions to the mode selector.
+- Show image thumbnails beside individual tool rows when the activity rail is expanded.
+- The file preview in the side panel has buttons to show the file in Finder or File Explorer and to copy where it is saved on your computer.
+- Respect provider wait settings before the first model response and allow extending slow response waits.
+- Let zoomed images fill the preview window with navigation controls floating above the image.
+- A new Artifacts page in the sidebar collects everything the agent made across all chats, grouped by project, with links back to the chat that made each file.
+- Add `suzent run`, which runs one task from the command line without a chat session and can report token usage as JSON.
+- Reduce image zoom stutter by batching gesture updates per animation frame and removing competing transitions.
+- Preview images in an overlay, refresh media cards, and preserve native image context menus.
+- On the phone, typing while the agent works now offers Redirect (interrupt and continue with your message) and Queue (send when the reply ends), matching desktop.
+- Images, videos and speech the agent makes now show under its reply on the phone, with videos and audio playing inline.
+- On the phone, conversations and collapsed projects show when something is running or has replies you have not seen, like on desktop; opening a conversation marks it read on both.
+- Code blocks nested inside other code blocks, and empty code blocks, now render correctly in chat instead of breaking apart or showing [object Object].
+- The first message of a new chat now appears as soon as you send it, instead of after the chat is created.
+- Show deduplicated image thumbnails beside activity summaries and support zooming and panning image previews.
+- Simplify image preview navigation and hide duplicate thumbnails while tool details are expanded.
+- Direct messages from any chat app can now go to Regent as one shared conversation: replies come back to the app you wrote from, Regent's updates arrive as separate messages with its reactions, and /sess choices survive restarts.
+- Refine the desktop header and right sidebar overview with a 1px divider, unified sidebar toggle glyph, and inline cache/task indicators.
+- Add `suzent run --keep-background-processes` so a server the agent starts keeps running after a one-shot run ends.
+- Canvas panels can be saved as a web page in the project's artifacts folder, so a chart or table outlives the chat.
+- The agent can now hand you finished files with Send File: they arrive in the chat app you wrote from (Telegram, Slack, Discord, Feishu), under the reply on the computer, and on your phone, where you can download and share them.
+- Queue concurrent database writes to prevent chats from losing saved progress during slow saves and report slow write owners.
+- On macOS, the first-run setup window now uses the native window buttons and no longer hides its title behind them.
+- Open sidebar images in the shared zoomable overlay with navigation between images in the loaded folder.
+- Simplify sidebar project styling and show running status only on chat rows.
+- Turning a chat app off or changing its settings now stops the running bot right away, instead of it still answering until Suzent restarts.
+- Remove the heavy offset shadow from running tool and sub-agent headers so expanding them looks clean.
+- Voice settings now save as you change them, the voice shortcut is recorded by pressing it, wake phrases are added one at a time, the microphone button shows whether the wake word is listening, and turning on the wake word on Windows installs it instead of failing.
+- Start voice mode hands-free: an optional wake word ("你好 Suzent" / "Hey Suzent") spotted on your computer, and an optional desktop-wide voice shortcut.
+- The wake word no longer adds a dot to the mic button: the message box hints at your phrase, and a line below it says when the wake word can't listen.
+- The wake word now runs entirely inside the Wake word plugin, so removing the plugin stops it listening and removes its endpoints.
+- Videos (MP4, MOV, WebM) in the workspace file panel now play in place instead of opening as text, and video and audio players in the installed app are no longer blocked by its content security policy.
+
 ## [v0.25.0] - 2026-11-09
 
 ### Release notes
