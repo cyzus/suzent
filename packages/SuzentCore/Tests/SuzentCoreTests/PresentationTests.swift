@@ -86,7 +86,8 @@ import Testing
     let data = Data(#"[{"role":"user","content":"Question"},{"role":"assistant","parts":[{"type":"reasoning","text":"Thinking"}]},{"role":"assistant","parts":[{"type":"text","text":"Checking"},{"type":"tool","toolName":"read_file","toolCallId":"one","output":"ok"}]},{"role":"assistant","content":"Answer","model":"provider/model","timestamp":"2026-09-30T12:01:00Z"},{"role":"system_triggered","content":"Scheduled task"},{"role":"assistant","content":"Next answer"}]"#.utf8)
     let messages = try JSONDecoder().decode([ChatMessage].self, from: data)
     let rows = presentMessages(messages)
-    #expect(rows.map(\.role) == ["user", "assistant", "system_triggered", "assistant"])
+    #expect(rows.map(\.role) == ["user", "assistant", "assistant"])
+    #expect(rows[2].triggers.map(\.trigger.source) == ["Scheduled task"])
     let answer = rows[1]
     #expect(answer.parts.map(\.type) == ["reasoning", "text", "tool", "text"])
     #expect(answer.text == "Checking\n\nAnswer")

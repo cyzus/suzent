@@ -134,8 +134,9 @@ struct MessageView: View {
     var body: some View {
         VStack(spacing: 10) {
         if ["system_triggered", "trigger"].contains(message.role) {
-            if let reminder = SystemReminder(message.text) {
-                SystemReminderView(reminder: reminder, citationSources: message.citationSources)
+            let entries = message.triggers.isEmpty ? [TriggerEntry(trigger: parseTrigger(message.text), timestamp: message.timestamp)] : message.triggers
+            if entries.contains(where: { !$0.trigger.source.isEmpty || !$0.trigger.body.isEmpty || $0.trigger.kind != .other }) {
+                TriggerRowView(entries: entries, citationSources: message.citationSources)
             }
         } else if user, message.files.isEmpty, let label = canvasActionLabel(message.text) {
             // A surface action reads as what was pressed, like the desktop's canvas pill.
@@ -176,6 +177,9 @@ struct MessageView: View {
             }
         } else {
             VStack(alignment: .leading, spacing: 10) {
+                if !message.triggers.isEmpty {
+                    TriggerReferenceView(entries: message.triggers, citationSources: message.citationSources)
+                }
                 ActivityTurn(parts: message.parts, regent: regent, compact: !isLatest,
                              workedSeconds: message.workedSeconds, citationSources: message.citationSources,
                              bubbleMenu: regent ? AnyView(menuItems) : nil)
@@ -330,42 +334,105 @@ struct MessageView: View {
     }
 }
 
-private struct SystemReminderView: View {
-    let reminder: SystemReminder
-    let citationSources: [CitationSource]
-    @State private var expanded: Bool
-
-    init(reminder: SystemReminder, citationSources: [CitationSource]) {
-        self.reminder = reminder
-        self.citationSources = citationSources
-        _expanded = State(initialValue: !reminder.initiallyCollapsed)
+private func triggerSymbol(_ kind: TriggerKind) -> String {
+    switch kind {
+    case .agent: "bubble.left.and.bubble.right"
+    case .scheduled: "clock"
+    case .goal: "flag"
+    case .other: "bolt"
     }
+}
+
+private func triggerSource(_ trigger: ParsedTrigger) -> String {
+    if trigger.kind == .goal { return String(localized: "Goal mode") }
+    return trigger.source.isEmpty ? String(localized: "Background event") : trigger.source
+}
+
+private func triggerTime(_ raw: String?) -> String? {
+    guard let raw, let date = suzentParseDate(raw) else { return nil }
+    return date.suzentStamp
+}
+
+/// Each merged trigger's time and body, under a rule like a quote.
+private struct TriggerDetails: View {
+    let entries: [TriggerEntry]
+    let citationSources: [CitationSource]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            ForEach(Array(entries.enumerated()), id: \.offset) { _, entry in
+                VStack(alignment: .leading, spacing: 2) {
+                    if entries.count > 1, let time = triggerTime(entry.timestamp) {
+                        Text(time).suzentFont(PresentationTokens.typeMeta).foregroundStyle(Color.suzentMuted)
+                    }
+                    if !entry.trigger.body.isEmpty {
+                        SuzentMarkdown(text: entry.trigger.body, citationSources: citationSources, textSize: PresentationTokens.typeLabel)
+                    }
+                }
+            }
+        }.padding(.leading, 12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .overlay(alignment: .leading) { Rectangle().fill(Color.suzentOutline.opacity(0.4)).frame(width: 2) }
+    }
+}
+
+/// What started a turn without the user: another chat's message, a scheduled task, goal mode
+/// or a background result. One quiet line; repeats that got no reply arrive merged.
+private struct TriggerRowView: View {
+    let entries: [TriggerEntry]
+    let citationSources: [CitationSource]
+    @State private var expanded = false
+
+    private var last: TriggerEntry { entries[entries.count - 1] }
+    private var hasDetails: Bool { entries.contains { !$0.trigger.body.isEmpty } }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            if reminder.body.isEmpty { heading }
-            else {
-                Button { expanded.toggle() } label: {
-                    HStack(spacing: 8) {
-                        heading
-                        Spacer(minLength: 4)
-                        Image(systemName: expanded ? "chevron.down" : "chevron.right").font(.system(size: 11))
-                    }.frame(minHeight: 44).contentShape(Rectangle())
-                }.buttonStyle(.plain).accessibilityValue(expanded ? Text("Expanded") : Text("Collapsed"))
-            }
-            if expanded && !reminder.body.isEmpty {
-                SuzentMarkdown(text: reminder.body, citationSources: citationSources, textSize: PresentationTokens.typeLabel)
-            }
-        }.foregroundStyle(Color.suzentMuted).padding(.leading, 14).padding(.vertical, 4)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .overlay(alignment: .leading) { Rectangle().fill(Color.suzentOutline.opacity(0.4)).frame(width: 3) }
+            Button { if hasDetails { expanded.toggle() } } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: triggerSymbol(last.trigger.kind)).font(.system(size: 13)).accessibilityHidden(true)
+                    Text(triggerSource(last.trigger)).suzentFont(PresentationTokens.typeCaption, weight: .medium)
+                        .foregroundStyle(Color.primary).lineLimit(1).frame(maxWidth: 180, alignment: .leading).fixedSize(horizontal: true, vertical: false)
+                    Text(triggerPreview(last.trigger.body)).suzentFont(PresentationTokens.typeCaption).lineLimit(1)
+                    Spacer(minLength: 4)
+                    if entries.count > 1 {
+                        Text(verbatim: "×\(entries.count)").suzentFont(PresentationTokens.typeMeta, design: .monospaced)
+                    }
+                    if let time = triggerTime(last.timestamp) { Text(time).suzentFont(PresentationTokens.typeMeta) }
+                    if hasDetails { Image(systemName: expanded ? "chevron.down" : "chevron.right").font(.system(size: 11)) }
+                }.frame(minHeight: hasDetails ? 44 : 28).contentShape(Rectangle())
+            }.buttonStyle(.plain).disabled(!hasDetails)
+                .accessibilityValue(hasDetails ? (expanded ? Text("Expanded") : Text("Collapsed")) : Text(verbatim: ""))
+            if expanded { TriggerDetails(entries: entries, citationSources: citationSources) }
+        }.foregroundStyle(Color.suzentMuted).frame(maxWidth: .infinity, alignment: .leading)
     }
+}
 
-    private var heading: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "clock").accessibilityHidden(true)
-            Text(reminder.title).lineLimit(2).multilineTextAlignment(.leading)
-        }.suzentFont(PresentationTokens.typeMeta, weight: .semibold, design: .monospaced)
+/// The trigger a reply answers, as one line at the top of that reply.
+private struct TriggerReferenceView: View {
+    let entries: [TriggerEntry]
+    let citationSources: [CitationSource]
+    @State private var expanded = false
+
+    private var last: TriggerEntry { entries[entries.count - 1] }
+    private var hasDetails: Bool { entries.contains { !$0.trigger.body.isEmpty } }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Button { if hasDetails { expanded.toggle() } } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "arrow.turn.down.right").font(.system(size: 11)).accessibilityHidden(true)
+                    Image(systemName: triggerSymbol(last.trigger.kind)).font(.system(size: 11)).accessibilityHidden(true)
+                    Text("Replying to \(triggerSource(last.trigger))").suzentFont(PresentationTokens.typeLabel).lineLimit(1)
+                    if entries.count > 1 {
+                        Text(verbatim: "×\(entries.count)").suzentFont(PresentationTokens.typeMeta, design: .monospaced)
+                    }
+                    if hasDetails { Image(systemName: expanded ? "chevron.down" : "chevron.right").font(.system(size: 10)) }
+                }.frame(minHeight: hasDetails ? 44 : 24).contentShape(Rectangle())
+            }.buttonStyle(.plain).disabled(!hasDetails)
+                .accessibilityValue(hasDetails ? (expanded ? Text("Expanded") : Text("Collapsed")) : Text(verbatim: ""))
+            if expanded { TriggerDetails(entries: entries, citationSources: citationSources) }
+        }.foregroundStyle(Color.suzentMuted).frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 

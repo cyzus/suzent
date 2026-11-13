@@ -171,6 +171,10 @@
     <string name="connection_help_detail">Check that Suzent is running on your desktop and both devices are online.</string>
     <string name="reminder_expanded">Expanded</string>
     <string name="reminder_collapsed">Collapsed</string>
+    <string name="trigger_goal">Goal mode</string>
+    <string name="trigger_other">Background event</string>
+    <string name="trigger_replies_to">Replying to %1$s</string>
+    <string name="trigger_count">×%1$d</string>
     <string name="demo_enter">Try offline demo</string>
     <string name="demo_intro">Explore with sample data. No desktop, API key, or internet required.</string>
     <string name="demo_exit">Exit demo</string>

@@ -42,7 +42,8 @@ class ChatPresentationTest {
             {"role":"assistant","content":"Next answer"}
         ]}"""))
         val rows = presentMessages(chat.messages)
-        assertEquals(listOf("user", "assistant", "system_triggered", "assistant"), rows.map { it.role })
+        assertEquals(listOf("user", "assistant", "assistant"), rows.map { it.role })
+        assertEquals(listOf("Scheduled task"), rows[2].triggers.map { it.trigger.source })
         val answer = rows[1]
         assertEquals(listOf("reasoning", "text", "tool", "text"), answer.parts.map { it.type })
         assertEquals("Checking\n\nAnswer", answer.text)
