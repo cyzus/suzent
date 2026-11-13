@@ -52,6 +52,8 @@ interface SandboxFilesProps {
   // navigating back to the list) re-triggers the preview.
   externalFileNonce?: number | null;
   onMaximize?: (filePath: string, fileName: string, anchor?: DOMRect) => void;
+  /** Back was pressed on a file opened from outside, so the caller can return to where it came from. */
+  onExternalFileClosed?: (path: string) => void;
 }
 
 const WORKSPACE_PATH = '/workspace';
@@ -205,6 +207,7 @@ export const SandboxFiles: React.FC<SandboxFilesProps> = ({
   externalFileName,
   externalFileNonce,
   onMaximize,
+  onExternalFileClosed,
 }) => {
   const sidebarExpansion = useSidebarExpansion();
   const { t } = useI18n();
@@ -356,8 +359,12 @@ export const SandboxFiles: React.FC<SandboxFilesProps> = ({
     };
   }, [currentChatId, selectedFile, config.sandbox_volumes, previewRevision]);
 
+  // The external path while its preview is still the one shown; cleared once the user picks a file here.
+  const externallyOpened = useRef<string | null>(null);
+
   const handleSelectFile = useCallback(
     (path: string) => {
+      externallyOpened.current = null;
       setSelectedFile(path);
       setError(null);
       setFileContent(null);
@@ -369,15 +376,19 @@ export const SandboxFiles: React.FC<SandboxFilesProps> = ({
   );
 
   const handleBack = () => {
+    const opened = externallyOpened.current;
+    externallyOpened.current = null;
     setSelectedFile(null);
     setFileContent(null);
     setError(null);
     onViewModeChange?.(false);
+    if (opened) onExternalFileClosed?.(opened);
   };
 
   useEffect(() => {
     if (externalFilePath && externalFileName) {
       handleSelectFile(externalFilePath);
+      externallyOpened.current = externalFilePath;
     }
     // externalFileNonce is included so re-clicking the same file (which keeps
     // path/name identical) still re-opens it after a "back".

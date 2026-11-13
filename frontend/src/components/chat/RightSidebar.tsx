@@ -596,8 +596,18 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
     2
   );
   const contextStats = useContextUsageStats(currentChatId);
-  // The Files panel takes over once the file is confirmed to exist.
-  const openArtifact = (path: string, name: string): void => onOpenFile?.(path, name);
+  // The Files panel takes over once the file is confirmed to exist; going back
+  // from that file returns to the tab it was opened from.
+  const artifactReturn = useRef<{ path: string; tab: TabId } | null>(null);
+  const openArtifact = (path: string, name: string): void => {
+    artifactReturn.current = { path, tab: activeTab };
+    onOpenFile?.(path, name);
+  };
+  const handleExternalFileClosed = (path: string): void => {
+    const target = artifactReturn.current;
+    artifactReturn.current = null;
+    if (target?.path === path) setActiveTab(target.tab);
+  };
   const overviewContent: Partial<
     Record<TabId, Pick<OverviewSection, 'summary' | 'detail' | 'preview' | 'body' | 'fullView'>>
   > = {
@@ -973,6 +983,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                     externalFileName={fileToPreview?.name ?? null}
                     externalFileNonce={fileToPreview?.nonce ?? null}
                     onMaximize={onMaximizeFile}
+                    onExternalFileClosed={handleExternalFileClosed}
                   />
                 </div>
                 <div
@@ -1081,6 +1092,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                     externalFileName={fileToPreview?.name ?? null}
                     externalFileNonce={fileToPreview?.nonce ?? null}
                     onMaximize={onMaximizeFile}
+                    onExternalFileClosed={handleExternalFileClosed}
                   />
                 </div>
                 <div
