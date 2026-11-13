@@ -106,6 +106,9 @@ Suzent: "a build failed, find out why", "a new issue came in, label it".
      -d '{"build": "nightly", "status": "failed"}'
    ```
 
+To give one address to a service that sends many kinds of events and let
+Suzent sort them out, use the [Mailbox](./mailbox.md) address instead.
+
 Each call runs the task once. The body of the request (up to 64 KB) is passed to
 the agent along with your prompt, so the prompt can say what to do with it.
 JSON is shown to the agent formatted, and event headers such as

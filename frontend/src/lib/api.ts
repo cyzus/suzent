@@ -1750,6 +1750,158 @@ export async function fetchCronStatus(): Promise<{
   return res.json();
 }
 
+export interface MailboxDestination {
+  /** `regent`, `user`, `none` or `project:<id>`. */
+  value: string;
+  kind: 'regent' | 'project' | 'user' | 'none';
+  project: string | null;
+}
+
+export interface MailboxItem {
+  id: number;
+  source_kind: 'webhook' | 'email' | 'peer' | 'schedule' | string;
+  source_name: string;
+  event_type: string;
+  signature: string;
+  summary: string;
+  headers: Record<string, string>;
+  payload: string;
+  route_status: 'routed' | 'unrouted' | 'error' | 'queued' | 'notified';
+  target_chat_id: string | null;
+  target_label: string | null;
+  rule_origin: 'learned' | 'pinned' | 'manual' | string;
+  reason: string | null;
+  inbox_message_id: string | null;
+  spooled_at: string | null;
+  read_at: string | null;
+  created_at: string | null;
+}
+
+export type MailboxCadence = 'now' | 'digest';
+
+export interface MailboxRule {
+  id: number;
+  signature: string;
+  name: string;
+  source_kind: string;
+  /** A MailboxDestination value, or `session:<id>` for an older rule. */
+  destination: string;
+  target_label: string | null;
+  cadence: MailboxCadence;
+  digest_minutes: number;
+  prompt: string | null;
+  origin: 'learned' | 'pinned';
+  reason: string | null;
+  hit_count: number;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+export interface MailboxListResponse {
+  items: MailboxItem[];
+  counts: { all: number; routed: number; unrouted: number; unread: number };
+  destinations: MailboxDestination[];
+  endpoint: WebhookUrls;
+}
+
+/** Fired after notifications are marked read, so the sidebar badge refreshes. */
+export const MAILBOX_UNREAD_EVENT = 'suzent:mailbox-unread';
+
+export async function fetchMailboxUnread(): Promise<number> {
+  try {
+    const res = await fetch(`${getApiBase()}/mailbox/unread`);
+    if (!res.ok) return 0;
+    return (await res.json()).unread ?? 0;
+  } catch {
+    return 0;
+  }
+}
+
+export async function markMailboxRead(ids?: number[]): Promise<number> {
+  const res = await fetch(`${getApiBase()}/mailbox/read`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(ids ? { ids } : {}),
+  });
+  if (!res.ok) throw new Error('Failed to mark notifications read');
+  const unread = (await res.json()).unread ?? 0;
+  window.dispatchEvent(new CustomEvent(MAILBOX_UNREAD_EVENT, { detail: unread }));
+  return unread;
+}
+
+export async function fetchMailboxItems(params?: {
+  route_status?: string;
+  source_kind?: string;
+  limit?: number;
+}): Promise<MailboxListResponse> {
+  const q = new URLSearchParams();
+  if (params?.route_status && params.route_status !== 'all')
+    q.set('route_status', params.route_status);
+  if (params?.source_kind) q.set('source_kind', params.source_kind);
+  if (params?.limit) q.set('limit', String(params.limit));
+  const qs = q.toString();
+  const res = await fetch(`${getApiBase()}/mailbox/items${qs ? `?${qs}` : ''}`);
+  if (!res.ok) throw new Error('Failed to fetch mailbox items');
+  return res.json();
+}
+
+export async function routeMailboxItem(
+  itemId: number,
+  body: { action: 'route' | 'none'; target_chat_id?: string | null; pin_rule?: boolean }
+): Promise<{ item: MailboxItem }> {
+  const res = await fetch(`${getApiBase()}/mailbox/items/${itemId}/route`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error('Failed to route mailbox item');
+  return res.json();
+}
+
+export async function deleteMailboxItem(itemId: number): Promise<void> {
+  const res = await fetch(`${getApiBase()}/mailbox/items/${itemId}`, { method: 'DELETE' });
+  if (!res.ok) throw new Error('Failed to delete mailbox item');
+}
+
+export async function fetchMailboxRules(): Promise<{
+  rules: MailboxRule[];
+  destinations: MailboxDestination[];
+}> {
+  const res = await fetch(`${getApiBase()}/mailbox/rules`);
+  if (!res.ok) throw new Error('Failed to fetch mailbox rules');
+  return res.json();
+}
+
+export async function updateMailboxRule(
+  ruleId: number,
+  body: {
+    destination: string;
+    cadence?: MailboxCadence;
+    digest_minutes?: number;
+    prompt?: string | null;
+    reason?: string;
+  }
+): Promise<{ rule: MailboxRule }> {
+  const res = await fetch(`${getApiBase()}/mailbox/rules/${ruleId}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error('Failed to update mailbox rule');
+  return res.json();
+}
+
+export async function deleteMailboxRule(ruleId: number): Promise<void> {
+  const res = await fetch(`${getApiBase()}/mailbox/rules/${ruleId}`, { method: 'DELETE' });
+  if (!res.ok) throw new Error('Failed to delete mailbox rule');
+}
+
+export async function rotateMailboxEndpoint(): Promise<WebhookUrls> {
+  const res = await fetch(`${getApiBase()}/mailbox/endpoint/rotate`, { method: 'POST' });
+  if (!res.ok) throw new Error('Failed to rotate mailbox endpoint');
+  return res.json();
+}
+
 export async function markChatRead(chatId: string): Promise<void> {
   try {
     await fetch(`${getApiBase()}/chats/${chatId}/mark-read`, {
