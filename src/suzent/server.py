@@ -210,6 +210,18 @@ from suzent.routes.plugin_routes import (
     remove_plugin,
 )
 from suzent.routes.skill_routes import get_skills, reload_skills, toggle_skill
+from suzent.routes.mailbox_routes import (
+    delete_mailbox_item_route,
+    delete_mailbox_rule_route,
+    get_mailbox_endpoint_route,
+    list_mailbox_items_route,
+    list_mailbox_rules_route,
+    mailbox_unread_route,
+    mark_mailbox_read_route,
+    rotate_mailbox_endpoint_route,
+    route_mailbox_item_route,
+    update_mailbox_rule_route,
+)
 from suzent.routes.system_routes import (
     get_system_idle,
     get_system_version,
@@ -821,6 +833,14 @@ async def startup():
         except Exception as e:
             logger.error(f"Failed to start AgentInboxDispatcher: {e}")
 
+        try:
+            from suzent.core.mailbox import MailboxDigestRunner
+
+            app.state.mailbox_digests = MailboxDigestRunner()
+            await app.state.mailbox_digests.start()
+        except Exception as e:
+            logger.error(f"Failed to start Mailbox digest runner: {e}")
+
         from suzent.core.background_commands import get_background_commands
 
         await get_background_commands().start()
@@ -1054,6 +1074,9 @@ async def shutdown():
     await _stop(get_background_commands().stop(), "BackgroundCommands")
     if agent_inbox_dispatcher:
         await _stop(agent_inbox_dispatcher.stop(), "AgentInboxDispatcher")
+    mailbox_digests = getattr(app.state, "mailbox_digests", None)
+    if mailbox_digests is not None:
+        await _stop(mailbox_digests.stop(), "MailboxDigestRunner")
 
     if node_advertiser:
         try:
@@ -1569,6 +1592,36 @@ app = Starlette(
             methods=["POST"],
         ),
         Route("/hooks/{token}", receive_webhook, methods=["POST"]),
+        Route("/mailbox/items", list_mailbox_items_route, methods=["GET"]),
+        Route("/mailbox/unread", mailbox_unread_route, methods=["GET"]),
+        Route("/mailbox/read", mark_mailbox_read_route, methods=["POST"]),
+        Route(
+            "/mailbox/items/{item_id:int}/route",
+            route_mailbox_item_route,
+            methods=["POST"],
+        ),
+        Route(
+            "/mailbox/items/{item_id:int}",
+            delete_mailbox_item_route,
+            methods=["DELETE"],
+        ),
+        Route("/mailbox/rules", list_mailbox_rules_route, methods=["GET"]),
+        Route(
+            "/mailbox/rules/{rule_id:int}",
+            update_mailbox_rule_route,
+            methods=["PUT"],
+        ),
+        Route(
+            "/mailbox/rules/{rule_id:int}",
+            delete_mailbox_rule_route,
+            methods=["DELETE"],
+        ),
+        Route("/mailbox/endpoint", get_mailbox_endpoint_route, methods=["GET"]),
+        Route(
+            "/mailbox/endpoint/rotate",
+            rotate_mailbox_endpoint_route,
+            methods=["POST"],
+        ),
         Route("/heartbeat/status", get_heartbeat_status, methods=["GET"]),
         Route("/heartbeat/enable", enable_heartbeat, methods=["POST"]),
         Route("/heartbeat/disable", disable_heartbeat, methods=["POST"]),

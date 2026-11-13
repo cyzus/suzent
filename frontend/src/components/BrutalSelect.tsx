@@ -33,6 +33,10 @@ interface BrutalSelectProps {
   className?: string;
   buttonClassName?: string;
   dropdownClassName?: string;
+  /** `compact` lists options in small, single-line, normal-case rows. */
+  menuSize?: 'default' | 'compact';
+  /** Let the menu grow wider than its trigger, up to the viewport. */
+  menuMinWidth?: number;
 }
 
 export const BrutalSelect: React.FC<BrutalSelectProps> = ({
@@ -52,7 +56,10 @@ export const BrutalSelect: React.FC<BrutalSelectProps> = ({
   className = '',
   buttonClassName = '',
   dropdownClassName = '',
+  menuSize = 'default',
+  menuMinWidth = 0,
 }) => {
+  const compact = menuSize === 'compact';
   const { t } = useI18n();
   const effectivePlaceholder = placeholder ?? t('select.placeholder');
   const [isOpen, setIsOpen] = useState(false);
@@ -84,11 +91,12 @@ export const BrutalSelect: React.FC<BrutalSelectProps> = ({
     if (!button || !dropdown) return;
 
     const rect = button.getBoundingClientRect();
-    dropdown.style.width = `${rect.width}px`;
+    const menuWidth = Math.min(Math.max(rect.width, menuMinWidth), window.innerWidth - 16);
+    dropdown.style.width = `${menuWidth}px`;
     const margin = 8;
     const gap = 4;
     const dropdownHeight = Math.min(dropdown.scrollHeight + 6, 240);
-    const dropdownWidth = Math.max(rect.width, dropdown.offsetWidth);
+    const dropdownWidth = Math.max(menuWidth, dropdown.offsetWidth);
     const spaceAbove = Math.max(0, rect.top - gap - margin);
     const spaceBelow = Math.max(0, window.innerHeight - rect.bottom - gap - margin);
     const preferredSpace = dropUp ? spaceAbove : spaceBelow;
@@ -108,10 +116,10 @@ export const BrutalSelect: React.FC<BrutalSelectProps> = ({
           window.innerWidth - dropdownWidth - margin
         )
       ),
-      width: rect.width,
-      maxHeight: Math.min(240, shouldDropUp ? spaceAbove : spaceBelow),
+      width: menuWidth,
+      maxHeight: Math.min(compact ? 320 : 240, shouldDropUp ? spaceAbove : spaceBelow),
     });
-  }, [dropUp, menuAlign]);
+  }, [dropUp, menuAlign, menuMinWidth, compact]);
 
   useLayoutEffect(() => {
     if (isOpen) {
@@ -168,7 +176,13 @@ export const BrutalSelect: React.FC<BrutalSelectProps> = ({
           return (
             <React.Fragment key={option.value}>
               {showGroupHeader && (
-                <div className="px-3 pt-2 pb-1 text-[10px] font-mono font-bold uppercase tracking-widest text-neutral-500 dark:text-neutral-400 bg-neutral-50 dark:bg-zinc-900 border-b-2 border-neutral-100 dark:border-zinc-700">
+                <div
+                  className={`font-mono font-bold uppercase tracking-widest text-neutral-500 dark:text-neutral-400 bg-neutral-50 dark:bg-zinc-900 ${
+                    compact
+                      ? 'px-2.5 pt-2 pb-1 text-[9px] border-b border-neutral-200 dark:border-zinc-700'
+                      : 'px-3 pt-2 pb-1 text-[10px] border-b-2 border-neutral-100 dark:border-zinc-700'
+                  }`}
+                >
                   {option.group}
                 </div>
               )}
@@ -182,7 +196,12 @@ export const BrutalSelect: React.FC<BrutalSelectProps> = ({
                     setIsOpen(false);
                   }
                 }}
-                className={`group w-full text-left px-3 py-2 font-bold text-sm uppercase transition-colors border-b-2 border-neutral-100 dark:border-zinc-700 last:border-0 ${
+                title={compact ? option.label : undefined}
+                className={`group w-full text-left transition-colors last:border-0 ${
+                  compact
+                    ? 'px-2.5 py-1.5 font-mono text-[11px] border-b border-neutral-100 dark:border-zinc-700/60'
+                    : 'px-3 py-2 font-bold text-sm uppercase border-b-2 border-neutral-100 dark:border-zinc-700'
+                } ${
                   option.disabled
                     ? 'bg-white dark:bg-zinc-800 text-neutral-400 dark:text-neutral-600 cursor-not-allowed'
                     : value === option.value
@@ -190,10 +209,12 @@ export const BrutalSelect: React.FC<BrutalSelectProps> = ({
                       : 'bg-white dark:bg-zinc-800 text-brutal-black dark:text-white hover:bg-brutal-yellow dark:hover:bg-zinc-700'
                 }`}
               >
-                {option.label}
+                {compact ? <span className="block truncate">{option.label}</span> : option.label}
                 {option.hint && (
                   <span
                     className={`block normal-case font-normal text-[10px] leading-tight mt-0.5 ${
+                      compact ? 'truncate' : ''
+                    } ${
                       option.disabled
                         ? 'text-neutral-500 dark:text-neutral-500'
                         : value === option.value

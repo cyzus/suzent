@@ -1,13 +1,14 @@
-"""Inbound webhook endpoint: ``POST /hooks/{token}`` fires a webhook task.
-
-The route sits outside the device-token auth boundary because external
-services can't hold a Suzent device grant. The unguessable token in the URL is
-the credential, checked here against the hash stored on the task.
-"""
+"""Inbound webhook endpoint: ``POST /hooks/{token}`` fires a webhook task or ingests into Mailbox."""
 
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
+from suzent.core.mailbox import (
+    is_mailbox_token,
+    record_inbound,
+    route_inbound,
+    webhook_envelope,
+)
 from suzent.core.webhooks import (
     MAX_PAYLOAD_BYTES,
     WEBHOOK_KIND,
@@ -36,9 +37,32 @@ async def _read_capped_body(request: Request) -> bytes | None:
 
 
 async def receive_webhook(request: Request) -> JSONResponse:
-    """Run the webhook task that owns this URL with the request as its input."""
+    """Run the webhook task that owns this URL, or route via the unified Mailbox."""
     token = request.path_params["token"]
     db = get_database()
+
+    if is_mailbox_token(token):
+        body = await _read_capped_body(request)
+        if body is None:
+            return JSONResponse(
+                {"error": f"Payload larger than {MAX_PAYLOAD_BYTES} bytes"},
+                status_code=413,
+            )
+        headers = {k.lower(): v for k, v in request.headers.items()}
+        item = await route_inbound(webhook_envelope(body, headers))
+        logger.info(
+            f"Mailbox webhook #{item.id} ingested ({len(body)} bytes, status={item.route_status}, target={item.target_chat_id})"
+        )
+        return JSONResponse(
+            {
+                "accepted": True,
+                "item_id": item.id,
+                "route_status": item.route_status,
+                "target_chat_id": item.target_chat_id,
+            },
+            status_code=202,
+        )
+
     job = db.find_cron_job_by_webhook_hash(hash_webhook_token(token))
     # An unknown token, a paused task and a task that is no longer a webhook
     # all answer the same, so the endpoint can't be used to probe for tasks.
@@ -59,12 +83,24 @@ async def receive_webhook(request: Request) -> JSONResponse:
         return JSONResponse({"error": "Scheduler not running"}, status_code=503)
 
     headers = {k.lower(): v for k, v in request.headers.items()}
-    if not scheduler.fire_webhook(job, format_webhook_payload(body, headers)):
+    formatted = format_webhook_payload(body, headers)
+    if not scheduler.fire_webhook(job, formatted):
         return JSONResponse(
             {"error": "This webhook is already running; try again later"},
             status_code=429,
             headers={"Retry-After": "30"},
         )
+
+    bound = (job.context_mode or "isolated") == "bound" and bool(job.chat_id)
+    target_chat_id = job.chat_id if bound else f"cron-{job.id}"
+    try:
+        record_inbound(
+            webhook_envelope(body, headers, fallback_source=job.name),
+            target_chat_id=target_chat_id,
+            reason=f"Delivered to webhook task '{job.name}'.",
+        )
+    except Exception as exc:
+        logger.warning(f"Could not record webhook task {job.id} in the Mailbox: {exc}")
 
     logger.info(f"Webhook task {job.id} triggered ({len(body)} bytes)")
     return JSONResponse({"accepted": True, "job_id": job.id}, status_code=202)

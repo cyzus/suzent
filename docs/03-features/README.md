@@ -42,6 +42,7 @@ on a computer you own: that is what makes it a
 | Page | What you'll learn |
 |---|---|
 | [Automation](./automation.md) | Scheduled tasks, reminders, heartbeats, goals, and running in the background. |
+| [Mailbox](./mailbox.md) | One inbox for webhooks, scheduled runs and messages between agents, with rules for where each kind goes. |
 
 ## It reaches further
 
