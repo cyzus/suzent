@@ -4,10 +4,12 @@ import {
   CheckIcon,
   ClipboardDocumentIcon,
   FolderOpenIcon,
+  ListBulletIcon,
   MagnifyingGlassIcon,
   MusicalNoteIcon,
   PlayIcon,
   RectangleStackIcon,
+  Squares2X2Icon,
 } from '@heroicons/react/24/outline';
 import { useI18n } from '../../i18n';
 import { getApiBase, getSandboxParams } from '../../lib/api';
@@ -42,6 +44,21 @@ interface ArtifactProject {
 type KindFilter = 'all' | 'image' | 'media' | 'file';
 
 const KIND_FILTERS: KindFilter[] = ['all', 'image', 'media', 'file'];
+
+type ViewMode = 'grid' | 'list';
+
+const VIEW_STORAGE_KEY = 'suzent.artifacts.view';
+
+/** Projects shown as chips; the rest go behind a "more" menu so the row stays one line. */
+const MAX_PROJECT_CHIPS = 5;
+
+function readViewMode(): ViewMode {
+  try {
+    return localStorage.getItem(VIEW_STORAGE_KEY) === 'list' ? 'list' : 'grid';
+  } catch {
+    return 'grid';
+  }
+}
 
 /** Cover colors for files without a picture, so a grid of documents still reads at a glance. */
 const FILE_COVERS: Record<string, string> = {
@@ -164,6 +181,17 @@ export const ArtifactsPage: React.FC<ArtifactsPageProps> = ({ onOpenChat }) => {
   const [viewingImage, setViewingImage] = useState<string | null>(null);
   const [previewing, setPreviewing] = useState<IndexedArtifact | null>(null);
   const [copiedPath, setCopiedPath] = useState<string | null>(null);
+  const [view, setView] = useState<ViewMode>(readViewMode);
+  const [showAllProjects, setShowAllProjects] = useState(false);
+
+  const changeView = (next: ViewMode): void => {
+    setView(next);
+    try {
+      localStorage.setItem(VIEW_STORAGE_KEY, next);
+    } catch {
+      // Remembering the view is a convenience; the page works without it.
+    }
+  };
 
   const load = useCallback(async (): Promise<void> => {
     setLoading(true);
@@ -260,6 +288,78 @@ export const ArtifactsPage: React.FC<ArtifactsPageProps> = ({ onOpenChat }) => {
     file: t('artifacts.files'),
   };
 
+  const actions = (item: IndexedArtifact): React.ReactNode => (
+    <>
+      <BrutalIconButton onClick={() => reveal(item)} label={t('fileViewer.revealInExplorer')}>
+        <FolderOpenIcon className="h-3.5 w-3.5 stroke-2" />
+      </BrutalIconButton>
+      <BrutalIconButton
+        onClick={() => void copyLocation(item)}
+        label={copiedPath === item.path ? t('sandbox.locationCopied') : t('sandbox.copyLocation')}
+      >
+        {copiedPath === item.path ? (
+          <CheckIcon className="h-3.5 w-3.5 stroke-2" />
+        ) : (
+          <ClipboardDocumentIcon className="h-3.5 w-3.5 stroke-2" />
+        )}
+      </BrutalIconButton>
+    </>
+  );
+
+  const chatLink = (item: IndexedArtifact): React.ReactNode =>
+    item.chat_id ? (
+      <button
+        type="button"
+        onClick={() => onOpenChat(item.chat_id as string)}
+        title={t('artifactsPage.openChat')}
+        className="flex min-w-0 items-center gap-1 text-[11px] text-neutral-500 hover:text-brutal-black hover:underline dark:text-neutral-400 dark:hover:text-white"
+      >
+        <ChatBubbleLeftRightIcon className="h-3 w-3 shrink-0" aria-hidden="true" />
+        <span className="truncate">{item.chat_title || t('artifactsPage.untitledChat')}</span>
+      </button>
+    ) : (
+      <span className="truncate text-[11px] text-neutral-400 dark:text-neutral-500">
+        {t('artifactsPage.inLibrary')}
+      </span>
+    );
+
+  const meta = (item: IndexedArtifact): string =>
+    `${formatRelativeTime(new Date(item.modified * 1000).toISOString(), locale)} · ${formatSize(item.size)}`;
+
+  const row = (item: IndexedArtifact): React.ReactNode => (
+    <li
+      key={item.path}
+      className="group flex min-w-0 items-center gap-3 px-2 py-1.5 transition-colors hover:bg-brutal-yellow/30 dark:hover:bg-zinc-700/60"
+    >
+      <button
+        type="button"
+        onClick={() => open(item)}
+        title={item.path}
+        aria-label={item.name}
+        className="relative h-10 w-14 shrink-0 overflow-hidden border-2 border-brutal-black bg-neutral-100 dark:bg-zinc-900 [&_div[aria-hidden]]:hidden [&_span]:scale-50"
+      >
+        <Cover item={item} />
+      </button>
+      <div className="flex min-w-0 flex-1 flex-col gap-0.5 sm:flex-row sm:items-center sm:gap-4">
+        <button
+          type="button"
+          onClick={() => open(item)}
+          title={item.name}
+          className="min-w-0 truncate text-left font-mono text-xs font-bold text-brutal-black hover:underline dark:text-white sm:w-2/5 sm:shrink-0"
+        >
+          {item.name}
+        </button>
+        <div className="min-w-0 flex-1">{chatLink(item)}</div>
+      </div>
+      <span className="hidden shrink-0 font-mono text-[10px] text-neutral-400 md:block">
+        {meta(item)}
+      </span>
+      <div className="flex shrink-0 gap-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+        {actions(item)}
+      </div>
+    </li>
+  );
+
   const card = (item: IndexedArtifact): React.ReactNode => (
     <article
       key={item.path}
@@ -275,19 +375,7 @@ export const ArtifactsPage: React.FC<ArtifactsPageProps> = ({ onOpenChat }) => {
         <Cover item={item} />
       </button>
       <div className="absolute right-2 top-2 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
-        <BrutalIconButton onClick={() => reveal(item)} label={t('fileViewer.revealInExplorer')}>
-          <FolderOpenIcon className="h-3.5 w-3.5 stroke-2" />
-        </BrutalIconButton>
-        <BrutalIconButton
-          onClick={() => void copyLocation(item)}
-          label={copiedPath === item.path ? t('sandbox.locationCopied') : t('sandbox.copyLocation')}
-        >
-          {copiedPath === item.path ? (
-            <CheckIcon className="h-3.5 w-3.5 stroke-2" />
-          ) : (
-            <ClipboardDocumentIcon className="h-3.5 w-3.5 stroke-2" />
-          )}
-        </BrutalIconButton>
+        {actions(item)}
       </div>
       <div className="flex min-w-0 flex-1 flex-col gap-1 px-3 py-2.5">
         <button
@@ -299,32 +387,14 @@ export const ArtifactsPage: React.FC<ArtifactsPageProps> = ({ onOpenChat }) => {
           {item.name}
         </button>
         <div className="flex min-w-0 flex-col gap-0.5">
-          {item.chat_id ? (
-            <button
-              type="button"
-              onClick={() => onOpenChat(item.chat_id as string)}
-              title={t('artifactsPage.openChat')}
-              className="flex min-w-0 items-center gap-1 text-[11px] text-neutral-500 hover:text-brutal-black hover:underline dark:text-neutral-400 dark:hover:text-white"
-            >
-              <ChatBubbleLeftRightIcon className="h-3 w-3 shrink-0" aria-hidden="true" />
-              <span className="truncate">{item.chat_title || t('artifactsPage.untitledChat')}</span>
-            </button>
-          ) : (
-            <span className="truncate text-[11px] text-neutral-400 dark:text-neutral-500">
-              {t('artifactsPage.inLibrary')}
-            </span>
-          )}
-          <span className="shrink-0 font-mono text-[10px] text-neutral-400">
-            {formatRelativeTime(new Date(item.modified * 1000).toISOString(), locale)}
-            {' · '}
-            {formatSize(item.size)}
-          </span>
+          {chatLink(item)}
+          <span className="shrink-0 font-mono text-[10px] text-neutral-400">{meta(item)}</span>
         </div>
       </div>
     </article>
   );
 
-  const projectRow = (id: string | null, label: string, count: number): React.ReactNode => {
+  const projectChip = (id: string | null, label: string, count: number): React.ReactNode => {
     const selected = projectId === id;
     return (
       <button
@@ -332,11 +402,11 @@ export const ArtifactsPage: React.FC<ArtifactsPageProps> = ({ onOpenChat }) => {
         type="button"
         aria-pressed={selected}
         onClick={() => setProjectId(id)}
-        className={`flex shrink-0 items-center gap-3 border-2 px-3 py-2 text-left text-xs transition-colors md:w-full md:border-0 md:border-l-4 ${selected ? 'border-brutal-black bg-brutal-yellow font-bold text-brutal-black' : 'border-neutral-300 text-neutral-700 hover:bg-neutral-100 dark:border-zinc-600 dark:text-neutral-300 dark:hover:bg-zinc-700 md:border-transparent md:dark:border-transparent'}`}
+        className={`flex max-w-[16rem] shrink-0 items-center gap-2 border-2 border-brutal-black px-2.5 py-1 text-xs transition-[transform,box-shadow,background-color] duration-150 ${selected ? 'bg-brutal-yellow font-bold text-brutal-black shadow-brutal-sm' : 'bg-white text-neutral-700 hover:-translate-y-px hover:bg-neutral-100 dark:bg-zinc-800 dark:text-neutral-300 dark:hover:bg-zinc-700'}`}
       >
-        <span className="min-w-0 flex-1 truncate">{label}</span>
+        <span className="min-w-0 truncate">{label}</span>
         <span
-          className={`min-w-[1.75rem] border px-1 text-center font-mono text-[10px] tabular-nums ${selected ? 'border-brutal-black bg-white' : 'border-neutral-300 dark:border-zinc-600'}`}
+          className={`font-mono text-[10px] tabular-nums ${selected ? 'text-brutal-black' : 'text-neutral-400'}`}
         >
           {count}
         </span>
@@ -345,6 +415,12 @@ export const ArtifactsPage: React.FC<ArtifactsPageProps> = ({ onOpenChat }) => {
   };
 
   const visibleProjects = projects.filter((project) => project.count > 0);
+  const hiddenProjects = showAllProjects ? [] : visibleProjects.slice(MAX_PROJECT_CHIPS);
+  const chipProjects = visibleProjects.filter(
+    (project, index) => showAllProjects || index < MAX_PROJECT_CHIPS || project.id === projectId
+  );
+  const hiddenCount = hiddenProjects.filter((project) => project.id !== projectId).length;
+  const canCollapse = showAllProjects && visibleProjects.length > MAX_PROJECT_CHIPS;
 
   return (
     <div className="h-full w-full overflow-y-auto scrollbar-thin px-4 md:px-8 py-8 space-y-6 max-w-7xl mx-auto">
@@ -380,6 +456,28 @@ export const ArtifactsPage: React.FC<ArtifactsPageProps> = ({ onOpenChat }) => {
               className="w-full border-2 border-brutal-black bg-white py-1.5 pl-8 pr-2 font-mono text-xs shadow-brutal-sm focus:outline-none focus:ring-2 focus:ring-brutal-yellow dark:bg-zinc-900 sm:w-64"
             />
           </div>
+          <div
+            role="group"
+            aria-label={t('artifactsPage.view')}
+            className="flex shrink-0 border-2 border-brutal-black bg-white shadow-brutal-sm dark:bg-zinc-800"
+          >
+            {(['grid', 'list'] as const).map((mode) => {
+              const Icon = mode === 'grid' ? Squares2X2Icon : ListBulletIcon;
+              return (
+                <button
+                  key={mode}
+                  type="button"
+                  aria-pressed={view === mode}
+                  title={t(`artifactsPage.views.${mode}`)}
+                  aria-label={t(`artifactsPage.views.${mode}`)}
+                  onClick={() => changeView(mode)}
+                  className={`flex h-[30px] w-8 items-center justify-center transition-colors ${view === mode ? 'bg-brutal-black text-white dark:bg-brutal-yellow dark:text-brutal-black' : 'text-brutal-black hover:bg-brutal-yellow dark:text-white dark:hover:bg-zinc-700'}`}
+                >
+                  <Icon className="h-4 w-4 stroke-2" />
+                </button>
+              );
+            })}
+          </div>
           <RefreshButton onClick={() => void load()} spinning={loading} />
         </div>
       </header>
@@ -405,23 +503,30 @@ export const ArtifactsPage: React.FC<ArtifactsPageProps> = ({ onOpenChat }) => {
           {error}
         </div>
       ) : (
-        <div className="flex flex-col gap-6 md:flex-row md:items-start">
-          <nav
-            aria-label={t('artifactsPage.projects')}
-            className="md:sticky md:top-0 md:w-56 md:shrink-0 md:border-2 md:border-brutal-black md:bg-white md:shadow-brutal-sm md:dark:bg-zinc-800"
-          >
-            <h3 className="hidden border-b-2 border-brutal-black bg-neutral-100 px-3 py-2 font-brutal text-xs uppercase tracking-tight dark:bg-zinc-900 md:block">
-              {t('artifactsPage.projects')}
-            </h3>
-            <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-thin md:flex-col md:gap-0.5 md:overflow-visible md:p-1.5">
-              {projectRow(null, t('artifactsPage.allProjects'), items.length)}
-              {visibleProjects.map((project) =>
-                projectRow(project.id, project.name, project.count)
+        <div className="space-y-6">
+          {(visibleProjects.length > 1 || projectId !== null) && (
+            <nav
+              aria-label={t('artifactsPage.projects')}
+              className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1 scrollbar-thin md:flex-wrap md:overflow-visible"
+            >
+              {projectChip(null, t('artifactsPage.allProjects'), items.length)}
+              {chipProjects.map((project) => projectChip(project.id, project.name, project.count))}
+              {(hiddenCount > 0 || canCollapse) && (
+                <button
+                  type="button"
+                  aria-expanded={showAllProjects}
+                  onClick={() => setShowAllProjects((current) => !current)}
+                  className="shrink-0 border-2 border-dashed border-brutal-black px-2.5 py-1 font-mono text-xs font-bold text-brutal-black transition-colors hover:border-solid hover:bg-brutal-yellow dark:border-zinc-400 dark:text-white dark:hover:text-brutal-black"
+                >
+                  {showAllProjects
+                    ? t('artifactsPage.fewerProjects')
+                    : t('artifactsPage.moreProjects', { count: hiddenCount })}
+                </button>
               )}
-            </div>
-          </nav>
+            </nav>
+          )}
 
-          <div className="min-w-0 flex-1 space-y-8">
+          <div className="min-w-0 space-y-8">
             {loaded && visible.length === 0 && (
               <div className="flex flex-col items-center border-2 border-dashed border-neutral-400 px-6 py-16 text-center dark:border-zinc-600">
                 <span className="mb-4 flex h-14 w-14 items-center justify-center border-2 border-brutal-black bg-white shadow-brutal-sm dark:bg-zinc-800">
@@ -449,9 +554,15 @@ export const ArtifactsPage: React.FC<ArtifactsPageProps> = ({ onOpenChat }) => {
                     </span>
                   </div>
                 )}
-                <div className="grid grid-cols-2 gap-3 sm:grid-cols-[repeat(auto-fill,minmax(190px,1fr))] md:gap-5">
-                  {section.items.map(card)}
-                </div>
+                {view === 'grid' ? (
+                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-[repeat(auto-fill,minmax(190px,1fr))] md:gap-5">
+                    {section.items.map(card)}
+                  </div>
+                ) : (
+                  <ul className="divide-y-2 divide-neutral-200 border-2 border-brutal-black bg-white shadow-brutal-sm dark:divide-zinc-700 dark:bg-zinc-800">
+                    {section.items.map(row)}
+                  </ul>
+                )}
               </section>
             ))}
           </div>
