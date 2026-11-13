@@ -10,7 +10,8 @@ The Mailbox is one place for everything that reaches your agent without you
 typing it: webhooks from GitHub or your own scripts, scheduled tasks firing,
 messages your sessions send each other, and messages from your other devices.
 It also decides what happens to each new kind of event, and you can change
-that decision at any time.
+that decision at any time. With the [email plugin](./tools/email.md#watching-your-inbox),
+new mail can arrive here too.
 
 Open it from **Mailbox** at the top of the sidebar. It has three tabs:
 

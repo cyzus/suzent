@@ -1200,6 +1200,9 @@ export const zhCN = {
       oauthOnly: '需要 Microsoft 账号登录，暂不支持。',
       add: '添加邮箱',
       allowSend: '允许发送',
+      watchInbox: '监听收件箱',
+      watchInboxHint:
+        '每隔几分钟把新邮件送进 Mailbox，由对应规则决定怎么处理。已有的邮件不会被导入。',
       test: '测试',
       changePassword: '密码',
       passwordMissing: '缺少密码',

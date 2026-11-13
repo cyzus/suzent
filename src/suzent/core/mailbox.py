@@ -380,8 +380,12 @@ async def _llm_triage_first_seen(
     event_type: str,
     summary: str,
     payload_preview: str,
+    fallback: str = "regent",
 ) -> Triage:
-    """Decide where a never-before-seen kind of event goes, and when."""
+    """Decide where a never-before-seen kind of event goes, and when.
+
+    When nothing can decide, the event goes to ``fallback`` this once.
+    """
     if event_type == "ping":
         return Triage(
             Destination(DEST_NONE),
@@ -391,7 +395,11 @@ async def _llm_triage_first_seen(
         )
 
     decided = await _decide_route(
-        db, signature=signature, summary=summary, payload_preview=payload_preview
+        db,
+        signature=signature,
+        summary=summary,
+        payload_preview=payload_preview,
+        fallback=fallback,
     )
     if decided is not None:
         return decided
@@ -439,14 +447,16 @@ async def _llm_triage_first_seen(
             True,
         )
     except Exception as exc:
-        logger.warning("Mailbox LLM triage failed, sending to Regent: {}", exc)
+        logger.warning("Mailbox LLM triage failed, using its fallback: {}", exc)
 
-    return Triage(
-        Destination(DEST_REGENT),
-        "now",
-        "Sent to Regent: the router could not classify this event yet.",
-        False,
-    )
+    return _fallback_triage(fallback, "the router could not classify this event yet")
+
+
+def _fallback_triage(fallback: str, why: str) -> Triage:
+    """Where an event goes this once when the router can't place it; never saved."""
+    if fallback == DEST_USER:
+        return Triage(Destination(DEST_USER), "now", f"Notified you: {why}.", False)
+    return Triage(Destination(DEST_REGENT), "now", f"Sent to Regent: {why}.", False)
 
 
 async def resolve_or_learn_rule(
@@ -459,6 +469,7 @@ async def resolve_or_learn_rule(
     rule_name: str,
     summary: str,
     payload_preview: str,
+    fallback: str = "regent",
 ) -> MailboxRuleModel:
     """Return the cached rule for ``signature``, or triage once and crystallize a new rule."""
     # Events of one new kind often arrive together (a CI run's checks); triage
@@ -473,6 +484,7 @@ async def resolve_or_learn_rule(
             rule_name=rule_name,
             summary=summary,
             payload_preview=payload_preview,
+            fallback=fallback,
         )
 
 
@@ -486,6 +498,7 @@ async def _resolve_or_learn_rule_locked(
     rule_name: str,
     summary: str,
     payload_preview: str,
+    fallback: str,
 ) -> MailboxRuleModel:
     existing = db.get_mailbox_rule_by_signature(signature)
     if existing is None and ":" in signature:
@@ -503,6 +516,7 @@ async def _resolve_or_learn_rule_locked(
         event_type=event_type,
         summary=summary,
         payload_preview=payload_preview,
+        fallback=fallback,
     )
     routing = routing_fields(db, triage.destination) | {
         "delivery": triage.delivery,
@@ -534,7 +548,12 @@ _DECISION_MAX_PROJECTS = 200
 
 
 async def _decide_route(
-    db: ChatDatabase, *, signature: str, summary: str, payload_preview: str
+    db: ChatDatabase,
+    *,
+    signature: str,
+    summary: str,
+    payload_preview: str,
+    fallback: str = "regent",
 ) -> Optional[Triage]:
     """Route a new kind of event on the decision model, if one is set up."""
     from pydantic import BaseModel, Field, create_model
@@ -591,11 +610,8 @@ async def _decide_route(
         return None
     confidence = decided.confidence_of("destination")
     if confidence < _DECISION_MIN_CONFIDENCE:
-        return Triage(
-            Destination(DEST_REGENT),
-            "now",
-            f"Sent to Regent: {decided.model_id} was unsure ({confidence:.0%}).",
-            False,
+        return _fallback_triage(
+            fallback, f"{decided.model_id} was unsure ({confidence:.0%})"
         )
     return Triage(
         destinations[decided.output.destination],
@@ -701,6 +717,9 @@ class InboundEnvelope:
     payload: str = ""
     headers: dict[str, str] = field(default_factory=dict)
     spooled_at: Optional[str] = None
+    # Where an event goes when the router can't place it: "regent", or "user"
+    # for sources anyone can trigger.
+    fallback: str = "regent"
 
 
 def record_inbound(
@@ -748,6 +767,7 @@ async def route_inbound(envelope: InboundEnvelope) -> MailboxItemModel:
         or f"{envelope.source_name} · {envelope.event_type}",
         summary=envelope.summary,
         payload_preview=envelope.payload,
+        fallback=envelope.fallback,
     )
     destination = Destination.of_rule(rule)
     routes = destination.kind != DEST_NONE

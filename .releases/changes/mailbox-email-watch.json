@@ -1,0 +1,1 @@
+{"products": {"desktop": "minor"}, "summary": "Email can feed the Mailbox: switch on Watch inbox for a mailbox and new mail arrives there, sorted by the same rules as webhooks. Plugins can now run watchers and send events to the Mailbox."}
