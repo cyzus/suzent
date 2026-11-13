@@ -307,6 +307,31 @@ def resolve_context_limit(model_id: Optional[str] = None) -> int:
     return min(window, ceiling) if ceiling > 0 else window
 
 
+def _threshold_tokens(limit: int, share: float, cap: int) -> int:
+    tokens = int(limit * share)
+    return min(tokens, cap) if cap > 0 else tokens
+
+
+def compaction_trigger_tokens(limit: int) -> int:
+    """Context size at which the history is compacted."""
+    return _threshold_tokens(
+        limit,
+        CONFIG.context_compaction_trigger,
+        int(CONFIG.context_compaction_trigger_tokens or 0),
+    )
+
+
+def precompaction_trigger_tokens(limit: int) -> Optional[int]:
+    """Context size at which a summary starts being prepared; None when off."""
+    if CONFIG.context_precompaction_trigger <= 0:
+        return None
+    return _threshold_tokens(
+        limit,
+        CONFIG.context_precompaction_trigger,
+        int(CONFIG.context_precompaction_trigger_tokens or 0),
+    )
+
+
 def build_post_compaction_usage(
     context_tokens: int, context_limit: Optional[int] = None
 ) -> dict[str, Any]:
@@ -754,7 +779,7 @@ def estimate_tokens(
         estimated_tokens=estimate_history_tokens(messages)
         + (fallback_overhead if overhead is None else overhead),
         limit=limit,
-        trigger_threshold=CONFIG.context_compaction_trigger,
+        trigger_threshold=compaction_trigger_tokens(limit) / limit if limit else 0.0,
         soft_trim_threshold=CONFIG.context_soft_trim_threshold,
         hard_trim_threshold=CONFIG.context_hard_trim_threshold,
     )
@@ -1161,6 +1186,8 @@ class ContextCompressor:
         entry = _PRECOMPACTIONS.pop(self.chat_id or "", None)
         if entry is None:
             return None
+        # Used or superseded either way; a later one is stored when written.
+        await asyncio.to_thread(_forget_prepared_summary, self.chat_id or "")
         if not entry.covers(messages):
             entry.task.cancel()
             logger.debug(
@@ -1488,19 +1515,33 @@ def make_compaction_history_processor(
         deps = getattr(ctx, "deps", None)
         chat_id = getattr(deps, "chat_id", "") or ""
         limit = resolve_context_limit(model_id)
-        trigger = limit * CONFIG.context_compaction_trigger
+        trigger = compaction_trigger_tokens(limit)
         # The panel is fed by ContextUsageCapability, which sees the final request
         # and its tool schemas; reporting here too made the panel alternate
         # between two readings of the same request.
         current_tokens = context_input_tokens(ctx, messages, model_id)
 
+        prewrite_at = precompaction_trigger_tokens(limit)
+        if chat_id and prewrite_at is not None and current_tokens >= prewrite_at:
+            await restore_precompaction(chat_id)
+
         cold_cache = current_tokens < trigger
         idle_seconds = None
         if cold_cache:
             idle_seconds = cold_cache_compaction_due(
-                chat_id, messages, current_tokens, limit
+                chat_id, messages, current_tokens, limit, model_id
             )
             if idle_seconds is None:
+                # A long run crosses the precompaction trigger mid-turn; the
+                # summary should be ready before it reaches the compaction
+                # trigger, not started only once the turn ends.
+                if chat_id and prefix_cache_warm(chat_id):
+                    try:
+                        schedule_precompaction(
+                            chat_id, messages, model_id=model_id, tokens=current_tokens
+                        )
+                    except Exception as e:
+                        logger.warning(f"Could not schedule background compaction: {e}")
                 return messages
 
         # A previous pass on this chat completed and still left the estimate over
@@ -1797,8 +1838,8 @@ def _with_trailing_prompt(messages: list, prompt: str) -> list:
 # ---------------------------------------------------------------------------
 
 #: A prepared summary is rewritten once the history after it passes this share
-#: of the window, so applying it still frees most of the context.
-PRECOMPACTION_REFRESH_TAIL_SHARE = 0.15
+#: of the compaction trigger, so applying it still frees most of the context.
+PRECOMPACTION_REFRESH_TAIL_SHARE = 0.2
 #: Assumed lifetime of a provider's cache when nothing better is known.
 UNKNOWN_CACHE_TTL_SECONDS = 300.0
 #: Typical length of a summary, for comparing what writing one costs.
@@ -1834,7 +1875,7 @@ def history_fingerprint(messages: list) -> str:
 class _Precompaction:
     end_index: int
     fingerprint: str
-    task: "asyncio.Task[str]"
+    task: "asyncio.Future[str]"
 
     def covers(self, messages: list) -> bool:
         return len(messages) > self.end_index and (
@@ -1855,6 +1896,8 @@ class _Precompaction:
 
 
 _PRECOMPACTIONS: "OrderedDict[str, _Precompaction]" = OrderedDict()
+#: Chats whose stored summary has already been looked up in this process.
+_RESTORE_CHECKED: set[str] = set()
 
 
 def schedule_precompaction(
@@ -1863,21 +1906,26 @@ def schedule_precompaction(
     *,
     model_id: Optional[str] = None,
     fallback_overhead: int = 0,
+    tokens: Optional[int] = None,
 ) -> bool:
-    """Start writing the next compaction summary while the turn's cache is warm.
+    """Start writing the next compaction summary while the cache is warm.
 
-    Called once a turn has finished. Nothing is rewritten here: the history
-    processor applies the summary when the trigger is actually reached, or
-    when the chat resumes after its cache has expired (see
+    Called when a turn finishes and before each model request of a run that
+    has crossed the precompaction trigger. Nothing is rewritten here: the
+    history processor applies the summary when the compaction trigger is
+    reached, or when the chat resumes after its cache has expired (see
     :func:`cold_cache_compaction_due`); a summary that no longer matches the
     history by then is discarded.
     """
-    threshold = CONFIG.context_precompaction_trigger
-    if not chat_id or not messages or threshold <= 0:
+    if not chat_id or not messages:
         return False
     limit = resolve_context_limit(model_id)
-    budget = estimate_tokens(messages, limit, fallback_overhead)
-    if budget.estimated_tokens < limit * threshold:
+    threshold = precompaction_trigger_tokens(limit)
+    if threshold is None:
+        return False
+    if tokens is None:
+        tokens = estimate_tokens(messages, limit, fallback_overhead).estimated_tokens
+    if tokens < threshold:
         return False
     keep_recent = CONFIG.compaction_keep_recent_turns * 2
     if len(messages) <= keep_recent + 1:
@@ -1886,44 +1934,129 @@ def schedule_precompaction(
     if end_index <= 1:
         return False
 
+    # A failed summary is not retried until the history has grown enough to
+    # need a new one anyway; a run would otherwise retry before every request.
     existing = _PRECOMPACTIONS.get(chat_id)
     if existing is not None:
         if (
             existing.covers(messages)
-            and not existing.failed()
             and estimate_history_tokens(messages[existing.end_index :])
-            < limit * PRECOMPACTION_REFRESH_TAIL_SHARE
+            < compaction_trigger_tokens(limit) * PRECOMPACTION_REFRESH_TAIL_SHARE
         ):
             return False
         existing.task.cancel()
 
+    fingerprint = history_fingerprint(messages[:end_index])
     compressor = ContextCompressor(chat_id=chat_id, model_id=model_id)
-    task = asyncio.create_task(compressor._summarize_history(messages, end_index))
+    task = asyncio.create_task(compressor._summarize_history(list(messages), end_index))
     task.add_done_callback(_log_precompaction_failure)
+    task.add_done_callback(
+        partial(_store_when_written, chat_id, end_index, fingerprint)
+    )
     task.add_done_callback(partial(_report_precompaction, chat_id, end_index - 1))
     _emit_precompaction(chat_id, "start", end_index - 1)
     _PRECOMPACTIONS[chat_id] = _Precompaction(
-        end_index=end_index,
-        fingerprint=history_fingerprint(messages[:end_index]),
-        task=task,
+        end_index=end_index, fingerprint=fingerprint, task=task
     )
     _PRECOMPACTIONS.move_to_end(chat_id)
     while len(_PRECOMPACTIONS) > _MAX_PRECOMPACTIONS:
-        _, evicted = _PRECOMPACTIONS.popitem(last=False)
+        evicted_id, evicted = _PRECOMPACTIONS.popitem(last=False)
         evicted.task.cancel()
+        _RESTORE_CHECKED.discard(evicted_id)
     logger.info(
         "Writing the next compaction summary for {} in the background "
         "(~{} of {} tokens, {} messages)",
         chat_id,
-        budget.estimated_tokens,
+        tokens,
         limit,
         end_index - 1,
     )
     return True
 
 
+def _store_when_written(
+    chat_id: str, end_index: int, fingerprint: str, task: "asyncio.Task[str]"
+) -> None:
+    if task.cancelled() or task.exception() is not None or not task.result():
+        return
+    task.get_loop().run_in_executor(
+        None, _store_prepared_summary, chat_id, end_index, fingerprint, task.result()
+    )
+
+
+def _store_prepared_summary(
+    chat_id: str, end_index: int, fingerprint: str, summary: str
+) -> None:
+    try:
+        from suzent.database import get_database
+
+        get_database().set_prepared_summary(
+            chat_id, end_index=end_index, fingerprint=fingerprint, summary=summary
+        )
+    except Exception as e:
+        logger.warning(f"Could not store the prepared summary for {chat_id}: {e}")
+
+
+def _forget_prepared_summary(chat_id: str) -> None:
+    try:
+        from suzent.database import get_database
+
+        get_database().delete_prepared_summary(chat_id)
+    except Exception as e:
+        logger.debug(f"Could not delete the prepared summary for {chat_id}: {e}")
+
+
+async def restore_precompaction(chat_id: str) -> None:
+    """Load the summary a previous process prepared for ``chat_id``, once."""
+    if not chat_id or chat_id in _PRECOMPACTIONS or chat_id in _RESTORE_CHECKED:
+        return
+    _RESTORE_CHECKED.add(chat_id)
+    try:
+        from suzent.database import get_database
+
+        row = await asyncio.to_thread(get_database().get_prepared_summary, chat_id)
+    except Exception as e:
+        logger.debug(f"Could not load the prepared summary for {chat_id}: {e}")
+        return
+    if row is None or not row.summary or chat_id in _PRECOMPACTIONS:
+        return
+    done: "asyncio.Future[str]" = asyncio.get_running_loop().create_future()
+    done.set_result(row.summary)
+    _PRECOMPACTIONS[chat_id] = _Precompaction(
+        end_index=row.end_index, fingerprint=row.fingerprint, task=done
+    )
+    logger.debug("Restored the prepared compaction summary for {}", chat_id)
+
+
+def prefix_cache_warm(chat_id: str) -> bool:
+    """Whether the chat's last request is likely still in the provider's cache.
+
+    True when the cache lifetime is unknown, as for local models, where a
+    summary costs nothing extra either way.
+    """
+    from suzent.core.cache_ttl import estimate_ttl_seconds
+    from suzent.core.prompt_cache import latest_request
+
+    snapshot = latest_request(chat_id)
+    if snapshot is None:
+        return False
+    ttl = estimate_ttl_seconds(snapshot.model_id, snapshot.settings)
+    return ttl is None or time.time() - snapshot.sent_at <= ttl
+
+
+def _last_reply_time(messages: list) -> Optional[float]:
+    for message in reversed(messages):
+        if isinstance(message, ModelResponse) and message.timestamp:
+            return message.timestamp.timestamp()
+    return None
+
+
 def cold_cache_compaction_due(
-    chat_id: str, messages: list, tokens: int, limit: int
+    chat_id: str,
+    messages: list,
+    tokens: int,
+    limit: int,
+    model_id: Optional[str] = None,
 ) -> Optional[float]:
     """Seconds the chat has been idle, when its prepared summary should be
     applied before the trigger is reached; None otherwise.
@@ -1937,18 +2070,32 @@ def cold_cache_compaction_due(
     from suzent.core.cache_ttl import estimate_ttl_seconds
     from suzent.core.prompt_cache import latest_request
 
-    threshold = CONFIG.context_precompaction_trigger
-    if not chat_id or threshold <= 0 or tokens < limit * threshold:
+    threshold = precompaction_trigger_tokens(limit)
+    if not chat_id or threshold is None or tokens < threshold:
         return None
     entry = _PRECOMPACTIONS.get(chat_id)
     if entry is None or not entry.ready() or not entry.covers(messages):
         return None
     snapshot = latest_request(chat_id)
-    if snapshot is None:
+    if snapshot is not None:
+        ttl = estimate_ttl_seconds(snapshot.model_id, snapshot.settings)
+        sent_at: Optional[float] = snapshot.sent_at
+    else:
+        # Nothing was recorded since a restart; the last reply arrived
+        # moments after its request was sent.
+        sent_at = _last_reply_time(messages)
+        ttl = (
+            estimate_ttl_seconds(
+                model_id,
+                {"anthropic_cache_messages": CONFIG.anthropic_prompt_cache_ttl},
+            )
+            if model_id
+            else None
+        )
+    if ttl is None or sent_at is None:
         return None
-    ttl = estimate_ttl_seconds(snapshot.model_id, snapshot.settings)
-    idle = time.time() - snapshot.sent_at
-    if ttl is None or idle <= ttl:
+    idle = time.time() - sent_at
+    if idle <= ttl:
         return None
     logger.info(
         "Prompt cache for {} likely expired ({:.0f}s idle, TTL ~{:.0f}s); "
@@ -2002,3 +2149,7 @@ def discard_precompaction(chat_id: str = "") -> None:
     for entry in entries:
         if entry is not None:
             entry.task.cancel()
+    if chat_id:
+        _RESTORE_CHECKED.discard(chat_id)
+    else:
+        _RESTORE_CHECKED.clear()

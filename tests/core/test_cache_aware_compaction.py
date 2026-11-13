@@ -4,7 +4,8 @@ prepared summary is applied early, and which model writes a summary."""
 import asyncio
 import json
 import time
-from datetime import datetime
+import dataclasses
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
 import pytest
@@ -308,3 +309,102 @@ def test_persisted_notice_records_when_it_happened(monkeypatch) -> None:
 
     (row,) = stored
     assert time.time() - datetime.fromisoformat(row["timestamp"]).timestamp() < 5
+
+
+# ── Thresholds by size ───────────────────────────────────────────────────────
+
+
+def test_large_windows_compact_at_a_fixed_size(monkeypatch) -> None:
+    monkeypatch.setattr(CONFIG, "context_compaction_trigger_tokens", 200_000)
+    monkeypatch.setattr(CONFIG, "context_precompaction_trigger_tokens", 100_000)
+
+    assert cc.compaction_trigger_tokens(1_000_000) == 200_000
+    assert cc.precompaction_trigger_tokens(1_000_000) == 100_000
+    # A small window still uses the share, which comes first.
+    assert cc.compaction_trigger_tokens(128_000) == 102_400
+    assert cc.precompaction_trigger_tokens(128_000) == 64_000
+
+    monkeypatch.setattr(CONFIG, "context_compaction_trigger_tokens", 0)
+    assert cc.compaction_trigger_tokens(1_000_000) == 800_000
+    monkeypatch.setattr(CONFIG, "context_precompaction_trigger", 0)
+    assert cc.precompaction_trigger_tokens(1_000_000) is None
+
+
+# ── Preparing the summary during a run ───────────────────────────────────────
+
+
+@pytest.mark.parametrize(
+    ("idle", "prepared"), [(30, True), (900, False)], ids=["warm", "cold"]
+)
+async def test_a_run_past_the_prewrite_size_starts_the_summary(
+    monkeypatch, idle, prepared
+) -> None:
+    asked = _stub_summaries(monkeypatch)
+    _last_request(monkeypatch, "openai/gpt-x", idle=idle)
+
+    sent, out = await _resume("midrun", _long_history())
+    await asyncio.sleep(0)
+
+    assert out == sent
+    assert ("midrun" in cc._PRECOMPACTIONS) is prepared
+    assert len(asked) == int(prepared)
+
+
+async def test_a_failed_summary_waits_for_the_history_to_grow(monkeypatch) -> None:
+    attempts: list = []
+
+    async def failing(self, messages, end_index, focus=None):
+        attempts.append(end_index)
+        raise RuntimeError("provider down")
+
+    monkeypatch.setattr(ContextCompressor, "_summarize_history", failing)
+    history = _long_history()
+    assert schedule_precompaction("flaky", history)
+    await asyncio.sleep(0)
+
+    longer = history + [
+        ModelResponse(parts=[TextPart("ok")]),
+        ModelRequest(parts=[UserPromptPart(content="a")]),
+    ]
+    assert not schedule_precompaction("flaky", longer)
+    assert len(attempts) == 1
+
+
+# ── Keeping the prepared summary across a restart ────────────────────────────
+
+
+async def test_prepared_summary_survives_a_restart(monkeypatch, temp_db) -> None:
+    monkeypatch.setattr("suzent.database.get_database", lambda: temp_db)
+    temp_db.create_chat("restart", {}, chat_id="restart")
+    _stub_summaries(monkeypatch)
+    history = _long_history()
+    assert schedule_precompaction("restart", history)
+    for _ in range(50):
+        await asyncio.sleep(0.01)
+        if temp_db.get_prepared_summary("restart") is not None:
+            break
+    assert temp_db.get_prepared_summary("restart").summary == SUMMARY
+
+    # A new process: nothing in memory, no request recorded, and the last
+    # reply came in well past the provider's cache lifetime.
+    cc.discard_precompaction()
+    monkeypatch.setattr("suzent.core.prompt_cache.latest_request", lambda chat_id: None)
+    last = (
+        len(history)
+        - 1
+        - next(
+            i for i, m in enumerate(reversed(history)) if isinstance(m, ModelResponse)
+        )
+    )
+    history[last] = dataclasses.replace(
+        history[last], timestamp=datetime.now(timezone.utc) - timedelta(minutes=15)
+    )
+    next_turn = history + [ModelRequest(parts=[UserPromptPart(content="back")])]
+    ctx = SimpleNamespace(deps=SimpleNamespace(chat_id="restart", user_id="u"))
+    out = await make_compaction_history_processor(model_id="openai/gpt-x")(
+        ctx, next_turn
+    )
+
+    assert len(out) < len(next_turn)
+    assert SUMMARY in out[2].parts[0].content
+    assert temp_db.get_prepared_summary("restart") is None

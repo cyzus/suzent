@@ -179,6 +179,19 @@ class MemoryRecallModel(SQLModel, table=True):
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
+class PreparedSummaryModel(SQLModel, table=True):
+    """A compaction summary written ahead of time, kept so a restart does not
+    lose it before the history it covers is folded."""
+
+    __tablename__ = "prepared_summaries"
+
+    chat_id: str = Field(primary_key=True)
+    end_index: int
+    fingerprint: str
+    summary: str
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
 class AgentInboxMessageModel(SQLModel, table=True):
     """Durable local or cross-device message awaiting agent delivery."""
 
