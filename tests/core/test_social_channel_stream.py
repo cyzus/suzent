@@ -139,3 +139,27 @@ async def test_regent_reaction_reaches_callback():
     )
     assert seen == ["👍"]
     assert _messages(parts) == []
+
+
+async def test_regent_message_citations_use_the_turns_sources():
+    source = {
+        "id": "t0_src_1",
+        "type": "webpage",
+        "title": "Evidence",
+        "url": "https://example.com/evidence",
+    }
+    parts = await _parts(
+        [
+            _sse(
+                {
+                    "type": "CUSTOM",
+                    "name": "citation_sources",
+                    "value": {"sources": [source]},
+                }
+            ),
+            *_send_message_call("c1", ["Fact\ue200cite\ue202t0_src_1\ue201."]),
+        ]
+    )
+    assert _messages(parts) == [
+        "Fact [1].\n\nSources:\n[1] Evidence — https://example.com/evidence"
+    ]

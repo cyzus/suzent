@@ -67,8 +67,12 @@ async def channel_text_stream(
                     renderer = CitationStreamRenderer()
                     renderer.add_sources(sources)
                     for text in event.regent_messages:
+                        # Each bubble is its own message, so it carries its
+                        # own source list, rendered with the turn's sources.
+                        bubble = CitationStreamRenderer()
+                        bubble.add_sources(sources)
                         yield MESSAGE_BREAK
-                        yield text
+                        yield bubble.feed(text) + bubble.finish()
                     yield MESSAGE_BREAK
                 elif isinstance(event, TextChunk) and event.content:
                     if rendered := renderer.feed(event.content):
