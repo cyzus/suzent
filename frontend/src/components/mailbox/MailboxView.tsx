@@ -631,15 +631,13 @@ export function MailboxView({
                                     <ArrowPathIcon className="h-3 w-3" /> Replay
                                   </button>
                                 )}
-                              {latest.source_kind !== 'agent_inbox' && (
-                                <button
-                                  type="button"
-                                  onClick={() => void handleDeleteItem(latest.id)}
-                                  className="inline-flex items-center gap-1 text-neutral-500 hover:text-brutal-red"
-                                >
-                                  <TrashIcon className="h-3 w-3" /> Delete
-                                </button>
-                              )}
+                              <button
+                                type="button"
+                                onClick={() => void handleDeleteItem(latest.id)}
+                                className="inline-flex items-center gap-1 text-neutral-500 hover:text-brutal-red"
+                              >
+                                <TrashIcon className="h-3 w-3" /> Delete
+                              </button>
                               {thread.primaryChatId && (
                                 <button
                                   type="button"

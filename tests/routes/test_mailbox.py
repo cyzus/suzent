@@ -6,8 +6,13 @@ import json
 import pytest
 from starlette.requests import Request
 
-from suzent.core.focal_agent import FOCAL_CHAT_ID
-from suzent.core.mailbox import get_or_create_mailbox_token, ingest_mailbox_event
+from suzent.core.focal_agent import FOCAL_CHAT_ID, get_or_create_focal_chat
+from suzent.core.agent_inbox import enqueue_agent_message
+from suzent.core.mailbox import (
+    get_or_create_mailbox_token,
+    route_inbound,
+    webhook_envelope,
+)
 from suzent.routes import mailbox_routes
 from suzent.routes.webhook_routes import receive_webhook
 
@@ -80,9 +85,8 @@ async def _github_release(tag: str = "v0.16.0"):
         "repository": {"full_name": "cyzus/suzent"},
         "release": {"tag_name": tag},
     }
-    return await ingest_mailbox_event(
-        body_bytes=json.dumps(body).encode(),
-        headers={"x-github-event": "release"},
+    return await route_inbound(
+        webhook_envelope(json.dumps(body).encode(), {"x-github-event": "release"})
     )
 
 
@@ -298,3 +302,110 @@ async def test_manual_route_to_a_missing_session_is_rejected(db, monkeypatch):
     assert res.status_code == 400
     [rule] = db.list_mailbox_rules()
     assert rule.target_chat_id == FOCAL_CHAT_ID
+
+
+async def _list(query: bytes = b"") -> dict:
+    res = await mailbox_routes.list_mailbox_items_route(
+        _request("GET", "/mailbox/items", query_string=query)
+    )
+    return json.loads(res.body)
+
+
+@pytest.mark.asyncio
+async def test_agent_messages_are_recorded_once_when_sent(db, monkeypatch):
+    _fake_router(monkeypatch, _ROUTE_TO_REGENT)
+    get_or_create_focal_chat()
+    regent_chat = db.create_chat(title="Project work", config={})
+    enqueue_agent_message(
+        message_id="m-agent",
+        sender_chat_id=regent_chat,
+        target_chat_id=FOCAL_CHAT_ID,
+        content="Tests are green.\nDetails follow.",
+    )
+    enqueue_agent_message(
+        message_id="m-bg",
+        sender_chat_id=None,
+        target_chat_id=FOCAL_CHAT_ID,
+        content="background output",
+        kind="background_task_result",
+    )
+    # Delivering a routed webhook goes through the agent inbox too, but the
+    # webhook already has its item.
+    await _github_release()
+
+    data = await _list()
+    kinds = sorted(item["source_kind"] for item in data["items"])
+    assert kinds == ["agent_inbox", "webhook"]
+    [mail] = [i for i in data["items"] if i["source_kind"] == "agent_inbox"]
+    assert mail["summary"] == "Tests are green."
+    assert mail["source_name"].endswith("Project work")
+    assert mail["event_type"] == "mail"
+    assert mail["headers"]["from"] == regent_chat
+    assert mail["headers"]["status"] == "pending"
+    assert mail["inbox_message_id"] == "m-agent"
+    assert data["counts"] == {"all": 2, "routed": 2, "unrouted": 0}
+
+
+@pytest.mark.asyncio
+async def test_peer_device_messages_are_recorded_as_peer(db):
+    peer_chat = db.create_chat(title="Laptop", config={})
+    enqueue_agent_message(
+        message_id="m-peer",
+        sender_chat_id=None,
+        target_chat_id=peer_chat,
+        content="Hello from the laptop",
+        kind="remote_agent_message",
+        payload={"sender_label": "Laptop", "sender_agent_id": "device:abc"},
+    )
+
+    [item] = (await _list())["items"]
+    assert item["source_kind"] == "peer"
+    assert item["signature"] == "peer:abc"
+    assert item["source_name"] == "Laptop"
+
+
+@pytest.mark.asyncio
+async def test_listing_pages_and_filters_in_the_database(db):
+    get_or_create_focal_chat()
+    for i in range(5):
+        enqueue_agent_message(
+            message_id=f"m{i}",
+            sender_chat_id=None,
+            target_chat_id=FOCAL_CHAT_ID,
+            content=f"note {i}",
+        )
+
+    page = await _list(b"limit=2&offset=1")
+    assert [i["summary"] for i in page["items"]] == ["note 3", "note 2"]
+    assert page["counts"]["all"] == 5
+    assert (await _list(b"route_status=unrouted"))["items"] == []
+
+
+@pytest.mark.asyncio
+async def test_failed_delivery_shows_as_error_and_items_can_be_deleted(db):
+    get_or_create_focal_chat()
+    enqueue_agent_message(
+        message_id="m-fail",
+        sender_chat_id=None,
+        target_chat_id=FOCAL_CHAT_ID,
+        content="will fail",
+        max_attempts=1,
+    )
+    claimed = db.claim_next_agent_message(worker_id="w")
+    db.retry_agent_message(
+        claimed["message_id"], worker_id="w", error="boom", retry_delay_seconds=0
+    )
+
+    [item] = (await _list())["items"]
+    assert item["route_status"] == "error"
+    assert item["headers"]["status"] == "failed"
+
+    res = await mailbox_routes.delete_mailbox_item_route(
+        _request(
+            "DELETE",
+            f"/mailbox/items/{item['id']}",
+            path_params={"item_id": item["id"]},
+        )
+    )
+    assert res.status_code == 200
+    assert (await _list())["items"] == []

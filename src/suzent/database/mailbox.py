@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import List, Optional
 
-from sqlmodel import select
+from sqlmodel import func, select
 
 from .models import MailboxItemModel, MailboxRuleModel
 
@@ -63,14 +63,22 @@ class MailboxOperationsMixin:
     ) -> List[MailboxItemModel]:
         with self._session() as session:
             stmt = select(MailboxItemModel)
-            if route_status == "routed":
-                stmt = stmt.where(MailboxItemModel.route_status == "routed")
-            elif route_status == "unrouted":
-                stmt = stmt.where(MailboxItemModel.route_status == "unrouted")
+            if route_status:
+                stmt = stmt.where(MailboxItemModel.route_status == route_status)
             if source_kind:
                 stmt = stmt.where(MailboxItemModel.source_kind == source_kind)
             stmt = stmt.order_by(MailboxItemModel.id.desc()).offset(offset).limit(limit)
             return list(session.exec(stmt).all())
+
+    def count_mailbox_items(self) -> dict[str, int]:
+        """Item counts per route status."""
+        with self._session() as session:
+            rows = session.exec(
+                select(MailboxItemModel.route_status, func.count()).group_by(
+                    MailboxItemModel.route_status
+                )
+            ).all()
+            return {status: count for status, count in rows}
 
     def get_mailbox_item(self, item_id: int) -> Optional[MailboxItemModel]:
         with self._session() as session:

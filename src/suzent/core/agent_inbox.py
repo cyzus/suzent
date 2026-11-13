@@ -512,4 +512,12 @@ def enqueue_agent_message(
     )
     if created:
         get_agent_inbox_dispatcher().notify()
+        try:
+            from suzent.core.mailbox import record_agent_message
+
+            record_agent_message(record)
+        except Exception as exc:
+            logger.warning(
+                "Could not record agent message {} in the Mailbox: {}", resolved_id, exc
+            )
     return record, created

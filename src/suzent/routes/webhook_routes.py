@@ -3,7 +3,12 @@
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
-from suzent.core.mailbox import ingest_mailbox_event, is_mailbox_token
+from suzent.core.mailbox import (
+    is_mailbox_token,
+    record_inbound,
+    route_inbound,
+    webhook_envelope,
+)
 from suzent.core.webhooks import (
     MAX_PAYLOAD_BYTES,
     WEBHOOK_KIND,
@@ -44,11 +49,7 @@ async def receive_webhook(request: Request) -> JSONResponse:
                 status_code=413,
             )
         headers = {k.lower(): v for k, v in request.headers.items()}
-        item = await ingest_mailbox_event(
-            source_kind="webhook",
-            body_bytes=body,
-            headers=headers,
-        )
+        item = await route_inbound(webhook_envelope(body, headers))
         logger.info(
             f"Mailbox webhook #{item.id} ingested ({len(body)} bytes, status={item.route_status}, target={item.target_chat_id})"
         )
@@ -93,17 +94,13 @@ async def receive_webhook(request: Request) -> JSONResponse:
     bound = (job.context_mode or "isolated") == "bound" and bool(job.chat_id)
     target_chat_id = job.chat_id if bound else f"cron-{job.id}"
     try:
-        await ingest_mailbox_event(
-            source_kind="webhook",
-            body_bytes=body,
-            headers=headers,
-            fallback_source=job.name,
-            preferred_chat_id=target_chat_id,
-            custom_prompt=job.prompt,
-            dispatch=False,
+        record_inbound(
+            webhook_envelope(body, headers, fallback_source=job.name),
+            target_chat_id=target_chat_id,
+            reason=f"Delivered to webhook task '{job.name}'.",
         )
     except Exception as exc:
-        logger.debug(f"Could not record job webhook in mailbox: {exc}")
+        logger.warning(f"Could not record webhook task {job.id} in the Mailbox: {exc}")
 
     logger.info(f"Webhook task {job.id} triggered ({len(body)} bytes)")
     return JSONResponse({"accepted": True, "job_id": job.id}, status_code=202)

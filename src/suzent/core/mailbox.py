@@ -7,6 +7,7 @@ import hmac
 import json
 import traceback
 import uuid
+from dataclasses import dataclass, field
 from typing import Any, Optional
 
 from suzent.core.focal_agent import FOCAL_CHAT_ID, FOCAL_TITLE, get_or_create_focal_chat
@@ -289,7 +290,6 @@ async def _llm_triage_first_seen(
     signature: str,
     summary: str,
     payload_preview: str,
-    preferred_chat_id: Optional[str] = None,
 ) -> tuple[str, Optional[str], str, bool]:
     """Decide initial routing for a never-before-seen event signature.
 
@@ -303,14 +303,6 @@ async def _llm_triage_first_seen(
             "none",
             None,
             "Webhook verification ping; stored in Mailbox without waking an agent.",
-            True,
-        )
-
-    if preferred_chat_id:
-        return (
-            "route",
-            preferred_chat_id,
-            f"Bound to target session '{resolve_target_label(db, preferred_chat_id)}'.",
             True,
         )
 
@@ -367,7 +359,6 @@ async def resolve_or_learn_rule(
     rule_name: str,
     summary: str,
     payload_preview: str,
-    preferred_chat_id: Optional[str] = None,
 ) -> MailboxRuleModel:
     """Return the cached rule for ``signature``, or triage once and crystallize a new rule."""
     # Events of one new kind often arrive together (a CI run's checks); triage
@@ -382,7 +373,6 @@ async def resolve_or_learn_rule(
             rule_name=rule_name,
             summary=summary,
             payload_preview=payload_preview,
-            preferred_chat_id=preferred_chat_id,
         )
 
 
@@ -396,7 +386,6 @@ async def _resolve_or_learn_rule_locked(
     rule_name: str,
     summary: str,
     payload_preview: str,
-    preferred_chat_id: Optional[str],
 ) -> MailboxRuleModel:
     existing = db.get_mailbox_rule_by_signature(signature)
     if existing is None and ":" in signature:
@@ -416,7 +405,6 @@ async def _resolve_or_learn_rule_locked(
         signature=signature,
         summary=summary,
         payload_preview=payload_preview,
-        preferred_chat_id=preferred_chat_id,
     )
     target_label = (
         resolve_target_label(db, target_chat_id) if action == "route" else None
@@ -498,113 +486,234 @@ def _deliver_item_to_agent(
     return msg_id
 
 
-async def ingest_mailbox_event(
+@dataclass(frozen=True)
+class InboundEnvelope:
+    """One inbound event, whatever its source, as the Mailbox stores it."""
+
+    source_kind: str
+    source_name: str
+    event_type: str
+    signature: str
+    summary: str
+    rule_name: str = ""
+    payload: str = ""
+    headers: dict[str, str] = field(default_factory=dict)
+    spooled_at: Optional[str] = None
+
+
+def record_inbound(
+    envelope: InboundEnvelope,
     *,
-    source_kind: str = "webhook",
-    body_bytes: bytes = b"",
-    headers: Optional[dict[str, str]] = None,
-    fallback_source: str = "webhook",
-    fallback_event: str = "event",
-    fallback_summary: str = "",
-    preferred_chat_id: Optional[str] = None,
-    custom_prompt: Optional[str] = None,
-    dispatch: bool = True,
+    target_chat_id: Optional[str],
+    reason: str,
+    inbox_message_id: Optional[str] = None,
 ) -> MailboxItemModel:
-    """Store an inbound event in the Mailbox, evaluate/learn its routing rule, and dispatch if routed."""
+    """Store an event whose source already chose where it goes.
+
+    Nothing is routed or delivered here: schedules, peer devices, agent
+    messages and task webhooks deliver through their own paths and only need
+    to appear in the Mailbox.
+    """
     db = get_database()
-    hdrs = {k.lower(): str(v) for k, v in (headers or {}).items()}
-    meta = extract_event_metadata(
-        source_kind=source_kind,
-        body_bytes=body_bytes,
-        headers=hdrs,
-        fallback_source=fallback_source,
-        fallback_event=fallback_event,
-        fallback_summary=fallback_summary,
+    return db.create_mailbox_item(
+        source_kind=envelope.source_kind,
+        source_name=envelope.source_name,
+        event_type=envelope.event_type,
+        signature=envelope.signature,
+        summary=envelope.summary,
+        headers_json=json.dumps(envelope.headers, ensure_ascii=False),
+        payload=envelope.payload,
+        route_status="routed" if target_chat_id else "unrouted",
+        target_chat_id=target_chat_id,
+        target_label=resolve_target_label(db, target_chat_id),
+        rule_origin="pinned",
+        reason=reason,
+        inbox_message_id=inbox_message_id,
+        spooled_at=envelope.spooled_at,
     )
-    formatted_payload = format_webhook_payload(body_bytes, hdrs)
-    safe_headers = {
-        k: v
-        for k, v in hdrs.items()
-        if not any(
-            secret in k
-            for secret in ("authorization", "token", "secret", "signature", "cookie")
-        )
-    }
-    spooled_at = hdrs.get("x-suzent-relay-queued-at")
 
-    if not dispatch and preferred_chat_id:
-        action = "route"
-        target_chat_id = preferred_chat_id
-        target_label = resolve_target_label(db, target_chat_id)
-        route_status = "routed"
-        rule_origin = "pinned"
-        reason = f"Delivered to bound webhook task '{fallback_source}'."
-    else:
-        rule = await resolve_or_learn_rule(
-            db,
-            source_kind=source_kind,
-            source_name=meta["source_name"],
-            event_type=meta["event_type"],
-            signature=meta["signature"],
-            rule_name=meta["rule_name"],
-            summary=meta["summary"],
-            payload_preview=formatted_payload,
-            preferred_chat_id=preferred_chat_id,
-        )
-        action = rule.action
-        target_chat_id = rule.target_chat_id if action == "route" else None
-        target_label = (
-            resolve_target_label(db, target_chat_id) if target_chat_id else None
-        )
-        route_status = (
-            "routed" if (action == "route" and target_chat_id) else "unrouted"
-        )
-        rule_origin = rule.origin
-        reason = rule.reason
 
+async def route_inbound(
+    envelope: InboundEnvelope, *, custom_prompt: Optional[str] = None
+) -> MailboxItemModel:
+    """Store an event, let the rules (or the router) choose its target, and deliver it."""
+    db = get_database()
+    rule = await resolve_or_learn_rule(
+        db,
+        source_kind=envelope.source_kind,
+        source_name=envelope.source_name,
+        event_type=envelope.event_type,
+        signature=envelope.signature,
+        rule_name=envelope.rule_name
+        or f"{envelope.source_name} · {envelope.event_type}",
+        summary=envelope.summary,
+        payload_preview=envelope.payload,
+    )
+    target_chat_id = rule.target_chat_id if rule.action == "route" else None
     item = db.create_mailbox_item(
-        source_kind=source_kind,
+        source_kind=envelope.source_kind,
+        source_name=envelope.source_name,
+        event_type=envelope.event_type,
+        signature=envelope.signature,
+        summary=envelope.summary,
+        headers_json=json.dumps(envelope.headers, ensure_ascii=False),
+        payload=envelope.payload,
+        route_status="routed" if target_chat_id else "unrouted",
+        target_chat_id=target_chat_id,
+        target_label=resolve_target_label(db, target_chat_id),
+        rule_origin=rule.origin,
+        reason=rule.reason,
+        spooled_at=envelope.spooled_at,
+    )
+    if target_chat_id:
+        item = _dispatch(db, item, target_chat_id, custom_prompt)
+    return item
+
+
+def _dispatch(
+    db: ChatDatabase,
+    item: MailboxItemModel,
+    target_chat_id: str,
+    custom_prompt: Optional[str],
+) -> MailboxItemModel:
+    try:
+        try:
+            msg_id = _deliver_item_to_agent(
+                db, item, target_chat_id, custom_prompt=custom_prompt
+            )
+        except MissingTargetError as missing:
+            item = _reroute_to_regent(db, item, missing)
+            msg_id = _deliver_item_to_agent(
+                db, item, FOCAL_CHAT_ID, custom_prompt=custom_prompt
+            )
+        return db.update_mailbox_item(item.id, inbox_message_id=msg_id) or item
+    except Exception as exc:
+        logger.error(
+            "Failed to dispatch Mailbox item {}: {}\n{}",
+            item.id,
+            exc,
+            traceback.format_exc(),
+        )
+        return (
+            db.update_mailbox_item(
+                item.id, route_status="error", reason=f"Dispatch error: {exc}"
+            )
+            or item
+        )
+
+
+def webhook_envelope(
+    body_bytes: bytes,
+    headers: dict[str, str],
+    *,
+    fallback_source: str = "webhook",
+) -> InboundEnvelope:
+    """Describe an HTTP webhook delivery as an envelope."""
+    hdrs = {k.lower(): str(v) for k, v in headers.items()}
+    meta = extract_event_metadata(
+        body_bytes=body_bytes, headers=hdrs, fallback_source=fallback_source
+    )
+    return InboundEnvelope(
+        source_kind="webhook",
         source_name=meta["source_name"],
         event_type=meta["event_type"],
         signature=meta["signature"],
         summary=meta["summary"],
-        headers_json=json.dumps(safe_headers, ensure_ascii=False),
-        payload=formatted_payload,
-        route_status=route_status,
-        target_chat_id=target_chat_id,
-        target_label=target_label,
-        rule_origin=rule_origin,
-        reason=reason,
-        spooled_at=spooled_at,
+        rule_name=meta["rule_name"],
+        payload=format_webhook_payload(body_bytes, hdrs),
+        headers={
+            k: v
+            for k, v in hdrs.items()
+            if not any(
+                secret in k
+                for secret in (
+                    "authorization",
+                    "token",
+                    "secret",
+                    "signature",
+                    "cookie",
+                )
+            )
+        },
+        spooled_at=hdrs.get("x-suzent-relay-queued-at"),
     )
 
-    if dispatch and route_status == "routed" and target_chat_id:
-        try:
-            try:
-                msg_id = _deliver_item_to_agent(
-                    db, item, target_chat_id, custom_prompt=custom_prompt
-                )
-            except MissingTargetError as missing:
-                item = _reroute_to_regent(db, item, missing)
-                msg_id = _deliver_item_to_agent(
-                    db, item, FOCAL_CHAT_ID, custom_prompt=custom_prompt
-                )
-            item = db.update_mailbox_item(item.id, inbox_message_id=msg_id) or item
-        except Exception as exc:
-            logger.error(
-                "Failed to dispatch Mailbox item {}: {}\n{}",
-                item.id,
-                exc,
-                traceback.format_exc(),
-            )
-            item = (
-                db.update_mailbox_item(
-                    item.id, route_status="error", reason=f"Dispatch error: {exc}"
-                )
-                or item
-            )
 
-    return item
+# Agent inbox kinds the Mailbox shows, with the short label it shows them under.
+_INBOX_EVENT_TYPES = {
+    "agent_message": "mail",
+    "remote_agent_message": "peer",
+    "session_reply_notification": "reply",
+    "session_finished_notification": "done",
+    "subagent_result": "subagent",
+}
+_INBOX_MARKER_PREFIX = "<!-- suzent-agent-inbox:"
+
+
+def record_agent_message(message: dict[str, Any]) -> Optional[MailboxItemModel]:
+    """Record one agent inbox message in the Mailbox as it is sent.
+
+    Messages the Mailbox delivered itself already have their item, and
+    background command results are internal bookkeeping, so neither is
+    recorded again.
+    """
+    payload = message.get("payload") or {}
+    kind = str(message.get("kind") or "")
+    if payload.get("mailbox_item_id") is not None or kind == "background_task_result":
+        return None
+
+    db = get_database()
+    sender_chat_id = message.get("sender_chat_id") or ""
+    sender_agent_id = str(payload.get("sender_agent_id") or "")
+    lines = [
+        line.strip()
+        for line in str(message.get("content") or "").splitlines()
+        if line.strip() and not line.strip().startswith(_INBOX_MARKER_PREFIX)
+    ]
+    summary = lines[0] if lines else ""
+    if kind == "subagent_result":
+        summary = next(
+            (line[5:].strip() for line in lines if line.lower().startswith("task:")),
+            summary,
+        )
+
+    if sender_agent_id.startswith("device:"):
+        source_kind, signature = "peer", f"peer:{sender_agent_id[7:]}"
+    else:
+        source_kind, signature = "agent_inbox", f"inbox:{kind}"
+    sender = _sender_label(db, sender_chat_id, payload)
+    envelope = InboundEnvelope(
+        source_kind=source_kind,
+        source_name=sender,
+        event_type=_INBOX_EVENT_TYPES.get(kind, kind),
+        signature=signature,
+        summary=(summary or f"{sender} → {message.get('target_chat_id')}")[:240],
+        payload="\n".join(lines),
+        headers={
+            "message_id": str(message.get("message_id") or ""),
+            "kind": kind,
+            "from": sender_chat_id,
+            "to": str(message.get("target_chat_id") or ""),
+        },
+    )
+    return record_inbound(
+        envelope,
+        target_chat_id=message.get("target_chat_id"),
+        reason=f"Sent by {sender}.",
+        inbox_message_id=message.get("message_id"),
+    )
+
+
+def _sender_label(db: ChatDatabase, sender_chat_id: str, payload: dict) -> str:
+    if payload.get("sender_label"):
+        return str(payload["sender_label"])
+    if not sender_chat_id:
+        return "system"
+    if sender_chat_id == "system-dream-lint":
+        return "dream-lint"
+    if sender_chat_id.startswith("subagent-"):
+        return "subagent"
+    return resolve_target_label(db, sender_chat_id) or sender_chat_id[:12]
 
 
 def _reroute_to_regent(
