@@ -2228,6 +2228,23 @@ export const zhCN = {
     regentReaction: 'Regent 回应了 {emoji}',
     quietReply: '无需你处理',
     sentByRegent: '由 Regent 转达',
+    trigger: {
+      goal: '目标模式',
+      other: '后台事件',
+      repliesTo: '回应 {source}',
+      count: '×{count}',
+      kind: {
+        agent: '来自其他会话的消息',
+        scheduled: '定时任务',
+        goal: '目标模式继续推进',
+        other: '后台事件',
+      },
+      state: {
+        replied: '已回复',
+        quiet: '无需回复',
+        pending: '尚未回复',
+      },
+    },
     sentVia: '{sender} 通过 {channel} 发送',
     today: '今天',
     yesterday: '昨天',

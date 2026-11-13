@@ -2,16 +2,6 @@ import Foundation
 
 private let regentReactions: Set<String> = ["👍", "❤️", "👀", "✅", "🎉", "😂", "🤔", "🙏", ""]
 
-private func isQuietRegentReply(_ text: String) -> Bool {
-    let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-    let token = "HEARTBEAT_OK"
-    let aside: String
-    if trimmed.hasPrefix(token) { aside = String(trimmed.dropFirst(token.count)) }
-    else if trimmed.hasSuffix(token) { aside = String(trimmed.dropLast(token.count)) }
-    else { return false }
-    return aside.trimmingCharacters(in: .whitespacesAndNewlines).utf16.count <= 300
-}
-
 private func regentMetadata(_ part: MessagePart) -> [String: Any]? {
     guard part.type == "tool", part.state == "completed" || part.state == nil,
           part.outcome == nil,
@@ -32,11 +22,11 @@ public func regentReaction(_ parts: [MessagePart]) -> String? {
 public func regentDisplayParts(_ parts: [MessagePart], live: Bool = false) -> [MessagePart] {
     normalizeParts(parts).flatMap { part -> [MessagePart] in
         let text = (part.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-        if part.type == "text", isQuietRegentReply(text) || (live && !text.isEmpty && "HEARTBEAT_OK".hasPrefix(text)) { return [] }
+        if part.type == "text", isQuietReply(text) || (live && !text.isEmpty && "HEARTBEAT_OK".hasPrefix(text)) { return [] }
         if part.toolName == "send_message", let texts = regentMetadata(part)?["regent_messages"] as? [String],
            !texts.isEmpty, texts.allSatisfy({ !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }) {
             return texts.enumerated().compactMap { index, text in
-                if isQuietRegentReply(text) { return nil }
+                if isQuietReply(text) { return nil }
                 var bubble = MessagePart(type: "text", text: text, messageId: "\(part.toolCallId ?? ""):\(index)")
                 bubble.regentBubble = true
                 return bubble
@@ -53,13 +43,17 @@ public func regentMessages(_ rows: [DisplayMessage], liveParts: [MessagePart] = 
     var userIndex: Int?
     for row in rows {
         if row.role == "user" { userIndex = result.count; result.append(row); continue }
-        // Background wake-ups must never react to an earlier user turn.
-        if ["system_triggered", "trigger"].contains(row.role) { userIndex = nil }
+        // Background wake-ups, including a reply that carries its trigger, must never react to an earlier user turn.
+        if ["system_triggered", "trigger"].contains(row.role) || !row.triggers.isEmpty { userIndex = nil }
         if let index = userIndex, let reaction = regentReaction(row.parts) { result[index].reaction = reaction }
         let parts = regentDisplayParts(row.parts)
         if !parts.isEmpty {
-            result.append(DisplayMessage(role: row.role, parts: parts, citationSources: row.citationSources,
-                                         model: row.model, timestamp: row.timestamp, messageIndex: row.messageIndex, files: row.files, workedSeconds: row.workedSeconds, firstMessageIndex: row.firstMessageIndex))
+            var shown = row
+            shown.parts = parts
+            result.append(shown)
+        } else if !row.triggers.isEmpty {
+            result.append(DisplayMessage(role: "system_triggered", parts: [], citationSources: row.citationSources,
+                                         timestamp: row.timestamp, messageIndex: row.messageIndex, triggers: row.triggers))
         }
     }
     if let index = userIndex, let reaction = regentReaction(liveParts) { result[index].reaction = reaction }

@@ -433,7 +433,9 @@ fun MessageView(message: DisplayMessage, regent: Boolean = false, isLatest: Bool
     val actionsLabel = stringResource(R.string.message_actions)
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
     if (message.role in listOf("system_triggered", "trigger")) {
-        systemReminder(message.text)?.let { SystemReminderView(it, message.citationSources) }
+        val entries = message.triggers.ifEmpty { listOf(TriggerEntry(parseTrigger(message.text), message.timestamp)) }
+        if (entries.any { it.trigger.source.isNotEmpty() || it.trigger.body.isNotEmpty() || it.trigger.kind != TriggerKind.Other })
+            TriggerRowView(entries, message.citationSources)
     } else if (message.role == "user" && message.files.isEmpty() && canvasActionLabel(message.text) != null) {
         // A surface action reads as what was pressed, like the desktop's canvas pill.
         CanvasActionPill(canvasActionLabel(message.text) ?: "")
@@ -473,6 +475,7 @@ fun MessageView(message: DisplayMessage, regent: Boolean = false, isLatest: Bool
             }
         }
     } else Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        if (message.triggers.isNotEmpty()) TriggerReferenceView(message.triggers, message.citationSources)
         // Regent's bubbles open the reply actions on a long press, like the user's own messages.
         ActivityTurn(message.parts, regent = regent, compact = !isLatest, workedSeconds = message.workedSeconds, citationSources = message.citationSources,
             onBubbleLongPress = if (regent) ({ point -> menuAnchor = point; view.suzentHaptic(SuzentHaptic.LongPress); menu = true }) else null)
@@ -499,26 +502,98 @@ fun MessageView(message: DisplayMessage, regent: Boolean = false, isLatest: Bool
     }
 }
 
+private fun triggerIcon(kind: TriggerKind): Int = when (kind) {
+    TriggerKind.Agent -> R.drawable.ic_tool_chat_bubble_left_right
+    TriggerKind.Scheduled -> R.drawable.ic_clock
+    TriggerKind.Goal -> R.drawable.ic_tool_flag
+    TriggerKind.Other -> R.drawable.ic_tool_bolt
+}
+
 @Composable
-private fun SystemReminderView(reminder: SystemReminder, sources: List<CitationSource>) {
-    var expanded by remember(reminder.content) { mutableStateOf(!reminder.initiallyCollapsed) }
+private fun triggerSource(trigger: ParsedTrigger): String = when {
+    trigger.kind == TriggerKind.Goal -> stringResource(R.string.trigger_goal)
+    trigger.source.isNotEmpty() -> trigger.source
+    else -> stringResource(R.string.trigger_other)
+}
+
+@Composable
+private fun Modifier.triggerToggle(hasDetails: Boolean, expanded: Boolean, onToggle: () -> Unit): Modifier {
+    if (!hasDetails) return this
     val expandedLabel = stringResource(R.string.reminder_expanded)
     val collapsedLabel = stringResource(R.string.reminder_collapsed)
+    return clickable(role = androidx.compose.ui.semantics.Role.Button, onClick = onToggle)
+        .semantics { stateDescription = if (expanded) expandedLabel else collapsedLabel }
+        .heightIn(min = 44.dp)
+}
+
+/** Each merged trigger's time and body, under a rule like a quote. */
+@Composable
+private fun TriggerDetails(entries: List<TriggerEntry>, sources: List<CitationSource>) {
     val outline = MaterialTheme.colorScheme.outlineVariant
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
     Column(Modifier.fillMaxWidth().drawBehind {
-        drawRect(outline, size = androidx.compose.ui.geometry.Size(3.dp.toPx(), size.height))
-    }.padding(start = 14.dp, top = 4.dp, bottom = 4.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Row(Modifier.fillMaxWidth().then(if (reminder.body.isNotEmpty()) Modifier
-            .clickable(role = androidx.compose.ui.semantics.Role.Button) { expanded = !expanded }
-            .semantics { stateDescription = if (expanded) expandedLabel else collapsedLabel }
-            .heightIn(min = 44.dp) else Modifier), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-            Icon(painterResource(R.drawable.ic_clock), contentDescription = null, tint = muted, modifier = Modifier.padding(end = 8.dp).size(14.dp))
-            Text(reminder.title, color = muted, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.SemiBold,
-                fontSize = PresentationTokens.typeMeta.sp, maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-            if (reminder.body.isNotEmpty()) SuzentChevron(expanded, Modifier.padding(horizontal = 8.dp), tint = muted)
+        drawRect(outline, size = androidx.compose.ui.geometry.Size(2.dp.toPx(), size.height))
+    }.padding(start = 12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        entries.forEach { entry ->
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                if (entries.size > 1 && entry.timestamp != null)
+                    Text(formattedTimestamp(entry.timestamp), color = muted, fontSize = PresentationTokens.typeMeta.sp)
+                if (entry.trigger.body.isNotEmpty())
+                    MarkdownText(entry.trigger.body, citationSources = sources, textSize = PresentationTokens.typeLabel.toFloat())
+            }
         }
-        if (expanded && reminder.body.isNotEmpty()) MarkdownText(reminder.body, citationSources = sources, textSize = PresentationTokens.typeLabel.toFloat())
+    }
+}
+
+/**
+ * What started a turn without the user: another chat's message, a scheduled task, goal mode
+ * or a background result. One quiet line; repeats that got no reply arrive merged.
+ */
+@Composable
+private fun TriggerRowView(entries: List<TriggerEntry>, sources: List<CitationSource>) {
+    val last = entries.last()
+    var expanded by remember(entries) { mutableStateOf(false) }
+    val hasDetails = entries.any { it.trigger.body.isNotEmpty() }
+    val muted = MaterialTheme.colorScheme.onSurfaceVariant
+    val preview = triggerPreview(last.trigger.body)
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row(Modifier.fillMaxWidth().triggerToggle(hasDetails, expanded) { expanded = !expanded },
+            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Icon(painterResource(triggerIcon(last.trigger.kind)), contentDescription = null, tint = muted, modifier = Modifier.size(15.dp))
+            Text(triggerSource(last.trigger), color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.Medium,
+                fontSize = PresentationTokens.typeCaption.sp, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f, fill = false).widthIn(max = 180.dp))
+            Text(preview, color = muted, fontSize = PresentationTokens.typeCaption.sp, maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+            if (entries.size > 1) Text(stringResource(R.string.trigger_count, entries.size), color = muted,
+                fontFamily = FontFamily.Monospace, fontSize = PresentationTokens.typeMeta.sp)
+            last.timestamp?.let { Text(formattedTimestamp(it), color = muted, fontSize = PresentationTokens.typeMeta.sp) }
+            if (hasDetails) SuzentChevron(expanded, size = 12.dp, tint = muted)
+        }
+        if (expanded) TriggerDetails(entries, sources)
+    }
+}
+
+/** The trigger a reply answers, as one line at the top of that reply. */
+@Composable
+private fun TriggerReferenceView(entries: List<TriggerEntry>, sources: List<CitationSource>) {
+    val last = entries.last()
+    var expanded by remember(entries) { mutableStateOf(false) }
+    val hasDetails = entries.any { it.trigger.body.isNotEmpty() }
+    val muted = MaterialTheme.colorScheme.onSurfaceVariant
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row(Modifier.triggerToggle(hasDetails, expanded) { expanded = !expanded },
+            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Icon(painterResource(R.drawable.ic_redirect), contentDescription = null, tint = muted, modifier = Modifier.size(13.dp))
+            Icon(painterResource(triggerIcon(last.trigger.kind)), contentDescription = null, tint = muted, modifier = Modifier.size(13.dp))
+            Text(stringResource(R.string.trigger_replies_to, triggerSource(last.trigger)), color = muted,
+                fontSize = PresentationTokens.typeLabel.sp, maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+            if (entries.size > 1) Text(stringResource(R.string.trigger_count, entries.size), color = muted,
+                fontFamily = FontFamily.Monospace, fontSize = PresentationTokens.typeMeta.sp)
+            if (hasDetails) SuzentChevron(expanded, size = 12.dp, tint = muted)
+        }
+        if (expanded) TriggerDetails(entries, sources)
     }
 }
 

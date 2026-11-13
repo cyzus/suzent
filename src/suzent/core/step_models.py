@@ -2,7 +2,7 @@
 Suzent-owned step and state models.
 
 These Pydantic models replace the direct dependency on smolagents' internal
-step types (ActionStep, PlanningStep, FinalAnswerStep, TaskStep, ToolCall,
+step types (ActionStep, PlanningStep, TaskStep, ToolCall,
 Timing). They are used for:
 - State serialization (agent_serializer.py)
 - Context compression (context_compressor.py)
@@ -33,7 +33,6 @@ class ActionStepRecord(BaseModel):
     model_output: Optional[str] = None
     observations: Optional[str] = None
     action_output: Optional[str] = None
-    is_final_answer: bool = False
     error: Optional[str] = None
     started_at: Optional[datetime] = None
     ended_at: Optional[datetime] = None
@@ -49,12 +48,6 @@ class TaskStepRecord(BaseModel):
     """Record of a task assignment."""
 
     task: str = ""
-
-
-class FinalAnswerRecord(BaseModel):
-    """Record of the final answer."""
-
-    output: Optional[str] = None
 
 
 class AgentStateSnapshot(BaseModel):

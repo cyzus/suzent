@@ -114,9 +114,6 @@ describe('buildMessageRenderPlan', () => {
     expect(plan.groupRenders.has(0)).toBe(true);
     expect(plan.skipIndices.has(1)).toBe(true);
     expect(plan.skipIndices.has(0)).toBe(false);
-    expect(plan.stepSummaryByMessageIndex.get(2)).toContain('3 steps');
-    expect(plan.stepSummaryByMessageIndex.get(2)).toContain('Input: 260 tokens');
-    expect(plan.stepSummaryByMessageIndex.get(2)).toContain('Output: 60 tokens');
   });
 
   it('does not create step-group render for normal assistant or user messages', () => {
@@ -130,7 +127,6 @@ describe('buildMessageRenderPlan', () => {
 
     expect(plan.groupRenders.size).toBe(0);
     expect(plan.skipIndices.size).toBe(0);
-    expect(plan.stepSummaryByMessageIndex.size).toBe(0);
   });
 
   it('skips synthetic compaction summary rows that leaked into the display log', () => {
@@ -164,7 +160,6 @@ describe('buildMessageRenderPlan', () => {
     const plan = buildMessageRenderPlan(messages);
 
     expect(plan.groupRenders.size).toBe(0);
-    expect(plan.stepSummaryByMessageIndex.size).toBe(0);
   });
 
   it('keeps consecutive tool steps in one group across empty assistant placeholders', () => {
@@ -186,9 +181,6 @@ describe('buildMessageRenderPlan', () => {
     expect(plan.groupRenders.has(0)).toBe(true);
     expect(plan.skipIndices.has(1)).toBe(true);
     expect(plan.skipIndices.has(2)).toBe(true);
-    expect(plan.stepSummaryByMessageIndex.get(3)).toContain('3 steps');
-    expect(plan.stepSummaryByMessageIndex.get(3)).toContain('Input: 35 tokens');
-    expect(plan.stepSummaryByMessageIndex.get(3)).toContain('Output: 9 tokens');
   });
 
   it('produces exactly one group representative per turn when intermediates are interrupted by text-bearing messages', () => {
@@ -216,8 +208,6 @@ describe('buildMessageRenderPlan', () => {
 
     // Only the first intermediate (idx 1) gets a group representative.
     expect(Array.from(plan.groupRenders.keys())).toEqual([1]);
-    // The step summary pill attaches to the first non-intermediate message.
-    expect(plan.stepSummaryByMessageIndex.get(2)).toContain('4 steps');
   });
 
   it('treats system_triggered rows as turn boundaries so each cron/heartbeat fire has its own badge', () => {

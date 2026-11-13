@@ -1,12 +1,20 @@
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import { NoticeMessage, SystemTriggeredMessage } from './StatusMessages';
+import {
+  NoticeMessage,
+  SystemTriggeredMessage,
+  TriggerReference,
+  TriggerRow,
+} from './StatusMessages';
+import { parseTrigger } from '../../lib/triggerRows';
 import { I18nProvider } from '../../i18n';
 
-function renderReminder(content: string): string {
+function renderReminder(content: string, timestamp?: string): string {
   return renderToStaticMarkup(
-    <SystemTriggeredMessage message={{ role: 'system_triggered', content }} />
+    <I18nProvider>
+      <SystemTriggeredMessage message={{ role: 'system_triggered', content, timestamp }} />
+    </I18nProvider>
   );
 }
 
@@ -87,41 +95,64 @@ describe('NoticeMessage', () => {
 });
 
 describe('SystemTriggeredMessage', () => {
-  it('shows short reminder bodies by default', () => {
-    const html = renderReminder('Heartbeat check\n\nNothing pending.');
-
-    expect(html).toContain('grid-rows-[1fr]');
-    expect(html).toContain('aria-expanded="true"');
-  });
-
-  it('collapses long reminder bodies by default', () => {
-    const html = renderReminder(`Sub-agent finished\n\n${'Result details. '.repeat(60)}`);
-
-    expect(html).toContain('grid-rows-[0fr]');
-    expect(html).toContain('aria-expanded="false"');
-  });
-
-  it('does not render durable inbox markers', () => {
+  it('shows an agent message as its sender and a preview, without the chat id', () => {
     const html = renderReminder(
-      'Sub-agent finished\n\nResult\n<!-- suzent-agent-inbox:subagent-result-sub_123 -->'
+      '[Agent message from Release check (ea0fd988-1234)]\n<!-- suzent-agent-inbox:abc -->\n## Status\n**v0.14.2** is out',
+      '2026-11-13T06:14:00Z'
     );
 
+    expect(html).toContain('Release check');
+    expect(html).toContain('v0.14.2 is out');
     expect(html).not.toContain('suzent-agent-inbox');
+    expect(html).not.toContain('Agent message from');
+    expect(html).toContain('title="ea0fd988-1234"');
+    expect(html).toContain('<time');
   });
 
-  it('starts folded to its title when asked, however short the body', () => {
+  it('starts collapsed with the body available on demand', () => {
+    const html = renderReminder('**Scheduled Task: Stand-up reminder**\n\nRemind the user');
+
+    expect(html).toContain('Stand-up reminder');
+    expect(html).toContain('aria-expanded="false"');
+    expect(html).not.toContain('uppercase');
+  });
+
+  it('has nothing to expand when there is no body', () => {
+    const html = renderReminder('**Scheduled Task: Ping**');
+
+    expect(html).toContain('Ping');
+    expect(html).not.toContain('aria-expanded');
+  });
+});
+
+describe('TriggerRow', () => {
+  it('counts merged repeats', () => {
+    const trigger = parseTrigger('**Scheduled Task: Check**\n\nLook');
     const html = renderToStaticMarkup(
-      <SystemTriggeredMessage
-        message={{
-          role: 'system_triggered',
-          content: '**Scheduled Task: Stand-up reminder**\n\nRemind the user about stand-up',
-        }}
-        folded
-      />
+      <I18nProvider>
+        <TriggerRow
+          entries={[
+            { index: 0, trigger, state: 'quiet' },
+            { index: 2, trigger, state: 'quiet' },
+            { index: 4, trigger, state: 'pending' },
+          ]}
+        />
+      </I18nProvider>
     );
 
-    expect(html).toContain('Scheduled Task: Stand-up reminder');
-    expect(html).toContain('grid-rows-[0fr]');
-    expect(html).toContain('aria-expanded="false"');
+    expect(html).toContain('×3');
+  });
+});
+
+describe('TriggerReference', () => {
+  it('names what the reply answers', () => {
+    const trigger = parseTrigger('[Agent message from Release check (ea0f)]\nBody');
+    const html = renderToStaticMarkup(
+      <I18nProvider>
+        <TriggerReference entries={[{ index: 0, trigger, state: 'replied' }]} />
+      </I18nProvider>
+    );
+
+    expect(html).toMatch(/Replying to Release check|回应 Release check/);
   });
 });

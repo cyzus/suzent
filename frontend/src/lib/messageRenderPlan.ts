@@ -10,15 +10,14 @@ import {
 
 export interface StepGroupRender {
   mergedBlocks: ContentBlock[];
-  stepSummary: string | null;
 }
 
 export interface MessageRenderPlan {
   skipIndices: Set<number>;
   groupRenders: Map<number, StepGroupRender>;
-  stepSummaryByMessageIndex: Map<number, string>;
 }
 
+// Older chats still hold calls to the retired final_answer tool.
 const IGNORED_TOOL_NAMES = presentation.ignoredToolNames;
 
 // Synthetic compaction summary messages are injected into the LLM context only.
@@ -175,25 +174,9 @@ function filterIgnoredToolCalls(blocks: ContentBlock[]): ContentBlock[] {
   });
 }
 
-function summarizeStepInfos(stepInfos: string[]): string | null {
-  if (stepInfos.length === 0) return null;
-
-  let totalInput = 0;
-  let totalOutput = 0;
-  for (const info of stepInfos) {
-    const inputMatch = info.match(/Input(?:\s+tokens)?:\s+([\d,]+)/i);
-    const outputMatch = info.match(/Output(?:\s+tokens)?:\s+([\d,]+)/i);
-    if (inputMatch) totalInput += parseInt(inputMatch[1].replace(/,/g, ''), 10);
-    if (outputMatch) totalOutput += parseInt(outputMatch[1].replace(/,/g, ''), 10);
-  }
-
-  return `${stepInfos.length} steps | Input: ${totalInput.toLocaleString()} tokens | Output: ${totalOutput.toLocaleString()} tokens`;
-}
-
 export function buildMessageRenderPlan(messages: Message[]): MessageRenderPlan {
   const skipIndices = new Set<number>();
   const groupRenders = new Map<number, StepGroupRender>();
-  const stepSummaryByMessageIndex = new Map<number, string>();
 
   // Hide any synthetic compaction summary rows that leaked into the display log.
   for (let k = 0; k < messages.length; k++) {
@@ -244,13 +227,6 @@ export function buildMessageRenderPlan(messages: Message[]): MessageRenderPlan {
       }
     }
 
-    const allStepInfos: string[] = [];
-    for (const idx of assistantIndicesInTurn) {
-      const stepInfo = messages[idx].stepInfo;
-      if (stepInfo) allStepInfos.push(stepInfo);
-    }
-    const stepSummary = summarizeStepInfos(allStepInfos);
-
     if (intermediateIndices.length > 0) {
       const groupStart = intermediateIndices[0];
       const allBlocks: ContentBlock[] = [];
@@ -272,18 +248,11 @@ export function buildMessageRenderPlan(messages: Message[]): MessageRenderPlan {
         skipIndices.add(idx);
       }
 
-      groupRenders.set(groupStart, {
-        mergedBlocks: mergeToolCallPairs(allBlocks),
-        stepSummary,
-      });
-
-      if (finalIndices.length > 0 && stepSummary) {
-        stepSummaryByMessageIndex.set(finalIndices[0], stepSummary);
-      }
+      groupRenders.set(groupStart, { mergedBlocks: mergeToolCallPairs(allBlocks) });
     }
 
     i = turnEnd;
   }
 
-  return { skipIndices, groupRenders, stepSummaryByMessageIndex };
+  return { skipIndices, groupRenders };
 }

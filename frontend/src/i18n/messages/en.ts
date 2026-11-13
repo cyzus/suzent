@@ -2295,6 +2295,23 @@ export const en = {
     regentReaction: 'Regent reacted {emoji}',
     quietReply: 'Nothing needed from you',
     sentByRegent: 'Sent by Regent',
+    trigger: {
+      goal: 'Goal mode',
+      other: 'Background event',
+      repliesTo: 'Replying to {source}',
+      count: '×{count}',
+      kind: {
+        agent: 'Message from another chat',
+        scheduled: 'Scheduled task',
+        goal: 'Goal mode continued the work',
+        other: 'Background event',
+      },
+      state: {
+        replied: 'Replied',
+        quiet: 'No reply needed',
+        pending: 'Not answered yet',
+      },
+    },
     sentVia: 'Sent by {sender} via {channel}',
     today: 'Today',
     yesterday: 'Yesterday',

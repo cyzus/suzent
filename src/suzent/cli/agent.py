@@ -17,7 +17,6 @@ from suzent.core.stream_parser import (
     ToolCall,
     ToolOutput,
     ErrorEvent,
-    FinalAnswer,
     ApprovalRequest,
 )
 from suzent.cli.ui import render_approval_request
@@ -208,11 +207,6 @@ def agent_chat(
                         fg=typer.colors.RED,
                         err=True,
                     )
-
-                elif isinstance(event, FinalAnswer):
-                    typer.echo("")
-                    typer.secho(f"🤖 {event.content}", fg=typer.colors.CYAN, bold=True)
-                    return
 
                 elif isinstance(event, ApprovalRequest):
                     render_approval_request(
