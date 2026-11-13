@@ -39,32 +39,6 @@ const STYLE = `
 @media (prefers-reduced-motion: reduce) {
   .suzent-cc-cube { animation: none; transform: scale(.7) rotateX(-24deg) rotateY(28deg); }
 }
-
-/* Compaction sweep: a bar that repeatedly runs left→right and squeezes shut,
-   evoking context being compressed. Used as a thin footer on the notice box. */
-@keyframes suzentCCSweep {
-  0%   { left: 0; right: 100%; opacity: 0; }
-  15%  { left: 0; right: 55%; opacity: 1; }
-  50%  { left: 35%; right: 12%; opacity: 1; }
-  85%  { left: 92%; right: 0; opacity: 1; }
-  100% { left: 100%; right: 0; opacity: 0; }
-}
-.suzent-cc-sweep::after {
-  content: '';
-  position: absolute;
-  top: 0; bottom: 0;
-  left: 0; right: 100%;
-  background: currentColor;
-  animation: suzentCCSweep 1.8s cubic-bezier(.65, 0, .35, 1) infinite;
-}
-/* Reduced motion drops the travel but keeps a full-width fade so compaction still reads as in progress. */
-@keyframes suzentCCBreathe {
-  0%, 100% { opacity: .25; }
-  50%      { opacity: .7; }
-}
-@media (prefers-reduced-motion: reduce) {
-  .suzent-cc-sweep::after { animation: suzentCCBreathe 2s ease-in-out infinite; left: 0; right: 0; }
-}
 `;
 
 let injected = false;
@@ -118,21 +92,6 @@ export const CompactionCube: React.FC<{ size?: number; className?: string }> = (
         />
       </div>
     </div>
-  );
-};
-
-/**
- * A thin animated bar that sweeps and squeezes left→right, evoking context being
- * compressed. Meant as a footer strip on the compaction notice box. Inherits its
- * color from `currentColor`, so set text color on the wrapper for theming.
- */
-export const CompactionSweep: React.FC<{ className?: string }> = ({ className = '' }) => {
-  useCubeStyles();
-  return (
-    <div
-      className={`suzent-cc-sweep relative w-full h-0.5 overflow-hidden ${className}`}
-      aria-hidden="true"
-    />
   );
 };
 

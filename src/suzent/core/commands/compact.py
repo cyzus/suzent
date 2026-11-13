@@ -161,6 +161,7 @@ def handle_compact(
             tokens_after=tokens_after,
             persist_result=True,
             context_limit=context_limit,
+            summary=compressor.last_summary,
         )
         before_k = round(tokens_before / 1000)
         after_k = round(tokens_after / 1000)

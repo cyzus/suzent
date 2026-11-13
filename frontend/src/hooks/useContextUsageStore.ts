@@ -37,6 +37,12 @@ export interface CompactionActivity {
   label: string;
 }
 
+/** A compaction summary being written in the background before it is needed. */
+export interface PrecompactionStatus {
+  stage: 'start' | 'ready' | 'failed';
+  coveredMessages: number;
+}
+
 const EMPTY_USAGE: ContextUsage = {
   input_tokens: 0,
   output_tokens: 0,
@@ -51,6 +57,7 @@ interface ContextUsageState {
   usage: ContextUsage | null;
   usageByChatId: Record<string, ContextUsage>;
   compaction: CompactionActivity | null;
+  precompactionByChatId: Record<string, PrecompactionStatus>;
   setUsage: (usage: ContextUsage) => void;
   setUsageForChat: (chatId: string, usage: ContextUsage) => void;
   mergeUsageForChat: (chatId: string, usage: PartialContextUsage) => void;
@@ -58,12 +65,14 @@ interface ContextUsageState {
   clearUsage: () => void;
   setCompaction: (compaction: CompactionActivity | null) => void;
   clearCompaction: () => void;
+  setPrecompaction: (chatId: string, status: PrecompactionStatus | null) => void;
 }
 
 export const useContextUsageStore = create<ContextUsageState>((set, get) => ({
   usage: null,
   usageByChatId: {},
   compaction: null,
+  precompactionByChatId: {},
   setUsage: (usage) => set({ usage }),
   setUsageForChat: (chatId, usage) =>
     set((state) => ({
@@ -98,4 +107,11 @@ export const useContextUsageStore = create<ContextUsageState>((set, get) => ({
   clearUsage: () => set({ usage: null }),
   setCompaction: (compaction) => set({ compaction }),
   clearCompaction: () => set({ compaction: null }),
+  setPrecompaction: (chatId, status) =>
+    set((state) => {
+      const next = { ...state.precompactionByChatId };
+      if (status) next[chatId] = status;
+      else delete next[chatId];
+      return { precompactionByChatId: next };
+    }),
 }));

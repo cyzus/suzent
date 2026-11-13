@@ -136,6 +136,18 @@ When a summary has to be written on a cold cache, Suzent compares the price of
 the conversation's model against the memory extraction model and uses the
 cheaper one.
 
+### Seeing compaction
+
+In the chat, a compaction shows as a thin divider at the point where it
+happened, with the context size before and after. A line under it says when
+the summary was prepared in advance, or that it was used because you were away
+long enough for the cache to expire. **Show summary** opens what the older
+messages were folded into. A failed compaction shows in red and leaves the
+history as it was.
+
+The **Context** panel shows when the conversation was last compacted, and
+whether the next summary is being prepared or is ready.
+
 Other settings:
 
 - `anthropic_prompt_cache_ttl: 1h` asks Anthropic to keep the cache for an hour

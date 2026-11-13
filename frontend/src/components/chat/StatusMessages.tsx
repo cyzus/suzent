@@ -2,7 +2,8 @@ import React from 'react';
 import type { Message } from '../../types/api';
 import { useI18n } from '../../i18n';
 import { MarkdownRenderer } from './MarkdownRenderer';
-import { CompactionCube, CompactionSweep } from './CompactionCube';
+import { CompactionDivider } from './CompactionDivider';
+import { compactionNoticeDetails } from '../../lib/compactionNotices';
 import { DisclosureChevron } from '../DisclosureChevron';
 import './CoreConnectionIndicator.css';
 
@@ -161,37 +162,18 @@ export const SystemTriggeredMessage: React.FC<{
   );
 };
 
-// A pass that finishes sooner (a summary prepared in the background) would
-// only flash the animation, so it starts after this long.
-const COMPACTION_ANIMATION_DELAY_MS = 500;
-
-function useDelayedFlag(value: boolean, delayMs: number): boolean {
-  const [delayed, setDelayed] = React.useState(false);
-  React.useEffect(() => {
-    if (!value) {
-      setDelayed(false);
-      return;
-    }
-    const timer = window.setTimeout(() => setDelayed(true), delayMs);
-    return () => window.clearTimeout(timer);
-  }, [value, delayMs]);
-  return value && delayed;
-}
-
 export const NoticeMessage: React.FC<{ message: Message; resolved?: boolean }> = ({
   message,
   resolved = false,
 }) => {
   const { t, locale } = useI18n();
   const content = message.content?.trim() ?? '';
-
-  // In-progress compaction notices end with "running..." (see
-  // formatCompactLifecycleNotice / compactStageLabel). Show a live indicator so
-  // the row reads as active work, not a completed one-shot notice.
-  const isRunning = /running\.\.\.$/i.test(content) || /\bcompacting\b/i.test(content);
-  const animate = useDelayedFlag(isRunning, COMPACTION_ANIMATION_DELAY_MS);
   if (!content) {
     return null;
+  }
+  const compaction = compactionNoticeDetails(message);
+  if (compaction) {
+    return <CompactionDivider message={message} details={compaction} resolved={resolved} />;
   }
 
   return (
@@ -199,28 +181,23 @@ export const NoticeMessage: React.FC<{ message: Message; resolved?: boolean }> =
       <div className="border-2 border-brutal-black bg-white dark:bg-zinc-800 shadow-[2px_2px_0_0_#000] dark:shadow-[2px_2px_0_0_rgba(255,255,255,0.18)]">
         <div className="flex items-stretch">
           <div
-            className={`w-1.5 self-stretch bg-brutal-black dark:bg-neutral-500 ${animate ? 'animate-pulse' : ''}`}
+            className="w-1.5 self-stretch bg-brutal-black dark:bg-neutral-500"
             aria-hidden="true"
           />
-          <div className="min-w-0 flex-1 flex items-center gap-3 px-3 py-2">
-            {animate && <CompactionCube size={34} className="self-center" />}
-            <div className="min-w-0">
-              <div className="text-[10px] font-bold uppercase tracking-wider text-neutral-500 dark:text-neutral-400">
-                {resolved ? t('chatMessage.compactionResolved') : t('chatMessage.notice')}
-                {message.timestamp && !Number.isNaN(Date.parse(message.timestamp)) && (
-                  <time dateTime={message.timestamp} className="ml-2 normal-case">
-                    {new Date(message.timestamp).toLocaleString(locale)}
-                  </time>
-                )}
-              </div>
-              <div className="text-sm leading-snug text-brutal-black dark:text-neutral-100">
-                <MarkdownRenderer content={content} />
-              </div>
+          <div className="min-w-0 flex-1 px-3 py-2">
+            <div className="text-[10px] font-bold uppercase tracking-wider text-neutral-500 dark:text-neutral-400">
+              {t('chatMessage.notice')}
+              {message.timestamp && !Number.isNaN(Date.parse(message.timestamp)) && (
+                <time dateTime={message.timestamp} className="ml-2 normal-case">
+                  {new Date(message.timestamp).toLocaleString(locale)}
+                </time>
+              )}
+            </div>
+            <div className="text-sm leading-snug text-brutal-black dark:text-neutral-100">
+              <MarkdownRenderer content={content} />
             </div>
           </div>
         </div>
-        {/* Compaction sweep footer — the whole box reads as actively compacting. */}
-        {animate && <CompactionSweep className="text-brutal-black dark:text-neutral-400" />}
       </div>
     </div>
   );

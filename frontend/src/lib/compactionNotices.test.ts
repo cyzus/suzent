@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import type { Message } from '../types/api';
-import { resolvedCompactionFailures } from './compactionNotices';
+import {
+  compactionNoticeDetails,
+  latestCompaction,
+  resolvedCompactionFailures,
+} from './compactionNotices';
 
 const notice = (content: string): Message => ({ role: 'notice', content });
 
@@ -34,5 +38,42 @@ describe('historical compaction failures', () => {
       ]),
     ]).toEqual([0]);
     expect(resolvedCompactionFailures([notice('Context compaction failed: error')]).size).toBe(0);
+  });
+});
+
+describe('latest compaction', () => {
+  it('prefers stored details and skips running and skipped passes', () => {
+    const messages: Message[] = [
+      notice('Auto context compaction: 150.0k -> 20.0k tokens'),
+      { role: 'assistant', content: 'Done' },
+      {
+        role: 'notice',
+        content: 'Auto compaction 90.0k -> 15.0k',
+        timestamp: '2026-11-13T00:00:00Z',
+        metadata: {
+          kind: 'context_compaction',
+          stage: 'complete',
+          tokens_before: 90_000,
+          tokens_after: 15_000,
+          reason: 'prepared',
+        },
+      },
+      notice('Auto compaction running...'),
+      notice('Compaction skipped: nothing to compact'),
+    ];
+
+    const last = latestCompaction(messages);
+    expect(last?.timestamp).toBe('2026-11-13T00:00:00Z');
+    expect(last?.details).toMatchObject({
+      stage: 'complete',
+      tokensBefore: 90_000,
+      tokensAfter: 15_000,
+      reason: 'prepared',
+    });
+  });
+
+  it('is undefined for ordinary notices', () => {
+    expect(compactionNoticeDetails(notice('Images were dropped'))).toBeUndefined();
+    expect(latestCompaction([notice('Images were dropped')])).toBeUndefined();
   });
 });

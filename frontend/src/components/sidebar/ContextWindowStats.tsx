@@ -1,9 +1,12 @@
-import { useEffect } from 'react';
+import { useEffect, useMemo } from 'react';
 import { useChatStore } from '../../hooks/useChatStore';
 import { useCompact, type CompactionStage } from '../../hooks/useCompact';
 import { useContextUsageStore } from '../../hooks/useContextUsageStore';
 import { useContextUsageStats } from '../../hooks/useContextUsageStats';
 import { useI18n } from '../../i18n';
+import type { Message } from '../../types/api';
+import { formatRelativeTime } from '../../lib/chatUtils';
+import { latestCompaction } from '../../lib/compactionNotices';
 import { formatPercent, formatTokens, usageBarColor } from '../../lib/contextFormat';
 
 const RUNNING_STAGES: CompactionStage[] = ['loading', 'analyzing', 'summarizing', 'saving'];
@@ -121,12 +124,62 @@ function StatRow({
   );
 }
 
+/** The last compaction and the summary waiting for the next one, at rest. */
+export function CompactionHistory({
+  chatId,
+  messages,
+}: {
+  chatId: string;
+  messages: Message[];
+}): JSX.Element | null {
+  const { t, locale } = useI18n();
+  const precompaction = useContextUsageStore((state) => state.precompactionByChatId[chatId]);
+  const last = useMemo(() => latestCompaction(messages), [messages]);
+
+  const lines: JSX.Element[] = [];
+  if (last) {
+    const when = formatRelativeTime(last.timestamp, locale);
+    const failed = last.details.stage === 'error';
+    const { tokensBefore, tokensAfter } = last.details;
+    lines.push(
+      <div key="last" className={failed ? 'text-brutal-red' : undefined}>
+        {t(failed ? 'contextPanel.lastCompactionFailed' : 'contextPanel.lastCompaction', {
+          time: when,
+        }).trim()}
+        {!failed && tokensBefore != null && tokensAfter != null && (
+          <span className="font-mono tabular-nums">
+            {' · '}
+            {formatTokens(tokensBefore)} → {formatTokens(tokensAfter)}
+          </span>
+        )}
+      </div>
+    );
+  }
+  if (precompaction?.stage === 'start') {
+    lines.push(
+      <div key="prep" className="animate-pulse">
+        {t('contextPanel.precompactionRunning')}
+      </div>
+    );
+  } else if (precompaction?.stage === 'ready') {
+    lines.push(
+      <div key="prep">
+        {t('contextPanel.precompactionReady', { count: String(precompaction.coveredMessages) })}
+      </div>
+    );
+  }
+  if (!lines.length) return null;
+  return (
+    <div className="space-y-0.5 text-[11px] text-neutral-500 dark:text-neutral-400">{lines}</div>
+  );
+}
+
 /** Measured token counts and compaction, shown above the estimated breakdown. */
 export function ContextWindowStats({ chatId }: { chatId: string }): JSX.Element | null {
   const { t } = useI18n();
   const { usage, measured, measuredPercent, limit } = useContextUsageStats(chatId);
   const { compaction, setCompaction } = useContextUsageStore();
-  const { isStreaming } = useChatStore();
+  const { isStreaming, messages } = useChatStore();
   const { compact, progress } = useCompact();
 
   // Mirror a pass started here into the store, where agent-started passes
@@ -179,14 +232,14 @@ export function ContextWindowStats({ chatId }: { chatId: string }): JSX.Element 
           {compacting ? t('contextPanel.compacting') : t('contextPanel.compact')}
         </button>
       </div>
-      {compaction && (
+      {compacting || failed ? (
         <div
-          className={`overflow-hidden rounded border text-[11px] ${failed ? 'border-brutal-red text-brutal-red' : 'border-neutral-200 text-neutral-600 dark:border-zinc-700 dark:text-neutral-300'}`}
+          className={`text-[11px] ${failed ? 'text-brutal-red' : 'animate-pulse text-neutral-600 dark:text-neutral-300'}`}
         >
-          <div className="flex items-center gap-1.5 px-2 py-1">
-            <span className="min-w-0 flex-1">{compaction.label}</span>
-          </div>
+          {compaction?.label}
         </div>
+      ) : (
+        <CompactionHistory chatId={chatId} messages={messages} />
       )}
       <div className="font-mono text-[11px]">
         <StatRow label={t('contextPanel.input')} value={inputTokens} />
