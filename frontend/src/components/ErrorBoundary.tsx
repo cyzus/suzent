@@ -49,7 +49,7 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
                   {this.state.error?.message || t('errorBoundary.unexpected')}
                 </div>
                 <button
-                  className="px-4 py-2 bg-brutal-red text-white border-2 border-brutal-black font-bold uppercase hover:bg-red-600 shadow-[2px_2px_0_0_#000] brutal-btn"
+                  className="px-4 py-2 bg-brutal-red text-white border-2 border-brutal-black font-bold uppercase hover:bg-red-600 shadow-brutal-sm brutal-btn"
                   onClick={() => this.setState({ hasError: false, error: undefined })}
                 >
                   {t('errorBoundary.reboot')}

@@ -267,7 +267,7 @@ export const NoticeMessage: React.FC<{ message: Message; resolved?: boolean }> =
 
   return (
     <div className="w-full max-w-3xl pl-2 md:pl-6">
-      <div className="border-2 border-brutal-black bg-white dark:bg-zinc-800 shadow-[2px_2px_0_0_#000] dark:shadow-[2px_2px_0_0_rgba(255,255,255,0.18)]">
+      <div className="border-2 border-brutal-black bg-white dark:bg-zinc-800 shadow-brutal-sm">
         <div className="flex items-stretch">
           <div
             className="w-1.5 self-stretch bg-brutal-black dark:bg-neutral-500"

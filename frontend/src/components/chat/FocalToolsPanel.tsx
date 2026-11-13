@@ -123,7 +123,7 @@ export function FocalToolsPanelView({
             {panel.wakeups.map((wakeup) => (
               <li
                 key={wakeup.id}
-                className="flex items-start gap-2 border-2 border-brutal-black bg-white dark:bg-zinc-800 px-2.5 py-2 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]"
+                className="flex items-start gap-2 border-2 border-brutal-black bg-white dark:bg-zinc-800 px-2.5 py-2 shadow-brutal-sm"
               >
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-1.5 min-w-0">

@@ -41,7 +41,7 @@ export const AcpPermissionPrompt: React.FC<Props> = ({ request, stale }) => {
   const title = request.toolCall?.title || t('acp.permission.untitled');
 
   return (
-    <div className="my-2 border-2 border-brutal-black dark:border-white bg-white dark:bg-zinc-900 shadow-[3px_3px_0px_#000] dark:shadow-[3px_3px_0px_#fff]">
+    <div className="my-2 border-2 border-brutal-black dark:border-white bg-white dark:bg-zinc-900 shadow-brutal-sm">
       <div className="bg-brutal-black dark:bg-white text-white dark:text-brutal-black px-2 py-1 text-[10px] font-mono font-bold uppercase tracking-wider">
         {t('acp.permission.header')}
       </div>

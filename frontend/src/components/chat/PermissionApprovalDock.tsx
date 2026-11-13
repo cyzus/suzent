@@ -274,7 +274,7 @@ const ApprovalCard: React.FC<{
   };
 
   return (
-    <section className="mx-auto w-full max-w-5xl animate-brutal-drop overflow-hidden rounded-sm border-2 border-brutal-black bg-white font-mono text-brutal-black shadow-[3px_3px_0_0_#000] dark:border-neutral-500 dark:bg-zinc-900 dark:text-white dark:shadow-[3px_3px_0_0_rgba(255,255,255,0.14)]">
+    <section className="mx-auto w-full max-w-5xl animate-brutal-drop overflow-hidden rounded-sm border-2 border-brutal-black bg-white font-mono text-brutal-black shadow-brutal-overlay dark:border-neutral-500 dark:bg-zinc-900 dark:text-white">
       <div className="flex items-start gap-2.5 px-4 pt-3">
         <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-sm bg-brutal-yellow text-brutal-black">
           <ShieldCheckIcon className="h-4 w-4" aria-hidden="true" />

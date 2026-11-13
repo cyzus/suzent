@@ -32,7 +32,7 @@ export function BrutalSegmentedTabs<T extends string>({
   value,
   onChange,
   className = '',
-  containerClassName = 'border-3 border-brutal-black bg-neutral-100 dark:bg-zinc-800 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]',
+  containerClassName = 'border-3 border-brutal-black bg-neutral-100 dark:bg-zinc-800 shadow-brutal-sm',
   sliderClassName = 'bg-brutal-black dark:bg-brutal-yellow',
   activeTextClassName = 'text-white dark:text-brutal-black',
   inactiveTextClassName = 'text-brutal-black dark:text-white hover:bg-black/5 dark:hover:bg-white/5',

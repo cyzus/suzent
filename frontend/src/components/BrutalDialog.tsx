@@ -102,7 +102,7 @@ export const BrutalDialog: React.FC<BrutalDialogProps> = ({
         role="dialog"
         aria-modal="true"
         aria-labelledby={title ? 'brutal-dialog-title' : undefined}
-        className="relative w-full max-w-sm bg-white dark:bg-zinc-900 border-2 border-brutal-black dark:border-zinc-500 shadow-[5px_5px_0_0_#000] dark:shadow-[5px_5px_0_0_rgba(255,255,255,0.15)]"
+        className="relative w-full max-w-sm bg-white dark:bg-zinc-900 border-2 border-brutal-black dark:border-zinc-500 shadow-brutal"
       >
         {/* Header */}
         {(title || !hideClose) && (

@@ -210,7 +210,7 @@ export function CapabilityToolPicker({
                 return (
                   <div
                     key={tool.id}
-                    className={`flex w-full border-2 text-left shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all ${isLocked ? 'border-brutal-black bg-neutral-300 text-brutal-black dark:bg-zinc-700 dark:text-white' : isDenied ? 'border-brutal-black bg-neutral-100 text-neutral-500 dark:bg-zinc-900 dark:text-neutral-400' : active ? 'border-brutal-black bg-brutal-green text-brutal-black' : aiActive ? 'border-brutal-black bg-brutal-yellow text-brutal-black' : 'border-brutal-black bg-white text-brutal-black hover:bg-neutral-100 dark:bg-zinc-800 dark:text-white dark:hover:bg-zinc-700'}`}
+                    className={`flex w-full border-2 text-left shadow-brutal-sm transition-all ${isLocked ? 'border-brutal-black bg-neutral-300 text-brutal-black dark:bg-zinc-700 dark:text-white' : isDenied ? 'border-brutal-black bg-neutral-100 text-neutral-500 dark:bg-zinc-900 dark:text-neutral-400' : active ? 'border-brutal-black bg-brutal-green text-brutal-black' : aiActive ? 'border-brutal-black bg-brutal-yellow text-brutal-black' : 'border-brutal-black bg-white text-brutal-black hover:bg-neutral-100 dark:bg-zinc-800 dark:text-white dark:hover:bg-zinc-700'}`}
                   >
                     <button
                       type="button"

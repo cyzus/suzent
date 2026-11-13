@@ -540,7 +540,7 @@ function ActiveChatTitle() {
 
   return (
     <div
-      className="flex h-5 max-w-full min-w-0 items-center gap-2 border border-neutral-400/80 bg-white/70 px-2.5 text-neutral-700 shadow-[2px_2px_0_rgba(0,0,0,0.12)] dark:border-neutral-600 dark:bg-zinc-900/80 dark:text-neutral-200 dark:shadow-[2px_2px_0_rgba(255,255,255,0.08)]"
+      className="flex h-5 max-w-full min-w-0 items-center gap-2 border border-neutral-400/80 bg-white/70 px-2.5 text-neutral-700 shadow-brutal-sm shadow-black/[0.12] dark:border-neutral-600 dark:bg-zinc-900/80 dark:text-neutral-200 dark:shadow-white/[0.08]"
       title={activeTitle}
     >
       <span

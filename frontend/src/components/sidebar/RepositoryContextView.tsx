@@ -107,7 +107,7 @@ function ContextFileCard({
 
   return (
     <>
-      <article className="border-2 border-brutal-black bg-white shadow-[3px_3px_0_0_#000] dark:bg-zinc-800">
+      <article className="border-2 border-brutal-black bg-white shadow-brutal-sm dark:bg-zinc-800">
         <div className="flex items-start gap-3 px-3 py-2">
           <button
             type="button"

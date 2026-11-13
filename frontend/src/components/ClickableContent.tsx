@@ -110,7 +110,7 @@ export const ClickableContent: React.FC<ClickableContentProps> = ({
                 e.stopPropagation();
                 onFileClick?.(segment.path, fileName, e.shiftKey);
               }}
-              className={`inline-flex max-w-full items-center gap-1.5 border-2 border-brutal-black px-2 py-1 my-0.5 font-mono text-xs font-bold shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] brutal-btn cursor-pointer align-middle transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brutal-blue focus-visible:ring-offset-2 ${
+              className={`inline-flex max-w-full items-center gap-1.5 border-2 border-brutal-black px-2 py-1 my-0.5 font-mono text-xs font-bold shadow-brutal-sm brutal-btn cursor-pointer align-middle transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brutal-blue focus-visible:ring-offset-2 ${
                 fileChipTone === 'neutral'
                   ? 'bg-white text-brutal-black hover:bg-neutral-100 dark:bg-zinc-900 dark:text-white dark:hover:bg-zinc-800'
                   : 'bg-brutal-yellow text-brutal-black'
