@@ -133,6 +133,7 @@
     ".releases/changes/macos-native-traffic-lights.json",
     ".releases/changes/macos-universal-installer.json",
     ".releases/changes/mcp-oauth-public-client.json",
+    ".releases/changes/mcp-services-start-off.json",
     ".releases/changes/mcp-tool-approvals.json",
     ".releases/changes/media-overlay-preview.json",
     ".releases/changes/memory-batch-extraction.json",
