@@ -2638,6 +2638,11 @@ and which permissions to give. With Stripe you can connect a sandbox instead
 of your live account while you try it out. Stripe still asks you to confirm
 some actions, such as refunds, in its dashboard.
 
+A newly connected service starts out off, so its tools don't reach the agent
+yet. To turn it on, open the sidebar in a chat, choose the **Tools** tab, and
+switch it on under **Services**. It then stays on for every chat until you
+switch it off again.
+
 You stay signed in after a restart. Your sign-in and tokens are kept in your
 system keychain. The agent never sees them, and they are not passed to
 commands the agent runs.
@@ -3575,7 +3580,8 @@ address (URL) or a program on your computer that Suzent starts (stdio).
 
 4. Click **Add Server**. Suzent connects right away and shows **Reachable** with
    the number of tools it found, or **Unreachable** with the reason. The server
-   is saved either way, and it starts out enabled.
+   is saved either way. It starts out off, so its tools reach the agent only
+   after you turn it on (see below).
 
 ## Testing and editing
 
@@ -9674,8 +9680,12 @@ Both prefixes are in `secrets.PRIVATE_KEY_PREFIXES`, so
 the agent runs would inherit them.
 
 `agent_manager._build_mcp_servers()` adds `integrations.connected_toolsets()`,
-which has one toolset for each connected integration of each loaded plugin.
-Each toolset is wrapped twice:
+which has one toolset for each connected, switched-on integration of each
+loaded plugin. The switch lives in `plugins.json` as
+`plugins[id].services[integration_id]`: `connect` writes `false` when there is
+no entry yet, and an integration with no entry (connected before the switch
+existed) counts as on. A chat's `mcp_enabled["plugin.integration"]` overrides
+it. Each toolset is wrapped twice:
 
 - `_as_mcp_toolset()` counts it as MCP for context usage and sends every call
   the server does not mark `readOnlyHint` through the permission engine,
@@ -9686,9 +9696,11 @@ Each toolset is wrapped twice:
 
 Routes: `POST /plugins/{name}/integrations/{id}/connect` starts a sign-in and
 returns `authorizeUrl`, or saves `{"token": ...}`.
-`POST /plugins/{name}/integrations/{id}/disconnect` signs out. Both rebuild
-the cached agent. `GET /plugins` lists each plugin's `integrations` with
-`connected`, `error`, and a `signIn` state while one is in progress.
+`POST /plugins/{name}/integrations/{id}/disconnect` signs out.
+`POST /plugins/{name}/integrations/{id}/enabled` with `{"enabled": bool}` sets
+the switch. All three rebuild the cached agent. `GET /plugins` lists each
+plugin's `integrations` with `connected`, `enabled`, `error`, and a `signIn`
+state while one is in progress.
 
 Signing in from a phone is not supported yet: the OAuth redirect must reach
 the loopback callback on the Suzent machine.
