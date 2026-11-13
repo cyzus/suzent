@@ -39,7 +39,7 @@ class PluginWatcherRunner:
         self._watchers = watchers
         self._clock = clock
         self._next_run: dict[tuple[str, str], float] = {}
-        self._running: set[tuple[str, str]] = set()
+        self._checks: dict[tuple[str, str], asyncio.Task] = {}
         self._task: Optional[asyncio.Task] = None
 
     async def start(self) -> None:
@@ -48,6 +48,7 @@ class PluginWatcherRunner:
             logger.info("Plugin watcher runner started")
 
     async def stop(self) -> None:
+        """Stop scheduling, and cancel and wait for every check still running."""
         if self._task is not None:
             self._task.cancel()
             try:
@@ -55,6 +56,11 @@ class PluginWatcherRunner:
             except asyncio.CancelledError:
                 pass
             self._task = None
+        checks = list(self._checks.values())
+        for check in checks:
+            check.cancel()
+        await asyncio.gather(*checks, return_exceptions=True)
+        self._checks.clear()
 
     async def _run(self) -> None:
         while True:
@@ -65,26 +71,35 @@ class PluginWatcherRunner:
             await asyncio.sleep(self._tick)
 
     def run_due(self) -> list[asyncio.Task]:
-        """Start every watcher that is due and not already running."""
+        """Start every watcher that is due and not already running.
+
+        A running check whose watcher is gone (its plugin was turned off) is
+        cancelled.
+        """
         now = self._clock()
+        current = {(plugin_id, w.name): w for plugin_id, w in self._watchers()}
+        for key, check in list(self._checks.items()):
+            if key not in current:
+                check.cancel()
         started = []
-        for plugin_id, watcher in self._watchers():
-            key = (plugin_id, watcher.name)
-            if key in self._running or now < self._next_run.get(key, now):
+        for key, watcher in current.items():
+            if key in self._checks or now < self._next_run.get(key, now):
                 continue
             self._next_run[key] = now + watcher.every_seconds
-            self._running.add(key)
-            started.append(
-                asyncio.create_task(
-                    self._check(key, watcher), name=f"watch-{plugin_id}-{watcher.name}"
-                )
+            check = asyncio.create_task(
+                self._check(key, watcher), name=f"watch-{key[0]}-{key[1]}"
             )
+            self._checks[key] = check
+            started.append(check)
         return started
 
     async def _check(self, key: tuple[str, str], watcher: PluginWatcher) -> None:
         try:
             await asyncio.wait_for(watcher.check(), timeout=watcher.every_seconds)
+        except asyncio.CancelledError:
+            logger.info("Plugin watcher {}/{} was stopped", key[0], key[1])
         except Exception as exc:
             logger.warning("Plugin watcher {}/{} failed: {}", key[0], key[1], exc)
         finally:
-            self._running.discard(key)
+            if self._checks.get(key) is asyncio.current_task():
+                del self._checks[key]

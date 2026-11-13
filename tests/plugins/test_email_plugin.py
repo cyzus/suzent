@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib
+import uuid
 import importlib.util
 import os
 import shutil
@@ -375,7 +376,9 @@ class WatchContext:
         from suzent.plugins.context import PluginState
         from suzent.logger import get_logger
 
-        self.state = PluginState("email")
+        # The test data dir is shared across the run, so each context
+        # keeps its own state.
+        self.state = PluginState(f"email-{uuid.uuid4().hex}")
         self.logger = get_logger("test.email.watch")
         self.events: list[dict] = []
 
@@ -433,3 +436,97 @@ async def test_watch_skips_accounts_without_watch_inbox(fake):
 
     assert ctx.events == []
     assert not any(args[:2] == ["envelope", "search"] for args, _ in fake.calls)
+
+
+async def test_watch_pages_back_to_mail_already_seen(fake, monkeypatch):
+    account = _add("qq")
+    accounts.update_account(account.id, watch_inbox=True)
+    ctx = WatchContext()
+    inbox = [_envelope("1", "Old")]
+    pages: list[str] = []
+
+    async def run(acct, password, args, **kwargs):
+        if args[:2] == ["envelope", "search"]:
+            size = int(
+                next(a for a in args if a.startswith("--page-size=")).split("=")[1]
+            )
+            page = int(next(a for a in args if a.startswith("--page=")).split("=")[1])
+            pages.append(str(page))
+            return {"envelopes": inbox[(page - 1) * size : page * size]}
+        return await FakeHimalaya.__call__(fake, acct, password, args, **kwargs)
+
+    monkeypatch.setattr(himalaya, "run", run)
+    monkeypatch.setattr(watch, "SEARCH_PAGE_SIZE", 2)
+    await watch.check_inboxes(ctx)
+
+    # A burst bigger than one page, newest first.
+    inbox[:0] = [_envelope(str(n), f"Mail {n}") for n in range(6, 1, -1)]
+    pages.clear()
+    await watch.check_inboxes(ctx)
+
+    assert pages == ["1", "2", "3"]
+    assert [e["payload"]["id"] for e in ctx.events] == ["2", "3", "4", "5", "6"]
+
+
+async def test_watch_leaves_a_capped_burst_for_the_next_check(fake, monkeypatch):
+    account = _add("qq")
+    accounts.update_account(account.id, watch_inbox=True)
+    ctx = WatchContext()
+    inbox = [_envelope("1", "Old")]
+
+    async def run(acct, password, args, **kwargs):
+        if args[:2] == ["envelope", "search"]:
+            return {"envelopes": list(inbox)}
+        return await FakeHimalaya.__call__(fake, acct, password, args, **kwargs)
+
+    monkeypatch.setattr(himalaya, "run", run)
+    monkeypatch.setattr(watch, "MAX_REPORTED_PER_CHECK", 2)
+    await watch.check_inboxes(ctx)
+    ctx.state.set(f"checked:{account.id}", "2026-01-01")
+    inbox[:0] = [_envelope(str(n), f"Mail {n}") for n in range(4, 1, -1)]
+
+    await watch.check_inboxes(ctx)
+    assert [e["payload"]["id"] for e in ctx.events] == ["2", "3"]
+    # Capped, so the search window doesn't move on yet.
+    assert ctx.state.get(f"checked:{account.id}") == "2026-01-01"
+
+    await watch.check_inboxes(ctx)
+    assert [e["payload"]["id"] for e in ctx.events] == ["2", "3", "4"]
+    assert ctx.state.get(f"checked:{account.id}") != "2026-01-01"
+
+
+async def test_turning_watch_back_on_starts_a_fresh_baseline(fake, monkeypatch):
+    account = _add("qq")
+    accounts.update_account(account.id, watch_inbox=True)
+    ctx = WatchContext()
+    inbox = [_envelope("1", "Old")]
+
+    async def run(acct, password, args, **kwargs):
+        if args[:2] == ["envelope", "search"]:
+            return {"envelopes": list(inbox)}
+        return await FakeHimalaya.__call__(fake, acct, password, args, **kwargs)
+
+    monkeypatch.setattr(himalaya, "run", run)
+    await watch.check_inboxes(ctx)
+
+    accounts.update_account(account.id, watch_inbox=False)
+    await watch.check_inboxes(ctx)
+    inbox.insert(0, _envelope("2", "Arrived while off"))
+    accounts.update_account(account.id, watch_inbox=True)
+    await watch.check_inboxes(ctx)
+    assert ctx.events == []
+
+    inbox.insert(0, _envelope("3", "New"))
+    await watch.check_inboxes(ctx)
+    assert [e["payload"]["id"] for e in ctx.events] == ["3"]
+
+
+def test_watch_searches_back_to_the_last_check_within_a_week():
+    from datetime import date, timedelta
+
+    today = date.today()
+    assert watch._since(None) == today - timedelta(days=1)
+    assert watch._since((today - timedelta(days=3)).isoformat()) == today - timedelta(
+        days=4
+    )
+    assert watch._since("2000-01-01") == today - timedelta(days=watch.MAX_LOOKBACK_DAYS)

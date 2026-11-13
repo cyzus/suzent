@@ -111,6 +111,14 @@ class PluginState:
     def set(self, key: str, value: Any) -> None:
         data = self._load()
         data[key] = value
+        self._save(data)
+
+    def delete(self, key: str) -> None:
+        data = self._load()
+        if data.pop(key, None) is not None:
+            self._save(data)
+
+    def _save(self, data: dict[str, Any]) -> None:
         path = self._path()
         path.parent.mkdir(parents=True, exist_ok=True)
         tmp = path.with_suffix(".tmp")
@@ -146,6 +154,9 @@ class PluginContext:
         self.watchers: list[PluginWatcher] = []
         self.secrets = PluginSecrets(manifest.id)
         self.state = PluginState(manifest.id)
+        # Cleared when the plugin is turned off, so a check still finishing
+        # can't route anything afterwards.
+        self.active = True
 
     @property
     def id(self) -> str:
@@ -260,8 +271,12 @@ class PluginContext:
 
         Events with the same ``rule_key`` (default: ``event_type``) share a
         rule. ``payload`` is shown to the agent as outside data, never as
-        instructions. Returns the Mailbox item.
+        instructions. Returns the Mailbox item, or ``None`` once the plugin
+        has been turned off.
         """
+        if not self.active:
+            self.logger.info("Plugin is off; dropped a {} event", event_type)
+            return None
         from suzent.core.mailbox import DEST_USER, InboundEnvelope, route_inbound
         from suzent.core.webhooks import format_webhook_payload
 

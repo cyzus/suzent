@@ -73,3 +73,45 @@ async def test_runner_runs_due_watchers_once_at_a_time():
     third = runner.run_due()
     await asyncio.gather(*third)
     assert calls.count("slow") == 2
+
+
+@pytest.mark.asyncio
+async def test_runner_cancels_checks_of_plugins_turned_off_and_on_stop():
+    started: list[str] = []
+    cancelled: list[str] = []
+
+    def hanging(name: str):
+        async def check() -> None:
+            started.append(name)
+            try:
+                await asyncio.Event().wait()
+            except asyncio.CancelledError:
+                cancelled.append(name)
+                raise
+
+        return check
+
+    watchers = [
+        ("acme", PluginWatcher("inbox", hanging("acme"), 120)),
+        ("other", PluginWatcher("feed", hanging("other"), 120)),
+    ]
+    runner = PluginWatcherRunner(watchers=lambda: list(watchers), clock=lambda: 0.0)
+    runner.run_due()
+    await asyncio.sleep(0)
+    assert sorted(started) == ["acme", "other"]
+
+    watchers.pop(0)
+    runner.run_due()
+    await asyncio.sleep(0)
+    assert cancelled == ["acme"]
+
+    await runner.stop()
+    assert sorted(cancelled) == ["acme", "other"]
+
+
+@pytest.mark.asyncio
+async def test_a_turned_off_plugin_cannot_emit_events(tmp_path):
+    ctx = _ctx(tmp_path)
+    ctx.active = False
+
+    assert await ctx.emit_event(event_type="message", summary="late") is None

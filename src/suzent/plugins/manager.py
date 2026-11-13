@@ -63,6 +63,7 @@ class PluginRecord:
     routes: list[PluginRoute] = field(default_factory=list)
     websockets: list[PluginWebSocket] = field(default_factory=list)
     watchers: list[PluginWatcher] = field(default_factory=list)
+    context: PluginContext | None = field(default=None, repr=False)
     entry_point: EntryPoint | None = field(default=None, repr=False)
 
     @property
@@ -438,6 +439,9 @@ class PluginManager:
         record.routes = []
         record.websockets = []
         record.watchers = []
+        if record.context is not None:
+            record.context.active = False
+            record.context = None
         record.enabled, record.status, record.error = False, "disabled", None
         target = self.deps_dir(record)
         if target is not None and str(target) in sys.path:
@@ -489,6 +493,7 @@ class PluginManager:
         record.routes = list(ctx.routes)
         record.websockets = list(ctx.websockets)
         record.watchers = list(ctx.watchers)
+        record.context = ctx
         for command in ctx.commands:
             if register_plugin_command(
                 command.handler, command.aliases, command.options
