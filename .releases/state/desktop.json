@@ -47,6 +47,7 @@
     ".releases/changes/chat-scroll-jumps.json",
     ".releases/changes/chat-status-board.json",
     ".releases/changes/chat-status.json",
+    ".releases/changes/chat-trigger-rows.json",
     ".releases/changes/chatgpt-parallel-tool-args.json",
     ".releases/changes/china-mirror-install.json",
     ".releases/changes/ci-context-sources.json",

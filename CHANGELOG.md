@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [v0.26.1] - 2026-11-13
 
 ### Release notes
+- Messages from other chats, scheduled tasks and goal mode now show as one quiet line in the chat; repeats with no reply merge, and a reply notes what it answers.
 - Fix mobile inline code wrapping and show previews for uploaded images.
 - Show Regent’s cross-conversation work queue instead of a per-chat plan in the mobile status panel.
 
