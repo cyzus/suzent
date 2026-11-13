@@ -85,6 +85,18 @@ public struct ScheduledTask: Decodable, Identifiable, Sendable {
 
 /// A conversation's plan and context headline, as the desktop sidebar overview shows them.
 public struct ChatOverview: Decodable, Sendable, Equatable {
+    public struct WorkChat: Decodable, Identifiable, Sendable, Equatable {
+        public let chatId: String
+        public let title: String
+        public let projectName: String?
+        public let state: String
+        public let waitingKind: String?
+        public let waitingReason: String?
+        public let summary: String?
+        public var id: String { chatId }
+    }
+    public let workQueue: [WorkChat]?
+
     public struct Goal: Decodable, Sendable, Equatable {
         public let objective: String
         public let status: String
@@ -139,13 +151,19 @@ public struct FileAttachment: Decodable, Sendable, Equatable {
     public let filename: String
     public let mimeType: String
 
-    public init(filename: String, mimeType: String) { self.filename = filename; self.mimeType = mimeType }
+    public let media: MediaItem?
 
-    enum CodingKeys: String, CodingKey { case filename; case mimeType = "mime_type" }
+    public init(filename: String, mimeType: String, media: MediaItem? = nil) {
+        self.filename = filename; self.mimeType = mimeType; self.media = media
+    }
+
+    enum CodingKeys: String, CodingKey { case filename, media; case mimeType = "mime_type" }
     public init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
         filename = (try? values.decode(String.self, forKey: .filename)) ?? ""
         mimeType = (try? values.decode(String.self, forKey: .mimeType)) ?? ""
+        let item = try? values.decode(MediaItem.self, forKey: .media)
+        media = item?.isValid == true && item?.kind == "image" ? item : nil
     }
 }
 

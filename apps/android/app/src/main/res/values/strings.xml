@@ -335,4 +335,12 @@
     <string name="media_save">Save to Photos</string>
     <string name="media_saved">Saved to Photos</string>
     <string name="media_save_failed">Couldn\'t save to Photos</string>
+    <string name="regent_work_queue">Work queue</string>
+    <string name="regent_queue_unavailable">Work queue is unavailable. Update the connected desktop to view it.</string>
+    <string name="regent_queue_empty">No conversations are waiting or running.</string>
+    <string name="regent_queue_waiting">Needs your attention · %1$d</string>
+    <string name="regent_queue_running">Running · %1$d</string>
+    <string name="regent_queue_question">Waiting for your answer</string>
+    <string name="regent_queue_approval">Waiting for approval</string>
+    <string name="regent_queue_input">Waiting for your input</string>
 </resources>

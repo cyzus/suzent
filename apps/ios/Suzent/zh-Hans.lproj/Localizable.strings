@@ -374,3 +374,12 @@
 "Couldn't save to Photos" = "保存到相册失败";
 "Close" = "关闭";
 "Opens full screen. Touch and hold to save or share." = "全屏打开。长按可保存或分享。";
+
+"Work queue" = "工作队列";
+"Work queue is unavailable. Update the connected desktop to view it." = "暂时无法获取工作队列，请更新连接的桌面端。";
+"No conversations are waiting or running." = "目前没有待处理或运行中的会话。";
+"Needs your attention · %lld" = "待你处理 · %lld";
+"Running · %lld" = "运行中 · %lld";
+"Waiting for your answer" = "等待你的回答";
+"Waiting for approval" = "等待审批";
+"Waiting for your input" = "等待你的处理";
