@@ -72,6 +72,9 @@ The Regent card in the sidebar shows, at a glance, how many chats are
 Projects and chats holding something that waits on you get a badge in the
 sidebar too.
 
+Regent can also look through your [Mailbox](../03-features/mailbox.md#ask-regent-about-it):
+ask it what came in, and it can send an event on to a project or to you.
+
 Regent sits at the very top of the sidebar, above everything else, like a
 pinned contact; **New chat** and **Search** sit just above your projects. Open Regent and its row grows into a profile with Regent's picture,
 while the rest of the sidebar fades back until you point at it. The header

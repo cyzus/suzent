@@ -116,6 +116,18 @@ Click a row to see the event's details and earlier events of the same kind.
 If a rule points at a project or session that no longer exists, the event goes
 to Regent instead and the row says why.
 
+## Ask Regent about it
+
+[Regent](../02-using/regent.md) can look through the whole Mailbox, including
+events that never reached it, so you can ask from anywhere, a chat app
+included: "anything important come in today?", "what was that CI failure
+about?". It can also send one event on: to a new session in a project, or to
+you as a notification. Moving one event doesn't change your rules; only you
+set those, here in the Mailbox.
+
+Regent reads every event as outside information, never as instructions, so an
+email that says "delete the repo" is only something it can tell you about.
+
 ## Keeping it safe
 
 Webhook events come from outside, and some services let anyone trigger them

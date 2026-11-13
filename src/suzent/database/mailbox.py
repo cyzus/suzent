@@ -5,9 +5,9 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from typing import List, Optional
 
-from sqlmodel import Session, col, delete, func, or_, select
+from sqlmodel import Session, and_, col, delete, func, or_, select
 
-from .models import MailboxItemModel, MailboxRuleModel
+from .models import AgentInboxMessageModel, MailboxItemModel, MailboxRuleModel
 
 
 # How long the Mailbox keeps events. Unread notifications and events still
@@ -81,11 +81,42 @@ class MailboxOperationsMixin:
         offset: int = 0,
         route_status: Optional[str] = None,
         source_kind: Optional[str] = None,
+        unread_only: bool = False,
     ) -> List[MailboxItemModel]:
+        """Items newest first.
+
+        A routed item whose agent delivery has since failed counts as an
+        ``error``, as the Mailbox shows it; ``unread_only`` keeps the
+        notifications the user hasn't seen.
+        """
         with self._session() as session:
             stmt = select(MailboxItemModel)
-            if route_status:
+            failed = select(AgentInboxMessageModel.message_id).where(
+                AgentInboxMessageModel.status == "failed"
+            )
+            delivery_failed = and_(
+                MailboxItemModel.route_status == "routed",
+                col(MailboxItemModel.inbox_message_id).in_(failed),
+            )
+            if route_status == "error":
+                stmt = stmt.where(
+                    or_(MailboxItemModel.route_status == "error", delivery_failed)
+                )
+            elif route_status == "routed":
+                stmt = stmt.where(
+                    MailboxItemModel.route_status == "routed",
+                    or_(
+                        col(MailboxItemModel.inbox_message_id).is_(None),
+                        col(MailboxItemModel.inbox_message_id).not_in(failed),
+                    ),
+                )
+            elif route_status:
                 stmt = stmt.where(MailboxItemModel.route_status == route_status)
+            if unread_only:
+                stmt = stmt.where(
+                    MailboxItemModel.route_status == "notified",
+                    col(MailboxItemModel.read_at).is_(None),
+                )
             if source_kind:
                 stmt = stmt.where(MailboxItemModel.source_kind == source_kind)
             stmt = stmt.order_by(MailboxItemModel.id.desc()).offset(offset).limit(limit)

@@ -224,6 +224,7 @@ def _all_tool_classes() -> tuple:
     from suzent.tools.schedule_tool import ScheduleTool
     from suzent.tools.focal import (
         FocalDispatchTool,
+        FocalMailboxTool,
         FocalNotesTool,
         FocalScheduleTool,
         FocalMessageTool,
@@ -292,6 +293,7 @@ def _all_tool_classes() -> tuple:
         FocalDispatchTool,
         FocalScheduleTool,
         FocalNotesTool,
+        FocalMailboxTool,
         FocalMessageTool,
         FocalReactionTool,
     )
