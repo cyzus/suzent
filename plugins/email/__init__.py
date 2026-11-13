@@ -2,7 +2,7 @@
 
 from suzent.plugins import PluginContext
 
-from . import accounts, himalaya, routes
+from . import accounts, himalaya, routes, watch
 from .tools import MailDraftTool, MailReadTool, MailSearchTool, MailSendTool
 
 
@@ -17,3 +17,8 @@ def register(ctx: PluginContext) -> None:
     ctx.register_route("accounts/update", routes.update_account, methods=("POST",))
     ctx.register_route("accounts/test", routes.test_account, methods=("POST",))
     ctx.register_route("accounts/remove", routes.remove_account, methods=("POST",))
+    ctx.register_watcher(
+        "inbox",
+        lambda: watch.check_inboxes(ctx),
+        every_seconds=watch.CHECK_EVERY_SECONDS,
+    )

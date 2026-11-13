@@ -531,6 +531,7 @@ export interface MailAccount {
   smtp_host: string;
   allow_send: boolean;
   append_sent: boolean;
+  watch_inbox: boolean;
   has_password: boolean;
 }
 
@@ -581,7 +582,9 @@ export async function addMailAccount(input: MailAccountInput): Promise<MailAccou
 
 export async function updateMailAccount(
   id: string,
-  changes: Partial<Pick<MailAccount, 'allow_send' | 'append_sent'>> & { password?: string }
+  changes: Partial<Pick<MailAccount, 'allow_send' | 'append_sent' | 'watch_inbox'>> & {
+    password?: string;
+  }
 ): Promise<MailAccount> {
   return (await postMail<{ account: MailAccount }>('accounts/update', { id, ...changes })).account;
 }

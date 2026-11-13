@@ -198,6 +198,27 @@ export function MailAccounts({
               />
               {t('settings.email.allowSend')}
             </label>
+            <label className="flex items-center gap-2 text-xs font-bold">
+              <BrutalOnOff
+                size="sm"
+                checked={account.watch_inbox}
+                disabled={busy === account.id}
+                onChange={() =>
+                  void run(account.id, async () =>
+                    replace(
+                      await updateMailAccount(account.id, { watch_inbox: !account.watch_inbox })
+                    )
+                  )
+                }
+                aria-label={t('settings.email.watchInbox')}
+              />
+              <span>
+                {t('settings.email.watchInbox')}
+                <span className="block text-[11px] font-normal text-neutral-500 dark:text-neutral-400">
+                  {t('settings.email.watchInboxHint')}
+                </span>
+              </span>
+            </label>
             {passwordFor === account.id && (
               <form
                 className="flex flex-col gap-2 sm:flex-row"
