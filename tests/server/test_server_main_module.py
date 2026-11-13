@@ -35,6 +35,9 @@ _LAUNCHERS = {
 @pytest.mark.parametrize("launcher", sorted(_LAUNCHERS))
 def test_running_server_is_the_imported_module(launcher, tmp_path, monkeypatch):
     monkeypatch.setenv("SUZENT_PORT", "0")
+    # Its own data dir: the server writes a port file there, which later
+    # tests in this session would otherwise read as the running server's port.
+    monkeypatch.setenv("SUZENT_DATA_DIR", str(tmp_path / "data"))
     result_file = tmp_path / "aliased.txt"
     subprocess.run(
         [sys.executable, "-c", _CAPTURE + _LAUNCHERS[launcher], str(result_file)],
