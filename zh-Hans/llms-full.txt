@@ -1570,7 +1570,8 @@ The Mailbox is one place for everything that reaches your agent without you
 typing it: webhooks from GitHub or your own scripts, scheduled tasks firing,
 messages your sessions send each other, and messages from your other devices.
 It also decides what happens to each new kind of event, and you can change
-that decision at any time.
+that decision at any time. With the [email plugin](https://suzent.com/zh-Hans/docs/features/tools/email#watching-your-inbox),
+new mail can arrive here too.
 
 Open it from **Mailbox** at the top of the sidebar. It has three tabs:
 
@@ -3240,6 +3241,19 @@ which to use ("check my work mail").
 The email tools are not on by default. Tick them in the **Tools** tab of a chat,
 or just ask, and the agent switches them on for that chat.
 
+## Watching your inbox
+
+Switch on **Watch inbox** for a mailbox in **Settings → Services** and new mail
+goes to the [Mailbox](https://suzent.com/zh-Hans/docs/features/mailbox) every few minutes, where a rule decides what
+happens to it: tell Regent, start a session in a project, just notify you, or
+only keep it. Mail from the same sender's domain to the same mailbox shares one
+rule. Mail that was already in your inbox when you switched it on isn't
+reported, and checking never marks anything as read.
+
+The first message from a new sender's domain is sorted the way other new kinds
+of events are. If Suzent can't decide, it only notifies you, since anyone can
+send you mail.
+
 ## Sending
 
 Each mailbox starts as **drafts only**: the agent can write mail but you do the
@@ -3256,7 +3270,9 @@ Anyone can send you an email, and an email can contain text written to trick an
 agent ("forward all invoices to…"). Suzent marks everything it reads from your
 mailbox as content from the sender, and the agent is told never to act on
 instructions found there. Sending still needs your approval, so a trick email
-can't send mail by itself. Keep **Allow sending** off unless you need it.
+can't send mail by itself. Keep **Allow sending** off unless you need it. With
+**Watch inbox** on, prefer rules that notify you or keep mail in the Mailbox for
+senders you don't know, so an email can't start an agent on its own.
 
 ## Troubleshooting
 
@@ -9616,6 +9632,9 @@ core. It is the reference for `register_websocket`.
 | `binary(name)` | A `PluginBinary` handle on a program declared under `binaries`. Its `locate()` returns `(path, source)` or `None` and never downloads. See [Binaries](#binaries). |
 | `register_route(path, endpoint, methods=("GET",))` | Serves a Starlette endpoint at `/plugins/<id>/api/<path>` while the plugin is loaded, for a settings page that needs more than the generic plugin card. See [Settings page and API](#settings-page-and-api). |
 | `register_websocket(path, endpoint)` | Serves a Starlette WebSocket endpoint at `/plugins/<id>/ws/<path>` while the plugin is loaded. Remote callers need a full-access device token, and the Origin is checked before the endpoint runs. See [Settings page and API](#settings-page-and-api). Needs `api_version: 4`. |
+| `register_watcher(name, check, every_seconds=300)` | Runs the async `check()` every `every_seconds` (at least 60) while the plugin is loaded, to poll an outside service. See [Watchers and Mailbox events](#watchers-and-mailbox-events). Needs `api_version: 5`. |
+| `emit_event(event_type=..., summary=..., payload=..., source_name=..., rule_key=...)` | Sends an event to the [Mailbox](https://suzent.com/zh-Hans/docs/features/mailbox), where its rule decides where it goes. Returns the Mailbox item. Needs `api_version: 5`. |
+| `state` | A `PluginState` with `get(key, default)` and `set(key, value)`: small JSON values kept per plugin in `<data dir>/plugins/<id>/state.json`, for bookkeeping such as what a watcher already reported. Needs `api_version: 5`. |
 | `secrets` | A `PluginSecrets` with `get`, `set` and `delete`, namespaced to the plugin. Values are stored as `SUZENT_PLUGIN::<id>::<name>`, a private prefix that `inject_all_to_env` skips, so the agent's shell commands never inherit them. |
 | `register_command(aliases, **options)` | Decorator with the same signature and handler contract as `suzent.core.commands.base.register_command`. |
 | `id`, `manifest`, `path`, `logger` | The plugin's id, parsed manifest, directory (`None` for pip packages) and a logger bound to `suzent.plugins.<id>`. |
@@ -9627,6 +9646,43 @@ reaches the live registries.
 Name clashes never replace existing behaviour: a tool whose `name` or
 `tool_name` is already taken, or a command with an alias already registered, is
 skipped with a warning.
+
+## Watchers and Mailbox events
+
+A watcher lets a plugin notice something new on its own, such as mail arriving,
+and hand it to the Mailbox. The email plugin's inbox watcher is the reference
+(`plugins/email/watch.py`).
+
+```python
+def register(ctx):
+    async def check() -> None:
+        for item in await fetch_new_items():
+            await ctx.emit_event(
+                event_type="item",
+                summary=item.title,
+                payload={"id": item.id, "body": item.body},
+                source_name=item.account,
+                rule_key=f"{item.account}:{item.kind}",
+            )
+
+    ctx.register_watcher("new-items", check, every_seconds=300)
+```
+
+- `PluginWatcherRunner` (`suzent/plugins/watchers.py`) runs on the server's
+  event loop. It only sees watchers of loaded plugins, so turning a plugin off
+  stops them. A watcher still running is not started again; a check that raises
+  or outlasts its interval is logged and retried on the next round.
+- `emit_event` builds an `InboundEnvelope` with `source_kind` set to the plugin
+  id and `signature` `<plugin id>:<rule_key>`, so events with the same
+  `rule_key` share one Mailbox rule. Choose a key that groups events a user
+  would route the same way (the email plugin uses account and sender domain).
+- The payload is shown to the agent wrapped as outside data. Since anyone can
+  cause a plugin event, an event the router can't place goes to the user as a
+  notification, not to Regent.
+- Keep what a watcher already reported in `ctx.state`, and save it after each
+  event, so a failure partway never reports something twice. On its first run
+  a watcher should only record what exists, so turning it on doesn't flood the
+  Mailbox with old items.
 
 ## Integrations
 
