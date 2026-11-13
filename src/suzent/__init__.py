@@ -10,6 +10,10 @@ into the service log the console displays. Setting it in the package's own
 LiteLLM also downloads its model price table from raw.githubusercontent.com
 on import, which behind the mainland China firewall stalls startup until the
 request times out. There it uses the copy bundled with the package instead.
+
+pydantic-ai prints a first-run banner advertising its observability service
+whenever it thinks a person is reading stderr. Suzent owns its own interface
+and logs, so the banner is turned off for every Suzent process.
 """
 
 import os
@@ -17,5 +21,6 @@ import os
 from suzent import network_region
 
 os.environ.setdefault("LITELLM_LOG", "ERROR")
+os.environ.setdefault("PYDANTIC_AI_NO_BANNER", "1")
 if network_region.china_mode():
     os.environ.setdefault("LITELLM_LOCAL_MODEL_COST_MAP", "True")

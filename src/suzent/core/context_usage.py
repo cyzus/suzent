@@ -95,8 +95,11 @@ def estimate_text(text: str) -> int:
     return math.ceil(cjk + other * 0.5 + ascii_chars * 0.25)
 
 
+# pydantic-ai 2.68 renamed the element to <pyai:context>; earlier releases
+# wrote <context>.
 _CONTEXT_ELEMENT = re.compile(
-    r'<context id="[^"]*">\n(?P<body>.*)\n</context>(?:\n.*)?', re.DOTALL
+    r'<(?P<tag>(?:pyai:)?context) id="[^"]*">\n(?P<body>.*)\n</(?P=tag)>(?:\n.*)?',
+    re.DOTALL,
 )
 
 
@@ -267,8 +270,8 @@ def build_context_breakdown(
     for instruction in parameters.instruction_parts or []:
         content = instruction.content
         # Append-mode instructions (pydantic-ai 2.64+) wrap each dynamic part in
-        # a <context id="..."> element; attribute the registered inner text and
-        # count the wrapper itself as system prompt.
+        # a context element; attribute the registered inner text and count the
+        # wrapper itself as system prompt.
         wrapped = _CONTEXT_ELEMENT.fullmatch(content)
         if wrapped and source_key(wrapped.group("body")) in sources:
             add_text(wrapped.group("body"), "system_prompt", "system_prompt", sources)
