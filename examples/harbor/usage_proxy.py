@@ -14,14 +14,16 @@ usage block is logged with ``"prompt": null``.
 Standard library only, so it runs with any Python in a task container.
 """
 
+import base64
 import http.client
 import json
+import os
 import re
 import sys
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlsplit
+from urllib.parse import unquote, urlsplit
 
 HEALTH_PATH = "/__usage_proxy_health"
 _HOP_BY_HOP = {
@@ -61,13 +63,43 @@ def usage_record(status: int, usage: dict | None) -> dict:
     }
 
 
+def _tunnel_proxy(host: str, environ: dict[str, str]) -> str | None:
+    """The HTTPS proxy to reach ``host`` through, or None when it is direct."""
+    proxy = environ.get("HTTPS_PROXY") or environ.get("https_proxy")
+    no_proxy = environ.get("NO_PROXY") or environ.get("no_proxy") or ""
+    skipped = [item.strip().lstrip(".") for item in no_proxy.split(",") if item.strip()]
+    if not proxy or any(host == item or host.endswith("." + item) for item in skipped):
+        return None
+    return proxy
+
+
+def open_upstream(
+    origin, environ: dict[str, str] | None = None
+) -> http.client.HTTPConnection:
+    """Connection to the provider, tunnelled through the container's egress
+    proxy when it has one (a task container may reach nothing else)."""
+    environ = dict(os.environ) if environ is None else environ
+    if origin.scheme != "https":
+        return http.client.HTTPConnection(origin.netloc, timeout=600)
+    proxy = _tunnel_proxy(origin.hostname or "", environ)
+    if not proxy:
+        return http.client.HTTPSConnection(origin.netloc, timeout=600)
+    via = urlsplit(proxy)
+    headers = {}
+    if via.username:
+        login = f"{unquote(via.username)}:{unquote(via.password or '')}"
+        headers["Proxy-Authorization"] = (
+            "Basic " + base64.b64encode(login.encode()).decode()
+        )
+    # The hop to the proxy is plain HTTP (CONNECT); TLS to the provider runs
+    # inside the tunnel.
+    connection = http.client.HTTPSConnection(via.hostname, via.port or 80, timeout=600)
+    connection.set_tunnel(origin.hostname, origin.port or 443, headers)
+    return connection
+
+
 def make_handler(upstream: str, log_path: Path) -> type[BaseHTTPRequestHandler]:
     origin = urlsplit(upstream)
-    connect = (
-        http.client.HTTPSConnection
-        if origin.scheme == "https"
-        else http.client.HTTPConnection
-    )
 
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, format: str, *args: object) -> None:
@@ -93,7 +125,7 @@ def make_handler(upstream: str, log_path: Path) -> type[BaseHTTPRequestHandler]:
             }
             is_completion = "chat/completions" in self.path
             try:
-                connection = connect(origin.netloc, timeout=600)
+                connection = open_upstream(origin)
                 connection.request(self.command, self.path, body or None, headers)
                 response = connection.getresponse()
             except OSError as exc:

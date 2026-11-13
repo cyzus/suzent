@@ -137,3 +137,43 @@ def test_proxy_answers_its_health_check_without_calling_upstream(proxy):
 
     assert reply == b"ok"
     assert _Upstream.seen == []
+
+
+def _origin(url: str):
+    from urllib.parse import urlsplit
+
+    return urlsplit(url)
+
+
+def test_upstream_is_direct_without_an_egress_proxy():
+    connection = usage_proxy.open_upstream(_origin("https://api.example.com"), {})
+
+    assert (connection.host, connection.port) == ("api.example.com", 443)
+    assert connection._tunnel_host is None
+
+
+def test_upstream_goes_through_the_egress_proxy_with_its_login():
+    environ = {"HTTPS_PROXY": "http://agent:s3cret@egress:8080"}
+
+    connection = usage_proxy.open_upstream(_origin("https://api.example.com"), environ)
+
+    assert (connection.host, connection.port) == ("egress", 8080)
+    assert (connection._tunnel_host, connection._tunnel_port) == (
+        "api.example.com",
+        443,
+    )
+    assert connection._tunnel_headers["Proxy-Authorization"] == (
+        "Basic YWdlbnQ6czNjcmV0"
+    )
+
+
+def test_upstream_skips_the_egress_proxy_for_hosts_in_no_proxy():
+    environ = {
+        "https_proxy": "http://agent:x@egress:8080",
+        "no_proxy": "localhost,.example.com",
+    }
+
+    connection = usage_proxy.open_upstream(_origin("https://api.example.com"), environ)
+
+    assert connection.host == "api.example.com"
+    assert connection._tunnel_host is None
