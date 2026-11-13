@@ -14,6 +14,7 @@ import re
 import time
 from collections import OrderedDict
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from functools import partial
 from typing import Any, Callable, Optional
 
@@ -468,6 +469,7 @@ def persist_compaction_notice(
         notice_message = {
             "role": "notice",
             "content": notice,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "metadata": {
                 "kind": "context_compaction",
                 "source": source,

@@ -145,7 +145,7 @@ export function CompactionHistory({
       <div key="last" className={failed ? 'text-brutal-red' : undefined}>
         {t(failed ? 'contextPanel.lastCompactionFailed' : 'contextPanel.lastCompaction', {
           time: when,
-        })}
+        }).trim()}
         {!failed && tokensBefore != null && tokensAfter != null && (
           <span className="font-mono tabular-nums">
             {' · '}

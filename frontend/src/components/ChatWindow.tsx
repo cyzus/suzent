@@ -1132,7 +1132,23 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     if (!currentChatId) return;
 
     const unsub = subscribeToBusPayloads((payload) => {
-      if (!payload || payload.chat_id !== currentChatId) return;
+      if (!payload) return;
+
+      // Background summaries finish on their own schedule, often after the
+      // user has switched chats, so they are tracked for every chat.
+      if (payload.chat_id && payload.event === 'precompaction') {
+        useContextUsageStore.getState().setPrecompaction(payload.chat_id, {
+          stage: payload.stage,
+          coveredMessages: Number(payload.covered_messages ?? 0),
+        });
+        return;
+      }
+      // Whatever summary was prepared has been used or superseded.
+      if (payload.chat_id && payload.event === 'auto_compaction' && payload.stage === 'complete') {
+        useContextUsageStore.getState().setPrecompaction(payload.chat_id, null);
+      }
+
+      if (payload.chat_id !== currentChatId) return;
 
       // Live context size, emitted before every model request. Merged rather than
       // replaced so the cumulative counters from the last completed run survive
@@ -1142,20 +1158,8 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         return;
       }
 
-      if (payload.event === 'precompaction') {
-        useContextUsageStore.getState().setPrecompaction(currentChatId, {
-          stage: payload.stage,
-          coveredMessages: Number(payload.covered_messages ?? 0),
-        });
-        return;
-      }
-
       if (payload.event !== 'auto_compaction') return;
       upsertCompactNotice(formatCompactLifecycleNotice(payload), payload);
-      // Whatever summary was prepared has been used or superseded.
-      if (payload.stage === 'complete') {
-        useContextUsageStore.getState().setPrecompaction(currentChatId, null);
-      }
       // Publish the pass to the store so the context-window panel shows its
       // state for agent-triggered compaction too — the panel's own `useCompact`
       // progress only ever covers a compaction started from its button.

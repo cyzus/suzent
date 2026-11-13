@@ -4,6 +4,7 @@ prepared summary is applied early, and which model writes a summary."""
 import asyncio
 import json
 import time
+from datetime import datetime
 from types import SimpleNamespace
 
 import pytest
@@ -294,3 +295,16 @@ def test_cold_cache_picks_the_cheaper_writer(monkeypatch, prices, cached) -> Non
     _prices(monkeypatch, prices)
 
     assert _compressor()._prefer_cached_prefix(_long_history(), 5) is cached
+
+
+def test_persisted_notice_records_when_it_happened(monkeypatch) -> None:
+    stored: list = []
+    db = SimpleNamespace(append_chat_message=lambda chat_id, row: stored.append(row))
+    monkeypatch.setattr("suzent.database.get_database", lambda: db)
+
+    cc.persist_compaction_notice(
+        chat_id="stamped", stage="complete", source="auto", tokens_before=9000
+    )
+
+    (row,) = stored
+    assert time.time() - datetime.fromisoformat(row["timestamp"]).timestamp() < 5
