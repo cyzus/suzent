@@ -21,6 +21,7 @@
     ".releases/changes/approved-tool-names.json",
     ".releases/changes/artifact-preview-media-back.json",
     ".releases/changes/artifacts-panel.json",
+    ".releases/changes/artifacts-project-chips.json",
     ".releases/changes/artifacts-registration.json",
     ".releases/changes/ask-question-no-replay.json",
     ".releases/changes/auto-provider-defaults.json",

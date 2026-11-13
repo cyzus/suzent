@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Add interface font, reply font, chat text size, chat width, and motion controls to Appearance settings.
 - Images, audio and video opened from Artifacts now open reliably, audio files play in the file preview, and going back from a file opened from Artifacts returns to Artifacts.
 - A new Artifacts panel in the side panel collects the images, videos, speech and files the agent made in a chat, with previews.
+- The Artifacts page filters projects with a compact chip row instead of a sidebar, so the file grid uses the full width, and adds a list view.
 - Long conversations you return to after the provider's prompt cache has expired now resume from a prepared summary instead of resending the full history, and an hour-long Anthropic cache can be enabled with anthropic_prompt_cache_ttl.
 - Context compaction now writes its summary from the prompt cache with the chat's own model, and prepares it in the background after a turn, so long chats compact faster and cheaper.
 - Keep your reading position on macOS when a reply finishes while you are scrolled up, instead of jumping to the previous message.
