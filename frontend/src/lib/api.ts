@@ -657,6 +657,8 @@ export interface PluginIntegration {
   name: string;
   auth: 'oauth' | 'token';
   connected: boolean;
+  /** Whether its tools reach the agent; a new connection starts off. */
+  enabled?: boolean;
   tokenHelpUrl: string | null;
   /** Why the last connection failed, e.g. the sign-in expired. */
   error?: string;
@@ -694,6 +696,25 @@ export async function disconnectPluginIntegration(
   );
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || `Failed to disconnect: ${res.status}`);
+  return data;
+}
+
+/** Switch a connected service's tools on or off for every chat. */
+export async function setPluginIntegrationEnabled(
+  pluginId: string,
+  integrationId: string,
+  enabled: boolean
+): Promise<PluginIntegration> {
+  const res = await fetch(
+    `${getApiBase()}/plugins/${encodeURIComponent(pluginId)}/integrations/${encodeURIComponent(integrationId)}/enabled`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled }),
+    }
+  );
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || `Failed to update: ${res.status}`);
   return data;
 }
 

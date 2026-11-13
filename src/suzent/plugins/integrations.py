@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass, field
-from collections.abc import Collection
+from collections.abc import Mapping
 from typing import Any, Callable, Literal
 
 from suzent.logger import get_logger
@@ -178,17 +178,24 @@ def build_toolset(plugin_id: str, integration: Integration) -> Any | None:
     return _tolerant(integration.build(credential), namespace(plugin_id, integration))
 
 
-def connected_toolsets(disabled: Collection[str] = ()) -> list[Any]:
-    """Toolsets of every connected integration of every loaded plugin.
+def connected_toolsets(chat_choices: Mapping[str, bool] | None = None) -> list[Any]:
+    """Toolsets of every connected, switched-on integration of every loaded plugin.
 
-    ``disabled`` holds namespaces (``plugin.integration``) a chat turned off.
+    ``chat_choices`` maps namespaces (``plugin.integration``) to a chat's own
+    on/off choice, which wins over the service's switch.
     """
     from suzent.plugins import get_plugin_manager
 
+    chat_choices = chat_choices or {}
+    manager = get_plugin_manager()
     toolsets = []
-    for record in get_plugin_manager().records():
+    for record in manager.records():
         for integration in record.integrations:
-            if namespace(record.id, integration) in disabled:
+            key = namespace(record.id, integration)
+            on = chat_choices.get(key)
+            if on is None:
+                on = manager.service_enabled(record.id, integration.id)
+            if not on:
                 continue
             try:
                 toolset = build_toolset(record.id, integration)
@@ -219,12 +226,14 @@ def find(plugin_id: str, integration_id: str) -> Integration | None:
 
 def describe(plugin_id: str, integration: Integration) -> dict[str, Any]:
     from suzent.core.mcp_oauth import sign_in_status
+    from suzent.plugins import get_plugin_manager
 
     data: dict[str, Any] = {
         "id": integration.id,
         "name": integration.name,
         "auth": integration.auth,
         "connected": is_connected(plugin_id, integration),
+        "enabled": get_plugin_manager().service_enabled(plugin_id, integration.id),
         "tokenHelpUrl": integration.token_help_url,
     }
     if data["connected"] and (error := last_error(plugin_id, integration)):
