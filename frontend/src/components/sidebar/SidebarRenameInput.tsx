@@ -52,6 +52,7 @@ export function SidebarRenameInput({
       type="text"
       value={value}
       aria-label={ariaLabel}
+      data-sidebar-rename
       placeholder={placeholder}
       spellCheck={false}
       onChange={(event) => setValue(event.target.value)}
@@ -66,7 +67,16 @@ export function SidebarRenameInput({
           finish(false);
         }
       }}
-      onBlur={() => finish(true)}
+      onBlur={(event) => {
+        // A chat that is both pinned and listed renders this editor twice; focus moving
+        // between the copies must not end the rename.
+        if (
+          event.relatedTarget instanceof HTMLElement &&
+          'sidebarRename' in event.relatedTarget.dataset
+        )
+          return;
+        finish(true);
+      }}
       onClick={(event) => event.stopPropagation()}
       onMouseDown={(event) => event.stopPropagation()}
       onDoubleClick={(event) => event.stopPropagation()}
