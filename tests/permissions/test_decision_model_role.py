@@ -30,3 +30,12 @@ async def test_permission_review_uses_decision_then_explicit_override(
     result = await classifier.classify(tool_name="read_file", args={}, transcript=[])
     assert result.reviewer_model == "review-model"
     assert used == ["decision-model", "review-model"]
+
+
+def test_reason_follows_user_language_and_keeps_args_verbatim() -> None:
+    from suzent.permissions.auto.classifier import SYSTEM_PROMPT
+
+    assert "language of the CURRENT USER REQUEST" in SYSTEM_PROMPT
+    assert "exactly as they appear" in SYSTEM_PROMPT
+    schema = AutoClassificationResult.model_json_schema()
+    assert "language" in schema["properties"]["reason"]["description"]

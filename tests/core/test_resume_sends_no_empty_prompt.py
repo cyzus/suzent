@@ -24,12 +24,11 @@ from suzent.core.chat_processor import _rebuild_display_messages
 from suzent.permissions.models import CommandDecision
 
 
-@pytest.fixture
-def auto_allow(monkeypatch: pytest.MonkeyPatch) -> None:
-    async def allow(self, request, context):
+def _patch_engine(monkeypatch: pytest.MonkeyPatch, behavior: CommandDecision) -> None:
+    async def decide(self, request, context):
         return SimpleNamespace(
-            behavior=CommandDecision.ALLOW,
-            reason="allowed",
+            behavior=behavior,
+            reason="writes outside the workspace",
             reason_code="test",
             metadata={},
             source=SimpleNamespace(value="test"),
@@ -38,7 +37,7 @@ def auto_allow(monkeypatch: pytest.MonkeyPatch) -> None:
     async def no_audit(**kwargs) -> None:
         return None
 
-    monkeypatch.setattr(streaming.PermissionEngine, "evaluate", allow)
+    monkeypatch.setattr(streaming.PermissionEngine, "evaluate", decide)
     monkeypatch.setattr(
         streaming.PermissionContext,
         "from_deps",
@@ -50,6 +49,16 @@ def auto_allow(monkeypatch: pytest.MonkeyPatch) -> None:
         "_permission_decision_payload",
         lambda **kwargs: {"toolCallId": kwargs["tool_call_id"]},
     )
+
+
+@pytest.fixture
+def auto_allow(monkeypatch: pytest.MonkeyPatch) -> None:
+    _patch_engine(monkeypatch, CommandDecision.ALLOW)
+
+
+@pytest.fixture
+def auto_deny(monkeypatch: pytest.MonkeyPatch) -> None:
+    _patch_engine(monkeypatch, CommandDecision.DENY)
 
 
 async def test_an_auto_approved_tool_call_resumes_without_a_prompt(auto_allow) -> None:
@@ -78,6 +87,28 @@ async def test_an_auto_approved_tool_call_resumes_without_a_prompt(auto_allow) -
         if isinstance(message, ModelRequest)
         for part in message.parts
     )
+
+
+async def test_a_policy_denial_tells_the_agent_why(auto_deny) -> None:
+    agent = Agent(TestModel(), output_type=[str, DeferredToolRequests])
+
+    @agent.tool_plain(requires_approval=True)
+    def ping() -> str:
+        return "pong"
+
+    deps = AgentDeps()
+    async for _ in streaming.stream_agent_responses(agent, "hello", deps=deps):
+        pass
+
+    returns = [
+        part
+        for message in deps.last_messages or []
+        if isinstance(message, ModelRequest)
+        for part in message.parts
+        if isinstance(part, ToolReturnPart)
+    ]
+    assert returns
+    assert "writes outside the workspace" in returns[0].model_response_str()
 
 
 def test_old_empty_prompts_leave_no_empty_rows() -> None:

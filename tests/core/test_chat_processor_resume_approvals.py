@@ -163,6 +163,57 @@ def test_deferred_denial_without_feedback_uses_framework_message() -> None:
     assert result.message == "The tool call was denied."
 
 
+def _flagged_decision(reason_code: str = "auto_classifier_high_risk") -> dict:
+    return {
+        "behavior": "ask",
+        "reason": "会删除整个 build 目录",
+        "reasonCode": reason_code,
+        "risk": "high",
+        "source": "auto_classifier",
+    }
+
+
+def test_deferred_denial_passes_flagged_reason_to_agent() -> None:
+    result = _deferred_approval_result(
+        {"approved": False, "_decision": _flagged_decision()}
+    )
+
+    assert isinstance(result, ToolDenied)
+    assert result.message.startswith(
+        "The user denied this tool call after it was flagged as risky: "
+        "会删除整个 build 目录"
+    )
+    assert "Do not retry the same action" in result.message
+    assert _is_denied_tool_return(result.message)
+
+
+def test_deferred_denial_combines_flagged_reason_and_feedback() -> None:
+    result = _deferred_approval_result(
+        {
+            "approved": False,
+            "feedback": "Only delete dist/",
+            "_decision": _flagged_decision("shell_policy_high_risk"),
+        }
+    )
+
+    assert isinstance(result, ToolDenied)
+    assert "会删除整个 build 目录" in result.message
+    assert "The user's guidance: Only delete dist/" in result.message
+
+
+def test_deferred_denial_skips_generic_approval_reason() -> None:
+    decision = build_approval_decision("run_command", {"content": "npm test"})
+    result = _deferred_approval_result(
+        {
+            "approved": False,
+            "_decision": decision.model_dump(mode="json", by_alias=True),
+        }
+    )
+
+    assert isinstance(result, ToolDenied)
+    assert result.message == "The tool call was denied."
+
+
 def test_deferred_approval_remains_executable() -> None:
     assert _deferred_approval_result({"approved": True}) is True
 
@@ -211,6 +262,7 @@ def test_resolve_resume_action_from_persisted_contract(monkeypatch) -> None:
     assert resolved[0]["remember"] == "session"
     assert resolved[0]["tool_name"] == "run_command"
     assert resolved[0]["args"] == {"content": "npm test"}
+    assert resolved[0]["_decision"] == decision
 
 
 def test_resume_action_uses_persisted_args_not_client_args(monkeypatch) -> None:
