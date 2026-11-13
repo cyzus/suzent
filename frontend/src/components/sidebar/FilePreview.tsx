@@ -5,6 +5,7 @@ import {
   isImageFile,
   isPdfFile,
   isVideoFile,
+  isAudioFile,
   isHtmlFile,
   isMarkdownFile,
   isMermaidFile,
@@ -72,6 +73,20 @@ export const FilePreview: React.FC<FilePreviewProps> = ({
           playsInline
           preload="metadata"
           className="max-w-full max-h-full"
+        />
+      </div>
+    );
+  }
+
+  if (isAudioFile(filename)) {
+    return (
+      <div className="flex items-center justify-center p-6 bg-neutral-50 dark:bg-zinc-900/50 h-full w-full">
+        <audio
+          key={serveUrl}
+          src={serveUrl}
+          controls
+          preload="metadata"
+          className="w-full max-w-md"
         />
       </div>
     );

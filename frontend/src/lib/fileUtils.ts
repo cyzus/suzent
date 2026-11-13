@@ -7,6 +7,7 @@ export const FILE_TYPES = {
   IMAGE: ['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp'],
   PDF: ['pdf'],
   VIDEO: ['mp4', 'mov', 'webm', 'm4v'],
+  AUDIO: ['mp3', 'wav', 'ogg', 'm4a', 'aac', 'flac', 'opus'],
   HTML: ['html', 'htm'],
   MARKDOWN: ['md'],
   MERMAID: ['mermaid'],
@@ -18,6 +19,7 @@ export const BINARY_SERVED_FILES = [
   ...FILE_TYPES.PDF,
   ...FILE_TYPES.IMAGE,
   ...FILE_TYPES.VIDEO,
+  ...FILE_TYPES.AUDIO,
   ...FILE_TYPES.HTML,
 ] as const;
 
@@ -42,6 +44,14 @@ export function isImageFile(filename: string): boolean {
 export function isVideoFile(filename: string): boolean {
   const ext = getFileExtension(filename);
   return FILE_TYPES.VIDEO.includes(ext as any);
+}
+
+/**
+ * Check if file is audio the webview can play
+ */
+export function isAudioFile(filename: string): boolean {
+  const ext = getFileExtension(filename);
+  return FILE_TYPES.AUDIO.includes(ext as any);
 }
 
 /**

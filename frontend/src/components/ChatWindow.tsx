@@ -3486,8 +3486,11 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       // so we pass the path straight through — no client-side mapping needed.
       try {
         const queryParams = getSandboxParams(currentChatId || '', path, config.sandbox_volumes);
+        // no-store: an <img> or <audio> that already loaded this URL leaves a cached
+        // response without CORS headers, which would make this HEAD fail.
         const response = await fetch(`${getApiBase()}/sandbox/serve?${queryParams}`, {
           method: 'HEAD',
+          cache: 'no-store',
         });
 
         if (!response.ok) {
