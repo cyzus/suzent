@@ -1499,6 +1499,9 @@ export const en = {
       imageGenerationDesc: 'Text-to-image generation.',
       tts: 'TTS',
       ttsDesc: 'Text-to-speech synthesis.',
+      decisionModel: 'Decision model',
+      decisionModelDesc:
+        'Optional. A fast model that picks from fixed choices (OpenAI or Gemini Decisions), used to route new kinds of Mailbox events. Without one, the Decision model above does it.',
       modelsPlaceholder: 'model/name (one per line)',
       notConfigured: 'Not configured',
       fallbackHint: 'Enter one model ID per line. First line is primary; rest are fallbacks.',

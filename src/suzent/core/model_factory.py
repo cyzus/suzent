@@ -656,6 +656,60 @@ def create_pydantic_ai_model(model_id: str) -> object:
     return handler(model_name, api_key or "", spec)
 
 
+def create_decision_model(model_id: str) -> object:
+    """Create a pydantic-ai decision model from a model ID.
+
+    Decision models answer typed questions instead of writing text. Which
+    request format a provider speaks is its ``decisions_protocol``: OpenAI's
+    ``/v1/decisions`` (OpenAI, or a LiteLLM proxy in front of other vendors),
+    the ``/v1/systemone`` protocol (TypeSafe's Jev, self-hosted servers), or
+    Gemini's own API. Keys and base URLs come from Settings → Providers.
+    """
+    prefix, _, model_name = model_id.partition("/")
+    spec = PROVIDER_REGISTRY_BY_ID.get(prefix)
+    if spec is None or not model_name:
+        raise RuntimeError(f"Unknown decision model '{model_id}'.")
+    api_key = resolve_api_key(prefix)
+    if not api_key and not spec.api_key_optional:
+        raise RuntimeError(
+            f"No API key configured for model '{model_id}'. "
+            f"Add your credentials in Settings → Providers."
+        )
+    base_url = _resolve_base_url(spec)
+    match spec.decisions_protocol:
+        case "gemini":
+            from pydantic_ai.models.google_decisions import GoogleDecisionsModel
+            from pydantic_ai.providers.google import GoogleProvider
+
+            return GoogleDecisionsModel(
+                model_name, provider=GoogleProvider(api_key=api_key)
+            )
+        case "openai":
+            from pydantic_ai.models.openai_decisions import OpenAIDecisionsModel
+            from pydantic_ai.providers.openai import OpenAIProvider
+
+            if spec.id == "openai":
+                base_url = base_url or os.environ.get("OPENAI_BASE_URL")
+            return OpenAIDecisionsModel(
+                model_name,
+                provider=OpenAIProvider(api_key=api_key or "none", base_url=base_url),
+            )
+        case "system_one":
+            from pydantic_ai.models.system_one import SystemOneModel
+            from pydantic_ai.providers.system_one import SystemOneProvider
+
+            if not base_url:
+                raise RuntimeError(f"Provider '{prefix}' has no base URL set.")
+            return SystemOneModel(
+                model_name,
+                provider=SystemOneProvider(base_url=base_url, api_key=api_key),
+            )
+    raise RuntimeError(
+        f"Provider '{prefix}' doesn't serve decision models. Use OpenAI, Gemini, "
+        "a LiteLLM proxy, or a provider with a decisions_protocol."
+    )
+
+
 def create_fallback_model(model_ids: list[str]) -> object:
     """Create a FallbackModel from multiple model IDs.
 

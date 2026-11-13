@@ -86,6 +86,12 @@ const ROLES: { key: string; labelKey: string; descKey: string; fallback: Fallbac
     fallback: 'none',
   },
   { key: 'tts', labelKey: 'roles.tts', descKey: 'roles.ttsDesc', fallback: 'none' },
+  {
+    key: 'decision_model',
+    labelKey: 'roles.decisionModel',
+    descKey: 'roles.decisionModelDesc',
+    fallback: 'none',
+  },
 ];
 
 // ── Searchable dropdown ──────────────────────────────────────────────────────
@@ -552,7 +558,15 @@ export function ModelRolesTab({
     { key: 'tasksGroup', roles: ['title', 'suggestion', 'memory_extraction', 'dream'] },
     {
       key: 'specialistsGroup',
-      roles: ['vision', 'embedding', 'image_generation', 'image_edit', 'video_generation', 'tts'],
+      roles: [
+        'vision',
+        'embedding',
+        'image_generation',
+        'image_edit',
+        'video_generation',
+        'tts',
+        'decision_model',
+      ],
     },
   ];
 

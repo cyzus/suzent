@@ -20,7 +20,21 @@ class FakeRegistry:
     _capabilities = {
         "openai/text-embedding-3-small": SimpleNamespace(mode="embedding"),
         "openai/tts-1": SimpleNamespace(mode="tts"),
+        "gemini/gemini-decision-1": SimpleNamespace(
+            mode="chat", supported_endpoints=("/v1/decisions",)
+        ),
+        "openai/gpt-6-luna": SimpleNamespace(
+            mode="chat", supported_endpoints=("/v1/chat/completions", "/v1/decisions")
+        ),
     }
+
+    def supports_decisions(self, model_id: str) -> bool:
+        caps = self._capabilities.get(model_id)
+        return "/v1/decisions" in getattr(caps, "supported_endpoints", ())
+
+    def decisions_only(self, model_id: str) -> bool:
+        caps = self._capabilities.get(model_id)
+        return getattr(caps, "supported_endpoints", ()) == ("/v1/decisions",)
 
     def supports_vision(self, model_id: str) -> bool:
         return model_id.endswith("vision")
@@ -224,3 +238,18 @@ def test_configured_provider_ids_include_aliases_and_require_local_opt_in(monkey
         "local",
         "local-alias",
     }
+
+
+def test_decision_only_models_are_kept_out_of_chat_roles():
+    suggestions = config_routes._build_role_suggestions(
+        FakeRegistry(),
+        ["openai/gpt-6-luna", "gemini/gemini-decision-1"],
+        {"openai", "gemini"},
+    )
+
+    assert suggestions["primary"] == ["openai/gpt-6-luna"]
+    assert suggestions["decision"] == ["openai/gpt-6-luna"]
+    assert suggestions["decision_model"] == [
+        "gemini/gemini-decision-1",
+        "openai/gpt-6-luna",
+    ]

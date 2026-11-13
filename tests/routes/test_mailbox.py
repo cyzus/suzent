@@ -678,3 +678,64 @@ def test_old_items_are_pruned_but_unread_and_queued_ones_kept(db):
 
     kept = {i.signature for i in db.list_mailbox_items(limit=50)}
     assert kept == {"old-unread", "old-queued", "fresh"}
+
+
+def _use_decision_model(monkeypatch, model) -> None:
+    monkeypatch.setattr(
+        "suzent.core.decisions.configured_decision_model", lambda: "gemini/fake"
+    )
+    monkeypatch.setattr(
+        "suzent.core.model_factory.create_decision_model", lambda _model_id: model
+    )
+
+
+@pytest.mark.asyncio
+async def test_decision_model_routes_new_events_without_the_chat_model(
+    db, monkeypatch, fake_decision_model
+):
+    project_id = db.create_project("Suzent", "suzent")
+    picks = {
+        "destination": "New session in project 'Suzent'",
+        "cadence": "Batched in a periodic digest",
+    }
+    model = fake_decision_model(lambda key, _options: picks[key], confidence=0.85)
+    _use_decision_model(monkeypatch, model)
+    chat_calls = _fake_router(monkeypatch, _ROUTE_TO_REGENT)
+
+    await _github_release()
+
+    [rule] = db.list_mailbox_rules()
+    assert (rule.destination, rule.target_project_id) == ("project", project_id)
+    assert rule.delivery == "digest"
+    assert rule.origin == "learned"
+    assert rule.reason == "Decided by gemini/fake (85% sure)."
+    assert chat_calls == []
+    [request] = model.requests
+    assert "release.published" in request.state
+    assert "Keep it in the Mailbox only" in request.questions["destination"].criteria
+
+
+@pytest.mark.asyncio
+async def test_unsure_decision_goes_to_regent_without_a_rule(
+    db, monkeypatch, fake_decision_model
+):
+    _use_decision_model(monkeypatch, fake_decision_model(confidence=0.3))
+
+    item = await _github_release()
+
+    assert item.target_chat_id == FOCAL_CHAT_ID
+    assert "unsure" in item.reason
+    assert db.list_mailbox_rules() == []
+
+
+@pytest.mark.asyncio
+async def test_failing_decision_model_falls_back_to_the_chat_model(
+    db, monkeypatch, fake_decision_model
+):
+    _use_decision_model(monkeypatch, fake_decision_model(fail=True))
+    chat_calls = _fake_router(monkeypatch, _decision(destination="user"))
+
+    item = await _github_release()
+
+    assert len(chat_calls) == 1
+    assert item.route_status == "notified"
