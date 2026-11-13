@@ -16,7 +16,12 @@ from pydantic import ValidationError
 
 from suzent.logger import get_logger
 from suzent.plugins import deps
-from suzent.plugins.context import PluginContext, PluginRoute, PluginWebSocket
+from suzent.plugins.context import (
+    PluginContext,
+    PluginRoute,
+    PluginWatcher,
+    PluginWebSocket,
+)
 from suzent.plugins.enablement import (  # channel_configured is re-exported
     channel_configured,  # noqa: F401
     is_enabled,
@@ -57,6 +62,8 @@ class PluginRecord:
     integrations: list[Integration] = field(default_factory=list)
     routes: list[PluginRoute] = field(default_factory=list)
     websockets: list[PluginWebSocket] = field(default_factory=list)
+    watchers: list[PluginWatcher] = field(default_factory=list)
+    context: PluginContext | None = field(default=None, repr=False)
     entry_point: EntryPoint | None = field(default=None, repr=False)
 
     @property
@@ -431,6 +438,10 @@ class PluginManager:
         record.integrations = []
         record.routes = []
         record.websockets = []
+        record.watchers = []
+        if record.context is not None:
+            record.context.active = False
+            record.context = None
         record.enabled, record.status, record.error = False, "disabled", None
         target = self.deps_dir(record)
         if target is not None and str(target) in sys.path:
@@ -481,6 +492,8 @@ class PluginManager:
         record.integrations = list(ctx.integrations)
         record.routes = list(ctx.routes)
         record.websockets = list(ctx.websockets)
+        record.watchers = list(ctx.watchers)
+        record.context = ctx
         for command in ctx.commands:
             if register_plugin_command(
                 command.handler, command.aliases, command.options
@@ -516,6 +529,16 @@ class PluginManager:
         if record is None:
             return None
         return next((s for s in record.websockets if s.path == path), None)
+
+    def watchers(self) -> list[tuple[str, PluginWatcher]]:
+        """``(plugin_id, watcher)`` for every loaded plugin's watchers."""
+        self.load()
+        return [
+            (record.id, watcher)
+            for record in self._records.values()
+            if record.status == "loaded"
+            for watcher in record.watchers
+        ]
 
     def tool_classes(self) -> list[type[Tool]]:
         return [cls for record in self.records() for cls in record.tool_classes]

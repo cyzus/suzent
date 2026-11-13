@@ -4,6 +4,7 @@ import {
   BellIcon,
   ChatBubbleLeftRightIcon,
   ComputerDesktopIcon,
+  EnvelopeIcon,
   QueueListIcon,
   ArrowTopRightOnSquareIcon,
   CheckIcon,
@@ -161,7 +162,9 @@ function SourceMark({ item, muted }: { item: MailboxItem; muted: boolean }) {
         ? ChatBubbleLeftRightIcon
         : item.source_kind === 'peer'
           ? ComputerDesktopIcon
-          : null;
+          : item.source_kind === 'email'
+            ? EnvelopeIcon
+            : null;
   return (
     <span
       aria-hidden="true"

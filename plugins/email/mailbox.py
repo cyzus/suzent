@@ -105,6 +105,7 @@ async def search(
     folder: str,
     criteria: SearchCriteria,
     limit: int,
+    page: int = 1,
 ) -> list[MessageSummary]:
     data = await himalaya.run(
         account,
@@ -114,6 +115,7 @@ async def search(
             "search",
             f"--mailbox={folder}",
             f"--page-size={limit}",
+            f"--page={page}",
             "--",
             build_query(criteria),
         ],

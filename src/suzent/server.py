@@ -842,6 +842,14 @@ async def startup():
         except Exception as e:
             logger.error(f"Failed to start Mailbox digest runner: {e}")
 
+        try:
+            from suzent.plugins.watchers import PluginWatcherRunner
+
+            app.state.plugin_watchers = PluginWatcherRunner()
+            await app.state.plugin_watchers.start()
+        except Exception as e:
+            logger.error(f"Failed to start plugin watchers: {e}")
+
         from suzent.core.background_commands import get_background_commands
 
         await get_background_commands().start()
@@ -1078,6 +1086,9 @@ async def shutdown():
     mailbox_digests = getattr(app.state, "mailbox_digests", None)
     if mailbox_digests is not None:
         await _stop(mailbox_digests.stop(), "MailboxDigestRunner")
+    plugin_watchers = getattr(app.state, "plugin_watchers", None)
+    if plugin_watchers is not None:
+        await _stop(plugin_watchers.stop(), "PluginWatcherRunner")
 
     if node_advertiser:
         try:

@@ -2,7 +2,7 @@ id: email
 name: Email
 version: 1.0.0
 description: Let the agent search, read and draft your mail, and send it when you allow.
-api_version: 3
+api_version: 5
 default_enabled: false
 category: service
 binaries:
