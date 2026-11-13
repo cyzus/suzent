@@ -1369,12 +1369,14 @@ export const ChatList: React.FC<ChatListProps> = ({
     const isRenaming = renamingChatId === chat.id;
     const renameInput = (
       <SidebarRenameInput
+        saveLabel={t('chatList.rename.confirm')}
+        cancelLabel={t('chatList.rename.cancel')}
         initialValue={chat.title || ''}
         ariaLabel={t('chatList.rename.placeholder')}
         placeholder={t('chatList.rename.placeholder')}
         onSave={(name) => void handleRenameSave(chat.id, name)}
         onCancel={() => setRenamingChatId(null)}
-        className={compact ? '-ml-1.5 text-[11px]' : '-ml-1.5'}
+        className="-ml-1.5"
       />
     );
     const rowContent = compact ? (
@@ -1758,6 +1760,8 @@ export const ChatList: React.FC<ChatListProps> = ({
                                   {renamingTaskId === job.id ? (
                                     <div className="flex items-center py-1.5 pl-6 pr-2">
                                       <SidebarRenameInput
+                                        saveLabel={t('chatList.rename.confirm')}
+                                        cancelLabel={t('chatList.rename.cancel')}
                                         initialValue={job.name}
                                         ariaLabel={t('chatList.rename.placeholder')}
                                         autoFocus={!mobile}
@@ -2268,6 +2272,8 @@ export const ChatList: React.FC<ChatListProps> = ({
                     {creatingProjectInline && (
                       <div className="flex items-center px-3 pb-2">
                         <SidebarRenameInput
+                          saveLabel={t('chatList.rename.confirm')}
+                          cancelLabel={t('chatList.rename.cancel')}
                           initialValue=""
                           ariaLabel={t('chatList.newProjectPlaceholder')}
                           placeholder={t('chatList.newProjectPlaceholder')}
@@ -2304,6 +2310,8 @@ export const ChatList: React.FC<ChatListProps> = ({
                               {isRenaming ? (
                                 <div className="col-span-2 flex items-center px-2 py-1">
                                   <SidebarRenameInput
+                                    saveLabel={t('chatList.rename.confirm')}
+                                    cancelLabel={t('chatList.rename.cancel')}
                                     initialValue={project.name}
                                     ariaLabel={t('chatList.rename.placeholder')}
                                     autoFocus={!mobile}

@@ -2077,7 +2077,7 @@ export const zhCN = {
     rename: {
       buttonTitle: '重命名对话',
       placeholder: '对话名称...',
-      confirm: '确定',
+      confirm: '保存',
       cancel: '取消',
     },
     untitled: '未命名对话',

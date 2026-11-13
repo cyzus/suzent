@@ -2140,7 +2140,7 @@ export const en = {
     rename: {
       buttonTitle: 'Rename chat',
       placeholder: 'Chat name...',
-      confirm: 'OK',
+      confirm: 'Save',
       cancel: 'Cancel',
     },
     untitled: 'Untitled chat',
