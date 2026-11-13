@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Canvas pages use Suzent's scrollbar and fit on screen in chat, exiting fullscreen returns a canvas to its chat message, and the sidebar overview no longer shows a scrollbar.
 - Messages from other chats, scheduled tasks and goal mode now show as one quiet line in the chat; repeats with no reply merge, and a reply notes what it answers.
 - Tidy the chat composer: attachments, working folders, slash commands and mentions now live under one + menu, with mounted folders shown as a small chip beside it.
+- Optional decision models (OpenAI or Gemini Decisions) in Model Roles route new kinds of Mailbox events in a fraction of a second, falling back to the Decision model when unsure.
 - Fix mobile inline code wrapping and show previews for uploaded images.
 - Show Regent’s cross-conversation work queue instead of a per-chat plan in the mobile status panel.
 - New Mailbox: one place for webhooks, scheduled runs, peer devices and agent messages, with a router that learns where each kind of event should go.
