@@ -458,6 +458,7 @@ export const ChatList: React.FC<ChatListProps> = ({
   }, []);
 
   const { t } = useI18n();
+  const mailboxUnread = useMailboxUnread();
 
   const refreshAutomation = useCallback(async (): Promise<void> => {
     const [cronResult, heartbeatResult] = await Promise.allSettled([
@@ -1556,7 +1557,6 @@ export const ChatList: React.FC<ChatListProps> = ({
   // showing the row here as well listed every heartbeat twice. Regent's own
   // check-ins and wake-ups belong to it: they surface as new messages on its
   // card, not as tasks.
-  const mailboxUnread = useMailboxUnread();
   const scheduledJobs = cronJobs.filter(
     (job) => job.source !== 'heartbeat' && job.chat_id !== FOCAL_CHAT_ID
   );
