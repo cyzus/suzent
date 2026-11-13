@@ -126,6 +126,12 @@
       "supports_function_calling": true,
       "supports_reasoning": true,
       "supports_prompt_caching": true
+    },
+    "zai/glm-latest": {
+      "mode": "chat"
+    },
+    "zai/glm-flash-latest": {
+      "mode": "chat"
     }
   }
 }

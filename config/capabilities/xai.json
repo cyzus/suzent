@@ -766,6 +766,9 @@
         "/v1/realtime"
       ],
       "supports_function_calling": true
+    },
+    "xai/grok-latest": {
+      "mode": "chat"
     }
   }
 }
