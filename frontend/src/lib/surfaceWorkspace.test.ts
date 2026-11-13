@@ -80,3 +80,30 @@ describe('shared surface placement', () => {
     expect(workspace.hasInline(surface.id)).toBe(false);
   });
 });
+
+describe('fullscreen from chat', () => {
+  it('returns the surface inline after the expanded sidebar shrinks', () => {
+    const workspace = new SurfaceWorkspace();
+    const inline = new Slot();
+    const canvas = new Slot();
+    workspace.setParking(new Slot().asElement());
+    workspace.upsert(surface);
+    workspace.register(surface.id, 'inline', inline.asElement());
+    workspace.register(surface.id, 'canvas', canvas.asElement());
+    const host = workspace.snapshot()[0].host;
+    workspace.place(surface.id, 'canvas', true);
+    expect(host.parentElement).toBe(canvas);
+    workspace.returnToChat();
+    expect(workspace.locationOf(surface.id)).toBe('inline');
+    expect(host.parentElement).toBe(inline);
+  });
+
+  it('keeps surfaces the user moved to the canvas themselves', () => {
+    const workspace = new SurfaceWorkspace();
+    workspace.upsert(surface);
+    workspace.place(surface.id, 'canvas', true);
+    workspace.place(surface.id, 'canvas');
+    workspace.returnToChat();
+    expect(workspace.locationOf(surface.id)).toBe('canvas');
+  });
+});

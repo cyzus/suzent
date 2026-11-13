@@ -1,0 +1,1 @@
+{"products": {"desktop": "patch"}, "summary": "Canvas pages use Suzent's scrollbar and fit on screen in chat, exiting fullscreen returns a canvas to its chat message, and the sidebar overview no longer shows a scrollbar."}
