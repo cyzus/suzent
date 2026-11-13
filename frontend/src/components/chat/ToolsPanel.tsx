@@ -133,14 +133,12 @@ export function ToolsPanel(): React.ReactElement | null {
     setMcpLoading(true);
     try {
       await setPluginIntegrationEnabled(service.pluginId, service.integrationId, on);
-      setServices((prev) =>
-        prev.map((s) => (s.key === service.key ? { ...s, enabled: on } : s))
-      );
-      // A chat's mcp_enabled replaces the global one, so it must list every server.
-      const serverStates = Object.fromEntries(servers.map((s) => [s.name, s.enabled]));
-      update({
-        mcp_enabled: { ...config.mcp_enabled, ...serverStates, [service.key]: on },
-      });
+      setServices((prev) => prev.map((s) => (s.key === service.key ? { ...s, enabled: on } : s)));
+      // The switch is global: drop this chat's own choice so it follows the switch.
+      if (config.mcp_enabled && service.key in config.mcp_enabled) {
+        const { [service.key]: _dropped, ...rest } = config.mcp_enabled;
+        update({ mcp_enabled: rest });
+      }
     } finally {
       setMcpLoading(false);
     }
