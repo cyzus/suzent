@@ -115,9 +115,9 @@ See [Memory](../03-features/memory/README.md). More tuning is on
 |---|---|---|
 | `max_context_tokens` | `0` | Cap the context budget. `0` uses whatever the model supports. |
 | `context_compaction_trigger` | `0.80` | How full the context gets before older messages are summarized. |
-| `context_compaction_trigger_tokens` | `200000` | Summarize older messages at this many tokens if that comes before the share above. `0` uses only the share. |
+| `context_compaction_trigger_tokens` | `500000` | Summarize older messages at this many tokens if that comes before the share above. `0` uses only the share. |
 | `context_precompaction_trigger` | `0.50` | How full the context gets before the next summary is prepared in the background. `0` turns it off. |
-| `context_precompaction_trigger_tokens` | `100000` | Start preparing the summary at this many tokens if that comes before the share above. `0` uses only the share. |
+| `context_precompaction_trigger_tokens` | `350000` | Start preparing the summary at this many tokens if that comes before the share above. `0` uses only the share. |
 | `goals_max_turns` | `20` | How many turns [goal mode](../03-features/automation.md#goal-mode) runs before pausing. |
 | `session_daily_reset_hour` | `0` | UTC hour at which conversations reset each day. `0` turns it off. |
 | `session_idle_timeout_minutes` | `0` | Reset a conversation after this many idle minutes. `0` turns it off. |

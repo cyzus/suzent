@@ -218,11 +218,11 @@ class ConfigModel(BaseModel):
     # deliberately smaller window than the model allows.
     max_context_tokens: int = 0
     # Compaction starts at whichever comes first: this share of the window or
-    # this many tokens (0 drops the token cap). A fixed size keeps large windows
-    # from paying for hundreds of thousands of tokens on every request before
-    # anything is folded.
+    # this many tokens (0 drops the token cap). Past roughly 500k even the
+    # strongest 1M-window models lose accuracy recalling several facts at once,
+    # and every request pays for the whole history.
     context_compaction_trigger: float = 0.80
-    context_compaction_trigger_tokens: int = 200_000
+    context_compaction_trigger_tokens: int = 500_000
     context_soft_trim_threshold: float = 0.60
     context_hard_trim_threshold: float = 0.80
     compaction_keep_recent_turns: int = 3
@@ -239,7 +239,7 @@ class ConfigModel(BaseModel):
     # comes back after the provider's cache has expired and the history is
     # still at least this large. A share of 0 disables it.
     context_precompaction_trigger: float = 0.50
-    context_precompaction_trigger_tokens: int = 100_000
+    context_precompaction_trigger_tokens: int = 350_000
     # Lifetime Anthropic is asked to keep cached prompts: "5m" or "1h". An hour
     # survives longer pauses, but writing to it costs 2x input instead of 1.25x.
     anthropic_prompt_cache_ttl: Literal["5m", "1h"] = "5m"
