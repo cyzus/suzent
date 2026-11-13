@@ -1,0 +1,6 @@
+{
+  "products": {
+    "desktop": "patch"
+  },
+  "summary": "Tidy the chat composer: attachments, working folders, slash commands and mentions now live under one + menu, with mounted folders shown as a small chip beside it."
+}
