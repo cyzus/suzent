@@ -274,6 +274,7 @@
     ".releases/changes/sidebar-connected-services.json",
     ".releases/changes/sidebar-follow-chat.json",
     ".releases/changes/sidebar-image-overlay.json",
+    ".releases/changes/sidebar-inline-rename.json",
     ".releases/changes/sidebar-keep-open-chat-collapsed.json",
     ".releases/changes/sidebar-message-preview.json",
     ".releases/changes/sidebar-project-visual-hierarchy.json",
