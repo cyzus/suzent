@@ -1665,10 +1665,12 @@ session_idle_timeout_minutes: 0    # Reset after inactivity (0 = off)
 max_context_tokens: 0              # 0 = use whatever the active model supports
 ```
 
-Long conversations are compacted automatically once they fill 80% of the
-model's context window (`context_compaction_trigger`). A 1M-token model gets a
-1M-token budget, a 128k model gets 128k. If Suzent doesn't know a model's window,
-it assumes 200k tokens.
+Long conversations are compacted automatically once they reach 200k tokens or
+80% of the model's context window, whichever comes first
+(`context_compaction_trigger_tokens`, `context_compaction_trigger`). A 128k model
+is compacted at about 102k; a 1M-token model at 200k, so it doesn't pay for
+hundreds of thousands of tokens on every message before anything is folded. If
+Suzent doesn't know a model's window, it assumes 200k tokens.
 
 Set `max_context_tokens` to a non-zero value to cap that budget, for example to
 keep costs down. It can only lower the limit, never raise it.
@@ -1676,16 +1678,19 @@ keep costs down. It can only lower the limit, never raise it.
 The summary that replaces older messages is written by the model you are
 chatting with, reusing the conversation it has already read, so most of it
 comes from the provider's prompt cache and costs a fraction of the normal price.
-Once a reply leaves the conversation at half the window
-(`context_precompaction_trigger`), Suzent starts writing the next summary in the
-background, so you rarely wait for compaction when it happens.
+Once the conversation reaches 100k tokens or half the window, whichever comes
+first (`context_precompaction_trigger_tokens`, `context_precompaction_trigger`),
+Suzent starts writing the next summary in the background. That happens during a
+long run as well as when a reply finishes, so the summary is usually ready
+before compaction is due and you don't wait for it. A prepared summary is kept
+on disk, so a restart doesn't throw it away.
 
 Providers only keep that cache for a while (Anthropic 5 minutes, OpenAI and
 Gemini about 5 minutes, DeepSeek hours). If you come back to a conversation
-after its cache has expired and it is still at least half full, Suzent sends
+after its cache has expired and it is still past that size, Suzent sends
 the prepared summary instead of the full history, since the full history would
 be billed at the normal price again. While the cache is still warm, nothing
-changes until the 80% point. Suzent also learns from your own usage: when a
+changes until compaction is due. Suzent also learns from your own usage: when a
 provider still serves the cache after a longer pause, it trusts that longer
 lifetime from then on.
 
@@ -1711,6 +1716,9 @@ Other settings:
   instead of 5 minutes. Writing to it costs twice the input price instead of
   1.25 times, so it pays off when you often pause between messages.
 - `context_precompaction_trigger: 0` turns preparing summaries off.
+- `context_compaction_trigger_tokens: 0` and
+  `context_precompaction_trigger_tokens: 0` drop the token sizes and use only the
+  share of the window.
 - `compaction_reuse_prompt_cache: false` has the memory extraction model write
   every summary.
 
@@ -6082,6 +6090,9 @@ See [Memory](https://suzent.com/zh-Hans/docs/features/memory). More tuning is on
 |---|---|---|
 | `max_context_tokens` | `0` | Cap the context budget. `0` uses whatever the model supports. |
 | `context_compaction_trigger` | `0.80` | How full the context gets before older messages are summarized. |
+| `context_compaction_trigger_tokens` | `200000` | Summarize older messages at this many tokens if that comes before the share above. `0` uses only the share. |
+| `context_precompaction_trigger` | `0.50` | How full the context gets before the next summary is prepared in the background. `0` turns it off. |
+| `context_precompaction_trigger_tokens` | `100000` | Start preparing the summary at this many tokens if that comes before the share above. `0` uses only the share. |
 | `goals_max_turns` | `20` | How many turns [goal mode](https://suzent.com/zh-Hans/docs/features/automation#goal-mode) runs before pausing. |
 | `session_daily_reset_hour` | `0` | UTC hour at which conversations reset each day. `0` turns it off. |
 | `session_idle_timeout_minutes` | `0` | Reset a conversation after this many idle minutes. `0` turns it off. |
@@ -9120,20 +9131,35 @@ transcript at full price (`summarize_on_cached_prefix()` in
   over 95% of the window, a provider error or an unusable reply all fall back to
   the extraction model on a flattened transcript. `compaction_reuse_prompt_cache:
   false` turns the cached path off.
-- **Prepared at turn end.** When a finished turn leaves the context at or over
-  `context_precompaction_trigger` (0.50 by default), `ChatProcessor` starts the
-  next summary in the background while the cache is warm
-  (`schedule_precompaction()`). It is held in memory, not applied. When the
-  trigger is reached, the history processor applies it if its fingerprint
-  still matches, waits for it if it is still being written, and writes a fresh
-  one if it no longer matches or would leave the context over the trigger. A
-  summary that still covers the history is not rewritten on later turns until
-  the uncovered tail passes 15% of the window
+- **Thresholds.** `compaction_trigger_tokens()` and
+  `precompaction_trigger_tokens()` take the smaller of a share of the window
+  and a fixed token count: by default 80% or 200k for compaction, 50% or 100k
+  for preparing a summary. The fixed count matters on large windows, where a
+  share alone would send hundreds of thousands of uncompacted tokens per
+  request.
+- **Prepared in the background.** `schedule_precompaction()` starts the next
+  summary while the cache is warm, from two places: `ChatProcessor` when a
+  turn finishes, and the history processor before each request of a run that
+  is past the precompaction threshold but under the trigger, when
+  `prefix_cache_warm()` says the chat's last request is likely still cached.
+  The summary is held in `_PRECOMPACTIONS`, not applied. When the trigger is
+  reached, the history processor applies it if its fingerprint still matches,
+  waits for it if it is still being written, and writes a fresh one if it no
+  longer matches or would leave the context over the trigger. A summary that
+  still covers the history, or one that failed, is not rewritten until the
+  uncovered tail passes 20% of the compaction trigger
   (`PRECOMPACTION_REFRESH_TAIL_SHARE`).
+- **Kept across restarts.** A finished summary is written to the
+  `prepared_summaries` table (chat id, `end_index`, fingerprint, text) and
+  deleted when it is applied or superseded. The first time the history
+  processor sees a chat past the precompaction threshold in a process,
+  `restore_precompaction()` loads it back. With no request recorded since the
+  restart, the cold-cache check measures idle time from the last reply's
+  timestamp.
 - **Applied early on a cold cache.** Each `RequestSnapshot` carries the Suzent
   model id and the time it was sent. Before the trigger is reached,
   `cold_cache_compaction_due()` applies a finished prepared summary when the
-  history is at or over `context_precompaction_trigger` and the time since the
+  history is at or over the precompaction threshold and the time since the
   chat's last request exceeds the cache TTL estimate: the next request would
   pay full input price for the whole history anyway. Providers with no TTL
   estimate (local models) never qualify.
