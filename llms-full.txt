@@ -7196,7 +7196,9 @@ initial placement; moving it later changes its location without creating a
 second renderer. The transcript keeps a compact pointer with “Show here” while
 the surface is in Canvas. Fullscreen expands the existing sidebar using the
 same state as dragging it across the chat; shrinking restores its docked width.
-Opening fullscreen from chat first moves the surface to Canvas. Switching
+Opening fullscreen from chat first moves the surface to Canvas; when the
+sidebar leaves the expanded state, the surface returns to the chat and the
+sidebar gets back the open state, tab and width it had before. Switching
 Canvas tabs parks inactive renderers.
 
 The shared provider is scoped to the chat. Connected DOM nodes move using
