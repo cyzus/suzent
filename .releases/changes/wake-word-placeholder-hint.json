@@ -1,0 +1,1 @@
+{"products": {"desktop": "patch"}, "summary": "The wake word no longer adds a dot to the mic button: the message box hints at your phrase, and a line below it says when the wake word can't listen."}

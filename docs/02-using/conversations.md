@@ -135,9 +135,9 @@ Under **Settings → Voice & audio → Hands-free start**:
 - **Wake word.** Turn it on and Suzent listens for a phrase such as
   "你好 Suzent" or "Hey Suzent", then starts voice mode in the chat you have
   open. The listening happens on your computer with a small offline model;
-  no audio leaves it until voice mode starts. A green dot on the microphone
-  button shows when it is listening; an amber dot means it can't, and hovering
-  the button says why. The first time you turn it on, Suzent installs the Wake
+  no audio leaves it until voice mode starts. While it is listening, the
+  empty message box reads "Type, or say …" with your phrase; if it can't
+  listen, a line under the message box says why. The first time you turn it on, Suzent installs the Wake
   word plugin and downloads its model (about 25 MB together). Type a phrase
   and press Enter to add it, up to 8; phrases can be Chinese, English, or
   mixed. If an English word has no known pronunciation, its phrase turns red.

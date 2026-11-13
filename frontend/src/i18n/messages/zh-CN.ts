@@ -2040,6 +2040,7 @@ export const zhCN = {
     acpInstallHint: '未安装 — 请在“设置 › ACP Agents”中添加',
     removeFile: '移除文件',
     placeholderReady: '我能如何帮助你？',
+    placeholderWake: '输入，或说“{phrase}”',
     suggestionAcceptKey: 'Tab',
     placeholderLoading: '系统加载中...',
     attachFiles: '添加附件（图片、PDF、文档等）',
