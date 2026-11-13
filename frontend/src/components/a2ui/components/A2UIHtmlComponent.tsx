@@ -65,7 +65,8 @@ export const A2UIHtmlComponent: React.FC<Props> = ({ component, onAction, framed
       // away from the host origin (no cookies/storage/parent DOM access).
       sandbox="allow-scripts"
       srcDoc={buildHtmlDocument(component.html, fixedHeight === null)}
-      className={`block w-full max-h-full bg-white ${framed ? 'border-2 border-brutal-black' : 'border-0'}`}
+      // In chat nothing bounds the card, so cap it to stay fully on screen and scroll inside.
+      className={`block w-full bg-white ${framed ? 'max-h-[75vh] border-2 border-brutal-black' : 'max-h-full border-0'}`}
       style={{ height: fixedHeight ?? autoHeight + (framed ? 4 : 0) }}
     />
   );

@@ -4,10 +4,29 @@ export function htmlContentHeight(value: unknown): number | null {
     : null;
 }
 
+// Mirrors the app's light scrollbar in styles.css; the iframe background is always white.
+// Injected ahead of the agent's markup so its own scrollbar rules still win.
+const SCROLLBAR_STYLE = `<style>
+* { scrollbar-width: thin; scrollbar-color: #000 transparent; }
+::-webkit-scrollbar { width: 14px; height: 14px; }
+::-webkit-scrollbar-track { background-color: transparent; box-shadow: inset 0 0 0 3px #000; margin: 3px 0; }
+::-webkit-scrollbar-thumb { background-color: #000; border-radius: 0; border: 3px solid #000; background-clip: padding-box; }
+::-webkit-scrollbar-thumb:hover { background-color: #333; }
+::-webkit-scrollbar-corner { background: transparent; }
+</style>`;
+
+const DOCTYPE = /^\s*<!doctype[^>]*>/i;
+
+function withScrollbarStyle(html: string): string {
+  const doctype = html.match(DOCTYPE);
+  if (!doctype) return `${SCROLLBAR_STYLE}\n${html}`;
+  return `${doctype[0]}\n${SCROLLBAR_STYLE}${html.slice(doctype[0].length)}`;
+}
+
 export function buildHtmlDocument(html: string, autoSize: boolean): string {
-  if (!autoSize) return html;
+  if (!autoSize) return withScrollbarStyle(html);
   // Standards mode prevents a fragment's body height from inheriting the iframe viewport.
-  const document = /^\s*<!doctype\s/i.test(html) ? html : `<!DOCTYPE html>\n${html}`;
+  const document = withScrollbarStyle(DOCTYPE.test(html) ? html : `<!DOCTYPE html>\n${html}`);
   return `${document}
 <style>html, body { height: auto !important; min-height: 0 !important; }</style>
 <script>

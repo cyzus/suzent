@@ -77,8 +77,11 @@ export const InlineSurfaceProvider: React.FC<{
   const value = useMemo(
     () => ({
       openInCanvas: (surface: A2UISurface, expanded?: boolean): void => {
+        const fromChat =
+          (workspace.locationOf(surface.id) ??
+            (surface.target === 'canvas' ? 'canvas' : 'inline')) === 'inline';
         workspace.upsert(surface);
-        workspace.place(surface.id, 'canvas');
+        workspace.place(surface.id, 'canvas', Boolean(expanded) && fromChat);
         openInCanvas(surface, expanded);
       },
       revisions,
