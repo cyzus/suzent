@@ -292,9 +292,7 @@ def _apply_routing(
         destination = "none"
     rule.destination = destination
     rule.action = "none" if destination == "none" else "route"
-    rule.target_project_id = (
-        target_project_id if destination in ("project", "project_regent") else None
-    )
+    rule.target_project_id = target_project_id if destination == "project" else None
     rule.target_chat_id = (
         target_chat_id if destination in ("regent", "session") else None
     )

@@ -128,17 +128,16 @@ def resolve_target_label(
 
 DEST_REGENT = "regent"
 DEST_PROJECT = "project"
-DEST_PROJECT_REGENT = "project_regent"
 DEST_USER = "user"
 DEST_NONE = "none"
 DEST_SESSION = "session"
-_AGENT_DESTINATIONS = {DEST_REGENT, DEST_PROJECT, DEST_PROJECT_REGENT, DEST_SESSION}
+_AGENT_DESTINATIONS = {DEST_REGENT, DEST_PROJECT, DEST_SESSION}
 
 
 @dataclass(frozen=True)
 class Destination:
     """Where a rule sends events, as one value: ``regent``, ``user``, ``none``,
-    ``project:<id>``, ``project_regent:<id>`` or ``session:<chat_id>``.
+    ``project:<id>`` or ``session:<chat_id>``.
     """
 
     kind: str
@@ -151,7 +150,7 @@ class Destination:
         if value in (DEST_REGENT, DEST_USER, DEST_NONE, ""):
             return cls(value or DEST_NONE)
         kind, _, ref = value.partition(":")
-        if kind in (DEST_PROJECT, DEST_PROJECT_REGENT) and ref:
+        if kind == DEST_PROJECT and ref:
             return cls(kind, project_id=ref)
         if kind == DEST_SESSION and ref:
             return cls.for_chat(ref)
@@ -173,7 +172,7 @@ class Destination:
 
     @property
     def value(self) -> str:
-        if self.kind in (DEST_PROJECT, DEST_PROJECT_REGENT):
+        if self.kind == DEST_PROJECT:
             return f"{self.kind}:{self.project_id}"
         if self.kind == DEST_SESSION:
             return f"{DEST_SESSION}:{self.chat_id}"
@@ -194,16 +193,13 @@ class Destination:
             case "session":
                 return resolve_target_label(db, self.chat_id)
         project = db.get_project(self.project_id) if self.project_id else None
-        name = project.name if project else self.project_id
-        if self.kind == DEST_PROJECT:
-            return f"New session in {name}"
-        return f"{FOCAL_TITLE} · {name}"
+        return f"New session in {project.name if project else self.project_id}"
 
     def missing(self, db: ChatDatabase) -> bool:
         """True when the session or project this points at no longer exists."""
         if self.kind == DEST_SESSION:
             return not self.chat_id or not target_exists(db, self.chat_id)
-        if self.kind in (DEST_PROJECT, DEST_PROJECT_REGENT):
+        if self.kind == DEST_PROJECT:
             project = db.get_project(self.project_id) if self.project_id else None
             return project is None or bool(project.archived)
         return False
@@ -225,14 +221,13 @@ def list_destinations(db: ChatDatabase) -> list[dict[str, Optional[str]]]:
     ]
     try:
         for project in _routable_projects(db):
-            for kind in (DEST_PROJECT, DEST_PROJECT_REGENT):
-                destinations.append(
-                    {
-                        "value": f"{kind}:{project.id}",
-                        "kind": kind,
-                        "project": project.name,
-                    }
-                )
+            destinations.append(
+                {
+                    "value": f"{DEST_PROJECT}:{project.id}",
+                    "kind": DEST_PROJECT,
+                    "project": project.name,
+                }
+            )
     except Exception as exc:
         logger.warning("Could not list Mailbox projects: {}", exc)
     destinations += [
@@ -397,9 +392,7 @@ async def _llm_triage_first_seen(
 
     try:
         projects = _routable_projects(db)
-        project_lines = "\n".join(
-            f"- project:{p.id} / project_regent:{p.id}: {p.name}" for p in projects[:20]
-        )
+        project_lines = "\n".join(f"- project:{p.id}: {p.name}" for p in projects[:20])
         prompt = (
             "You are Suzent's inbound Mailbox Router. A new kind of event arrived for the first time.\n"
             "Decide where future events with this signature go and when.\n\n"
@@ -407,7 +400,6 @@ async def _llm_triage_first_seen(
             "- 'regent': Regent, the user's orchestrator, handles it (the default).\n"
             "- 'project:<id>': start a new session in that project for each event, when each one is a\n"
             "  separate job to do there (e.g. a failing CI run to fix).\n"
-            "- 'project_regent:<id>': Regent handles it, told which project it concerns.\n"
             "- 'user': only notify the user; no agent runs (news they just want to know about).\n"
             "- 'none': only keep it in the Mailbox (noise, routine pings, passing checks).\n\n"
             "cadence:\n"
@@ -555,25 +547,11 @@ class MissingTargetError(LookupError):
         self.chat_id = target
 
 
-def _project_note(db: ChatDatabase, destination: Destination) -> str:
-    """Tell Regent which project an event concerns, for project_regent rules."""
-    if destination.kind != DEST_PROJECT_REGENT or not destination.project_id:
-        return ""
-    project = db.get_project(destination.project_id)
-    name = project.name if project else destination.project_id
-    return (
-        f"This concerns project '{name}' (id {destination.project_id}): hand it to "
-        "a session there, start one, or handle it yourself.\n"
-    )
-
-
-def _event_content(
-    item: MailboxItemModel, prompt: Optional[str], project_note: str = ""
-) -> str:
+def _event_content(item: MailboxItemModel, prompt: Optional[str]) -> str:
     header = f"[Mailbox Event #{item.id} · {item.source_name} · {item.event_type}]"
     instructions = f"{prompt.strip()}\n" if prompt else ""
     return (
-        f"{header}\n{project_note}{instructions}Summary: {item.summary}"
+        f"{header}\n{instructions}Summary: {item.summary}"
         f"{build_webhook_section(item.payload)}"
     )
 
@@ -717,7 +695,7 @@ async def route_inbound(envelope: InboundEnvelope) -> MailboxItemModel:
 
 def _agent_chat(destination: Destination) -> Optional[str]:
     """The session a destination reaches before delivery, if it is known already."""
-    if destination.kind in (DEST_REGENT, DEST_PROJECT_REGENT):
+    if destination.kind == DEST_REGENT:
         return FOCAL_CHAT_ID
     if destination.kind == DEST_SESSION:
         return destination.chat_id
@@ -779,7 +757,7 @@ def _deliver_now(
         msg_id, chat_id, fallback = _deliver_to_agent(
             db,
             destination,
-            content=_event_content(item, rule.prompt, _project_note(db, destination)),
+            content=_event_content(item, rule.prompt),
             title=f"{item.source_name} · {item.summary}",
             mailbox_item_id=item.id,
             sender_label=f"Mailbox ({item.source_name})",
@@ -1066,11 +1044,6 @@ def _send_digest(
     content = "\n".join(
         [
             f"[Mailbox digest · {rule.name} · {len(items)} event(s)]",
-            *(
-                [_project_note(db, destination).strip()]
-                if _project_note(db, destination)
-                else []
-            ),
             *([rule.prompt.strip()] if rule.prompt else []),
             *entries,
         ]

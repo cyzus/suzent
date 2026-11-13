@@ -585,19 +585,6 @@ async def test_mark_read_rejects_bad_ids(db):
 
 
 @pytest.mark.asyncio
-async def test_project_regent_tells_regent_which_project(db, monkeypatch):
-    get_or_create_focal_chat()
-    project_id = db.create_project("Suzent", "suzent")
-    _fake_router(monkeypatch, _decision(destination=f"project_regent:{project_id}"))
-
-    item = await _github_release()
-
-    assert item.target_chat_id == FOCAL_CHAT_ID
-    [message] = db.list_agent_messages(target_chat_id=FOCAL_CHAT_ID)
-    assert "This concerns project 'Suzent'" in message["content"]
-
-
-@pytest.mark.asyncio
 async def test_notify_digest_sends_one_notification(db, monkeypatch):
     _fake_router(monkeypatch, _decision(destination="user", cadence="digest"))
     await _github_release("v1")

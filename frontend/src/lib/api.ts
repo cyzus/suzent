@@ -1751,9 +1751,9 @@ export async function fetchCronStatus(): Promise<{
 }
 
 export interface MailboxDestination {
-  /** `regent`, `user`, `none`, `project:<id>` or `project_regent:<id>`. */
+  /** `regent`, `user`, `none` or `project:<id>`. */
   value: string;
-  kind: 'regent' | 'project' | 'project_regent' | 'user' | 'none';
+  kind: 'regent' | 'project' | 'user' | 'none';
   project: string | null;
 }
 

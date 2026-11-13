@@ -649,15 +649,8 @@ export function MailboxView({
         case 'project':
           options.push({
             value: dest.value,
-            label: t('mailboxRules.projectNew'),
-            group: dest.project ?? '',
-          });
-          break;
-        case 'project_regent':
-          options.push({
-            value: dest.value,
-            label: t('mailboxRules.projectRegent'),
-            group: dest.project ?? '',
+            label: dest.project ?? dest.value,
+            group: t('mailboxRules.groupProjects'),
           });
           break;
         case 'user':
@@ -695,8 +688,6 @@ export function MailboxView({
         return 'Regent';
       case 'project':
         return t('mailboxRules.newSessionIn', { project: dest.project ?? '' });
-      case 'project_regent':
-        return `Regent · ${dest.project ?? ''}`;
       case 'user':
         return t('mailboxRules.destUser');
       case 'none':

@@ -491,15 +491,14 @@ class MailboxRuleModel(SQLModel, table=True):
     origin: str = Field(default="learned")  # "learned" | "pinned"
     reason: Optional[str] = None
     # Where events go: "regent", "project" (a new session there per delivery),
-    # "project_regent" (Regent, told which project it concerns), "user" (a
-    # notification only), "none" (kept in the Mailbox), or "session" (a
-    # specific session; only rules made before projects were the unit).
+    # "user" (a notification only), "none" (kept in the Mailbox), or "session"
+    # (a specific session; only rules made before projects were the unit).
     destination: str = Field(default="regent")
     # "now" delivers each event as it arrives; "digest" batches them every
     # digest_minutes.
     delivery: str = Field(default="now")
     digest_minutes: int = Field(default=60)
-    # The project of a "project" or "project_regent" destination.
+    # The project of a "project" destination.
     target_project_id: Optional[str] = Field(default=None)
     # Instructions sent along with each delivery to an agent.
     prompt: Optional[str] = None
