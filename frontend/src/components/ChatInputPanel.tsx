@@ -770,7 +770,9 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
                   ? t('chatInput.placeholderLoading').toUpperCase()
                   : streamingForCurrentChat
                     ? ''
-                    : t('chatInput.placeholderReady')
+                    : voice.supported && wakeListening && handsFree?.phrase
+                      ? t('chatInput.placeholderWake', { phrase: handsFree.phrase })
+                      : t('chatInput.placeholderReady')
             }
             onCompositionStart={() => {
               isComposingRef.current = true;
@@ -1031,19 +1033,6 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
               aria-description={micTitle.split('\n').slice(1).join('. ') || undefined}
             >
               <MicrophoneIcon className="w-5 h-5 stroke-2" aria-hidden="true" />
-              {voice.supported && (wakeListening || wakeProblem) && (
-                <span
-                  data-testid={wakeListening ? 'wake-listening' : 'wake-problem'}
-                  aria-hidden="true"
-                  className={`absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full ring-2 ring-white dark:ring-zinc-900 ${
-                    wakeListening ? 'bg-emerald-500' : 'bg-amber-400'
-                  }`}
-                >
-                  {wakeListening && (
-                    <span className="absolute inset-0 animate-ping rounded-full bg-emerald-500 opacity-60 motion-reduce:hidden" />
-                  )}
-                </span>
-              )}
             </button>
           )}
         </div>
@@ -1071,6 +1060,18 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
               dropdownClassName="!w-[196px] border-2 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] [&_button]:px-2.5 [&_button]:py-1 [&_button]:text-xs [&_button]:font-semibold [&_button]:normal-case [&_button]:border-b [&_button:last-child]:border-b-0"
             />
           </div>
+        )}
+
+        {voice.supported && wakeProblem && (
+          <span
+            data-testid="wake-problem"
+            className={`inline-flex min-w-0 items-center gap-1 text-xs font-medium text-amber-700 dark:text-amber-400 ${isFocal ? '' : 'ml-auto'}`}
+          >
+            <MicrophoneIcon className="h-3.5 w-3.5 shrink-0 stroke-2" aria-hidden="true" />
+            <span className="truncate">
+              {t('voice.wake.notListening', { reason: t(wakeProblem.key, wakeProblem.params) })}
+            </span>
+          </span>
         )}
 
         {/* Reasoning effort. Only the native runtime owns model settings — an
