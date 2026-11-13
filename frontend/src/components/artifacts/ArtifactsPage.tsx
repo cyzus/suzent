@@ -324,7 +324,7 @@ export const ArtifactsPage: React.FC<ArtifactsPageProps> = ({ onOpenChat }) => {
     </article>
   );
 
-  const projectRow = (id: string | null, label: string, count: number): React.ReactNode => {
+  const projectChip = (id: string | null, label: string, count: number): React.ReactNode => {
     const selected = projectId === id;
     return (
       <button
@@ -332,11 +332,11 @@ export const ArtifactsPage: React.FC<ArtifactsPageProps> = ({ onOpenChat }) => {
         type="button"
         aria-pressed={selected}
         onClick={() => setProjectId(id)}
-        className={`flex shrink-0 items-center gap-3 border-2 px-3 py-2 text-left text-xs transition-colors md:w-full md:border-0 md:border-l-4 ${selected ? 'border-brutal-black bg-brutal-yellow font-bold text-brutal-black' : 'border-neutral-300 text-neutral-700 hover:bg-neutral-100 dark:border-zinc-600 dark:text-neutral-300 dark:hover:bg-zinc-700 md:border-transparent md:dark:border-transparent'}`}
+        className={`flex max-w-[16rem] shrink-0 items-center gap-2 border-2 border-brutal-black px-2.5 py-1 text-xs transition-[transform,box-shadow,background-color] duration-150 ${selected ? 'bg-brutal-yellow font-bold text-brutal-black shadow-brutal-sm' : 'bg-white text-neutral-700 hover:-translate-y-px hover:bg-neutral-100 dark:bg-zinc-800 dark:text-neutral-300 dark:hover:bg-zinc-700'}`}
       >
-        <span className="min-w-0 flex-1 truncate">{label}</span>
+        <span className="min-w-0 truncate">{label}</span>
         <span
-          className={`min-w-[1.75rem] border px-1 text-center font-mono text-[10px] tabular-nums ${selected ? 'border-brutal-black bg-white' : 'border-neutral-300 dark:border-zinc-600'}`}
+          className={`font-mono text-[10px] tabular-nums ${selected ? 'text-brutal-black' : 'text-neutral-400'}`}
         >
           {count}
         </span>
@@ -405,23 +405,20 @@ export const ArtifactsPage: React.FC<ArtifactsPageProps> = ({ onOpenChat }) => {
           {error}
         </div>
       ) : (
-        <div className="flex flex-col gap-6 md:flex-row md:items-start">
-          <nav
-            aria-label={t('artifactsPage.projects')}
-            className="md:sticky md:top-0 md:w-56 md:shrink-0 md:border-2 md:border-brutal-black md:bg-white md:shadow-brutal-sm md:dark:bg-zinc-800"
-          >
-            <h3 className="hidden border-b-2 border-brutal-black bg-neutral-100 px-3 py-2 font-brutal text-xs uppercase tracking-tight dark:bg-zinc-900 md:block">
-              {t('artifactsPage.projects')}
-            </h3>
-            <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-thin md:flex-col md:gap-0.5 md:overflow-visible md:p-1.5">
-              {projectRow(null, t('artifactsPage.allProjects'), items.length)}
+        <div className="space-y-6">
+          {visibleProjects.length > 1 && (
+            <nav
+              aria-label={t('artifactsPage.projects')}
+              className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1 scrollbar-thin md:flex-wrap md:overflow-visible"
+            >
+              {projectChip(null, t('artifactsPage.allProjects'), items.length)}
               {visibleProjects.map((project) =>
-                projectRow(project.id, project.name, project.count)
+                projectChip(project.id, project.name, project.count)
               )}
-            </div>
-          </nav>
+            </nav>
+          )}
 
-          <div className="min-w-0 flex-1 space-y-8">
+          <div className="min-w-0 space-y-8">
             {loaded && visible.length === 0 && (
               <div className="flex flex-col items-center border-2 border-dashed border-neutral-400 px-6 py-16 text-center dark:border-zinc-600">
                 <span className="mb-4 flex h-14 w-14 items-center justify-center border-2 border-brutal-black bg-white shadow-brutal-sm dark:bg-zinc-800">
