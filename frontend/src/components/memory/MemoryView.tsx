@@ -91,7 +91,7 @@ export const MemoryView: React.FC<{ initialTab?: MemoryTab }> = ({ initialTab })
               </p>
               <button
                 onClick={() => loadCoreMemory()}
-                className="px-6 py-2 border-3 border-brutal-black bg-white dark:bg-zinc-700 hover:bg-neutral-100 dark:hover:bg-zinc-600 font-bold uppercase shadow-[2px_2px_0_0_#000] brutal-btn transition-all"
+                className="px-6 py-2 border-3 border-brutal-black bg-white dark:bg-zinc-700 hover:bg-neutral-100 dark:hover:bg-zinc-600 font-bold uppercase shadow-brutal-sm brutal-btn transition-all"
               >
                 {t('memoryView.retryConnection')}
               </button>
@@ -109,7 +109,7 @@ export const MemoryView: React.FC<{ initialTab?: MemoryTab }> = ({ initialTab })
         tabs={TABS.map((tab) => ({ id: tab.id, label: t(tab.labelKey) }))}
         value={activeTab}
         onChange={setActiveTab}
-        containerClassName="border-3 border-brutal-black bg-white dark:bg-zinc-800 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]"
+        containerClassName="border-3 border-brutal-black bg-white dark:bg-zinc-800 shadow-brutal-sm"
         tabClassName="flex-1 px-4 py-2.5 font-bold text-xs md:text-sm"
       />
 

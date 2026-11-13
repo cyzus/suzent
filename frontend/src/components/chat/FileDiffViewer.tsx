@@ -289,7 +289,7 @@ export const FileContentDiffViewer: React.FC<FileContentDiffViewerProps> = ({
         'flex w-full flex-col overflow-hidden bg-white transition-all dark:bg-[#1e1e1e]',
         embedded
           ? 'border-0 shadow-none'
-          : 'mt-2 border-2 border-brutal-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] dark:border-zinc-600 dark:shadow-none',
+          : 'mt-2 border-2 border-brutal-black shadow-brutal-sm dark:border-zinc-600 dark:shadow-none',
       ].join(' ')}
     >
       <div

@@ -85,7 +85,7 @@ export function ContextMenu({
       role="menu"
       aria-label={label}
       style={position}
-      className="fixed z-[9999] w-56 overflow-y-auto border-2 border-brutal-black bg-white py-0.5 shadow-[3px_3px_0_0_#000] dark:bg-zinc-800"
+      className="fixed z-[9999] w-56 overflow-y-auto border-2 border-brutal-black bg-white py-0.5 shadow-brutal-overlay dark:bg-zinc-800"
       onClick={(event) => event.stopPropagation()}
       onContextMenu={(event) => {
         event.preventDefault();

@@ -580,15 +580,15 @@ const AGUIPartsContent: React.FC<{
                 <summary
                   className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-mono font-bold tracking-wide uppercase border-2 rounded-sm transition-all select-none cursor-pointer max-w-full ${
                     isChunkStreaming
-                      ? 'brutal-running-mono !text-brutal-black dark:!text-white border-brutal-black dark:border-white shadow-[2px_2px_0px_#000] dark:shadow-[2px_2px_0px_#fff]'
-                      : 'bg-transparent text-neutral-600 dark:text-neutral-400 border-neutral-400 dark:border-zinc-600 hover:border-brutal-black dark:hover:border-white hover:text-brutal-black dark:hover:text-white hover:shadow-[2px_2px_0px_#000] dark:hover:shadow-[2px_2px_0px_#fff]'
+                      ? 'brutal-running-mono !text-brutal-black dark:!text-white border-brutal-black dark:border-white shadow-brutal-sm'
+                      : 'bg-transparent text-neutral-600 dark:text-neutral-400 border-neutral-400 dark:border-zinc-600 hover:border-brutal-black dark:hover:border-white hover:text-brutal-black dark:hover:text-white hover:shadow-brutal-sm'
                   }`}
                 >
                   <span className="truncate flex items-center gap-1.5 flex-1 min-w-0 font-mono">
                     {header}
                   </span>
                 </summary>
-                <div className="mt-1.5 p-4 bg-neutral-50 dark:bg-zinc-900 border-2 rounded-sm border-brutal-black dark:border-white w-full overflow-x-hidden shadow-[2px_2px_0px_#000] dark:shadow-[2px_2px_0px_#fff]">
+                <div className="mt-1.5 p-4 bg-neutral-50 dark:bg-zinc-900 border-2 rounded-sm border-brutal-black dark:border-white w-full overflow-x-hidden shadow-brutal-sm">
                   <div className="text-[13px] md:text-sm text-brutal-black/90 dark:text-neutral-300 leading-relaxed break-words opacity-90">
                     <MarkdownRenderer
                       content={reasoningText}
@@ -1432,15 +1432,15 @@ const AssistantMessageComponent: React.FC<AssistantMessageProps> = ({
                             <summary
                               className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-mono font-bold tracking-wide uppercase border-2 rounded-sm transition-all select-none cursor-pointer max-w-full ${
                                 isChunkStreaming
-                                  ? 'brutal-running-mono !text-brutal-black dark:!text-white border-brutal-black dark:border-white shadow-[2px_2px_0px_#000] dark:shadow-[2px_2px_0px_#fff]'
-                                  : 'bg-transparent text-neutral-600 dark:text-neutral-400 border-neutral-400 dark:border-zinc-600 hover:border-brutal-black dark:hover:border-white hover:text-brutal-black dark:hover:text-white hover:shadow-[2px_2px_0px_#000] dark:hover:shadow-[2px_2px_0px_#fff]'
+                                  ? 'brutal-running-mono !text-brutal-black dark:!text-white border-brutal-black dark:border-white shadow-brutal-sm'
+                                  : 'bg-transparent text-neutral-600 dark:text-neutral-400 border-neutral-400 dark:border-zinc-600 hover:border-brutal-black dark:hover:border-white hover:text-brutal-black dark:hover:text-white hover:shadow-brutal-sm'
                               }`}
                             >
                               <span className="truncate flex items-center gap-1.5 flex-1 min-w-0 font-mono">
                                 {getReasoningHeader(rb.content, !!isChunkStreaming)}
                               </span>
                             </summary>
-                            <div className="mt-1.5 p-4 bg-neutral-50 dark:bg-zinc-900 border-2 rounded-sm border-brutal-black dark:border-white w-full overflow-x-hidden shadow-[2px_2px_0px_#000] dark:shadow-[2px_2px_0px_#fff]">
+                            <div className="mt-1.5 p-4 bg-neutral-50 dark:bg-zinc-900 border-2 rounded-sm border-brutal-black dark:border-white w-full overflow-x-hidden shadow-brutal-sm">
                               <div className="text-[13px] md:text-sm text-brutal-black/90 dark:text-neutral-300 leading-relaxed break-words opacity-90">
                                 <MarkdownRenderer
                                   content={rb.content}

@@ -605,7 +605,7 @@ export const SandboxFiles: React.FC<SandboxFilesProps> = ({
             className={
               sidebarExpansion?.expanded
                 ? 'flex-1 min-w-0 flex min-h-8 items-center px-1'
-                : 'bg-white dark:bg-zinc-700 border-2 border-brutal-black px-3 py-1.5 flex-1 min-w-0 shadow-[2px_2px_0_0_#000]'
+                : 'bg-white dark:bg-zinc-700 border-2 border-brutal-black px-3 py-1.5 flex-1 min-w-0 shadow-brutal-sm'
             }
           >
             <span
@@ -758,7 +758,7 @@ export const SandboxFiles: React.FC<SandboxFilesProps> = ({
             className={
               sidebarExpansion?.expanded
                 ? 'min-w-0 flex-1 px-2 py-1 font-mono text-[10px] text-neutral-500 dark:text-zinc-400'
-                : 'min-w-0 flex-1 border-2 border-brutal-black bg-neutral-100 px-2 py-1 font-mono text-[10px] font-bold uppercase tracking-wider text-brutal-black shadow-[2px_2px_0_0_#000] dark:bg-zinc-700 dark:text-white'
+                : 'min-w-0 flex-1 border-2 border-brutal-black bg-neutral-100 px-2 py-1 font-mono text-[10px] font-bold uppercase tracking-wider text-brutal-black shadow-brutal-sm dark:bg-zinc-700 dark:text-white'
             }
           >
             <span className="block truncate">{activeRoot}</span>
@@ -787,7 +787,7 @@ export const SandboxFiles: React.FC<SandboxFilesProps> = ({
             <span className="font-bold text-xs font-mono">{t('sandbox.scanning')}</span>
           </div>
         ) : error ? (
-          <div className="p-3 bg-red-100 border-2 border-brutal-black text-red-600 text-xs font-mono m-2 shadow-[4px_4px_0_0_#000]">
+          <div className="p-3 bg-red-100 border-2 border-brutal-black text-red-600 text-xs font-mono m-2 shadow-brutal-sm">
             {error}
           </div>
         ) : (

@@ -1055,7 +1055,7 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
               disabled={!configReady || streamingForCurrentChat || isSavingPermissionMode}
               className="inline-block w-auto"
               buttonClassName={FOOTER_SELECT_BUTTON_CLASS}
-              dropdownClassName="!w-[196px] border-2 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] [&_button]:px-2.5 [&_button]:py-1 [&_button]:text-xs [&_button]:font-semibold [&_button]:normal-case [&_button]:border-b [&_button:last-child]:border-b-0"
+              dropdownClassName="!w-[196px] border-2 shadow-brutal-overlay [&_button]:px-2.5 [&_button]:py-1 [&_button]:text-xs [&_button]:font-semibold [&_button]:normal-case [&_button]:border-b [&_button:last-child]:border-b-0"
             />
           </div>
         )}

@@ -54,7 +54,7 @@ function parentHostPath(path: string): string | null {
 
 const BUTTON_CLASS =
   'px-3 py-1.5 border-2 border-brutal-black bg-white text-xs font-bold uppercase ' +
-  'shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:bg-neutral-100 disabled:opacity-40';
+  'shadow-brutal-sm hover:bg-neutral-100 disabled:opacity-40';
 
 function HostDirectoryPicker(props: {
   multiple: boolean;
@@ -115,7 +115,7 @@ function HostDirectoryPicker(props: {
       onClick={() => props.onResolve(null)}
     >
       <div
-        className="flex h-[32rem] w-full max-w-lg flex-col border-4 border-brutal-black bg-white shadow-[8px_8px_0px_0px_rgba(0,0,0,1)]"
+        className="flex h-[32rem] w-full max-w-lg flex-col border-4 border-brutal-black bg-white shadow-brutal"
         onClick={(event) => event.stopPropagation()}
       >
         <div className="border-b-4 border-brutal-black px-4 py-3">

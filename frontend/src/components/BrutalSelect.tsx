@@ -158,7 +158,7 @@ export const BrutalSelect: React.FC<BrutalSelectProps> = ({
     createPortal(
       <div
         ref={dropdownRef}
-        className={`fixed z-[9999] bg-white dark:bg-zinc-800 border-3 border-brutal-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] max-h-60 overflow-x-hidden overflow-y-auto scrollbar-thin animate-brutal-drop ${dropdownClassName}`}
+        className={`fixed z-[9999] bg-white dark:bg-zinc-800 border-3 border-brutal-black shadow-brutal-overlay max-h-60 overflow-x-hidden overflow-y-auto scrollbar-thin animate-brutal-drop ${dropdownClassName}`}
         style={{
           top: dropdownPosition?.top,
           bottom: dropdownPosition?.bottom,
@@ -253,7 +253,7 @@ export const BrutalSelect: React.FC<BrutalSelectProps> = ({
         className={`w-full dark:text-white px-3 py-2 font-bold text-sm text-left flex items-center justify-between transition-all duration-200 focus:outline-none disabled:cursor-not-allowed disabled:opacity-40 ${
           variant === 'ghost'
             ? 'bg-transparent'
-            : `bg-white dark:bg-zinc-800 border-3 border-brutal-black hover:bg-brutal-yellow dark:hover:bg-zinc-700 disabled:hover:bg-white dark:disabled:hover:bg-zinc-800 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] ${isOpen ? 'translate-x-[1px] translate-y-[1px]' : 'brutal-btn'}`
+            : `bg-white dark:bg-zinc-800 border-3 border-brutal-black hover:bg-brutal-yellow dark:hover:bg-zinc-700 disabled:hover:bg-white dark:disabled:hover:bg-zinc-800 shadow-brutal-sm ${isOpen ? 'translate-x-[1px] translate-y-[1px]' : 'brutal-btn'}`
         } ${buttonClassName}`}
       >
         <span className="truncate">

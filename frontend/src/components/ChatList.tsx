@@ -2270,7 +2270,7 @@ export const ChatList: React.FC<ChatListProps> = ({
                   {organizationMenuOpen && (
                     <div
                       role="menu"
-                      className="absolute right-3 top-8 z-30 min-w-[180px] border-2 border-brutal-black bg-white py-1 shadow-[3px_3px_0_0_#000] dark:bg-zinc-800"
+                      className="absolute right-3 top-8 z-30 min-w-[180px] border-2 border-brutal-black bg-white py-1 shadow-brutal-overlay dark:bg-zinc-800"
                     >
                       <div className="px-3 py-1.5 text-[9px] font-extrabold uppercase tracking-[0.14em] text-neutral-400 dark:text-neutral-500">
                         {t('chatList.organization.title')}

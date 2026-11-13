@@ -241,7 +241,7 @@ export const SkillsView: React.FC<SkillsViewProps> = ({ chatId }) => {
           onClick={() => setSelectedSkill(null)}
         >
           <div
-            className="w-full max-w-5xl max-h-[88vh] overflow-hidden bg-white dark:bg-zinc-900 border-3 border-brutal-black shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] flex flex-col"
+            className="w-full max-w-5xl max-h-[88vh] overflow-hidden bg-white dark:bg-zinc-900 border-3 border-brutal-black shadow-brutal flex flex-col"
             onClick={(event) => event.stopPropagation()}
           >
             <div className="flex items-start justify-between gap-4 border-b-3 border-brutal-black p-4 bg-white dark:bg-zinc-800">
