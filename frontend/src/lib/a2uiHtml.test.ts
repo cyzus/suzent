@@ -12,9 +12,17 @@ describe('HTML canvas documents', () => {
     (height) => expect(htmlContentHeight(height)).toBeNull()
   );
 
-  it('keeps fixed-height applications unchanged', () => {
+  it('keeps fixed-height applications in their own document mode', () => {
     const html = '<main style="height:100vh;overflow:auto">App</main>';
-    expect(buildHtmlDocument(html, false)).toBe(html);
+    const doc = buildHtmlDocument(html, false);
+    expect(doc).not.toMatch(/<!doctype/i);
+    expect(doc.endsWith(html)).toBe(true);
+  });
+
+  it('injects the app scrollbar style right after the doctype', () => {
+    const doc = buildHtmlDocument('<!DOCTYPE html><html><body>News</body></html>', false);
+    expect(doc).toMatch(/^<!DOCTYPE html>\n<style>[^]*::-webkit-scrollbar-thumb/);
+    expect(buildHtmlDocument('<p>News</p>', true)).toMatch(/^<!DOCTYPE html>\n<style>/);
   });
 
   it('uses standards mode for fragments without duplicating an existing doctype', () => {
