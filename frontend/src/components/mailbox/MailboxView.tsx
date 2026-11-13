@@ -646,16 +646,48 @@ export function MailboxView({
     }
   };
 
+  const targetName = (tgt: MailboxTarget): string =>
+    tgt.kind === 'regent' ? 'Regent' : tgt.title || tgt.label;
+
   const routeOptionsFor = (currentChatId?: string | null, currentLabel?: string | null) => {
+    const group = (kind: MailboxTarget['kind']) =>
+      kind === 'regent'
+        ? t('mailboxRules.groupRegent')
+        : kind === 'project'
+          ? t('mailboxRules.groupProject')
+          : t('mailboxRules.groupSession');
     const opts = targets.map((tgt) => ({
       value: tgt.chat_id,
-      label: tgt.kind === 'regent' ? '→ Regent' : `→ ${tgt.label}`,
+      label: targetName(tgt),
+      hint: tgt.kind === 'agent' ? (tgt.project ?? undefined) : undefined,
+      group: group(tgt.kind),
     }));
     if (currentChatId && !opts.some((o) => o.value === currentChatId)) {
-      opts.push({ value: currentChatId, label: `→ ${currentLabel || currentChatId}` });
+      opts.push({
+        value: currentChatId,
+        label: currentLabel || currentChatId,
+        hint: undefined,
+        group: t('mailboxRules.groupSession'),
+      });
     }
-    opts.push({ value: '__none__', label: 'Unrouted' });
+    opts.push({
+      value: '__none__',
+      label: t('mailboxView.status.unrouted'),
+      hint: undefined,
+      group: t('mailboxRules.groupNone'),
+    });
     return opts;
+  };
+
+  /** What a rule's target trigger reads, short enough for its column. */
+  const targetTriggerLabel = (value: string, fallback?: string | null): string => {
+    if (value === '__none__') return t('mailboxView.status.unrouted');
+    const tgt = targets.find((candidate) => candidate.chat_id === value);
+    if (!tgt) return fallback || value;
+    if (tgt.kind === 'project') {
+      return t('mailboxRules.newSessionIn', { project: targetName(tgt) });
+    }
+    return targetName(tgt);
   };
 
   const formatScheduleBadge = (job: CronJob): string => {
@@ -1000,8 +1032,12 @@ export function MailboxView({
                           target === '__none__' ? null : target,
                           rule.target_label
                         )}
+                        selectedLabel={targetTriggerLabel(target, rule.target_label)}
                         onChange={(val) => void saveRule(rule, { target: val })}
                         buttonClassName={COMPACT_SELECT}
+                        menuSize="compact"
+                        menuMinWidth={280}
+                        menuAlign="end"
                       />
 
                       {routes ? (
@@ -1010,6 +1046,7 @@ export function MailboxView({
                           ariaLabel={t('mailboxRules.deliveryLabel')}
                           variant="ghost"
                           options={deliveryOptions(rule)}
+                          menuSize="compact"
                           onChange={(val) => {
                             const [delivery, minutes] = val.split(':');
                             void saveRule(rule, {

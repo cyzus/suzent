@@ -116,6 +116,11 @@ export const en = {
     originPinned: 'Set by you',
     hits: '{count} hits',
     targetLabel: 'Target',
+    groupRegent: 'Regent',
+    groupSession: 'Sessions',
+    groupProject: 'New session in project',
+    groupNone: 'Other',
+    newSessionIn: 'New · {project}',
     delete: 'Delete rule',
   },
   desktopMenu: {

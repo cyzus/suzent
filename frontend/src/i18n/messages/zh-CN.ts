@@ -114,6 +114,11 @@ export const zhCN = {
     originPinned: '你设定的',
     hits: '命中 {count} 次',
     targetLabel: '目标',
+    groupRegent: 'Regent',
+    groupSession: '会话',
+    groupProject: '在项目中新开会话',
+    groupNone: '其他',
+    newSessionIn: '新会话 · {project}',
     delete: '删除规则',
   },
   desktopMenu: {

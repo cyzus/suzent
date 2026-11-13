@@ -1754,6 +1754,8 @@ export interface MailboxTarget {
   chat_id: string;
   label: string;
   kind: 'regent' | 'agent' | 'project';
+  title?: string;
+  project?: string | null;
 }
 
 export interface MailboxItem {

@@ -127,9 +127,9 @@ def resolve_target_label(
     return target_chat_id
 
 
-def list_routable_targets(db: ChatDatabase) -> list[dict[str, str]]:
+def list_routable_targets(db: ChatDatabase) -> list[dict[str, Optional[str]]]:
     """Return available routing targets (Regent first, then active project sessions)."""
-    targets: list[dict[str, str]] = [
+    targets: list[dict[str, Optional[str]]] = [
         {
             "chat_id": FOCAL_CHAT_ID,
             "label": f"{FOCAL_TITLE} (Focal Agent)",
@@ -152,7 +152,15 @@ def list_routable_targets(db: ChatDatabase) -> list[dict[str, str]]:
                 if proj_name and proj_id != "default"
                 else title
             )
-            targets.append({"chat_id": cid, "label": label, "kind": "agent"})
+            targets.append(
+                {
+                    "chat_id": cid,
+                    "label": label,
+                    "kind": "agent",
+                    "title": title,
+                    "project": proj_name if proj_id != "default" else None,
+                }
+            )
             seen.add(cid)
         for project_id, name in projects.items():
             targets.append(
@@ -160,6 +168,8 @@ def list_routable_targets(db: ChatDatabase) -> list[dict[str, str]]:
                     "chat_id": f"{PROJECT_TARGET_PREFIX}{project_id}",
                     "label": f"New session in {name}",
                     "kind": "project",
+                    "title": name,
+                    "project": name,
                 }
             )
     except Exception as exc:
