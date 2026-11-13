@@ -239,9 +239,15 @@ class BackendClientTest {
             val origins = listOf(first.url("/").toString(), second.url("/").toString())
             val invitation = PairingInvitation(origins.first(), "a".repeat(32), "b".repeat(43),
                 System.currentTimeMillis() / 1000.0 + 300, origins)
+            // Probes race and losers are cancelled; gate the fallback so the failing origin is always probed.
+            val firstFailed = kotlinx.coroutines.CompletableDeferred<Unit>()
             val selected = resolvePairingInvitation(invitation) { origin ->
+                if (origin == origins[1]) firstFailed.await()
                 val probe = BackendClient(Backend.parse(origin, true), "", probeOnly = true)
-                try { probe.capabilities() } finally { probe.close() }
+                try { probe.capabilities() } finally {
+                    probe.close()
+                    if (origin == origins[0]) firstFailed.complete(Unit)
+                }
             }
             assertEquals(origins[1], selected.first.origin)
             for (server in listOf(first, second)) {
