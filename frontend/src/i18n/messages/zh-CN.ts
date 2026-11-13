@@ -79,6 +79,17 @@ export const zhCN = {
     },
   },
   workspaceView: { fullscreen: '全屏', shrink: '缩小' },
+  mailboxRules: {
+    deliveryWake: '立即唤醒',
+    deliveryDigest: '定时汇总',
+    deliveryNotify: '只通知我',
+    deliveryLabel: '投递方式',
+    digestMinutes: '间隔（分钟）',
+    prompt: '提示词',
+    promptPlaceholder: '每次投递时附带的指令（可选）',
+    queued: '等待汇总',
+    notified: '已通知你',
+  },
   desktopMenu: {
     label: '菜单',
     cut: '剪切',

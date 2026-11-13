@@ -9,10 +9,11 @@ from starlette.responses import JSONResponse
 
 from suzent.core.mailbox import (
     MissingTargetError,
+    split_target,
     target_exists,
+    target_label_for,
     get_mailbox_webhook_path,
     list_routable_targets,
-    resolve_target_label,
     rotate_mailbox_token,
     route_or_override_mailbox_item,
 )
@@ -62,7 +63,11 @@ def _rule_to_dict(rule: MailboxRuleModel) -> dict:
         "source_kind": rule.source_kind,
         "action": rule.action,
         "target_chat_id": rule.target_chat_id,
+        "target_project_id": rule.target_project_id,
         "target_label": rule.target_label,
+        "delivery": rule.delivery,
+        "digest_minutes": rule.digest_minutes,
+        "prompt": rule.prompt,
         "origin": rule.origin,
         "reason": rule.reason,
         "hit_count": rule.hit_count,
@@ -169,26 +174,46 @@ async def update_mailbox_rule_route(request: Request) -> JSONResponse:
         return JSONResponse({"error": "Invalid JSON"}, status_code=400)
 
     db = get_database()
-    action = str(data.get("action") or "route")
-    target_chat_id = data.get("target_chat_id") if action == "route" else None
-    if target_chat_id and not target_exists(db, target_chat_id):
+    action = "none" if data.get("action") == "none" else "route"
+    chat_id, project_id = split_target(
+        data.get("target_chat_id") if action == "route" else None
+    )
+    if project_id and db.get_project(project_id) is None:
         return JSONResponse(
-            {"error": str(MissingTargetError(target_chat_id))}, status_code=400
+            {"error": str(MissingTargetError(f"project:{project_id}"))},
+            status_code=400,
         )
-    target_label = resolve_target_label(db, target_chat_id) if target_chat_id else None
-    reason = data.get("reason") or (
-        f"Pinned by user: route to {target_label}."
-        if action == "route"
-        else "Pinned by user: do not route (store in Inbox only)."
+    if chat_id and not target_exists(db, chat_id):
+        return JSONResponse(
+            {"error": str(MissingTargetError(chat_id))}, status_code=400
+        )
+    if action == "route" and not (chat_id or project_id):
+        return JSONResponse({"error": "A routed rule needs a target"}, status_code=400)
+    delivery = str(data.get("delivery") or "wake")
+    if delivery not in ("wake", "digest", "notify"):
+        return JSONResponse(
+            {"error": f"Unknown delivery '{delivery}'"}, status_code=400
+        )
+    target_label = (
+        target_label_for(db, chat_id, project_id) if action == "route" else None
     )
 
     updated = db.update_mailbox_rule(
         rule_id,
         action=action,
-        target_chat_id=target_chat_id,
+        target_chat_id=chat_id,
+        target_project_id=project_id,
         target_label=target_label,
+        delivery=delivery,
+        digest_minutes=_safe_int(str(data.get("digest_minutes", 60)), 60),
+        prompt=data.get("prompt"),
         origin="pinned",
-        reason=reason,
+        reason=data.get("reason")
+        or (
+            f"Pinned by user: route to {target_label}."
+            if action == "route"
+            else "Pinned by user: do not route (store in Inbox only)."
+        ),
     )
     if updated is None:
         return JSONResponse({"error": "Rule not found"}, status_code=404)

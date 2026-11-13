@@ -1753,7 +1753,7 @@ export async function fetchCronStatus(): Promise<{
 export interface MailboxTarget {
   chat_id: string;
   label: string;
-  kind: 'regent' | 'agent';
+  kind: 'regent' | 'agent' | 'project';
 }
 
 export interface MailboxItem {
@@ -1765,7 +1765,7 @@ export interface MailboxItem {
   summary: string;
   headers: Record<string, string>;
   payload: string;
-  route_status: 'routed' | 'unrouted' | 'error';
+  route_status: 'routed' | 'unrouted' | 'error' | 'queued' | 'notified';
   target_chat_id: string | null;
   target_label: string | null;
   rule_origin: 'learned' | 'pinned' | 'manual' | string;
@@ -1775,6 +1775,8 @@ export interface MailboxItem {
   created_at: string | null;
 }
 
+export type MailboxDelivery = 'wake' | 'digest' | 'notify';
+
 export interface MailboxRule {
   id: number;
   signature: string;
@@ -1782,7 +1784,11 @@ export interface MailboxRule {
   source_kind: string;
   action: 'route' | 'none';
   target_chat_id: string | null;
+  target_project_id: string | null;
   target_label: string | null;
+  delivery: MailboxDelivery;
+  digest_minutes: number;
+  prompt: string | null;
   origin: 'learned' | 'pinned';
   reason: string | null;
   hit_count: number;
@@ -1842,7 +1848,14 @@ export async function fetchMailboxRules(): Promise<{
 
 export async function updateMailboxRule(
   ruleId: number,
-  body: { action: 'route' | 'none'; target_chat_id?: string | null; reason?: string }
+  body: {
+    action: 'route' | 'none';
+    target_chat_id?: string | null;
+    delivery?: MailboxDelivery;
+    digest_minutes?: number;
+    prompt?: string | null;
+    reason?: string;
+  }
 ): Promise<{ rule: MailboxRule }> {
   const res = await fetch(`${getApiBase()}/mailbox/rules/${ruleId}`, {
     method: 'PUT',

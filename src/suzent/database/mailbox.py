@@ -27,6 +27,7 @@ class MailboxOperationsMixin:
         rule_origin: str = "learned",
         reason: Optional[str] = None,
         inbox_message_id: Optional[str] = None,
+        rule_id: Optional[int] = None,
         spooled_at: Optional[str] = None,
     ) -> MailboxItemModel:
         now = datetime.now()
@@ -45,6 +46,7 @@ class MailboxOperationsMixin:
                 rule_origin=rule_origin,
                 reason=reason,
                 inbox_message_id=inbox_message_id,
+                rule_id=rule_id,
                 spooled_at=spooled_at,
                 created_at=now,
             )
@@ -144,6 +146,10 @@ class MailboxOperationsMixin:
         action: str = "route",
         target_chat_id: Optional[str] = "focal-suzent",
         target_label: Optional[str] = "Regent",
+        target_project_id: Optional[str] = None,
+        delivery: str = "wake",
+        digest_minutes: int = 60,
+        prompt: Optional[str] = None,
         origin: str = "learned",
         reason: Optional[str] = None,
         increment_hit: bool = True,
@@ -153,45 +159,37 @@ class MailboxOperationsMixin:
             stmt = select(MailboxRuleModel).where(
                 MailboxRuleModel.signature == signature
             )
-            existing = session.exec(stmt).first()
-            if existing is not None:
+            rule = session.exec(stmt).first()
+            if rule is not None and rule.origin == "pinned" and origin != "pinned":
                 # Never overwrite a user-pinned rule with an auto-learned one.
-                if existing.origin == "pinned" and origin != "pinned":
-                    if increment_hit:
-                        existing.hit_count = (existing.hit_count or 0) + 1
-                        session.add(existing)
-                        session.commit()
-                        session.refresh(existing)
-                    return existing
-                existing.name = name or existing.name
-                existing.source_kind = source_kind or existing.source_kind
-                existing.action = action
-                existing.target_chat_id = target_chat_id if action == "route" else None
-                existing.target_label = target_label if action == "route" else None
-                existing.origin = origin
-                if reason is not None:
-                    existing.reason = reason
                 if increment_hit:
-                    existing.hit_count = (existing.hit_count or 0) + 1
-                existing.updated_at = now
-                session.add(existing)
-                session.commit()
-                session.refresh(existing)
-                return existing
-
-            rule = MailboxRuleModel(
-                signature=signature,
-                name=name,
-                source_kind=source_kind,
+                    rule.hit_count = (rule.hit_count or 0) + 1
+                    session.add(rule)
+                    session.commit()
+                    session.refresh(rule)
+                return rule
+            if rule is None:
+                rule = MailboxRuleModel(
+                    signature=signature, name=name, created_at=now, hit_count=0
+                )
+            rule.name = name or rule.name
+            rule.source_kind = source_kind or rule.source_kind
+            _apply_routing(
+                rule,
                 action=action,
-                target_chat_id=target_chat_id if action == "route" else None,
-                target_label=target_label if action == "route" else None,
-                origin=origin,
-                reason=reason,
-                hit_count=1 if increment_hit else 0,
-                created_at=now,
-                updated_at=now,
+                target_chat_id=target_chat_id,
+                target_label=target_label,
+                target_project_id=target_project_id,
+                delivery=delivery,
+                digest_minutes=digest_minutes,
+                prompt=prompt,
             )
+            rule.origin = origin
+            if reason is not None:
+                rule.reason = reason
+            if increment_hit:
+                rule.hit_count = (rule.hit_count or 0) + 1
+            rule.updated_at = now
             session.add(rule)
             session.commit()
             session.refresh(rule)
@@ -204,6 +202,10 @@ class MailboxOperationsMixin:
         action: str,
         target_chat_id: Optional[str] = None,
         target_label: Optional[str] = None,
+        target_project_id: Optional[str] = None,
+        delivery: str = "wake",
+        digest_minutes: int = 60,
+        prompt: Optional[str] = None,
         origin: str = "pinned",
         reason: Optional[str] = None,
     ) -> Optional[MailboxRuleModel]:
@@ -211,9 +213,16 @@ class MailboxOperationsMixin:
             rule = session.get(MailboxRuleModel, rule_id)
             if rule is None:
                 return None
-            rule.action = action
-            rule.target_chat_id = target_chat_id if action == "route" else None
-            rule.target_label = target_label if action == "route" else None
+            _apply_routing(
+                rule,
+                action=action,
+                target_chat_id=target_chat_id,
+                target_label=target_label,
+                target_project_id=target_project_id,
+                delivery=delivery,
+                digest_minutes=digest_minutes,
+                prompt=prompt,
+            )
             rule.origin = origin
             if reason is not None:
                 rule.reason = reason
@@ -231,3 +240,25 @@ class MailboxOperationsMixin:
             session.delete(rule)
             session.commit()
             return True
+
+
+def _apply_routing(
+    rule: MailboxRuleModel,
+    *,
+    action: str,
+    target_chat_id: Optional[str],
+    target_label: Optional[str],
+    target_project_id: Optional[str],
+    delivery: str,
+    digest_minutes: int,
+    prompt: Optional[str],
+) -> None:
+    """Set where a rule sends events and how; a rule that routes nowhere keeps no target."""
+    routes = action == "route"
+    rule.action = action
+    rule.target_project_id = target_project_id if routes else None
+    rule.target_chat_id = target_chat_id if routes and not target_project_id else None
+    rule.target_label = target_label if routes else None
+    rule.delivery = delivery
+    rule.digest_minutes = max(1, digest_minutes)
+    rule.prompt = (prompt or "").strip() or None

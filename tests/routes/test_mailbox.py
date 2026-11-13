@@ -8,7 +8,10 @@ from starlette.requests import Request
 
 from suzent.core.focal_agent import FOCAL_CHAT_ID, get_or_create_focal_chat
 from suzent.core.agent_inbox import enqueue_agent_message
+from datetime import datetime, timedelta
+
 from suzent.core.mailbox import (
+    flush_due_digests,
     get_or_create_mailbox_token,
     route_inbound,
     webhook_envelope,
@@ -74,9 +77,13 @@ def _fake_router(monkeypatch, reply, *, delay: float = 0.0) -> list[str]:
     return calls
 
 
-_ROUTE_TO_REGENT = json.dumps(
-    {"action": "route", "target_chat_id": FOCAL_CHAT_ID, "reason": "Release news."}
-)
+def _decision(target=FOCAL_CHAT_ID, delivery="wake", action="route") -> str:
+    return json.dumps(
+        {"action": action, "target": target, "delivery": delivery, "reason": "Test."}
+    )
+
+
+_ROUTE_TO_REGENT = _decision()
 
 
 async def _github_release(tag: str = "v0.16.0"):
@@ -409,3 +416,122 @@ async def test_failed_delivery_shows_as_error_and_items_can_be_deleted(db):
     )
     assert res.status_code == 200
     assert (await _list())["items"] == []
+
+
+@pytest.mark.asyncio
+async def test_notify_only_tells_the_user(db, monkeypatch):
+    _fake_router(monkeypatch, _decision(delivery="notify"))
+
+    item = await _github_release()
+
+    assert item.route_status == "notified"
+    assert item.inbox_message_id is None
+    assert db.list_agent_messages() == []
+    [note] = db.drain_background_notifications()
+    assert note.source == "mailbox"
+    assert "v0.16.0" in note.result
+
+
+@pytest.mark.asyncio
+async def test_project_target_starts_a_new_session_per_event(db, monkeypatch):
+    project_id = db.create_project("Suzent", "suzent")
+    _fake_router(monkeypatch, _decision(target=f"project:{project_id}"))
+
+    first = await _github_release("v1")
+    second = await _github_release("v2")
+
+    assert first.target_chat_id != second.target_chat_id
+    for item in (first, second):
+        chat = db.get_chat(item.target_chat_id)
+        assert chat.project_id == project_id
+        [message] = db.list_agent_messages(target_chat_id=item.target_chat_id)
+        assert "Mailbox Event" in message["content"]
+    [rule] = db.list_mailbox_rules()
+    assert rule.target_project_id == project_id
+    assert rule.target_chat_id is None
+
+
+@pytest.mark.asyncio
+async def test_digest_batches_events_until_its_interval(db, monkeypatch):
+    get_or_create_focal_chat()
+    _fake_router(monkeypatch, _decision(delivery="digest"))
+    [rule] = [await _github_release("v1")] and db.list_mailbox_rules()
+    db.update_mailbox_rule(
+        rule.id,
+        action="route",
+        target_chat_id=FOCAL_CHAT_ID,
+        delivery="digest",
+        digest_minutes=30,
+        prompt="Summarise these releases.",
+    )
+    await _github_release("v2")
+
+    assert {i["route_status"] for i in (await _list())["items"]} == {"queued"}
+    assert flush_due_digests(datetime.now()) == 0
+    assert flush_due_digests(datetime.now() + timedelta(minutes=31)) == 1
+
+    [digest] = db.list_agent_messages(target_chat_id=FOCAL_CHAT_ID)
+    assert "2 event(s)" in digest["content"]
+    assert "Summarise these releases." in digest["content"]
+    assert "v1" in digest["content"] and "v2" in digest["content"]
+    items = (await _list())["items"]
+    assert {i["route_status"] for i in items} == {"routed"}
+    assert {i["inbox_message_id"] for i in items} == {digest["message_id"]}
+
+
+@pytest.mark.asyncio
+async def test_queued_events_of_a_deleted_digest_rule_are_kept_unrouted(
+    db, monkeypatch
+):
+    _fake_router(monkeypatch, _decision(delivery="digest"))
+    item = await _github_release()
+    db.delete_mailbox_rule(item.rule_id)
+
+    flush_due_digests(datetime.now() + timedelta(days=1))
+
+    assert db.get_mailbox_item(item.id).route_status == "unrouted"
+    assert db.list_agent_messages() == []
+
+
+async def _put_rule(rule_id: int, body: dict):
+    return await mailbox_routes.update_mailbox_rule_route(
+        _request(
+            "PUT",
+            f"/mailbox/rules/{rule_id}",
+            body=json.dumps(body).encode(),
+            path_params={"rule_id": rule_id},
+        )
+    )
+
+
+@pytest.mark.asyncio
+async def test_rule_edits_set_project_target_delivery_and_prompt(db, monkeypatch):
+    _fake_router(monkeypatch, _ROUTE_TO_REGENT)
+    await _github_release()
+    [rule] = db.list_mailbox_rules()
+    project_id = db.create_project("Suzent", "suzent")
+
+    res = await _put_rule(
+        rule.id,
+        {
+            "action": "route",
+            "target_chat_id": f"project:{project_id}",
+            "delivery": "digest",
+            "digest_minutes": 15,
+            "prompt": "Triage it.",
+        },
+    )
+
+    assert res.status_code == 200
+    saved = json.loads(res.body)["rule"]
+    assert saved["target_project_id"] == project_id
+    assert saved["target_chat_id"] is None
+    assert saved["target_label"] == "New session in Suzent"
+    assert (saved["delivery"], saved["digest_minutes"], saved["prompt"]) == (
+        "digest",
+        15,
+        "Triage it.",
+    )
+    assert saved["origin"] == "pinned"
+    bad = await _put_rule(rule.id, {"action": "route", "delivery": "shout"})
+    assert bad.status_code == 400

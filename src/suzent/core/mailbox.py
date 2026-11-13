@@ -8,7 +8,8 @@ import json
 import traceback
 import uuid
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from datetime import datetime, timedelta
+from typing import Any, NamedTuple, Optional
 
 from suzent.core.focal_agent import FOCAL_CHAT_ID, FOCAL_TITLE, get_or_create_focal_chat
 from suzent.core.secrets import get_secret_manager
@@ -33,6 +34,7 @@ MAILBOX_TOKEN_SECRET = "SUZENT_MAILBOX::webhook_token"
 MAILBOX_TOKEN_HASH_SECRET = "SUZENT_MAILBOX::webhook_token_hash"
 
 _triage_locks: dict[str, asyncio.Lock] = {}
+PROJECT_TARGET_PREFIX = "project:"
 # Triage runs inside the webhook request; GitHub gives up after 10 seconds.
 _TRIAGE_TIMEOUT_SECONDS = 8.0
 
@@ -152,8 +154,16 @@ def list_routable_targets(db: ChatDatabase) -> list[dict[str, str]]:
             )
             targets.append({"chat_id": cid, "label": label, "kind": "agent"})
             seen.add(cid)
+        for project_id, name in projects.items():
+            targets.append(
+                {
+                    "chat_id": f"{PROJECT_TARGET_PREFIX}{project_id}",
+                    "label": f"New session in {name}",
+                    "kind": "project",
+                }
+            )
     except Exception as exc:
-        logger.debug("Could not list routable chats: {}", exc)
+        logger.warning("Could not list Mailbox targets: {}", exc)
     return targets
 
 
@@ -281,72 +291,115 @@ def extract_event_metadata(
     }
 
 
+class Triage(NamedTuple):
+    """The router's decision for a new kind of event."""
+
+    action: str
+    target_chat_id: Optional[str]
+    target_project_id: Optional[str]
+    delivery: str
+    reason: str
+    # False for the Regent fallback used when the router could not decide (no
+    # model, a timeout, an error or an unreadable reply): that guess is not
+    # saved as a rule, so the next event of this kind is triaged again.
+    durable: bool
+
+
+_DELIVERIES = ("wake", "digest", "notify")
+
+
 async def _llm_triage_first_seen(
     db: ChatDatabase,
     *,
-    source_kind: str,
-    source_name: str,
-    event_type: str,
     signature: str,
+    event_type: str,
     summary: str,
     payload_preview: str,
-) -> tuple[str, Optional[str], str, bool]:
-    """Decide initial routing for a never-before-seen event signature.
-
-    Returns ``(action, target_chat_id, reason, durable)``. ``durable`` is False
-    for the Regent fallback used when the LLM could not decide (no model, a
-    timeout, an error or an unreadable reply), so that guess is not saved as a
-    rule and the next event of this kind is triaged again.
-    """
+) -> Triage:
+    """Decide routing for a never-before-seen event signature."""
     if event_type == "ping":
-        return (
+        return Triage(
             "none",
             None,
+            None,
+            "wake",
             "Webhook verification ping; stored in Mailbox without waking an agent.",
             True,
         )
 
     try:
         targets = list_routable_targets(db)
-        target_desc = "\n".join(f"- {t['chat_id']}: {t['label']}" for t in targets[:12])
+        target_desc = "\n".join(f"- {t['chat_id']}: {t['label']}" for t in targets[:20])
         prompt = (
-            "You are Suzent's inbound Mailbox Router. A new event type arrived for the first time.\n"
-            "Decide whether future events with this signature should:\n"
-            "1) route to 'focal-suzent' (Regent, the default global orchestrator),\n"
-            "2) route to a specific project session from the list below (only if the repo/subject clearly matches),\n"
-            "3) 'none' (do not route / store in inbox only) if it is low-signal noise, a routine ping, or a passing status check.\n\n"
-            f"Available targets:\n{target_desc}\n\n"
+            "You are Suzent's inbound Mailbox Router. A new kind of event arrived for the first time.\n"
+            "Decide how future events with this signature are handled.\n\n"
+            "action:\n"
+            "- 'route': hand it to a target below.\n"
+            "- 'none': only keep it in the Mailbox (low-signal noise, routine pings, passing checks).\n\n"
+            "target (when routing):\n"
+            "- 'focal-suzent' (Regent, the default orchestrator) unless another target clearly matches.\n"
+            "- a session id, when the event belongs to that ongoing work.\n"
+            "- 'project:<id>', when each event is a separate job to do in that project (e.g. a failing CI run to fix).\n\n"
+            "delivery (when routing):\n"
+            "- 'wake': the target acts on each event right away (failures, requests, anything needing action).\n"
+            "- 'digest': events are batched into one summary every so often (frequent, low-urgency activity).\n"
+            "- 'notify': only tell the user; no agent runs (news the user just wants to know about).\n\n"
+            f"Targets:\n{target_desc}\n\n"
             f"Event signature: {signature}\n"
             f"Summary: {summary}\n"
             f"Payload preview: {payload_preview[:600]}\n\n"
-            'Reply ONLY with compact JSON: {"action": "route"|"none", "target_chat_id": "focal-suzent"|"<chat_id>"|null, "reason": "<one short sentence>"}'
+            'Reply ONLY with compact JSON: {"action": "route"|"none", "target": "<target>"|null, '
+            '"delivery": "wake"|"digest"|"notify", "reason": "<one short sentence>"}'
         )
         content = (
             await asyncio.wait_for(_ask_router(prompt), timeout=_TRIAGE_TIMEOUT_SECONDS)
         ).strip()
-        if "{" in content and "}" in content:
-            raw_json = content[content.find("{") : content.rfind("}") + 1]
-            parsed = json.loads(raw_json)
-            act = str(parsed.get("action") or "route").lower()
-            if act in ("route", "none"):
-                tgt = parsed.get("target_chat_id") if act == "route" else None
-                valid_ids = {t["chat_id"] for t in targets}
-                if act == "route" and (not tgt or tgt not in valid_ids):
-                    tgt = FOCAL_CHAT_ID
-                reason = str(
-                    parsed.get("reason")
-                    or "Auto-classified on first arrival by LLM router."
-                )[:200]
-                return act, tgt, reason, True
+        parsed = json.loads(content[content.find("{") : content.rfind("}") + 1])
+        action = str(parsed.get("action") or "").lower()
+        if action in ("route", "none"):
+            reason = str(
+                parsed.get("reason") or "Classified on first arrival by the router."
+            )[:200]
+            if action == "none":
+                return Triage("none", None, None, "wake", reason, True)
+            target = str(parsed.get("target") or "")
+            if target not in {t["chat_id"] for t in targets}:
+                target = FOCAL_CHAT_ID
+            delivery = str(parsed.get("delivery") or "wake").lower()
+            if delivery not in _DELIVERIES:
+                delivery = "wake"
+            chat_id, project_id = split_target(target)
+            return Triage("route", chat_id, project_id, delivery, reason, True)
+        logger.warning("Mailbox router gave an unusable answer: {}", content[:200])
     except Exception as exc:
         logger.warning("Mailbox LLM triage failed, sending to Regent: {}", exc)
 
-    return (
+    return Triage(
         "route",
         FOCAL_CHAT_ID,
+        None,
+        "wake",
         "Sent to Regent: the router could not classify this event yet.",
         False,
     )
+
+
+def split_target(target: Optional[str]) -> tuple[Optional[str], Optional[str]]:
+    """Split a target value into ``(chat_id, project_id)``; ``project:<id>`` is a project."""
+    if not target:
+        return None, None
+    if target.startswith(PROJECT_TARGET_PREFIX):
+        return None, target[len(PROJECT_TARGET_PREFIX) :]
+    return target, None
+
+
+def target_label_for(
+    db: ChatDatabase, chat_id: Optional[str], project_id: Optional[str]
+) -> Optional[str]:
+    if project_id:
+        project = db.get_project(project_id)
+        return f"New session in {project.name if project else project_id}"
+    return resolve_target_label(db, chat_id)
 
 
 async def resolve_or_learn_rule(
@@ -397,39 +450,38 @@ async def _resolve_or_learn_rule_locked(
         db.record_mailbox_rule_hit(existing.id)
         return existing
 
-    action, target_chat_id, reason, durable = await _llm_triage_first_seen(
+    triage = await _llm_triage_first_seen(
         db,
-        source_kind=source_kind,
-        source_name=source_name,
-        event_type=event_type,
         signature=signature,
+        event_type=event_type,
         summary=summary,
         payload_preview=payload_preview,
     )
-    target_label = (
-        resolve_target_label(db, target_chat_id) if action == "route" else None
-    )
-    if not durable:
+    routing = {
+        "action": triage.action,
+        "target_chat_id": triage.target_chat_id,
+        "target_project_id": triage.target_project_id,
+        "target_label": target_label_for(
+            db, triage.target_chat_id, triage.target_project_id
+        ),
+        "delivery": triage.delivery,
+        "reason": triage.reason,
+    }
+    if not triage.durable:
         return MailboxRuleModel(
             signature=signature,
             name=rule_name,
             source_kind=source_kind,
-            action=action,
-            target_chat_id=target_chat_id,
-            target_label=target_label,
             origin="default",
-            reason=reason,
+            **routing,
         )
     return db.upsert_mailbox_rule(
         signature=signature,
         name=rule_name,
         source_kind=source_kind,
-        action=action,
-        target_chat_id=target_chat_id,
-        target_label=target_label,
         origin="learned",
-        reason=reason,
         increment_hit=True,
+        **routing,
     )
 
 
@@ -439,51 +491,68 @@ def target_exists(db: ChatDatabase, chat_id: str) -> bool:
 
 
 class MissingTargetError(LookupError):
-    """A route points at a session that no longer exists."""
+    """A route points at a session or project that no longer exists."""
 
-    def __init__(self, chat_id: str):
-        super().__init__(f"Session '{chat_id}' no longer exists")
-        self.chat_id = chat_id
+    def __init__(self, target: str):
+        kind = "Project" if target.startswith(PROJECT_TARGET_PREFIX) else "Session"
+        super().__init__(f"{kind} '{target}' no longer exists")
+        self.chat_id = target
 
 
-def _deliver_item_to_agent(
+def _event_content(item: MailboxItemModel, prompt: Optional[str]) -> str:
+    header = f"[Mailbox Event #{item.id} · {item.source_name} · {item.event_type}]"
+    instructions = f"{prompt.strip()}\n" if prompt else ""
+    return (
+        f"{header}\n{instructions}Summary: {item.summary}"
+        f"{build_webhook_section(item.payload)}"
+    )
+
+
+def _send(
     db: ChatDatabase,
-    item: MailboxItemModel,
-    target_chat_id: str,
-    custom_prompt: Optional[str] = None,
-) -> str:
-    """Queue a Mailbox item into ``agent_inbox`` for ``target_chat_id`` and return ``message_id``."""
+    *,
+    chat_id: Optional[str],
+    project_id: Optional[str],
+    content: str,
+    title: str,
+    mailbox_item_id: int,
+    sender_label: str,
+) -> tuple[str, str]:
+    """Deliver Mailbox content to a session, or to a new session in a project.
+
+    Returns ``(inbox_message_id, chat_id)``; raises MissingTargetError when the
+    session or project is gone.
+    """
     from suzent.core.agent_inbox import enqueue_agent_message
 
-    if not target_exists(db, target_chat_id):
-        raise MissingTargetError(target_chat_id)
-    if target_chat_id == FOCAL_CHAT_ID:
+    if project_id:
+        project = db.get_project(project_id)
+        if project is None or project.archived:
+            raise MissingTargetError(f"{PROJECT_TARGET_PREFIX}{project_id}")
+        chat_id = db.create_chat(
+            title=title[:60],
+            config={"permission_mode": "auto"},
+            project_id=project.id,
+        )
+    elif not chat_id or not target_exists(db, chat_id):
+        raise MissingTargetError(chat_id or "")
+    elif chat_id == FOCAL_CHAT_ID:
         get_or_create_focal_chat()
 
-    msg_id = f"mailbox_{item.id}_{uuid.uuid4().hex[:10]}"
-    header_line = f"[Mailbox Event #{item.id} · {item.source_name} · {item.event_type}]"
-    if custom_prompt:
-        content = f"{header_line}\n{custom_prompt.strip()}{build_webhook_section(item.payload)}"
-    else:
-        content = (
-            f"{header_line}\n"
-            f"Summary: {item.summary}"
-            f"{build_webhook_section(item.payload)}"
-        )
-
+    msg_id = f"mailbox_{mailbox_item_id}_{uuid.uuid4().hex[:10]}"
     enqueue_agent_message(
         message_id=msg_id,
         sender_chat_id=None,
-        target_chat_id=target_chat_id,
+        target_chat_id=chat_id,
         content=content[:19500],
         kind="remote_agent_message",
         payload={
-            "mailbox_item_id": item.id,
-            "sender_label": f"Mailbox ({item.source_name})",
-            "sender_agent_id": f"mailbox:{item.id}",
+            "mailbox_item_id": mailbox_item_id,
+            "sender_label": sender_label,
+            "sender_agent_id": f"mailbox:{mailbox_item_id}",
         },
     )
-    return msg_id
+    return msg_id, chat_id
 
 
 @dataclass(frozen=True)
@@ -533,9 +602,7 @@ def record_inbound(
     )
 
 
-async def route_inbound(
-    envelope: InboundEnvelope, *, custom_prompt: Optional[str] = None
-) -> MailboxItemModel:
+async def route_inbound(envelope: InboundEnvelope) -> MailboxItemModel:
     """Store an event, let the rules (or the router) choose its target, and deliver it."""
     db = get_database()
     rule = await resolve_or_learn_rule(
@@ -549,7 +616,7 @@ async def route_inbound(
         summary=envelope.summary,
         payload_preview=envelope.payload,
     )
-    target_chat_id = rule.target_chat_id if rule.action == "route" else None
+    routes = rule.action == "route"
     item = db.create_mailbox_item(
         source_kind=envelope.source_kind,
         source_name=envelope.source_name,
@@ -558,35 +625,66 @@ async def route_inbound(
         summary=envelope.summary,
         headers_json=json.dumps(envelope.headers, ensure_ascii=False),
         payload=envelope.payload,
-        route_status="routed" if target_chat_id else "unrouted",
-        target_chat_id=target_chat_id,
-        target_label=resolve_target_label(db, target_chat_id),
+        route_status="routed" if routes else "unrouted",
+        target_chat_id=rule.target_chat_id if routes else None,
+        target_label=rule.target_label if routes else None,
         rule_origin=rule.origin,
         reason=rule.reason,
         spooled_at=envelope.spooled_at,
     )
-    if target_chat_id:
-        item = _dispatch(db, item, target_chat_id, custom_prompt)
-    return item
+    if not routes:
+        return item
+    match rule.delivery:
+        case "notify":
+            return _notify(db, item)
+        case "digest" if rule.id is not None:
+            return (
+                db.update_mailbox_item(item.id, route_status="queued", rule_id=rule.id)
+                or item
+            )
+        case _:
+            return _deliver_now(db, item, rule)
 
 
-def _dispatch(
-    db: ChatDatabase,
-    item: MailboxItemModel,
-    target_chat_id: str,
-    custom_prompt: Optional[str],
+def _notify(db: ChatDatabase, item: MailboxItemModel) -> MailboxItemModel:
+    """Tell the user about an event without waking an agent."""
+    db.create_background_notification(
+        source="mailbox",
+        title=f"{item.source_name} · {item.event_type}",
+        result=item.summary,
+    )
+    return db.update_mailbox_item(item.id, route_status="notified") or item
+
+
+def _deliver_now(
+    db: ChatDatabase, item: MailboxItemModel, rule: MailboxRuleModel
 ) -> MailboxItemModel:
+    send = {
+        "content": _event_content(item, rule.prompt),
+        "title": f"{item.source_name} · {item.summary}",
+        "mailbox_item_id": item.id,
+        "sender_label": f"Mailbox ({item.source_name})",
+    }
     try:
         try:
-            msg_id = _deliver_item_to_agent(
-                db, item, target_chat_id, custom_prompt=custom_prompt
+            msg_id, chat_id = _send(
+                db,
+                chat_id=rule.target_chat_id,
+                project_id=rule.target_project_id,
+                **send,
             )
         except MissingTargetError as missing:
             item = _reroute_to_regent(db, item, missing)
-            msg_id = _deliver_item_to_agent(
-                db, item, FOCAL_CHAT_ID, custom_prompt=custom_prompt
+            msg_id, chat_id = _send(db, chat_id=FOCAL_CHAT_ID, project_id=None, **send)
+        return (
+            db.update_mailbox_item(
+                item.id,
+                inbox_message_id=msg_id,
+                target_chat_id=chat_id,
+                target_label=resolve_target_label(db, chat_id),
             )
-        return db.update_mailbox_item(item.id, inbox_message_id=msg_id) or item
+            or item
+        )
     except Exception as exc:
         logger.error(
             "Failed to dispatch Mailbox item {}: {}\n{}",
@@ -751,53 +849,179 @@ def route_or_override_mailbox_item(
     target_chat_id: Optional[str] = None,
     pin_rule: bool = True,
 ) -> Optional[MailboxItemModel]:
-    """Manually route/replay a Mailbox item (and optionally pin the rule for its signature)."""
+    """Manually route or replay a Mailbox item, optionally pinning a rule for its kind.
+
+    ``target_chat_id`` may be ``project:<id>`` to start a new session there.
+    """
     db = get_database()
     item = db.get_mailbox_item(item_id)
     if item is None:
         return None
 
-    if action == "none" or not target_chat_id:
-        action = "none"
-        target_chat_id = None
-        target_label = None
-        route_status = "unrouted"
-    else:
-        action = "route"
-        if not target_exists(db, target_chat_id):
-            raise MissingTargetError(target_chat_id)
-        target_label = resolve_target_label(db, target_chat_id)
-        route_status = "routed"
-
+    chat_id, project_id = split_target(target_chat_id)
+    routes = action != "none" and bool(chat_id or project_id)
+    if routes and project_id and db.get_project(project_id) is None:
+        raise MissingTargetError(f"{PROJECT_TARGET_PREFIX}{project_id}")
+    if routes and not project_id and not target_exists(db, chat_id):
+        raise MissingTargetError(chat_id)
+    target_label = target_label_for(db, chat_id, project_id) if routes else None
     reason = (
         f"Pinned by user: route to {target_label}."
-        if action == "route"
+        if routes
         else "Pinned by user: do not route (store in Inbox only)."
     )
-
+    rule = MailboxRuleModel(
+        signature=item.signature,
+        name=f"{item.source_name} · {item.event_type}",
+        source_kind=item.source_kind,
+        action="route" if routes else "none",
+        target_chat_id=chat_id if routes else None,
+        target_project_id=project_id if routes else None,
+        target_label=target_label,
+        origin="pinned",
+        reason=reason,
+    )
     if pin_rule:
-        db.upsert_mailbox_rule(
-            signature=item.signature,
-            name=f"{item.source_name} · {item.event_type}",
-            source_kind=item.source_kind,
-            action=action,
-            target_chat_id=target_chat_id,
+        rule = db.upsert_mailbox_rule(
+            signature=rule.signature,
+            name=rule.name,
+            source_kind=rule.source_kind,
+            action=rule.action,
+            target_chat_id=rule.target_chat_id,
+            target_project_id=rule.target_project_id,
             target_label=target_label,
             origin="pinned",
             reason=reason,
             increment_hit=False,
         )
 
-    inbox_msg_id = item.inbox_message_id
-    if route_status == "routed" and target_chat_id:
-        inbox_msg_id = _deliver_item_to_agent(db, item, target_chat_id)
-
-    return db.update_mailbox_item(
-        item.id,
-        route_status=route_status,
-        target_chat_id=target_chat_id,
-        target_label=target_label,
-        rule_origin="pinned" if pin_rule else "manual",
-        reason=reason,
-        inbox_message_id=inbox_msg_id,
+    item = (
+        db.update_mailbox_item(
+            item.id,
+            route_status="routed" if routes else "unrouted",
+            target_chat_id=chat_id if routes else None,
+            target_label=target_label,
+            rule_origin="pinned" if pin_rule else "manual",
+            reason=reason,
+        )
+        or item
     )
+    if not routes:
+        return item
+    return _deliver_now(db, item, rule)
+
+
+def flush_due_digests(now: Optional[datetime] = None) -> int:
+    """Deliver each digest whose oldest queued event has waited its rule's interval.
+
+    Returns how many digests were sent.
+    """
+    db = get_database()
+    now = now or datetime.now()
+    queued: dict[int, list[MailboxItemModel]] = {}
+    for item in db.list_mailbox_items(route_status="queued", limit=10_000):
+        queued.setdefault(item.rule_id or 0, []).append(item)
+
+    sent = 0
+    for rule_id, items in queued.items():
+        rule = db.get_mailbox_rule(rule_id) if rule_id else None
+        if rule is None or rule.action != "route":
+            for item in items:
+                db.update_mailbox_item(
+                    item.id,
+                    route_status="unrouted",
+                    reason="Its digest rule was removed before the digest was sent.",
+                )
+            continue
+        items.sort(key=lambda queued_item: queued_item.created_at)
+        still_digesting = rule.delivery == "digest"
+        if still_digesting and now - items[0].created_at < timedelta(
+            minutes=rule.digest_minutes
+        ):
+            continue
+        _send_digest(db, rule, items)
+        sent += 1
+    return sent
+
+
+def _send_digest(
+    db: ChatDatabase, rule: MailboxRuleModel, items: list[MailboxItemModel]
+) -> None:
+    lines = [
+        f"[Mailbox digest · {rule.name} · {len(items)} event(s)]",
+        *([rule.prompt.strip()] if rule.prompt else []),
+        *(
+            f"- #{item.id} {item.created_at:%Y-%m-%d %H:%M} {item.summary}"
+            for item in items
+        ),
+    ]
+    send = {
+        "content": "\n".join(lines),
+        "title": f"{rule.name} digest",
+        "mailbox_item_id": items[0].id,
+        "sender_label": f"Mailbox digest ({rule.name})",
+    }
+    try:
+        try:
+            msg_id, chat_id = _send(
+                db,
+                chat_id=rule.target_chat_id,
+                project_id=rule.target_project_id,
+                **send,
+            )
+            reason = f"Sent in a digest of {len(items)} event(s)."
+        except MissingTargetError as missing:
+            msg_id, chat_id = _send(db, chat_id=FOCAL_CHAT_ID, project_id=None, **send)
+            reason = f"{missing}; digest sent to Regent instead."
+    except Exception as exc:
+        logger.error(
+            "Failed to send Mailbox digest for rule {}: {}\n{}",
+            rule.id,
+            exc,
+            traceback.format_exc(),
+        )
+        for item in items:
+            db.update_mailbox_item(
+                item.id, route_status="error", reason=f"Digest error: {exc}"
+            )
+        return
+    label = resolve_target_label(db, chat_id)
+    for item in items:
+        db.update_mailbox_item(
+            item.id,
+            route_status="routed",
+            inbox_message_id=msg_id,
+            target_chat_id=chat_id,
+            target_label=label,
+            reason=reason,
+        )
+
+
+class MailboxDigestRunner:
+    """Sends due digests once a minute while the server runs."""
+
+    def __init__(self, interval_seconds: float = 60.0) -> None:
+        self._interval = interval_seconds
+        self._task: Optional[asyncio.Task] = None
+
+    async def start(self) -> None:
+        if self._task is None or self._task.done():
+            self._task = asyncio.create_task(self._run(), name="mailbox_digests")
+            logger.info("Mailbox digest runner started")
+
+    async def stop(self) -> None:
+        if self._task is not None:
+            self._task.cancel()
+            try:
+                await self._task
+            except asyncio.CancelledError:
+                pass
+            self._task = None
+
+    async def _run(self) -> None:
+        while True:
+            await asyncio.sleep(self._interval)
+            try:
+                flush_due_digests()
+            except Exception:
+                logger.error("Mailbox digest flush failed:\n{}", traceback.format_exc())

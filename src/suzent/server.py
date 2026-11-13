@@ -831,6 +831,14 @@ async def startup():
         except Exception as e:
             logger.error(f"Failed to start AgentInboxDispatcher: {e}")
 
+        try:
+            from suzent.core.mailbox import MailboxDigestRunner
+
+            app.state.mailbox_digests = MailboxDigestRunner()
+            await app.state.mailbox_digests.start()
+        except Exception as e:
+            logger.error(f"Failed to start Mailbox digest runner: {e}")
+
         from suzent.core.background_commands import get_background_commands
 
         await get_background_commands().start()
@@ -1064,6 +1072,9 @@ async def shutdown():
     await _stop(get_background_commands().stop(), "BackgroundCommands")
     if agent_inbox_dispatcher:
         await _stop(agent_inbox_dispatcher.stop(), "AgentInboxDispatcher")
+    mailbox_digests = getattr(app.state, "mailbox_digests", None)
+    if mailbox_digests is not None:
+        await _stop(mailbox_digests.stop(), "MailboxDigestRunner")
 
     if node_advertiser:
         try:

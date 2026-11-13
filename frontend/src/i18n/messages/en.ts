@@ -80,6 +80,17 @@ export const en = {
     },
   },
   workspaceView: { fullscreen: 'Fullscreen', shrink: 'Shrink' },
+  mailboxRules: {
+    deliveryWake: 'Wake now',
+    deliveryDigest: 'Digest',
+    deliveryNotify: 'Notify me only',
+    deliveryLabel: 'Delivery',
+    digestMinutes: 'Every (min)',
+    prompt: 'Prompt',
+    promptPlaceholder: 'Instructions sent along with each delivery (optional)',
+    queued: 'Queued for digest',
+    notified: 'Notified you',
+  },
   desktopMenu: {
     label: 'Menu',
     cut: 'Cut',

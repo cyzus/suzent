@@ -486,10 +486,18 @@ class MailboxRuleModel(SQLModel, table=True):
     name: str
     source_kind: str = Field(default="webhook", index=True)
     action: str = Field(default="route")  # "route" | "none"
-    target_chat_id: Optional[str] = Field(default="focal-suzent", index=True)
-    target_label: Optional[str] = Field(default="Regent")
+    target_chat_id: Optional[str] = Field(default=None, index=True)
+    target_label: Optional[str] = Field(default=None)
     origin: str = Field(default="learned")  # "learned" | "pinned"
     reason: Optional[str] = None
+    # "wake" delivers each event now, "digest" batches them every
+    # digest_minutes, "notify" only tells the user.
+    delivery: str = Field(default="wake")
+    digest_minutes: int = Field(default=60)
+    # Set instead of target_chat_id: each delivery starts a new session there.
+    target_project_id: Optional[str] = Field(default=None)
+    # Instructions sent along with each delivery.
+    prompt: Optional[str] = None
     hit_count: int = Field(default=0)
     created_at: datetime = Field(default_factory=lambda: datetime.now())
     updated_at: datetime = Field(default_factory=lambda: datetime.now())
@@ -516,6 +524,8 @@ class MailboxItemModel(SQLModel, table=True):
     rule_origin: str = Field(default="learned")  # "learned" | "pinned" | "manual"
     reason: Optional[str] = None
     inbox_message_id: Optional[str] = Field(default=None, index=True)
+    # The rule that queued it for a digest.
+    rule_id: Optional[int] = Field(default=None, index=True)
     spooled_at: Optional[str] = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(), index=True)
 

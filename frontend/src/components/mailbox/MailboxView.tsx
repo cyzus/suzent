@@ -30,6 +30,7 @@ import {
   type CronJob,
   type HeartbeatStatus,
   type MailboxItem,
+  type MailboxDelivery,
   type MailboxRule,
   type MailboxTarget,
   type WebhookUrls,
@@ -127,6 +128,7 @@ export function MailboxView({
   const [copiedUrl, setCopiedUrl] = useState(false);
   const [loading, setLoading] = useState(false);
   const [busyId, setBusyId] = useState<number | string | null>(null);
+  const [openRulePrompt, setOpenRulePrompt] = useState<number | null>(null);
 
   const loadAll = useCallback(async () => {
     setLoading(true);
@@ -178,7 +180,7 @@ export function MailboxView({
     for (const [key, group] of map.entries()) {
       const latest = group[0];
       const isAgent = latest.source_kind === 'agent_inbox';
-      const isUnrouted = latest.route_status === 'unrouted' || !latest.target_chat_id;
+      const isUnrouted = latest.route_status === 'unrouted';
 
       let fromLabel = compactEventLabel(latest.source_name, latest.event_type);
       let primaryChatId = latest.target_chat_id;
@@ -302,16 +304,31 @@ export function MailboxView({
     }
   };
 
-  const handleRuleChange = async (rule: MailboxRule, selectValue: string) => {
+  const ruleTarget = (rule: MailboxRule): string =>
+    rule.action !== 'route'
+      ? '__none__'
+      : rule.target_project_id
+        ? `project:${rule.target_project_id}`
+        : rule.target_chat_id || '__none__';
+
+  const saveRule = async (
+    rule: MailboxRule,
+    change: Partial<{
+      target: string;
+      delivery: MailboxDelivery;
+      digest_minutes: number;
+      prompt: string;
+    }>
+  ) => {
+    const target = change.target ?? ruleTarget(rule);
     try {
-      if (selectValue === '__none__') {
-        await updateMailboxRule(rule.id, { action: 'none', target_chat_id: null });
-      } else {
-        await updateMailboxRule(rule.id, {
-          action: 'route',
-          target_chat_id: selectValue,
-        });
-      }
+      await updateMailboxRule(rule.id, {
+        action: target === '__none__' ? 'none' : 'route',
+        target_chat_id: target === '__none__' ? null : target,
+        delivery: change.delivery ?? rule.delivery,
+        digest_minutes: change.digest_minutes ?? rule.digest_minutes,
+        prompt: change.prompt ?? rule.prompt,
+      });
       await loadAll();
     } catch (err) {
       console.error('Failed to update rule:', err);
@@ -551,7 +568,13 @@ export function MailboxView({
                         className="flex shrink-0 items-center justify-end gap-2.5"
                         onClick={(e) => e.stopPropagation()}
                       >
-                        {thread.isUnrouted || !thread.primaryChatId ? (
+                        {latest.route_status === 'queued' || latest.route_status === 'notified' ? (
+                          <span className="w-28 truncate border border-neutral-300 px-2 py-0.5 text-center font-mono text-[11px] text-neutral-500 dark:border-zinc-600">
+                            {latest.route_status === 'queued'
+                              ? t('mailboxRules.queued')
+                              : t('mailboxRules.notified')}
+                          </span>
+                        ) : thread.isUnrouted || !thread.primaryChatId ? (
                           <span className="w-28 truncate border border-dashed border-neutral-300 px-2 py-0.5 text-center font-mono text-[11px] text-neutral-400 dark:border-zinc-600">
                             Unrouted
                           </span>
@@ -674,41 +697,107 @@ export function MailboxView({
           ) : (
             <div className="divide-y divide-neutral-200 dark:divide-zinc-700">
               {rules.map((rule) => {
-                const isRouted = rule.action === 'route' && Boolean(rule.target_chat_id);
-                const selectVal = isRouted ? rule.target_chat_id! : '__none__';
+                const target = ruleTarget(rule);
+                const routes = target !== '__none__';
+                const promptOpen = openRulePrompt === rule.id;
 
                 return (
                   <div
                     key={rule.id}
-                    className="flex items-center justify-between gap-3 px-3.5 py-2.5 hover:bg-neutral-50 dark:hover:bg-zinc-700/50"
+                    className="px-3.5 py-2.5 hover:bg-neutral-50 dark:hover:bg-zinc-700/50"
                   >
-                    <div className="flex min-w-0 flex-1 items-center gap-2.5">
-                      <span className="truncate font-mono text-xs">{rule.signature}</span>
-                      <span className="shrink-0 border border-neutral-300 bg-neutral-100 px-1.5 py-0.5 font-mono text-[10px] text-neutral-500 dark:border-zinc-600 dark:bg-zinc-900">
-                        {rule.origin} · {rule.hit_count}
-                      </span>
-                    </div>
-
-                    <div className="flex shrink-0 items-center gap-2">
-                      <div className="w-36">
-                        <BrutalSelect
-                          value={selectVal}
-                          ariaLabel="Rule target"
-                          variant="ghost"
-                          options={routeOptionsFor(rule.target_chat_id, rule.target_label)}
-                          onChange={(val) => void handleRuleChange(rule, val)}
-                          buttonClassName="border border-neutral-300 dark:border-zinc-600 py-0.5 px-2 text-[11px] font-mono bg-neutral-50 dark:bg-zinc-900"
-                        />
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div className="flex min-w-0 flex-1 items-center gap-2.5">
+                        <span className="truncate font-mono text-xs">{rule.signature}</span>
+                        <span className="shrink-0 border border-neutral-300 bg-neutral-100 px-1.5 py-0.5 font-mono text-[10px] text-neutral-500 dark:border-zinc-600 dark:bg-zinc-900">
+                          {rule.origin} · {rule.hit_count}
+                        </span>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => void handleDeleteRule(rule.id)}
-                        title="Delete rule"
-                        className="p-1 text-neutral-400 hover:text-brutal-red"
-                      >
-                        <TrashIcon className="h-3.5 w-3.5" />
-                      </button>
+
+                      <div className="flex shrink-0 flex-wrap items-center gap-2">
+                        <div className="w-44">
+                          <BrutalSelect
+                            value={target}
+                            ariaLabel="Rule target"
+                            variant="ghost"
+                            options={routeOptionsFor(
+                              target === '__none__' ? null : target,
+                              rule.target_label
+                            )}
+                            onChange={(val) => void saveRule(rule, { target: val })}
+                            buttonClassName="border border-neutral-300 dark:border-zinc-600 py-0.5 px-2 text-[11px] font-mono bg-neutral-50 dark:bg-zinc-900"
+                          />
+                        </div>
+                        {routes && (
+                          <div className="w-32">
+                            <BrutalSelect
+                              value={rule.delivery}
+                              ariaLabel={t('mailboxRules.deliveryLabel')}
+                              variant="ghost"
+                              options={[
+                                { value: 'wake', label: t('mailboxRules.deliveryWake') },
+                                { value: 'digest', label: t('mailboxRules.deliveryDigest') },
+                                { value: 'notify', label: t('mailboxRules.deliveryNotify') },
+                              ]}
+                              onChange={(val) =>
+                                void saveRule(rule, { delivery: val as MailboxDelivery })
+                              }
+                              buttonClassName="border border-neutral-300 dark:border-zinc-600 py-0.5 px-2 text-[11px] font-mono bg-neutral-50 dark:bg-zinc-900"
+                            />
+                          </div>
+                        )}
+                        {routes && rule.delivery === 'digest' && (
+                          <input
+                            type="number"
+                            min={1}
+                            defaultValue={rule.digest_minutes}
+                            aria-label={t('mailboxRules.digestMinutes')}
+                            title={t('mailboxRules.digestMinutes')}
+                            onBlur={(e) => {
+                              const minutes = Math.max(1, Number(e.target.value) || 1);
+                              if (minutes !== rule.digest_minutes) {
+                                void saveRule(rule, { digest_minutes: minutes });
+                              }
+                            }}
+                            className="w-16 border border-neutral-300 bg-neutral-50 px-2 py-0.5 font-mono text-[11px] dark:border-zinc-600 dark:bg-zinc-900"
+                          />
+                        )}
+                        {routes && rule.delivery !== 'notify' && (
+                          <button
+                            type="button"
+                            onClick={() => setOpenRulePrompt(promptOpen ? null : rule.id)}
+                            className={`border px-2 py-0.5 font-mono text-[11px] ${
+                              rule.prompt
+                                ? 'border-brutal-black text-brutal-black dark:border-zinc-300 dark:text-white'
+                                : 'border-neutral-300 text-neutral-500 dark:border-zinc-600'
+                            }`}
+                          >
+                            {t('mailboxRules.prompt')}
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => void handleDeleteRule(rule.id)}
+                          title="Delete rule"
+                          className="p-1 text-neutral-400 hover:text-brutal-red"
+                        >
+                          <TrashIcon className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
                     </div>
+                    {promptOpen && (
+                      <textarea
+                        defaultValue={rule.prompt ?? ''}
+                        placeholder={t('mailboxRules.promptPlaceholder')}
+                        rows={2}
+                        onBlur={(e) => {
+                          if (e.target.value.trim() !== (rule.prompt ?? '')) {
+                            void saveRule(rule, { prompt: e.target.value });
+                          }
+                        }}
+                        className="mt-2 w-full border border-neutral-300 bg-neutral-50 p-2 font-mono text-[11px] dark:border-zinc-600 dark:bg-zinc-900"
+                      />
+                    )}
                   </div>
                 );
               })}

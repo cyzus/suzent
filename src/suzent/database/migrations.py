@@ -101,6 +101,31 @@ class DatabaseMigrationMixin:
                     )
                 conn.commit()
 
+        # Migration: Mailbox rules gain delivery modes, project targets and a
+        # prompt; items remember the rule that queued them for a digest.
+        for table, additions in (
+            (
+                "mailbox_rules",
+                (
+                    ("delivery", "TEXT DEFAULT 'wake'"),
+                    ("digest_minutes", "INTEGER DEFAULT 60"),
+                    ("target_project_id", "TEXT"),
+                    ("prompt", "TEXT"),
+                ),
+            ),
+            ("mailbox_items", (("rule_id", "INTEGER"),)),
+        ):
+            if table not in inspector.get_table_names():
+                continue
+            columns = [col["name"] for col in inspector.get_columns(table)]
+            with self.engine.connect() as conn:
+                for column, ddl in additions:
+                    if column not in columns:
+                        conn.execute(
+                            text(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}")
+                        )
+                conn.commit()
+
         # Migration: goals gain a generation counter so a replacement can be
         # told apart from the goal it replaced (same row id, possibly same text).
         if "goals" in inspector.get_table_names():
