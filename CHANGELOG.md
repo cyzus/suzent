@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fix mobile inline code wrapping and show previews for uploaded images.
 - Show Regent’s cross-conversation work queue instead of a per-chat plan in the mobile status panel.
 - New Mailbox: one place for webhooks, scheduled runs, peer devices and agent messages, with a router that learns where each kind of event should go.
+- Drop shadows now use three consistent sizes for controls, menus and dialogs, with one shadow colour per theme.
 
 ## [v0.26.0] - 2026-11-13
 
