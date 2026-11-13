@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v0.26.1] - 2026-11-13
+
+### Release notes
+- Fix mobile inline code wrapping and show previews for uploaded images.
+- Show Regent’s cross-conversation work queue instead of a per-chat plan in the mobile status panel.
+
 ## [v0.26.0] - 2026-11-13
 
 ### Release notes
