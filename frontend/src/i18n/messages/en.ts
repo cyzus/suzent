@@ -80,6 +80,12 @@ export const en = {
     },
   },
   workspaceView: { fullscreen: 'Fullscreen', shrink: 'Shrink' },
+  mailboxView: {
+    messages: 'Messages',
+    empty: 'Nothing here yet',
+    filter: { all: 'All', external: 'External', agent: 'Agents', unrouted: 'Unrouted' },
+    status: { unrouted: 'Not routed', error: 'Delivery failed' },
+  },
   mailboxRules: {
     deliveryWake: 'Wake now',
     deliveryNotify: 'Notify me only',

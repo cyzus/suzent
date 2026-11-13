@@ -1,6 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ArrowPathIcon,
+  BellIcon,
+  BoltIcon,
+  ChatBubbleLeftRightIcon,
+  ComputerDesktopIcon,
+  QueueListIcon,
   ArrowTopRightOnSquareIcon,
   CheckIcon,
   ClockIcon,
@@ -137,6 +142,86 @@ function RuleInstructions({ value, onSave }: RuleInstructionsProps): React.React
       className="mt-1 font-mono text-[10px] text-neutral-400 hover:text-brutal-black dark:hover:text-white"
     >
       {t('mailboxRules.addInstructions')}
+    </button>
+  );
+}
+
+function sourceIcon(sourceKind: string): React.ComponentType<React.SVGProps<SVGSVGElement>> {
+  switch (sourceKind) {
+    case 'schedule':
+      return ClockIcon;
+    case 'agent_inbox':
+      return ChatBubbleLeftRightIcon;
+    case 'peer':
+      return ComputerDesktopIcon;
+    default:
+      return BoltIcon;
+  }
+}
+
+interface StatusPillProps {
+  status: MailboxItem['route_status'];
+  isUnrouted: boolean;
+  targetLabel: string;
+  onOpen?: () => void;
+}
+
+const PILL = 'flex h-7 w-full items-center gap-1.5 px-2 font-mono text-[11px]';
+
+/** Where an inbox thread went, styled by what happened to it. */
+function StatusPill({ status, isUnrouted, targetLabel, onOpen }: StatusPillProps) {
+  const { t } = useI18n();
+  if (status === 'error') {
+    return (
+      <span className={`${PILL} border border-brutal-red text-brutal-red`}>
+        <span className="h-1.5 w-1.5 shrink-0 bg-brutal-red" />
+        <span className="truncate">{t('mailboxView.status.error')}</span>
+      </span>
+    );
+  }
+  if (status === 'queued') {
+    return (
+      <span
+        className={`${PILL} border border-amber-400 bg-amber-50 text-amber-800 dark:border-amber-500/60 dark:bg-amber-500/10 dark:text-amber-200`}
+      >
+        <QueueListIcon className="h-3 w-3 shrink-0 stroke-2" />
+        <span className="truncate">{t('mailboxRules.queued')}</span>
+      </span>
+    );
+  }
+  if (status === 'notified') {
+    return (
+      <span
+        className={`${PILL} border border-sky-400 bg-sky-50 text-sky-800 dark:border-sky-500/60 dark:bg-sky-500/10 dark:text-sky-200`}
+      >
+        <BellIcon className="h-3 w-3 shrink-0 stroke-2" />
+        <span className="truncate">{t('mailboxRules.notified')}</span>
+      </span>
+    );
+  }
+  if (isUnrouted || !onOpen) {
+    return (
+      <span
+        className={`${PILL} border border-dashed border-neutral-300 text-neutral-400 dark:border-zinc-600 dark:text-zinc-500`}
+      >
+        <span className="truncate">{t('mailboxView.status.unrouted')}</span>
+      </span>
+    );
+  }
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      title={targetLabel}
+      className={`${PILL} border border-neutral-300 bg-white text-neutral-700 transition-colors hover:border-brutal-black hover:text-brutal-black dark:border-zinc-600 dark:bg-zinc-900 dark:text-neutral-200 dark:hover:border-zinc-300`}
+    >
+      <span
+        className={`h-1.5 w-1.5 shrink-0 ${
+          targetLabel === 'Regent' ? 'bg-brutal-yellow' : 'bg-neutral-400 dark:bg-zinc-500'
+        }`}
+      />
+      <span className="truncate">{targetLabel}</span>
+      <ArrowTopRightOnSquareIcon className="ml-auto h-3 w-3 shrink-0 text-neutral-400" />
     </button>
   );
 }
@@ -614,47 +699,47 @@ export function MailboxView({
       {activeTab === 'inbox' && (
         <section className="border-2 border-brutal-black bg-white shadow-brutal-sm dark:bg-zinc-800">
           <header className="flex flex-wrap items-center justify-between gap-3 border-b-2 border-brutal-black bg-neutral-100 px-3.5 py-2 dark:bg-zinc-900">
-            <h3 className="font-brutal text-xs uppercase tracking-tight">Messages</h3>
-            <div className="flex items-center gap-3 font-mono text-[11px]">
-              {(
-                [
-                  { id: 'all', label: `all (${categoryCounts.all})` },
-                  { id: 'external', label: `external (${categoryCounts.external})` },
-                  { id: 'agent', label: `agent (${categoryCounts.agent})` },
-                  { id: 'unrouted', label: `unrouted (${categoryCounts.unrouted})` },
-                ] as const
-              ).map((tab) => (
+            <h3 className="font-brutal text-xs uppercase tracking-tight">
+              {t('mailboxView.messages')}
+            </h3>
+            <div className="flex flex-wrap items-center gap-1.5">
+              {(['all', 'external', 'agent', 'unrouted'] as const).map((id) => (
                 <button
-                  key={tab.id}
+                  key={id}
                   type="button"
-                  onClick={() => setCategory(tab.id)}
-                  className={`transition-colors ${
-                    category === tab.id
-                      ? 'font-bold text-brutal-black underline underline-offset-4 dark:text-white'
-                      : 'text-neutral-500 hover:text-brutal-black dark:text-neutral-400 dark:hover:text-white'
+                  onClick={() => setCategory(id)}
+                  aria-pressed={category === id}
+                  className={`flex h-6 items-center gap-1.5 border px-2 font-mono text-[11px] transition-colors ${
+                    category === id
+                      ? 'border-brutal-black bg-brutal-black text-white dark:border-zinc-200 dark:bg-zinc-200 dark:text-zinc-900'
+                      : 'border-neutral-300 bg-white text-neutral-600 hover:border-brutal-black hover:text-brutal-black dark:border-zinc-600 dark:bg-zinc-800 dark:text-neutral-300 dark:hover:border-zinc-300 dark:hover:text-white'
                   }`}
                 >
-                  {tab.label}
+                  {t(`mailboxView.filter.${id}`)}
+                  <span className="tabular-nums opacity-60">{categoryCounts[id]}</span>
                 </button>
               ))}
             </div>
           </header>
 
           {visibleThreads.length === 0 ? (
-            <div className="p-10 text-center">
-              <p className="font-mono text-xs text-neutral-400">No messages</p>
+            <div className="flex flex-col items-center gap-2 p-12 text-center">
+              <InboxStackIcon className="h-6 w-6 text-neutral-300 dark:text-zinc-600" />
+              <p className="font-mono text-xs text-neutral-400">{t('mailboxView.empty')}</p>
             </div>
           ) : (
             <div className="divide-y divide-neutral-200 dark:divide-zinc-700">
               {visibleThreads.map((thread) => {
                 const { latest } = thread;
                 const isOpen = expandedThreads.has(thread.key);
+                const SourceIcon = sourceIcon(latest.source_kind);
 
                 return (
                   <div key={thread.key}>
                     <div
                       role="button"
                       tabIndex={0}
+                      aria-expanded={isOpen}
                       onClick={() => toggleThread(thread.key)}
                       onKeyDown={(e) => {
                         if (e.key === 'Enter' || e.key === ' ') {
@@ -662,58 +747,58 @@ export function MailboxView({
                           toggleThread(thread.key);
                         }
                       }}
-                      className={`grid cursor-pointer grid-cols-1 items-center gap-2 px-3.5 py-2.5 transition-colors hover:bg-neutral-50 sm:grid-cols-[170px_minmax(0,1fr)_auto] sm:gap-3.5 dark:hover:bg-zinc-700/50 ${
-                        thread.isUnrouted ? 'opacity-55' : ''
+                      className={`grid cursor-pointer grid-cols-[auto_minmax(0,1fr)] items-center gap-x-3 gap-y-2 px-3.5 py-2.5 transition-colors hover:bg-neutral-50 sm:grid-cols-[auto_minmax(0,1fr)_8.5rem] dark:hover:bg-zinc-700/40 ${
+                        isOpen ? 'bg-neutral-50 dark:bg-zinc-700/30' : ''
                       }`}
                     >
-                      <div className="flex min-w-0 items-center gap-1.5 overflow-hidden">
-                        <span
-                          className="truncate font-mono text-[11px] font-semibold"
-                          title={thread.fromLabel}
-                        >
-                          {thread.fromLabel}
-                        </span>
-                        {thread.items.length > 1 && (
-                          <span className="shrink-0 border border-neutral-300 bg-neutral-100 px-1 font-mono text-[10px] font-bold text-neutral-600 dark:border-zinc-600 dark:bg-zinc-900 dark:text-neutral-300">
-                            {thread.items.length}
-                          </span>
-                        )}
-                      </div>
+                      <span
+                        className={`flex h-8 w-8 shrink-0 items-center justify-center border ${
+                          thread.isUnrouted
+                            ? 'border-neutral-200 text-neutral-300 dark:border-zinc-700 dark:text-zinc-600'
+                            : 'border-brutal-black bg-white text-brutal-black dark:border-zinc-400 dark:bg-zinc-900 dark:text-neutral-100'
+                        }`}
+                      >
+                        <SourceIcon className="h-4 w-4 stroke-2" />
+                      </span>
 
-                      <div className="min-w-0 truncate text-xs text-brutal-black dark:text-neutral-100">
-                        {compactSummary(latest.summary)}
+                      <div className="min-w-0">
+                        <div
+                          className={`truncate text-[13px] leading-snug ${
+                            thread.isUnrouted
+                              ? 'text-neutral-500 dark:text-neutral-400'
+                              : 'font-medium text-brutal-black dark:text-neutral-100'
+                          }`}
+                        >
+                          {compactSummary(latest.summary)}
+                        </div>
+                        <div className="mt-0.5 flex min-w-0 items-center gap-1.5 font-mono text-[10px] text-neutral-500 dark:text-neutral-400">
+                          <span className="truncate" title={thread.fromLabel}>
+                            {thread.fromLabel}
+                          </span>
+                          {thread.items.length > 1 && (
+                            <span className="shrink-0 tabular-nums">×{thread.items.length}</span>
+                          )}
+                          <span className="shrink-0 text-neutral-300 dark:text-zinc-600">·</span>
+                          <span className="shrink-0 tabular-nums">
+                            {compactRelativeTime(latest.created_at, locale)}
+                          </span>
+                        </div>
                       </div>
 
                       <div
-                        className="flex shrink-0 items-center justify-end gap-2.5"
+                        className="col-span-2 flex justify-end sm:col-span-1"
                         onClick={(e) => e.stopPropagation()}
                       >
-                        {latest.route_status === 'queued' || latest.route_status === 'notified' ? (
-                          <span className="w-28 truncate border border-neutral-300 px-2 py-0.5 text-center font-mono text-[11px] text-neutral-500 dark:border-zinc-600">
-                            {latest.route_status === 'queued'
-                              ? t('mailboxRules.queued')
-                              : t('mailboxRules.notified')}
-                          </span>
-                        ) : thread.isUnrouted || !thread.primaryChatId ? (
-                          <span className="w-28 truncate border border-dashed border-neutral-300 px-2 py-0.5 text-center font-mono text-[11px] text-neutral-400 dark:border-zinc-600">
-                            Unrouted
-                          </span>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={() => onOpenChat(thread.primaryChatId!)}
-                            className="flex w-28 items-center gap-1.5 truncate border border-neutral-300 bg-neutral-50 px-2 py-0.5 text-left font-mono text-[11px] text-neutral-700 transition-colors hover:border-brutal-black dark:border-zinc-600 dark:bg-zinc-900 dark:text-neutral-200 dark:hover:border-zinc-400"
-                            title={thread.targetLabel}
-                          >
-                            {thread.targetLabel === 'Regent' && (
-                              <span className="h-1.5 w-1.5 shrink-0 bg-brutal-yellow" />
-                            )}
-                            <span className="truncate">→ {thread.targetLabel}</span>
-                          </button>
-                        )}
-                        <span className="w-12 shrink-0 whitespace-nowrap text-right font-mono text-[10px] tabular-nums text-neutral-400">
-                          {compactRelativeTime(latest.created_at, locale)}
-                        </span>
+                        <StatusPill
+                          status={latest.route_status}
+                          isUnrouted={thread.isUnrouted || !thread.primaryChatId}
+                          targetLabel={thread.targetLabel}
+                          onOpen={
+                            thread.primaryChatId
+                              ? () => onOpenChat(thread.primaryChatId!)
+                              : undefined
+                          }
+                        />
                       </div>
                     </div>
 

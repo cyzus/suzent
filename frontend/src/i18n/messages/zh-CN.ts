@@ -79,6 +79,12 @@ export const zhCN = {
     },
   },
   workspaceView: { fullscreen: '全屏', shrink: '缩小' },
+  mailboxView: {
+    messages: '消息',
+    empty: '这里还没有消息',
+    filter: { all: '全部', external: '外部', agent: 'Agent', unrouted: '未路由' },
+    status: { unrouted: '未路由', error: '投递失败' },
+  },
   mailboxRules: {
     deliveryWake: '立即唤醒',
     deliveryNotify: '只通知我',
