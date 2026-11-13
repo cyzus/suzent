@@ -1639,6 +1639,9 @@ export const en = {
       agentCapabilitiesTitle: 'Agent Capabilities',
       agentCapabilitiesDesc: 'Configure which tools the social agent can use.',
       enableMemoryTools: 'Enable Memory Tools',
+      regentDirectMessages: 'Direct messages go to Regent',
+      regentDirectMessagesHint:
+        'Direct messages from every chat app share one conversation with Regent, and /sess switches it on all of them. Everyone you allow on a chat app joins that conversation, so leave this off if you have let other people in. Group chats keep their own sessions.',
       tools: 'Tools',
       allTools: 'All Tools',
       custom: 'Custom',

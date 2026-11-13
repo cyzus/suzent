@@ -6,37 +6,45 @@ Commands:
   /sess switch <id> — switch active chat for this user/channel
   /sess new [title] — create a new chat and switch to it
   /sess info        — show current active chat info
+  /sess reset       — go back to the default session
 """
 
 import typer
+from suzent.channels.session_binding import clear_binding, get_binding, set_binding
 from suzent.core.commands.base import register_command, CommandContext
+from suzent.core.focal_agent import FOCAL_CHAT_ID, FOCAL_TITLE
 from suzent.database import get_database
 
-# In-memory mapping: sender_id -> active_chat_id
-# Persists for the duration of the server process.
-_active_chats: dict[str, str] = {}
-_lock_map: dict[str, object] = {}  # per-sender asyncio.Lock, created lazily
+
+def get_active_chat_id(binding_key: str, default_chat_id: str) -> str:
+    """Return the chat a conversation is bound to, or its default chat."""
+    return get_binding(binding_key) or default_chat_id
 
 
-def get_active_chat_id(sender_id: str, default_chat_id: str) -> str:
-    """Return the active chat_id for a sender, defaulting to their social chat."""
-    return _active_chats.get(sender_id, default_chat_id)
+def set_active_chat_id(binding_key: str, chat_id: str) -> None:
+    """Bind a conversation to a specific chat_id."""
+    set_binding(binding_key, chat_id)
 
 
-def set_active_chat_id(sender_id: str, chat_id: str) -> None:
-    """Bind a sender to a specific chat_id."""
-    _active_chats[sender_id] = chat_id
+def clear_active_chat_id(binding_key: str) -> None:
+    """Remove a conversation's binding so it falls back to its default chat."""
+    clear_binding(binding_key)
 
 
-def clear_active_chat_id(sender_id: str) -> None:
-    """Remove a sender's chat binding (falls back to default social chat)."""
-    _active_chats.pop(sender_id, None)
+def _binding_key(ctx: CommandContext) -> str:
+    return ctx.binding_key or ctx.sender_id or ctx.chat_id
+
+
+def _default_label(ctx: CommandContext) -> str:
+    if ctx.chat_id == FOCAL_CHAT_ID:
+        return FOCAL_TITLE
+    return f"default chat ({ctx.chat_id[-8:]})"
 
 
 @register_command(
     aliases=["/sess"],
-    description="Manage sessions: ls, switch <id>, new [title], info",
-    usage="/sess <ls|switch|new|info> [args]",
+    description="Manage sessions: ls, switch <id>, new [title], info, reset",
+    usage="/sess <ls|switch|new|info|reset> [args]",
     surfaces=["social"],
     category="session",
     options={
@@ -44,6 +52,7 @@ def clear_active_chat_id(sender_id: str) -> None:
         "switch": "Switch to an existing session",
         "new": "Create a new session",
         "info": "Show current session info",
+        "reset": "Go back to the default session",
     },
 )
 def sess_command(
@@ -63,13 +72,17 @@ def sess_command(
             return await _cmd_new(cmd_ctx, args)
         elif sub_lower == "info":
             return await _cmd_info(cmd_ctx)
+        elif sub_lower == "reset":
+            clear_active_chat_id(_binding_key(cmd_ctx))
+            return f"✅ Back to {_default_label(cmd_ctx)}"
         else:
             return (
                 "Unknown subcommand. Usage:\n"
                 "  /sess ls — list sessions\n"
                 "  /sess switch <id> — switch session\n"
                 "  /sess new [title] — create new session\n"
-                "  /sess info — current session info"
+                "  /sess info — current session info\n"
+                "  /sess reset — back to the default session"
             )
 
     return _impl
@@ -101,7 +114,7 @@ async def _cmd_ls(ctx: CommandContext) -> str:
         return "No sessions found."
 
     sender_id = ctx.sender_id or ctx.chat_id
-    active_id = _active_chats.get(sender_id)
+    active_id = get_active_chat_id(_binding_key(ctx), ctx.chat_id)
 
     if ctx.channel_manager and ctx.platform:
         channel = ctx.channel_manager.channels.get(ctx.platform)
@@ -153,8 +166,7 @@ async def _cmd_switch(ctx: CommandContext, args: list) -> str:
         chat_id = chat.id
         title = chat.title
 
-    sender_id = ctx.sender_id or ctx.chat_id
-    set_active_chat_id(sender_id, chat_id)
+    set_active_chat_id(_binding_key(ctx), chat_id)
     return f"✅ Switched to: [{chat_id[-8:]}] {title}"
 
 
@@ -162,22 +174,21 @@ async def _cmd_new(ctx: CommandContext, args: list) -> str:
     title = " ".join(args) if args else "New Session"
     db = get_database()
     chat_id = db.create_chat(title=title, config={"platform": ctx.platform or "social"})
-    sender_id = ctx.sender_id or ctx.chat_id
-    set_active_chat_id(sender_id, chat_id)
+    set_active_chat_id(_binding_key(ctx), chat_id)
     return f"✅ Created and switched to: [{chat_id[-8:]}] {title}"
 
 
 async def _cmd_info(ctx: CommandContext) -> str:
-    sender_id = ctx.sender_id or ctx.chat_id
-    active_id = _active_chats.get(sender_id)
+    key = _binding_key(ctx)
+    active_id = get_binding(key)
 
     if not active_id:
-        return f"Current session: default social chat ({ctx.chat_id[-8:]})"
+        return f"Current session: {_default_label(ctx)}"
 
     db = get_database()
     chat = db.get_chat(active_id)
     if not chat:
-        clear_active_chat_id(sender_id)
+        clear_active_chat_id(key)
         return "Active session no longer exists. Reverted to default."
 
     msg_count = len(chat.messages or [])
