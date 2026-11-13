@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import hmac
 import json
+import traceback
 import uuid
 from typing import Any, Optional
 
@@ -29,6 +30,24 @@ logger = get_logger(__name__)
 
 MAILBOX_TOKEN_SECRET = "SUZENT_MAILBOX::webhook_token"
 MAILBOX_TOKEN_HASH_SECRET = "SUZENT_MAILBOX::webhook_token_hash"
+
+_triage_locks: dict[str, asyncio.Lock] = {}
+# Triage runs inside the webhook request; GitHub gives up after 10 seconds.
+_TRIAGE_TIMEOUT_SECONDS = 8.0
+
+
+async def _ask_router(prompt: str) -> str:
+    """Ask the decision model to classify a new kind of event."""
+    from suzent.core.role_router import ModelRole, get_role_router
+    from suzent.llm import LLMClient
+
+    model = get_role_router().get_model_id(ModelRole.DECISION)
+    if not model:
+        raise RuntimeError("no decision model configured")
+    return await LLMClient(model=model).complete(
+        prompt=prompt, temperature=0.0, max_tokens=120, reasoning_effort="none"
+    )
+
 
 _QUIET_GITHUB_EVENTS = frozenset(
     {
@@ -271,16 +290,20 @@ async def _llm_triage_first_seen(
     summary: str,
     payload_preview: str,
     preferred_chat_id: Optional[str] = None,
-) -> tuple[str, Optional[str], str]:
+) -> tuple[str, Optional[str], str, bool]:
     """Decide initial routing for a never-before-seen event signature.
 
-    Returns ``(action, target_chat_id, reason)``.
+    Returns ``(action, target_chat_id, reason, durable)``. ``durable`` is False
+    for the Regent fallback used when the LLM could not decide (no model, a
+    timeout, an error or an unreadable reply), so that guess is not saved as a
+    rule and the next event of this kind is triaged again.
     """
     if event_type == "ping":
         return (
             "none",
             None,
             "Webhook verification ping; stored in Mailbox without waking an agent.",
+            True,
         )
 
     if preferred_chat_id:
@@ -288,66 +311,49 @@ async def _llm_triage_first_seen(
             "route",
             preferred_chat_id,
             f"Bound to target session '{resolve_target_label(db, preferred_chat_id)}'.",
+            True,
         )
 
-    # Attempt fast LLM classification (bounded to 3.0s; safe fallback to Regent)
     try:
-        import litellm
-        from suzent.config import CONFIG
-
-        model = getattr(CONFIG, "model", None)
-        if model:
-            targets = list_routable_targets(db)
-            target_desc = "\n".join(
-                f"- {t['chat_id']}: {t['label']}" for t in targets[:12]
-            )
-            prompt = (
-                "You are Suzent's inbound Mailbox Router. A new event type arrived for the first time.\n"
-                "Decide whether future events with this signature should:\n"
-                "1) route to 'focal-suzent' (Regent, the default global orchestrator),\n"
-                "2) route to a specific project session from the list below (only if the repo/subject clearly matches),\n"
-                "3) 'none' (do not route / store in inbox only) if it is low-signal noise, a routine ping, or a passing status check.\n\n"
-                f"Available targets:\n{target_desc}\n\n"
-                f"Event signature: {signature}\n"
-                f"Summary: {summary}\n"
-                f"Payload preview: {payload_preview[:600]}\n\n"
-                'Reply ONLY with compact JSON: {"action": "route"|"none", "target_chat_id": "focal-suzent"|"<chat_id>"|null, "reason": "<one short sentence>"}'
-            )
-            resp = await asyncio.wait_for(
-                litellm.acompletion(
-                    model=model,
-                    messages=[{"role": "user", "content": prompt}],
-                    temperature=0.0,
-                    max_tokens=120,
-                ),
-                timeout=3.0,
-            )
-            content = (
-                resp.choices[0].message.content or ""
-                if resp and getattr(resp, "choices", None)
-                else ""
-            ).strip()
-            if "{" in content and "}" in content:
-                raw_json = content[content.find("{") : content.rfind("}") + 1]
-                parsed = json.loads(raw_json)
-                act = str(parsed.get("action") or "route").lower()
-                if act in ("route", "none"):
-                    tgt = parsed.get("target_chat_id") if act == "route" else None
-                    valid_ids = {t["chat_id"] for t in targets}
-                    if act == "route" and (not tgt or tgt not in valid_ids):
-                        tgt = FOCAL_CHAT_ID
-                    reason = str(
-                        parsed.get("reason")
-                        or "Auto-classified on first arrival by LLM router."
-                    )[:200]
-                    return act, tgt, reason
+        targets = list_routable_targets(db)
+        target_desc = "\n".join(f"- {t['chat_id']}: {t['label']}" for t in targets[:12])
+        prompt = (
+            "You are Suzent's inbound Mailbox Router. A new event type arrived for the first time.\n"
+            "Decide whether future events with this signature should:\n"
+            "1) route to 'focal-suzent' (Regent, the default global orchestrator),\n"
+            "2) route to a specific project session from the list below (only if the repo/subject clearly matches),\n"
+            "3) 'none' (do not route / store in inbox only) if it is low-signal noise, a routine ping, or a passing status check.\n\n"
+            f"Available targets:\n{target_desc}\n\n"
+            f"Event signature: {signature}\n"
+            f"Summary: {summary}\n"
+            f"Payload preview: {payload_preview[:600]}\n\n"
+            'Reply ONLY with compact JSON: {"action": "route"|"none", "target_chat_id": "focal-suzent"|"<chat_id>"|null, "reason": "<one short sentence>"}'
+        )
+        content = (
+            await asyncio.wait_for(_ask_router(prompt), timeout=_TRIAGE_TIMEOUT_SECONDS)
+        ).strip()
+        if "{" in content and "}" in content:
+            raw_json = content[content.find("{") : content.rfind("}") + 1]
+            parsed = json.loads(raw_json)
+            act = str(parsed.get("action") or "route").lower()
+            if act in ("route", "none"):
+                tgt = parsed.get("target_chat_id") if act == "route" else None
+                valid_ids = {t["chat_id"] for t in targets}
+                if act == "route" and (not tgt or tgt not in valid_ids):
+                    tgt = FOCAL_CHAT_ID
+                reason = str(
+                    parsed.get("reason")
+                    or "Auto-classified on first arrival by LLM router."
+                )[:200]
+                return act, tgt, reason, True
     except Exception as exc:
-        logger.debug("Mailbox LLM triage skipped/fell back to Regent: {}", exc)
+        logger.warning("Mailbox LLM triage failed, sending to Regent: {}", exc)
 
     return (
         "route",
         FOCAL_CHAT_ID,
-        "Default route: high-signal or novel inbound events go to Regent.",
+        "Sent to Regent: the router could not classify this event yet.",
+        False,
     )
 
 
@@ -364,6 +370,34 @@ async def resolve_or_learn_rule(
     preferred_chat_id: Optional[str] = None,
 ) -> MailboxRuleModel:
     """Return the cached rule for ``signature``, or triage once and crystallize a new rule."""
+    # Events of one new kind often arrive together (a CI run's checks); triage
+    # it once and let the others read the rule that run saves.
+    async with _triage_locks.setdefault(signature, asyncio.Lock()):
+        return await _resolve_or_learn_rule_locked(
+            db,
+            source_kind=source_kind,
+            source_name=source_name,
+            event_type=event_type,
+            signature=signature,
+            rule_name=rule_name,
+            summary=summary,
+            payload_preview=payload_preview,
+            preferred_chat_id=preferred_chat_id,
+        )
+
+
+async def _resolve_or_learn_rule_locked(
+    db: ChatDatabase,
+    *,
+    source_kind: str,
+    source_name: str,
+    event_type: str,
+    signature: str,
+    rule_name: str,
+    summary: str,
+    payload_preview: str,
+    preferred_chat_id: Optional[str],
+) -> MailboxRuleModel:
     existing = db.get_mailbox_rule_by_signature(signature)
     if existing is None and ":" in signature:
         wildcard = f"{source_name}:{event_type}:*"
@@ -374,7 +408,7 @@ async def resolve_or_learn_rule(
         db.record_mailbox_rule_hit(existing.id)
         return existing
 
-    action, target_chat_id, reason = await _llm_triage_first_seen(
+    action, target_chat_id, reason, durable = await _llm_triage_first_seen(
         db,
         source_kind=source_kind,
         source_name=source_name,
@@ -387,6 +421,17 @@ async def resolve_or_learn_rule(
     target_label = (
         resolve_target_label(db, target_chat_id) if action == "route" else None
     )
+    if not durable:
+        return MailboxRuleModel(
+            signature=signature,
+            name=rule_name,
+            source_kind=source_kind,
+            action=action,
+            target_chat_id=target_chat_id,
+            target_label=target_label,
+            origin="default",
+            reason=reason,
+        )
     return db.upsert_mailbox_rule(
         signature=signature,
         name=rule_name,
@@ -400,6 +445,19 @@ async def resolve_or_learn_rule(
     )
 
 
+def target_exists(db: ChatDatabase, chat_id: str) -> bool:
+    """Regent always exists (it is created on demand); other sessions must."""
+    return chat_id == FOCAL_CHAT_ID or db.get_chat(chat_id) is not None
+
+
+class MissingTargetError(LookupError):
+    """A route points at a session that no longer exists."""
+
+    def __init__(self, chat_id: str):
+        super().__init__(f"Session '{chat_id}' no longer exists")
+        self.chat_id = chat_id
+
+
 def _deliver_item_to_agent(
     db: ChatDatabase,
     item: MailboxItemModel,
@@ -409,15 +467,10 @@ def _deliver_item_to_agent(
     """Queue a Mailbox item into ``agent_inbox`` for ``target_chat_id`` and return ``message_id``."""
     from suzent.core.agent_inbox import enqueue_agent_message
 
+    if not target_exists(db, target_chat_id):
+        raise MissingTargetError(target_chat_id)
     if target_chat_id == FOCAL_CHAT_ID:
         get_or_create_focal_chat()
-    elif db.get_chat(target_chat_id) is None:
-        # Ensure cron-* or named chat exists before queueing into agent_inbox
-        db.ensure_channel_chat(
-            target_chat_id,
-            title=item.target_label or f"Mailbox · {item.source_name}",
-            platform="mailbox",
-        )
 
     msg_id = f"mailbox_{item.id}_{uuid.uuid4().hex[:10]}"
     header_line = f"[Mailbox Event #{item.id} · {item.source_name} · {item.event_type}]"
@@ -527,12 +580,23 @@ async def ingest_mailbox_event(
 
     if dispatch and route_status == "routed" and target_chat_id:
         try:
-            msg_id = _deliver_item_to_agent(
-                db, item, target_chat_id, custom_prompt=custom_prompt
-            )
+            try:
+                msg_id = _deliver_item_to_agent(
+                    db, item, target_chat_id, custom_prompt=custom_prompt
+                )
+            except MissingTargetError as missing:
+                item = _reroute_to_regent(db, item, missing)
+                msg_id = _deliver_item_to_agent(
+                    db, item, FOCAL_CHAT_ID, custom_prompt=custom_prompt
+                )
             item = db.update_mailbox_item(item.id, inbox_message_id=msg_id) or item
         except Exception as exc:
-            logger.error("Failed to dispatch Mailbox item {}: {}", item.id, exc)
+            logger.error(
+                "Failed to dispatch Mailbox item {}: {}\n{}",
+                item.id,
+                exc,
+                traceback.format_exc(),
+            )
             item = (
                 db.update_mailbox_item(
                     item.id, route_status="error", reason=f"Dispatch error: {exc}"
@@ -541,6 +605,34 @@ async def ingest_mailbox_event(
             )
 
     return item
+
+
+def _reroute_to_regent(
+    db: ChatDatabase, item: MailboxItemModel, missing: MissingTargetError
+) -> MailboxItemModel:
+    """Send an item whose target session is gone to Regent instead.
+
+    A learned rule is forgotten so the next event is triaged against the
+    sessions that exist now; a pinned rule is the user's and stays until they
+    change it.
+    """
+    rule = db.get_mailbox_rule_by_signature(item.signature)
+    if rule is not None and rule.origin == "learned":
+        db.delete_mailbox_rule(rule.id)
+    logger.warning(
+        "Mailbox item {} targeted missing session {}; sent to Regent",
+        item.id,
+        missing.chat_id,
+    )
+    return (
+        db.update_mailbox_item(
+            item.id,
+            target_chat_id=FOCAL_CHAT_ID,
+            target_label=FOCAL_TITLE,
+            reason=f"{missing}; sent to Regent instead.",
+        )
+        or item
+    )
 
 
 def route_or_override_mailbox_item(
@@ -563,6 +655,8 @@ def route_or_override_mailbox_item(
         route_status = "unrouted"
     else:
         action = "route"
+        if not target_exists(db, target_chat_id):
+            raise MissingTargetError(target_chat_id)
         target_label = resolve_target_label(db, target_chat_id)
         route_status = "routed"
 

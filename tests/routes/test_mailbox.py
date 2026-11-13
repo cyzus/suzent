@@ -1,11 +1,13 @@
 """Tests for the unified Mailbox & Dynamic LLM-Crystallized Router."""
 
+import asyncio
 import json
+
 import pytest
 from starlette.requests import Request
 
 from suzent.core.focal_agent import FOCAL_CHAT_ID
-from suzent.core.mailbox import get_or_create_mailbox_token
+from suzent.core.mailbox import get_or_create_mailbox_token, ingest_mailbox_event
 from suzent.routes import mailbox_routes
 from suzent.routes.webhook_routes import receive_webhook
 
@@ -51,8 +53,44 @@ def db(temp_db, monkeypatch):
     return temp_db
 
 
+def _fake_router(monkeypatch, reply, *, delay: float = 0.0) -> list[str]:
+    """Stand in for the decision model; returns the prompts it received."""
+    calls: list[str] = []
+
+    async def ask(prompt: str) -> str:
+        calls.append(prompt)
+        if delay:
+            await asyncio.sleep(delay)
+        if isinstance(reply, Exception):
+            raise reply
+        return reply
+
+    monkeypatch.setattr("suzent.core.mailbox._ask_router", ask)
+    return calls
+
+
+_ROUTE_TO_REGENT = json.dumps(
+    {"action": "route", "target_chat_id": FOCAL_CHAT_ID, "reason": "Release news."}
+)
+
+
+async def _github_release(tag: str = "v0.16.0"):
+    body = {
+        "action": "published",
+        "repository": {"full_name": "cyzus/suzent"},
+        "release": {"tag_name": tag},
+    }
+    return await ingest_mailbox_event(
+        body_bytes=json.dumps(body).encode(),
+        headers={"x-github-event": "release"},
+    )
+
+
 @pytest.mark.asyncio
-async def test_first_seen_github_release_auto_learns_rule_and_routes_to_regent(db):
+async def test_first_seen_github_release_auto_learns_rule_and_routes_to_regent(
+    db, monkeypatch
+):
+    _fake_router(monkeypatch, _ROUTE_TO_REGENT)
     token = get_or_create_mailbox_token()
     payload = {
         "action": "published",
@@ -187,3 +225,76 @@ async def test_user_override_pins_rule_for_future_events(db):
     rule = db.get_mailbox_rule_by_signature("github:workflow_run.failure:cyzus/suzent")
     assert rule.origin == "pinned"
     assert rule.target_chat_id == "proj-suzent-chat"
+
+
+@pytest.mark.asyncio
+async def test_router_failure_routes_to_regent_without_saving_a_rule(db, monkeypatch):
+    calls = _fake_router(monkeypatch, TimeoutError("router timed out"))
+
+    first = await _github_release("v1")
+    second = await _github_release("v2")
+
+    assert first.route_status == "routed"
+    assert first.target_chat_id == FOCAL_CHAT_ID
+    assert first.rule_origin == "default"
+    assert db.list_mailbox_rules() == []
+    # Not remembered, so the next event of this kind is triaged again.
+    assert second.target_chat_id == FOCAL_CHAT_ID
+    assert len(calls) == 2
+
+
+@pytest.mark.asyncio
+async def test_burst_of_a_new_event_kind_is_triaged_once(db, monkeypatch):
+    calls = _fake_router(monkeypatch, _ROUTE_TO_REGENT, delay=0.05)
+
+    items = await asyncio.gather(*(_github_release(f"v{i}") for i in range(3)))
+
+    assert len(calls) == 1
+    assert {item.target_chat_id for item in items} == {FOCAL_CHAT_ID}
+    [rule] = db.list_mailbox_rules()
+    assert rule.hit_count == 3
+
+
+@pytest.mark.asyncio
+async def test_learned_route_to_a_deleted_session_goes_to_regent(db, monkeypatch):
+    calls = _fake_router(monkeypatch, _ROUTE_TO_REGENT)
+    db.upsert_mailbox_rule(
+        signature="github:release.published:cyzus/suzent",
+        name="github · release.published",
+        action="route",
+        target_chat_id="deleted-session",
+        target_label="Old session",
+        origin="learned",
+    )
+
+    item = await _github_release()
+
+    assert item.route_status == "routed"
+    assert item.target_chat_id == FOCAL_CHAT_ID
+    assert "no longer exists" in item.reason
+    assert db.get_chat("deleted-session") is None
+    # The stale learned rule is dropped, so the next event is triaged afresh.
+    assert db.list_mailbox_rules() == []
+    await _github_release("v2")
+    assert len(calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_manual_route_to_a_missing_session_is_rejected(db, monkeypatch):
+    _fake_router(monkeypatch, _ROUTE_TO_REGENT)
+    item = await _github_release()
+
+    res = await mailbox_routes.route_mailbox_item_route(
+        _request(
+            "POST",
+            f"/mailbox/items/{item.id}/route",
+            body=json.dumps(
+                {"action": "route", "target_chat_id": "missing-session"}
+            ).encode(),
+            path_params={"item_id": item.id},
+        )
+    )
+
+    assert res.status_code == 400
+    [rule] = db.list_mailbox_rules()
+    assert rule.target_chat_id == FOCAL_CHAT_ID

@@ -9,6 +9,8 @@ from starlette.responses import JSONResponse
 
 from suzent.core.focal_agent import FOCAL_CHAT_ID, FOCAL_TITLE
 from suzent.core.mailbox import (
+    MissingTargetError,
+    target_exists,
     get_mailbox_webhook_path,
     list_routable_targets,
     resolve_target_label,
@@ -234,12 +236,15 @@ async def route_mailbox_item_route(request: Request) -> JSONResponse:
     target_chat_id = data.get("target_chat_id")
     pin_rule = bool(data.get("pin_rule", True))
 
-    updated = route_or_override_mailbox_item(
-        item_id,
-        action=action,
-        target_chat_id=target_chat_id,
-        pin_rule=pin_rule,
-    )
+    try:
+        updated = route_or_override_mailbox_item(
+            item_id,
+            action=action,
+            target_chat_id=target_chat_id,
+            pin_rule=pin_rule,
+        )
+    except MissingTargetError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
     if updated is None:
         return JSONResponse({"error": "Mailbox item not found"}, status_code=404)
     return JSONResponse({"item": _item_to_dict(updated)})
@@ -276,6 +281,10 @@ async def update_mailbox_rule_route(request: Request) -> JSONResponse:
     db = get_database()
     action = str(data.get("action") or "route")
     target_chat_id = data.get("target_chat_id") if action == "route" else None
+    if target_chat_id and not target_exists(db, target_chat_id):
+        return JSONResponse(
+            {"error": str(MissingTargetError(target_chat_id))}, status_code=400
+        )
     target_label = resolve_target_label(db, target_chat_id) if target_chat_id else None
     reason = data.get("reason") or (
         f"Pinned by user: route to {target_label}."

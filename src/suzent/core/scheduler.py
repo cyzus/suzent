@@ -680,9 +680,12 @@ class SchedulerBrain(BaseBrain):
                 db.create_mailbox_item(
                     source_kind="schedule",
                     source_name=job.schedule_kind or "cron",
-                    event_type=job.cron_expr or f"every {job.interval_minutes}m"
-                    if job.interval_minutes
-                    else (job.schedule_kind or "schedule"),
+                    event_type=job.cron_expr
+                    or (
+                        f"every {job.interval_minutes}m"
+                        if job.interval_minutes
+                        else (job.schedule_kind or "schedule")
+                    ),
                     signature=f"schedule:job-{job.id}",
                     summary=job.name,
                     payload=job.prompt or "",
