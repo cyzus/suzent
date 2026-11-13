@@ -4,6 +4,7 @@
 
 ### Release notes
 - Fix mobile inline code wrapping and show previews for uploaded images.
+- Messages from other chats, scheduled tasks and goal mode now show as one quiet line in mobile chats; repeats with no reply merge, and a reply notes what it answers.
 - Display uploaded images outside user text bubbles and match desktop message colors in light and dark mode.
 - Unify Regent conversation bubbles and make its status panel available on mobile.
 - Show Regent’s cross-conversation work queue instead of a per-chat plan in the mobile status panel.
