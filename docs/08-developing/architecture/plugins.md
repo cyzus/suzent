@@ -181,8 +181,12 @@ Both prefixes are in `secrets.PRIVATE_KEY_PREFIXES`, so
 the agent runs would inherit them.
 
 `agent_manager._build_mcp_servers()` adds `integrations.connected_toolsets()`,
-which has one toolset for each connected integration of each loaded plugin.
-Each toolset is wrapped twice:
+which has one toolset for each connected, switched-on integration of each
+loaded plugin. The switch lives in `plugins.json` as
+`plugins[id].services[integration_id]`: `connect` writes `false` when there is
+no entry yet, and an integration with no entry (connected before the switch
+existed) counts as on. A chat's `mcp_enabled["plugin.integration"]` overrides
+it. Each toolset is wrapped twice:
 
 - `_as_mcp_toolset()` counts it as MCP for context usage and sends every call
   the server does not mark `readOnlyHint` through the permission engine,
@@ -193,9 +197,11 @@ Each toolset is wrapped twice:
 
 Routes: `POST /plugins/{name}/integrations/{id}/connect` starts a sign-in and
 returns `authorizeUrl`, or saves `{"token": ...}`.
-`POST /plugins/{name}/integrations/{id}/disconnect` signs out. Both rebuild
-the cached agent. `GET /plugins` lists each plugin's `integrations` with
-`connected`, `error`, and a `signIn` state while one is in progress.
+`POST /plugins/{name}/integrations/{id}/disconnect` signs out.
+`POST /plugins/{name}/integrations/{id}/enabled` with `{"enabled": bool}` sets
+the switch. All three rebuild the cached agent. `GET /plugins` lists each
+plugin's `integrations` with `connected`, `enabled`, `error`, and a `signIn`
+state while one is in progress.
 
 Signing in from a phone is not supported yet: the OAuth redirect must reach
 the loopback callback on the Suzent machine.

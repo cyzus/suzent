@@ -127,7 +127,7 @@ def add_server(
                 _print_tool_names(probe.get("tools") or [])
             elif probe:
                 typer.echo(f"  ⚠️  Saved, but connection failed: {probe.get('error')}")
-            typer.echo("  (enabled by default — use 'suzent mcp disable' to turn off)")
+            typer.echo("  (off by default — use 'suzent mcp enable' to turn it on)")
         except ClientError as e:
             typer.echo(f"❌ {e}")
             raise typer.Exit(code=1)

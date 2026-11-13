@@ -60,6 +60,10 @@ def plugins(tmp_path, monkeypatch):
     monkeypatch.setattr(manager_module, "_manager", manager, raising=False)
     monkeypatch.setattr("suzent.plugins.get_plugin_manager", lambda: manager)
     monkeypatch.setattr(manager_module, "get_plugin_manager", lambda: manager)
+    # Imported by name, so a first import under an earlier test's patch sticks.
+    monkeypatch.setattr(
+        "suzent.routes.plugin_routes.get_plugin_manager", lambda: manager
+    )
     return manager
 
 
@@ -239,6 +243,51 @@ def test_token_connect_and_disconnect_routes(plugins, secrets, monkeypatch):
     assert client.post("/plugins/nope/integrations/x/connect").status_code == 404
 
 
+def test_a_new_connection_starts_off_until_switched_on(plugins, secrets, monkeypatch):
+    from starlette.applications import Starlette
+    from starlette.routing import Route
+    from starlette.testclient import TestClient
+
+    from suzent import agent_manager
+    from suzent.routes import plugin_routes
+
+    monkeypatch.setattr(agent_manager, "invalidate_agent", lambda: None)
+    app = Starlette(
+        routes=[
+            Route(
+                "/plugins/{name}/integrations/{integration}/connect",
+                plugin_routes.connect_integration,
+                methods=["POST"],
+            ),
+            Route(
+                "/plugins/{name}/integrations/{integration}/enabled",
+                plugin_routes.set_integration_enabled,
+                methods=["POST"],
+            ),
+        ]
+    )
+    client = TestClient(app)
+    base = "/plugins/github/integrations/github"
+
+    response = client.post(f"{base}/connect", json={"token": "github_pat_x"})
+    assert response.json()["enabled"] is False
+    assert integrations.connected_toolsets() == []
+
+    assert client.post(f"{base}/enabled", json={}).status_code == 400
+    assert client.post(f"{base}/enabled", json={"enabled": True}).json()["enabled"]
+    assert len(integrations.connected_toolsets()) == 1
+
+    # Reconnecting keeps the user's choice rather than switching it off again.
+    client.post(f"{base}/connect", json={"token": "github_pat_y"})
+    assert plugins.service_enabled("github", "github") is True
+
+
+def test_a_service_connected_before_the_switch_stays_on(plugins, secrets):
+    github = _record(plugins, "github").integrations[0]
+    secrets.values[integrations.token_key("github", github)] = "token"
+    assert len(integrations.connected_toolsets()) == 1
+
+
 async def test_concurrent_runs_balance_the_shared_connection():
     """The cached agent's runs share one wrapper: last exit disconnects."""
     import asyncio
@@ -343,6 +392,11 @@ def test_a_chat_can_turn_a_connected_service_off(plugins, secrets, monkeypatch):
     assert len(agent_manager._build_mcp_servers({})) == 1
     off = {"mcp_enabled": {"github.github": False}}
     assert agent_manager._build_mcp_servers(off) == []
+
+    plugins.set_service_enabled("github", "github", False)
+    assert agent_manager._build_mcp_servers({}) == []
+    on = {"mcp_enabled": {"github.github": True}}
+    assert len(agent_manager._build_mcp_servers(on)) == 1
 
 
 def test_an_unreadable_icon_is_skipped(tmp_path, monkeypatch):

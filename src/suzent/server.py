@@ -205,6 +205,7 @@ from suzent.routes.plugin_routes import (
     install_binary,
     install_plugin,
     list_plugins,
+    set_integration_enabled,
     plugin_api,
     plugin_websocket,
     remove_plugin,
@@ -1471,6 +1472,11 @@ app = Starlette(
         Route(
             "/plugins/{name}/integrations/{integration}/disconnect",
             disconnect_integration,
+            methods=["POST"],
+        ),
+        Route(
+            "/plugins/{name}/integrations/{integration}/enabled",
+            set_integration_enabled,
             methods=["POST"],
         ),
         Route("/skills", get_skills, methods=["GET"]),
