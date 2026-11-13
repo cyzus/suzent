@@ -1764,12 +1764,14 @@ session_idle_timeout_minutes: 0    # Reset after inactivity (0 = off)
 max_context_tokens: 0              # 0 = use whatever the active model supports
 ```
 
-Long conversations are compacted automatically once they reach 200k tokens or
+Long conversations are compacted automatically once they reach 500k tokens or
 80% of the model's context window, whichever comes first
 (`context_compaction_trigger_tokens`, `context_compaction_trigger`). A 128k model
-is compacted at about 102k; a 1M-token model at 200k, so it doesn't pay for
-hundreds of thousands of tokens on every message before anything is folded. If
-Suzent doesn't know a model's window, it assumes 200k tokens.
+is compacted at about 102k and a 200k model at 160k. A 1M-token model is
+compacted at 500k: past that, even the strongest models get noticeably worse at
+recalling several details from a long conversation, and every message pays for
+the whole history. If Suzent doesn't know a model's window, it assumes 200k
+tokens.
 
 Set `max_context_tokens` to a non-zero value to cap that budget, for example to
 keep costs down. It can only lower the limit, never raise it.
@@ -1777,7 +1779,7 @@ keep costs down. It can only lower the limit, never raise it.
 The summary that replaces older messages is written by the model you are
 chatting with, reusing the conversation it has already read, so most of it
 comes from the provider's prompt cache and costs a fraction of the normal price.
-Once the conversation reaches 100k tokens or half the window, whichever comes
+Once the conversation reaches 350k tokens or half the window, whichever comes
 first (`context_precompaction_trigger_tokens`, `context_precompaction_trigger`),
 Suzent starts writing the next summary in the background. That happens during a
 long run as well as when a reply finishes, so the summary is usually ready
@@ -6302,9 +6304,9 @@ See [Memory](https://suzent.com/docs/features/memory). More tuning is on
 |---|---|---|
 | `max_context_tokens` | `0` | Cap the context budget. `0` uses whatever the model supports. |
 | `context_compaction_trigger` | `0.80` | How full the context gets before older messages are summarized. |
-| `context_compaction_trigger_tokens` | `200000` | Summarize older messages at this many tokens if that comes before the share above. `0` uses only the share. |
+| `context_compaction_trigger_tokens` | `500000` | Summarize older messages at this many tokens if that comes before the share above. `0` uses only the share. |
 | `context_precompaction_trigger` | `0.50` | How full the context gets before the next summary is prepared in the background. `0` turns it off. |
-| `context_precompaction_trigger_tokens` | `100000` | Start preparing the summary at this many tokens if that comes before the share above. `0` uses only the share. |
+| `context_precompaction_trigger_tokens` | `350000` | Start preparing the summary at this many tokens if that comes before the share above. `0` uses only the share. |
 | `goals_max_turns` | `20` | How many turns [goal mode](https://suzent.com/docs/features/automation#goal-mode) runs before pausing. |
 | `session_daily_reset_hour` | `0` | UTC hour at which conversations reset each day. `0` turns it off. |
 | `session_idle_timeout_minutes` | `0` | Reset a conversation after this many idle minutes. `0` turns it off. |
@@ -9345,10 +9347,11 @@ transcript at full price (`summarize_on_cached_prefix()` in
   false` turns the cached path off.
 - **Thresholds.** `compaction_trigger_tokens()` and
   `precompaction_trigger_tokens()` take the smaller of a share of the window
-  and a fixed token count: by default 80% or 200k for compaction, 50% or 100k
-  for preparing a summary. The fixed count matters on large windows, where a
-  share alone would send hundreds of thousands of uncompacted tokens per
-  request.
+  and a fixed token count: by default 80% or 500k for compaction, 50% or 350k
+  for preparing a summary. The fixed count matters on 1M windows: published
+  multi-needle retrieval results (MRCR v2) for the strongest models stay
+  around 80% up to about 500k and fall to the 70s or lower toward 1M, while
+  mid-tier models fall off near 200k.
 - **Prepared in the background.** `schedule_precompaction()` starts the next
   summary while the cache is warm, from two places: `ChatProcessor` when a
   turn finishes, and the history processor before each request of a run that
