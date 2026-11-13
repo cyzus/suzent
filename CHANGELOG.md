@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Context compaction now writes its summary from the prompt cache with the chat's own model, and prepares it in the background after a turn, so long chats compact faster and cheaper.
 - Keep your reading position on macOS when a reply finishes while you are scrolled up, instead of jumping to the previous message.
 - The compaction animation now shows only on the chat card, and not at all for a compaction that finishes instantly.
+- Compaction now shows as a quiet divider in the chat that says why it happened and can show the summary, and the Context panel shows the last compaction and whether the next summary is ready.
 - Make Smart mode the default permission mode for new chats, remove its confirmation dialog, and add concise inline descriptions to the mode selector.
 - Show image thumbnails beside individual tool rows when the activity rail is expanded.
 - The file preview in the side panel has buttons to show the file in Finder or File Explorer and to copy where it is saved on your computer.
