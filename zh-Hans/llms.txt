@@ -15,6 +15,7 @@ Full documentation: https://suzent.com/zh-Hans/llms-full.txt
 - [Automation](https://suzent.com/zh-Hans/docs/features/automation)
 - [工作区与沙盒](https://suzent.com/zh-Hans/docs/features/filesystem)
 - [GitHub Sync](https://suzent.com/zh-Hans/docs/features/github-sync)
+- [Mailbox](https://suzent.com/zh-Hans/docs/features/mailbox)
 - [Advanced memory settings](https://suzent.com/zh-Hans/docs/features/memory/configuration)
 - [Notebook](https://suzent.com/zh-Hans/docs/features/memory/llm-wiki)
 - [记忆](https://suzent.com/zh-Hans/docs/features/memory)

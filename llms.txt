@@ -15,6 +15,7 @@ Full documentation: https://suzent.com/llms-full.txt
 - [Automation](https://suzent.com/docs/features/automation)
 - [Workspace & sandbox](https://suzent.com/docs/features/filesystem)
 - [GitHub Sync](https://suzent.com/docs/features/github-sync)
+- [Mailbox](https://suzent.com/docs/features/mailbox)
 - [Advanced memory settings](https://suzent.com/docs/features/memory/configuration)
 - [Notebook](https://suzent.com/docs/features/memory/llm-wiki)
 - [Memory](https://suzent.com/docs/features/memory)
