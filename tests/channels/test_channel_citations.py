@@ -66,3 +66,34 @@ async def test_send_stream_holds_markers_split_across_chunks():
     assert channel.messages == [
         "Fact [1].\n\nSources:\n[1] Source unavailable (t0_src_1)"
     ]
+
+
+class StreamingChannel(RecordingChannel):
+    async def send_stream(self, target_id: str, stream, **kwargs) -> bool:
+        self.messages.append("".join([chunk async for chunk in stream]))
+        return True
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("channel_cls", [RecordingChannel, StreamingChannel])
+async def test_send_stream_splits_messages_on_breaks(channel_cls):
+    from suzent.channels.base import MESSAGE_BREAK
+
+    manager = ChannelManager()
+    channel = channel_cls()
+    manager.register_channel(channel)
+
+    async def stream():
+        for part in [
+            MESSAGE_BREAK,
+            "First ",
+            "part",
+            MESSAGE_BREAK,
+            MESSAGE_BREAK,
+            "Second",
+            MESSAGE_BREAK,
+        ]:
+            yield part
+
+    assert await manager.send_stream("recording", "recipient", stream()) is True
+    assert channel.messages == ["First part", "Second"]

@@ -89,6 +89,7 @@ conversations or answering a permission request.
 | `/sess switch <id>` | Switch to another conversation. | Chat apps |
 | `/sess new [title]` | Same as `/new`. | Chat apps |
 | `/sess info` or `/sess` | Show the current conversation. | Chat apps |
+| `/sess reset` | Go back to the default conversation (Regent, if direct messages go to Regent). | Chat apps |
 
 In the desktop app and the terminal, you answer permission requests when they
 appear instead. See [Permissions & approvals](../03-features/tools/human-in-the-loop.md).

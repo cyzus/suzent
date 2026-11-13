@@ -29,6 +29,8 @@ class TextChunk(StreamEvent):
 
     content: str
     is_code: bool = False
+    # Set when the text is what Regent sent with send_message, one per bubble.
+    regent_messages: tuple[str, ...] = ()
 
 
 @dataclass
@@ -408,7 +410,9 @@ class StreamParser:
                     and all(isinstance(text, str) and text.strip() for text in texts)
                 ):
                     self._delivered_message_ids.add(call_id)
-                    yield TextChunk("\n\n".join(texts) + "\n\n")
+                    yield TextChunk(
+                        "\n\n".join(texts) + "\n\n", regent_messages=tuple(texts)
+                    )
             except (ValueError, AttributeError, TypeError):
                 pass
 

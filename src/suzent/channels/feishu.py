@@ -271,6 +271,7 @@ class FeishuChannel(SocialChannel):
                 timestamp=float(msg.create_time) / 1000.0,
                 attachments=attachments,
                 thread_id=msg.root_id or msg.parent_id,
+                is_direct=getattr(msg, "chat_type", None) == "p2p",
                 raw_data=None,
             )
 

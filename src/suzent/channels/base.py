@@ -11,6 +11,15 @@ import asyncio
 import tempfile
 
 
+class _MessageBreak:
+    def __repr__(self) -> str:
+        return "MESSAGE_BREAK"
+
+
+# Yielded inside a reply stream to end the current chat message and start another.
+MESSAGE_BREAK = _MessageBreak()
+
+
 @dataclass
 class UnifiedMessage:
     """
@@ -24,6 +33,8 @@ class UnifiedMessage:
     platform: str
     timestamp: float = field(default_factory=time.time)
     thread_id: Optional[str] = None
+    # A one-to-one conversation with the bot, not a group or channel.
+    is_direct: bool = False
     attachments: List[Dict[str, Any]] = field(default_factory=list)
     raw_data: Dict[str, Any] = field(default_factory=dict)
 
@@ -71,6 +82,13 @@ class SocialChannel(ABC):
     ) -> bool:
         """Send a file."""
         pass
+
+    async def set_reaction(self, target_id: str, message_id: str, emoji: str) -> bool:
+        """Set the bot's reaction on a message, replacing its previous one.
+
+        An empty ``emoji`` removes it. Platforms without reactions return False.
+        """
+        return False
 
     @property
     def supports_interactive(self) -> bool:

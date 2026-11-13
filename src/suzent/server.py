@@ -510,6 +510,7 @@ def _build_social_from_config(
         mcp_enabled=social_config.get("mcp_enabled"),
         handshake_enabled=handshake_cfg.get("enabled", False),
         handshake_greeting=handshake_cfg.get("greeting"),
+        regent_direct_messages=bool(social_config.get("regent_direct_messages")),
     )
     return cm, sb
 
