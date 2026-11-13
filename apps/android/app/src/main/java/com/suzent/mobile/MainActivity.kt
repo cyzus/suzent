@@ -226,9 +226,8 @@ private fun CompactStack(showHome: Boolean, back: () -> Unit, home: @Composable 
 private fun DetailPane(model: MobileModel, showSettings: Boolean, desktopsOpen: Boolean, openDesktops: (Boolean) -> Unit,
                        back: (() -> Unit)?, newChat: () -> Unit, repair: () -> Unit) {
     val selected = model.selected
-    // Regent's plan is the desktop board across conversations, so only ordinary saved chats get the panel.
     val infoAvailable = model.connected && !showSettings && model.overviewSupported &&
-        selected != null && selected.id.isNotEmpty() && !selected.isRegent
+        selected != null && selected.id.isNotEmpty()
     var infoOpen by rememberSaveable { mutableStateOf(false) }
     val wide = back == null
     if (infoOpen && infoAvailable && !wide && selected != null) ModalBottomSheet(onDismissRequest = { infoOpen = false },

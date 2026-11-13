@@ -11,6 +11,7 @@ extension Color {
     static let suzentMuted = Color(uiColor: .suzentAdaptive(light: PresentationTokens.muted_light, dark: PresentationTokens.muted_dark))
     static let suzentOutline = Color(uiColor: .suzentAdaptive(light: PresentationTokens.black, dark: PresentationTokens.outline_dark))
     static let suzentShadow = Color(uiColor: .suzentAdaptive(light: PresentationTokens.black, dark: PresentationTokens.shadow_dark))
+    static let userMessageText = Color(uiColor: .suzentAdaptive(light: 0x000000, dark: 0xE4E4E7))
     static let regentUserBackground = Color(uiColor: .suzentAdaptive(light: 0xF5F5F5, dark: 0x27272A))
     static let suzentSelection = Color(uiColor: .suzentAdaptive(light: PresentationTokens.selection_light, dark: PresentationTokens.selection_dark))
     static let suzentRowDivider = Color(uiColor: .suzentAdaptive(light: PresentationTokens.selection_light, dark: PresentationTokens.selection_dark))
@@ -97,6 +98,20 @@ extension Date {
     }
 }
 
+private struct RegentMessageBubble: ViewModifier {
+    var enabled = true
+    @Environment(\.colorScheme) private var colorScheme
+
+    func body(content: Content) -> some View {
+        if enabled {
+            content
+                .background(Color.regentUserBackground, in: RoundedRectangle(cornerRadius: 10))
+                .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(
+                    colorScheme == .dark ? Color.white.opacity(0.14) : Color.black.opacity(0.18), lineWidth: 1))
+        } else { content }
+    }
+}
+
 struct MessageView: View {
     let message: DisplayMessage
     var regent = false
@@ -137,23 +152,27 @@ struct MessageView: View {
                 Spacer(minLength: 40)
                 VStack(alignment: .trailing, spacing: PresentationTokens.spaceSmall) {
                     ForEach(Array(message.files.enumerated()), id: \.offset) { _, file in
-                        AttachmentChip(name: file.filename, mimeType: file.mimeType, foreground: regent ? Color.suzentText : .black)
+                        if let media = file.media { MediaGallery(items: [media]) }
+                        else { AttachmentChip(name: file.filename, mimeType: file.mimeType, foreground: .userMessageText) }
                     }
-                    if !message.text.isEmpty { Text(message.text).suzentFont(PresentationTokens.typeChat) }
+                    if !message.text.isEmpty {
+                        Text(message.text).suzentFont(PresentationTokens.typeChat)
+                            .padding(.horizontal, 16).padding(.vertical, 10)
+                            .foregroundStyle(Color.userMessageText)
+                            .modifier(RegentMessageBubble(enabled: regent))
+                            .background(regent ? Color.clear : Color.regentUserBackground)
+                            .overlay {
+                                if !regent { Rectangle().strokeBorder(colorScheme == .dark ? Color.white.opacity(0.10) : Color.black, lineWidth: 2) }
+                            }
+                            .background {
+                                if !regent { Rectangle().fill(Color.black.opacity(colorScheme == .dark ? 0.30 : 1)).offset(x: 3, y: 3) }
+                            }
+                            .contentShape(.contextMenuPreview, RoundedRectangle(cornerRadius: regent ? 10 : 0))
+                            .contextMenu { menuItems }
+                            .padding(.trailing, regent ? 0 : 3).padding(.bottom, regent ? 0 : 3)
+                    }
                 }
-                    .padding(PresentationTokens.spaceMedium)
-                    .foregroundStyle(regent ? Color.suzentText : Color.black)
-                    .background(regent ? Color.regentUserBackground : Color.suzentYellow, in: RoundedRectangle(cornerRadius: regent ? PresentationTokens.radiusBubble : PresentationTokens.radius))
-                    .overlay(RoundedRectangle(cornerRadius: regent ? PresentationTokens.radiusBubble : PresentationTokens.radius).strokeBorder(
-                        regent ? Color.suzentText.opacity(colorScheme == .dark ? 0.14 : 0.18) : Color.suzentOutline,
-                        lineWidth: regent ? 1 : PresentationTokens.borderWidth))
-                    .background {
-                        if !regent { Rectangle().fill(Color.suzentShadow).offset(x: PresentationTokens.shadowOffset, y: PresentationTokens.shadowOffset) }
-                    }
-                    .contentShape(.contextMenuPreview, RoundedRectangle(cornerRadius: regent ? PresentationTokens.radiusBubble : PresentationTokens.radius))
-                    .contextMenu { menuItems }
-                    .frame(maxWidth: 320, alignment: .trailing)
-                    .padding(.trailing, regent ? 0 : PresentationTokens.shadowOffset).padding(.bottom, regent ? 0 : PresentationTokens.shadowOffset)
+                .frame(maxWidth: 320, alignment: .trailing)
             }
         } else {
             VStack(alignment: .leading, spacing: 10) {
@@ -895,10 +914,10 @@ struct ActivityContent: View {
         VStack(alignment: .leading, spacing: 12) {
             ForEach(Array(chunks.enumerated()), id: \.offset) { index, chunk in
                 if chunk.first?.type == "text" {
-                    let shape = RoundedRectangle(cornerRadius: PresentationTokens.radiusBubble)
+                    let shape = RoundedRectangle(cornerRadius: 10)
                     let bubble = SuzentMarkdown(text: chunk.first?.text ?? "", citationSources: citationSources, selectable: bubbleMenu == nil)
-                        .padding(regent ? 12 : 0)
-                        .background(regent ? Color.suzentText.opacity(0.045) : Color.clear, in: shape)
+                        .padding(.horizontal, regent ? 16 : 0).padding(.vertical, regent ? 10 : 0)
+                        .modifier(RegentMessageBubble(enabled: regent))
                     if regent, let bubbleMenu {
                         bubble.contentShape(.contextMenuPreview, shape).contextMenu { bubbleMenu }
                     } else { bubble }

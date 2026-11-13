@@ -554,10 +554,9 @@ struct ContentView: View {
         }
     }
 
-    /// Regent's plan is the desktop board across conversations, so only ordinary saved chats get the panel.
     private var infoAvailable: Bool {
         guard let chat = model.selected, !showSettings else { return false }
-        return model.overviewSupported && !chat.id.isEmpty && !chat.isRegent
+        return model.overviewSupported && !chat.id.isEmpty
     }
 
     /// The iPad sidebar already carries the wordmark and the create button.

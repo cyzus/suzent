@@ -78,3 +78,27 @@ def test_send_file_shows_files_even_when_the_chat_app_upload_failed() -> None:
     rejected = tool("send_file", {}, success=False)
     assert tool_media_paths(failed) == ["/a/report.pdf"]
     assert tool_media_paths(rejected) == []
+
+
+def test_uploaded_images_are_previewable_without_tool_calls() -> None:
+    path = "/workspace/uploads/photo.png"
+    messages = [{"role": "user", "files": [{"filename": "photo.png", "path": path}]}]
+    annotated = with_media(messages)
+    assert annotated[0]["files"][0]["media"] == {
+        "id": media_id(path),
+        "kind": "image",
+        "name": "photo.png",
+    }
+    assert "media" not in messages[0]["files"][0]
+    assert find_media(messages, media_id(path)) == (path, "image/png")
+    assert find_media([], media_id(path)) is None
+
+
+def test_attachment_media_ignores_invalid_files_and_non_user_messages() -> None:
+    files = [None, {}, {"path": 42}, {"path": ""}, {"path": "/workspace/a.pdf"}]
+    messages = [{"role": "user", "files": files}]
+    assert with_media(messages) == messages
+    assert find_media(messages, media_id("/workspace/a.pdf")) is None
+    other = [{"role": "assistant", "files": [{"path": "/workspace/a.png"}]}]
+    assert with_media(other) == other
+    assert find_media(other, media_id("/workspace/a.png")) is None

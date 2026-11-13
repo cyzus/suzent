@@ -59,8 +59,8 @@ fun ChatInfoPanel(model: MobileModel, chatId: String, modifier: Modifier = Modif
         while (true) {
             model.overview(chatId)?.let { overview = it }
             loaded = true
-            // The plan moves while the agent works; at rest it only changes from the desktop.
-            delay(if (running) 4_000 else 15_000)
+            // Other conversations can move while Regent itself is idle.
+            delay(if (running || model.selected?.isRegent == true) 4_000 else 15_000)
         }
     }
     Column(modifier.background(MaterialTheme.colorScheme.surface)) {
@@ -73,10 +73,51 @@ fun ChatInfoPanel(model: MobileModel, chatId: String, modifier: Modifier = Modif
             verticalArrangement = Arrangement.spacedBy(PresentationTokens.spaceLarge.dp)) {
             val current = overview
             when {
-                current != null -> { PlanSection(current); ContextSection(current.context) }
+                current != null -> {
+                    if (model.selected?.isRegent == true) RegentWorkQueue(current.workQueue)
+                    else PlanSection(current)
+                    ContextSection(current.context)
+                }
                 loaded -> Text(stringResource(R.string.chat_info_unavailable), color = MaterialTheme.colorScheme.onSurfaceVariant)
                 else -> Box(Modifier.fillMaxWidth().padding(top = PresentationTokens.spaceLarge.dp), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun RegentWorkQueue(rows: List<ChatOverview.WorkChat>?) {
+    Column(verticalArrangement = Arrangement.spacedBy(PresentationTokens.spaceMedium.dp)) {
+        InfoSectionHeader(stringResource(R.string.regent_work_queue))
+        when {
+            rows == null -> Text(stringResource(R.string.regent_queue_unavailable), color = MaterialTheme.colorScheme.onSurfaceVariant)
+            rows.isEmpty() -> Text(stringResource(R.string.regent_queue_empty), color = MaterialTheme.colorScheme.onSurfaceVariant)
+            else -> for (state in listOf("waiting", "running")) {
+                val group = rows.filter { it.state == state }
+                if (group.isNotEmpty()) {
+                    Text(stringResource(if (state == "waiting") R.string.regent_queue_waiting else R.string.regent_queue_running, group.size),
+                        fontWeight = FontWeight.SemiBold, fontSize = PresentationTokens.typeCaption.sp)
+                    group.forEach { chat ->
+                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Box(Modifier.padding(top = 6.dp).size(7.dp).background(
+                                if (state == "running") Color(PresentationTokens.blue) else suzentYellow(), CircleShape))
+                            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Text(chat.title, fontSize = PresentationTokens.typeLabel.sp)
+                                chat.projectName?.takeIf { it.isNotBlank() }?.let {
+                                    Text(it, fontSize = PresentationTokens.typeMeta.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                                val reason = chat.waitingReason?.takeIf { it.isNotBlank() } ?: chat.summary?.takeIf { it.isNotBlank() }
+                                if (reason != null) Text(reason, fontSize = PresentationTokens.typeCaption.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                else if (state == "waiting") Text(stringResource(when (chat.waitingKind) {
+                                    "question" -> R.string.regent_queue_question
+                                    "approval" -> R.string.regent_queue_approval
+                                    else -> R.string.regent_queue_input
+                                }), fontSize = PresentationTokens.typeCaption.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                    }
                 }
             }
         }

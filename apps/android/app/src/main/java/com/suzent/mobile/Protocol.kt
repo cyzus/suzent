@@ -18,7 +18,7 @@ data class Backend(val origin: HttpUrl) {
     fun endpoint(path: String): HttpUrl = origin.newBuilder().addPathSegments(path).build()
 }
 
-data class FileAttachment(val filename: String, val mimeType: String)
+data class FileAttachment(val filename: String, val mimeType: String, val media: MediaItem? = null)
 data class ChatMessage(val role: String, val content: String, val parts: List<MessagePart> = emptyList(),
     val name: String = "", val toolCallId: String = "", val model: String? = null, val timestamp: String? = null,
     val files: List<FileAttachment> = emptyList(), val runTimings: List<RunTiming> = emptyList(),
@@ -56,7 +56,9 @@ data class Chat(val id: String, val title: String, val running: Boolean, val mes
                                 })
                         }, item.optString("name"), item.optString("tool_call_id"), item.opt("model") as? String, item.opt("timestamp") as? String,
                         (0 until files.length()).mapNotNull { fileIndex ->
-                            files.optJSONObject(fileIndex)?.let { file -> FileAttachment(file.optString("filename"), file.optString("mime_type")) }
+                            files.optJSONObject(fileIndex)?.let { file -> FileAttachment(file.optString("filename"), file.optString("mime_type"),
+                                file.optJSONObject("media")?.let { MediaItem(it.optString("id"), it.optString("kind"), it.optString("name")) }
+                                    ?.takeIf { it.id.matches(Regex("^[0-9a-f]{32}$")) && it.kind == "image" }) }
                         }, runTimings = item.optJSONArray("run_timings")?.let { runs -> (0 until runs.length()).mapNotNull { runs.optJSONObject(it)?.let(RunTiming::parse) } } ?: emptyList(),
                         runID = item.opt("_streaming_run_id") as? String, runStartedAt = item.opt("run_started_at") as? String,
                         runFinishedAt = item.opt("run_finished_at") as? String, runActiveSeconds = (item.opt("run_active_seconds") as? Number)?.toDouble(),
@@ -81,7 +83,9 @@ data class ScheduledTask(val id: String, val name: String, val chatId: String?, 
 }
 
 /** A conversation's plan and context headline, as the desktop sidebar overview shows them. */
-data class ChatOverview(val goal: Goal?, val tasks: List<PlanTask>, val context: Context) {
+data class ChatOverview(val goal: Goal?, val tasks: List<PlanTask>, val context: Context, val workQueue: List<WorkChat>? = null) {
+    data class WorkChat(val chatId: String, val title: String, val projectName: String?, val state: String,
+                        val waitingKind: String?, val waitingReason: String?, val summary: String?)
     data class Goal(val objective: String, val status: String, val turnsElapsed: Int?, val maxTurns: Int?)
     data class PlanTask(val id: String, val title: String, val activeForm: String?, val status: String) {
         val isDone: Boolean get() = status == "completed" || status == "cancelled"
@@ -109,8 +113,17 @@ data class ChatOverview(val goal: Goal?, val tasks: List<PlanTask>, val context:
                 val category = categoryArray.getJSONObject(it)
                 Category(category.getString("id"), category.getInt("tokens"))
             }
+            val workQueue = json.optJSONArray("workQueue")?.let { rows ->
+                (0 until rows.length()).mapNotNull { index ->
+                    rows.optJSONObject(index)?.let { row ->
+                        WorkChat(row.optString("chatId"), row.optString("title"), row.opt("projectName") as? String,
+                            row.optString("state"), row.opt("waitingKind") as? String,
+                            row.opt("waitingReason") as? String, row.opt("summary") as? String)
+                    }?.takeIf { it.chatId.isNotEmpty() && it.state in setOf("waiting", "running") }
+                }
+            }
             return ChatOverview(goal, tasks, Context(context.optIntOrNull("usedTokens"), context.optIntOrNull("limit"),
-                if (context.isNull("percent")) null else context.optDouble("percent"), context.optIntOrNull("reserveTokens"), categories))
+                if (context.isNull("percent")) null else context.optDouble("percent"), context.optIntOrNull("reserveTokens"), categories), workQueue)
         }
     }
 }

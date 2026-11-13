@@ -336,7 +336,7 @@ private fun MarkdownProse(binding: MarkdownBinding, renderer: Markwon, tablePlug
             }
         }
         renderer.setParsedMarkdown(view, view.prepareMarkdown(styled))
-        view.text = inlineCodeBordered(view.text, suzentYellow(binding.dark).toArgb(), 2f * view.resources.displayMetrics.density, view)
+        view.setInlineCode(view.text, suzentYellow(binding.dark).toArgb(), 2f * view.resources.displayMetrics.density)
         view.movementMethod = io.noties.markwon.ext.tables.TableAwareMovementMethod.create()
         view.highlightColor = android.graphics.Color.TRANSPARENT
     })
@@ -416,11 +416,17 @@ private data class MarkdownBinding(
 )
 
 @Composable
+private fun Modifier.regentMessageBubble(): Modifier {
+    val dark = isSystemInDarkTheme()
+    val shape = RoundedCornerShape(10.dp)
+    return background(Color(if (dark) 0xFF27272A else 0xFFF5F5F5), shape)
+        .border(1.dp, if (dark) Color.White.copy(alpha = .14f) else Color.Black.copy(alpha = .18f), shape)
+}
+
+@Composable
 fun MessageView(message: DisplayMessage, regent: Boolean = false, isLatest: Boolean = false, fallbackModel: String? = null,
                 canRetry: Boolean = false, canEdit: Boolean = false, canFork: Boolean = false,
                 onAction: (String, String?) -> Unit = { _, _ -> }) {
-    val outline = MaterialTheme.colorScheme.outline
-    val shadowColor = suzentShadow
     val view = LocalView.current
     var menu by remember { mutableStateOf(false) }
     var menuAnchor by remember { mutableStateOf<Offset?>(null) }
@@ -433,32 +439,37 @@ fun MessageView(message: DisplayMessage, regent: Boolean = false, isLatest: Bool
         CanvasActionPill(canvasActionLabel(message.text) ?: "")
     } else if (message.role == "user") Box(Modifier.fillMaxWidth().padding(start = 40.dp), contentAlignment = androidx.compose.ui.Alignment.CenterEnd) {
         val dark = isSystemInDarkTheme()
-        val bubbleShape = RoundedCornerShape(PresentationTokens.radiusBubble.dp)
-        val bubble = if (regent) Modifier
-            .background(Color(if (dark) 0xFF27272A else 0xFFF5F5F5), bubbleShape)
-            .border(1.dp, (if (dark) Color.White else Color.Black).copy(alpha = if (dark) .14f else .18f), bubbleShape)
-        else Modifier.drawBehind {
-            drawRect(shadowColor, topLeft = Offset(PresentationTokens.shadowOffset.dp.toPx(), PresentationTokens.shadowOffset.dp.toPx()), size = size)
-        }.background(suzentYellow()).border(PresentationTokens.borderWidth.dp, outline)
-        // The text inside keeps long-press for selection; the bubble's padding opens the actions menu.
-        var bubbleCoords by remember { mutableStateOf<LayoutCoordinates?>(null) }
-        val bubbleCoordsState = rememberUpdatedState(bubbleCoords)
-        Box(Modifier.padding(end = if (regent) 0.dp else PresentationTokens.shadowOffset.dp,
-            bottom = if (regent) 0.dp else PresentationTokens.shadowOffset.dp)
-            .widthIn(max = 320.dp).then(bubble)
-            .onGloballyPositioned { bubbleCoords = it }
-            .pointerInput(Unit) {
-                detectTapGestures(onLongPress = { local ->
-                    menuAnchor = bubbleCoordsState.value?.localToWindow(local)
-                    view.suzentHaptic(SuzentHaptic.LongPress)
-                    menu = true
-                })
+        val foreground = Color(if (dark) 0xFFE4E4E7 else 0xFF000000)
+        val borderColor = if (dark) Color.White.copy(alpha = .10f) else Color.Black
+        val shadow = if (dark) Color.Black.copy(alpha = .30f) else Color.Black
+        val bubble = if (regent) Modifier.regentMessageBubble() else Modifier.drawBehind {
+            drawRect(shadow, topLeft = Offset(3.dp.toPx(), 3.dp.toPx()), size = size)
+        }.background(Color(if (dark) 0xFF27272A else 0xFFF5F5F5))
+            .border(2.dp, borderColor)
+        Column(Modifier.widthIn(max = 320.dp), horizontalAlignment = androidx.compose.ui.Alignment.End,
+            verticalArrangement = Arrangement.spacedBy(PresentationTokens.spaceSmall.dp)) {
+            message.files.forEach { file ->
+                if (file.media != null && LocalMediaLoader.current != null) MediaGallery(listOf(file.media))
+                else AttachmentChip(file.filename, file.mimeType, color = foreground)
             }
-            .semantics { onLongClick(actionsLabel) { menuAnchor = bubbleCoords?.positionInWindow(); menu = true; true } }
-            .padding(PresentationTokens.spaceMedium.dp)) {
-            Column(verticalArrangement = Arrangement.spacedBy(PresentationTokens.spaceSmall.dp)) {
-                message.files.forEach { AttachmentChip(it.filename, it.mimeType, color = Color.Black) }
-                if (message.text.isNotEmpty()) SelectionContainer { Text(message.text, color = if (regent) MaterialTheme.colorScheme.onSurface else Color.Black, fontSize = PresentationTokens.typeChat.sp) }
+            if (message.text.isNotEmpty()) {
+                // Text keeps selection; the surrounding padding opens message actions.
+                var bubbleCoords by remember { mutableStateOf<LayoutCoordinates?>(null) }
+                val bubbleCoordsState = rememberUpdatedState(bubbleCoords)
+                Box(Modifier.padding(end = if (regent) 0.dp else 3.dp,
+                    bottom = if (regent) 0.dp else 3.dp).then(bubble)
+                    .onGloballyPositioned { bubbleCoords = it }
+                    .pointerInput(Unit) {
+                        detectTapGestures(onLongPress = { local ->
+                            menuAnchor = bubbleCoordsState.value?.localToWindow(local)
+                            view.suzentHaptic(SuzentHaptic.LongPress)
+                            menu = true
+                        })
+                    }
+                    .semantics { onLongClick(actionsLabel) { menuAnchor = bubbleCoords?.positionInWindow(); menu = true; true } }
+                    .padding(horizontal = 16.dp, vertical = 10.dp)) {
+                    SelectionContainer { Text(message.text, color = foreground, fontSize = PresentationTokens.typeChat.sp) }
+                }
             }
         }
     } else Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -927,7 +938,7 @@ private fun ActivityText(text: String, citationSources: List<CitationSource>, re
     val bubbleMenuState = rememberUpdatedState(bubbleMenu)
     var bubbleCoords by remember { mutableStateOf<LayoutCoordinates?>(null) }
     val bubbleCoordsState = rememberUpdatedState(bubbleCoords)
-    Box(if (regent) Modifier.background(MaterialTheme.colorScheme.onSurface.copy(alpha = .045f), RoundedCornerShape(PresentationTokens.radiusBubble.dp))
+    Box(if (regent) Modifier.regentMessageBubble()
         .onGloballyPositioned { bubbleCoords = it }
         .then(if (bubbleMenu != null) Modifier.pointerInput(Unit) {
             detectTapGestures(onLongPress = { local ->
@@ -935,7 +946,7 @@ private fun ActivityText(text: String, citationSources: List<CitationSource>, re
                 menu(bubbleCoordsState.value?.localToWindow(local) ?: return@detectTapGestures)
             })
         } else Modifier)
-        .padding(12.dp) else Modifier) {
+        .padding(horizontal = 16.dp, vertical = 10.dp) else Modifier) {
         MarkdownText(text, citationSources, onLongPress = bubbleMenu)
     }
 }

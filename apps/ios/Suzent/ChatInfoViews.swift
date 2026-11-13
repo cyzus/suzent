@@ -21,7 +21,8 @@ struct ChatInfoPanel: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: PresentationTokens.spaceLarge) {
                     if let overview {
-                        PlanSection(overview: overview)
+                        if model.selected?.isRegent == true { RegentWorkQueue(rows: overview.workQueue) }
+                        else { PlanSection(overview: overview) }
                         ContextSection(context: overview.context)
                     } else if loaded {
                         Text("Conversation info is unavailable right now.").foregroundStyle(Color.suzentMuted)
@@ -40,8 +41,52 @@ struct ChatInfoPanel: View {
                 if Task.isCancelled { return }
                 if let next { overview = next }
                 loaded = true
-                // The plan moves while the agent works; at rest it only changes from the desktop.
-                try? await Task.sleep(for: .seconds(running ? 4 : 15))
+                // Other conversations can move while Regent itself is idle.
+                try? await Task.sleep(for: .seconds(running || model.selected?.isRegent == true ? 4 : 15))
+            }
+        }
+    }
+}
+
+private struct RegentWorkQueue: View {
+    let rows: [ChatOverview.WorkChat]?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: PresentationTokens.spaceMedium) {
+            InfoSectionHeader(title: "Work queue")
+            if let rows {
+                if rows.isEmpty {
+                    Text("No conversations are waiting or running.").foregroundStyle(Color.suzentMuted)
+                }
+                ForEach(["waiting", "running"], id: \.self) { state in
+                    let group = rows.filter { $0.state == state }
+                    if !group.isEmpty {
+                        if state == "waiting" { Text("Needs your attention · \(group.count)").font(.subheadline.weight(.semibold)) }
+                        else { Text("Running · \(group.count)").font(.subheadline.weight(.semibold)) }
+                        ForEach(group) { chat in
+                            HStack(alignment: .top, spacing: 10) {
+                                Circle().fill(state == "running" ? Color(presentation: PresentationTokens.blue) : Color.suzentYellow)
+                                    .frame(width: 7, height: 7).padding(.top, 6)
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(chat.title).suzentFont(PresentationTokens.typeLabel)
+                                    if let project = chat.projectName, !project.isEmpty {
+                                        Text(project).font(.caption).foregroundStyle(Color.suzentMuted)
+                                    }
+                                    if let reason = chat.waitingReason, !reason.isEmpty {
+                                        Text(reason).font(.subheadline).foregroundStyle(Color.suzentMuted)
+                                    } else if let summary = chat.summary, !summary.isEmpty {
+                                        Text(summary).font(.subheadline).foregroundStyle(Color.suzentMuted)
+                                    } else if state == "waiting" {
+                                        Text(chat.waitingKind == "question" ? "Waiting for your answer" : chat.waitingKind == "approval" ? "Waiting for approval" : "Waiting for your input")
+                                            .font(.subheadline).foregroundStyle(Color.suzentMuted)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            } else {
+                Text("Work queue is unavailable. Update the connected desktop to view it.").foregroundStyle(Color.suzentMuted)
             }
         }
     }

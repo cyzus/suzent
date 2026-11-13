@@ -1,7 +1,7 @@
 """Images, video, audio and files the agent made or sent in a conversation, as the phone sees them.
 
 The phone names a file by an opaque id derived from its path, never by the path
-itself, and only files a media tool reported in that conversation are served.
+itself. Only attachments and files reported by media tools in that conversation are served.
 """
 
 from __future__ import annotations
@@ -103,10 +103,34 @@ def media_items(part: dict) -> list[dict[str, str]]:
     ]
 
 
+def attachment_media(file: object) -> dict[str, str] | None:
+    if not isinstance(file, dict):
+        return None
+    path = file.get("path")
+    if not isinstance(path, str) or not path.strip():
+        return None
+    kind = media_type(path)
+    if kind is None or kind[0] != "image":
+        return None
+    return {"id": media_id(path), "kind": kind[0], "name": PurePath(path).name}
+
+
 def with_media(messages: list) -> list:
-    """Messages with each media tool part listing what it made, by id."""
+    """Messages with previews for uploaded images and media tool results."""
     annotated = []
     for message in messages:
+        if isinstance(message, dict) and message.get("role") == "user":
+            files = message.get("files")
+            if isinstance(files, list):
+                message = {
+                    **message,
+                    "files": [
+                        {**file, "media": item}
+                        if (item := attachment_media(file))
+                        else file
+                        for file in files
+                    ],
+                }
         parts = message.get("parts") if isinstance(message, dict) else None
         if not isinstance(parts, list):
             annotated.append(message)
@@ -122,8 +146,13 @@ def with_media(messages: list) -> list:
 
 
 def find_media(messages: list, wanted: str) -> tuple[str, str] | None:
-    """The path and content type behind ``wanted``, if a tool in these messages reported it."""
+    """Resolve only files attached or reported by tools in these messages."""
     for message in messages:
+        if isinstance(message, dict) and message.get("role") == "user":
+            files = message.get("files")
+            for file in files if isinstance(files, list) else []:
+                if (item := attachment_media(file)) and item["id"] == wanted:
+                    return file["path"], media_type(file["path"])[1]
         parts = message.get("parts") if isinstance(message, dict) else None
         for part in parts if isinstance(parts, list) else []:
             if not isinstance(part, dict) or part.get("type") != "tool":

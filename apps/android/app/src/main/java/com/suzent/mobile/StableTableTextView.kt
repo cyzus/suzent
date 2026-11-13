@@ -18,6 +18,20 @@ internal class StableTableTextView(context: Context) : TextView(context) {
     var tablePlugin: TablePlugin? = null
     var pressInWindowX = 0f
     var pressInWindowY = 0f
+    private var inlineSource: CharSequence? = null
+    private var inlineFill = 0
+    private var inlineBorder = 0f
+    private var inlineWidth = -1
+
+    fun setInlineCode(content: CharSequence, fill: Int, border: Float) {
+        inlineSource = content
+        inlineFill = fill
+        inlineBorder = border
+        inlineWidth = -1
+        text = content
+        requestLayout()
+    }
+
     private var preparedRows = emptyList<TableRowSpan>()
     private var preparedWidth = 0
     private var preparedTextSize = 0f
@@ -41,6 +55,10 @@ internal class StableTableTextView(context: Context) : TextView(context) {
 
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
         val available = MeasureSpec.getSize(widthMeasureSpec) - compoundPaddingLeft - compoundPaddingRight
+        if (available > 0 && available != inlineWidth) {
+            inlineSource?.let { text = inlineCodeBordered(it, inlineFill, inlineBorder, this, available) }
+            inlineWidth = available
+        }
         if (prepareRows(text, available)) {
             // TextView may already have laid out newly assigned spans using empty row
             // metrics. Rebuild that layout before measuring, not after drawing it.
