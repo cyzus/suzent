@@ -17,6 +17,7 @@
     ".releases/changes/appearance-typography-motion.json",
     ".releases/changes/approval-config-race.json",
     ".releases/changes/approval-context-authorship.json",
+    ".releases/changes/approval-reason-language-and-denials.json",
     ".releases/changes/approval-single-badge.json",
     ".releases/changes/approved-tool-names.json",
     ".releases/changes/artifact-preview-media-back.json",

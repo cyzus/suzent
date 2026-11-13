@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [v0.27.0] - 2026-11-13
 
 ### Release notes
+- The safety reviewer now explains approval requests in your language, and when you refuse a flagged action the agent is told why instead of retrying it.
 - Canvas pages use Suzent's scrollbar and fit on screen in chat, exiting fullscreen returns a canvas to its chat message, and the sidebar overview no longer shows a scrollbar.
 - Messages from other chats, scheduled tasks and goal mode now show as one quiet line in the chat; repeats with no reply merge, and a reply notes what it answers.
 - Tidy the chat composer: attachments, working folders, slash commands and mentions now live under one + menu, with mounted folders shown as a small chip beside it.
