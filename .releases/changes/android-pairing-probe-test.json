@@ -1,0 +1,1 @@
+{"products": {"mobile": "none"}, "reason": "Test-only change: makes an Android unit test deterministic; nothing ships.", "summary": "Make the Android pairing probe fallback test deterministic."}
