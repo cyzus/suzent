@@ -17,10 +17,12 @@ import os
 import sys
 from contextlib import asynccontextmanager
 
-# Run as `python -m suzent.server`, this file is `__main__`. Routes that import
-# `suzent.server` must get this module, not a fresh copy whose social stack is
-# empty: reloading through a copy never stopped the running chat apps.
-if __name__ == "__main__":
+# Run as `python -m suzent.server` (or by the service via runpy), this file is
+# `__main__`. Routes that import `suzent.server` must get this module, not a
+# fresh copy whose social stack is empty: reloading through a copy never
+# stopped the running chat apps. Only alias the module that is actually
+# executing, so a runner that leaves another `__main__` in place is not aliased.
+if __name__ == "__main__" and sys.modules[__name__].__dict__ is globals():
     sys.modules.setdefault("suzent.server", sys.modules[__name__])
 from dotenv import load_dotenv
 from starlette.applications import Starlette
