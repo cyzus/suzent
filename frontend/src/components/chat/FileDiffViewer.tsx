@@ -413,13 +413,19 @@ export const FileDiffViewer: React.FC<FileDiffViewerProps> = ({
     );
   }
 
-  // A new file has nothing to diff against; show it like a read.
+  // Without an original to diff against, show the content like a read.
   if (!isDiff) {
     const lineCount = modified.replace(/\n$/, '').split('\n').length;
     return (
       <PlainFileView
         filePath={filePath}
-        label={t('toolCallBlock.newFileLines', { total: lineCount })}
+        // Only a result that says it created the file gets "new file": an
+        // overwrite of a file too large to snapshot also arrives without
+        // old_content, as do pending calls and no-op writes.
+        label={t(
+          metadata?.action === 'create' ? 'toolCallBlock.newFileLines' : 'toolCallBlock.fileLines',
+          { total: lineCount }
+        )}
         gutter={Array.from({ length: lineCount }, (_, i) => i + 1).join('\n')}
         text={modified.replace(/\n$/, '')}
       />
