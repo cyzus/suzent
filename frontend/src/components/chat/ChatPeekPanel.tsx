@@ -18,36 +18,34 @@ function storedWidth(): number {
   }
 }
 
-/** What the chat inside the panel needs to lay out its own side panel. */
-export interface PeekSidebarProps {
-  isRightSidebarOpen: boolean;
-  onRightSidebarToggle: (isOpen: boolean) => void;
-  viewportWidthPx: number;
-}
-
 interface ChatPeekPanelProps {
   chatId: string;
   /** What the breadcrumb leads with: the chat the panel was opened from. */
   parentLabel: string;
   title?: string;
   maxWidthPx: number;
+  /** Whether the window's right sidebar is showing this chat's details. */
+  sidebarOpen: boolean;
+  onSidebarToggle: () => void;
   onClose: () => void;
   onExpand: (chatId: string) => void;
   /** The chat itself: a full chat window scoped to `chatId`. */
-  renderChat: (chatId: string, sidebar: PeekSidebarProps) => React.ReactNode;
+  renderChat: (chatId: string) => React.ReactNode;
 }
 
 /**
  * A chat opened beside the one you are in, so following a hand-off does not
  * mean leaving it. The panel is only the frame -- breadcrumb, expand, close,
- * width; inside is the chat's own window, whose side panel opens over this
- * column.
+ * width; inside is the chat's own window. Its details open in the window's
+ * one right sidebar, beside this column.
  */
 export const ChatPeekPanel: React.FC<ChatPeekPanelProps> = ({
   chatId,
   parentLabel,
   title,
   maxWidthPx,
+  sidebarOpen,
+  onSidebarToggle,
   onClose,
   onExpand,
   renderChat,
@@ -56,7 +54,6 @@ export const ChatPeekPanel: React.FC<ChatPeekPanelProps> = ({
   const { activeStreams, snapshotReady } = useEventBus();
   const running = snapshotReady && activeStreams.has(chatId);
   const [width, setWidth] = useState(storedWidth);
-  const [sidebarOpen, setSidebarOpen] = useState(false);
   const panelRef = useRef<HTMLElement>(null);
 
   const changeWidth = (next: number): void => {
@@ -116,7 +113,7 @@ export const ChatPeekPanel: React.FC<ChatPeekPanelProps> = ({
         <button
           type="button"
           className={iconButton}
-          onClick={() => setSidebarOpen((open) => !open)}
+          onClick={onSidebarToggle}
           title={t('chatMessage.dispatch.peekSidebar')}
           aria-label={t('chatMessage.dispatch.peekSidebar')}
           aria-pressed={sidebarOpen}
@@ -142,13 +139,7 @@ export const ChatPeekPanel: React.FC<ChatPeekPanelProps> = ({
           <XMarkIcon className="h-4 w-4" aria-hidden="true" />
         </button>
       </header>
-      <div className="relative flex min-h-0 flex-1">
-        {renderChat(chatId, {
-          isRightSidebarOpen: sidebarOpen,
-          onRightSidebarToggle: setSidebarOpen,
-          viewportWidthPx: shownWidth,
-        })}
-      </div>
+      <div className="relative flex min-h-0 flex-1">{renderChat(chatId)}</div>
     </aside>
   );
 };

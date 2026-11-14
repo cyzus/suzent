@@ -5,6 +5,7 @@ import { parseModelWait, requestModelWaitExtension, type ModelWaitState } from '
 import { createSpeechJob, speechQueue } from '../lib/speechPlayback';
 import { parseToolResultEnvelope } from './chat/ToolCallBlock';
 import React, { useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { ChatScopeProvider, useChatStore } from '../hooks/useChatStore';
 import { forgetReply, watchForReply } from '../lib/desktopNotifications';
 import { useAGUI, type AGUIPart, type ApprovalRememberScope } from '../hooks/useAGUI';
@@ -879,7 +880,21 @@ interface ChatWindowProps {
    * -- to the main window.
    */
   embedded?: boolean;
+  /**
+   * Where an embedded chat's side panel goes: the host window's sidebar spot,
+   * so the window keeps one right sidebar at its edge. Null while that spot
+   * mounts.
+   */
+  rightSidebarHost?: HTMLElement | null;
 }
+
+const SidebarSpot: React.FC<{ host?: HTMLElement | null; children: React.ReactNode }> = ({
+  host,
+  children,
+}) => {
+  if (host === undefined) return <>{children}</>;
+  return host ? createPortal(children, host) : null;
+};
 
 const STREAM_SEEDS = {
   save: _saveStreamSeed,
@@ -900,15 +915,46 @@ const isAbortError = (err: unknown) =>
 export const ChatWindow: React.FC<ChatWindowProps> = ({
   isRightSidebarOpen = false,
   rightSidebarHeaderSlot,
-  onRightSidebarToggle = () => {},
+  onRightSidebarToggle: requestRightSidebar = () => {},
   onRightSidebarWidthChange,
   rightSidebarMaxWidthPx,
   rightSidebarWideDefaultWidthPx,
   viewportWidthPx,
   rightSidebarForceFullView = false,
   embedded = false,
+  rightSidebarHost,
 }) => {
   const seeds = embedded ? NO_STREAM_SEEDS : STREAM_SEEDS;
+  // A chat open beside this one shares the window's one right sidebar, which
+  // shows whichever of the two last asked for it.
+  const [sidebarOwner, setSidebarOwner] = useState<'own' | 'peek'>('own');
+  const onRightSidebarToggle = useCallback(
+    (isOpen: boolean) => {
+      if (isOpen) setSidebarOwner('own');
+      requestRightSidebar(isOpen);
+    },
+    [requestRightSidebar]
+  );
+  const [sidebarWidthPx, setSidebarWidthPx] = useState(0);
+  const reportSidebarWidth = useCallback(
+    (width: number | null) => {
+      setSidebarWidthPx(width ?? 0);
+      onRightSidebarWidthChange?.(width);
+    },
+    [onRightSidebarWidthChange]
+  );
+  const [rowWidthPx, setRowWidthPx] = useState(0);
+  const rowObserver = useRef<ResizeObserver | null>(null);
+  const attachRow = useCallback((element: HTMLDivElement | null) => {
+    rowObserver.current?.disconnect();
+    rowObserver.current = null;
+    if (!element) return;
+    const observer = new ResizeObserver(([entry]) => {
+      if (entry) setRowWidthPx(Math.round(entry.contentRect.width));
+    });
+    observer.observe(element);
+    rowObserver.current = observer;
+  }, []);
   // Store hooks
   const {
     messages,
@@ -2319,6 +2365,21 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     if (currentChatId !== expandedPeek.current) expandedPeek.current = null;
     setPeekChatId(reopen);
   }, [currentChatId]);
+  useEffect(() => {
+    setSidebarOwner(peekChatId ? 'peek' : 'own');
+  }, [peekChatId]);
+  const peekOwnsSidebar = peekChatId !== null && sidebarOwner === 'peek';
+  const peekRoomPx =
+    (rowWidthPx || viewportWidthPx || 1280) - (isRightSidebarOpen ? sidebarWidthPx : 0);
+  const peekMaxWidthPx = Math.max(400, Math.min(Math.round(peekRoomPx * 0.6), peekRoomPx - 360));
+  const [peekSidebarHost, setPeekSidebarHost] = useState<HTMLDivElement | null>(null);
+  const openPeekSidebar = useCallback(
+    (isOpen: boolean) => {
+      if (isOpen) setSidebarOwner('peek');
+      requestRightSidebar(isOpen);
+    },
+    [requestRightSidebar]
+  );
   const handleOpenChat = useCallback(
     async (chatId: string): Promise<boolean> => {
       if (currentChatId !== FOCAL_CHAT_ID) return switchToChat(chatId);
@@ -3652,6 +3713,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       <OpenFileContext.Provider value={handleFileClick}>
         <OpenChatContext.Provider value={handleOpenChat}>
           <div
+            ref={attachRow}
             className="flex flex-row flex-1 h-full min-h-0 overflow-x-hidden bg-neutral-50 dark:bg-zinc-900 relative"
             onDragEnter={handleDragEnter}
             onDragLeave={handleDragLeave}
@@ -3896,13 +3958,15 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                 chatId={peekChatId}
                 parentLabel={t('chatList.focal.name')}
                 title={[...pinnedChats, ...chats].find((chat) => chat.id === peekChatId)?.title}
-                maxWidthPx={Math.max(400, Math.round((viewportWidthPx ?? 1280) * 0.6))}
+                maxWidthPx={peekMaxWidthPx}
+                sidebarOpen={isRightSidebarOpen && peekOwnsSidebar}
+                onSidebarToggle={() => openPeekSidebar(!(isRightSidebarOpen && peekOwnsSidebar))}
                 onClose={() => setPeekChatId(null)}
                 onExpand={(chatId) => {
                   expandedPeek.current = chatId;
                   void switchToChat(chatId);
                 }}
-                renderChat={(chatId, sidebar) => (
+                renderChat={(chatId) => (
                   <ChatScopeProvider
                     key={chatId}
                     chatId={chatId}
@@ -3916,81 +3980,95 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                       </p>
                     )}
                   >
-                    <ChatWindow embedded rightSidebarForceFullView {...sidebar} />
+                    <ChatWindow
+                      embedded
+                      rightSidebarHost={peekSidebarHost}
+                      isRightSidebarOpen={isRightSidebarOpen && peekOwnsSidebar}
+                      onRightSidebarToggle={openPeekSidebar}
+                      onRightSidebarWidthChange={peekOwnsSidebar ? reportSidebarWidth : undefined}
+                      rightSidebarHeaderSlot={peekOwnsSidebar ? rightSidebarHeaderSlot : null}
+                      rightSidebarMaxWidthPx={rightSidebarMaxWidthPx}
+                      rightSidebarWideDefaultWidthPx={rightSidebarWideDefaultWidthPx}
+                      viewportWidthPx={viewportWidthPx}
+                      rightSidebarForceFullView={rightSidebarForceFullView}
+                    />
                   </ChatScopeProvider>
                 )}
               />
             )}
 
             {/* Right Sidebar */}
-            <RightSidebar
-              isOpen={isRightSidebarOpen}
-              headerSlot={rightSidebarHeaderSlot}
-              onClose={() => onRightSidebarToggle(false)}
-              onOpen={() => onRightSidebarToggle(true)}
-              onWidthChange={onRightSidebarWidthChange}
-              maxWidthPx={rightSidebarMaxWidthPx}
-              wideContentDefaultWidthPx={rightSidebarWideDefaultWidthPx}
-              viewportWidthPx={viewportWidthPx}
-              forceFullView={rightSidebarForceFullView}
-              goal={goal}
-              tasks={tasks}
-              goalChatId={goalChatId}
-              kanban={kanban}
-              currentProjectName={
-                (
-                  chats.find((c) => c.id === currentChatId) ??
-                  pinnedChats.find((c) => c.id === currentChatId)
-                )?.projectName ?? null
-              }
-              currentProjectId={
-                (
-                  chats.find((c) => c.id === currentChatId) ??
-                  pinnedChats.find((c) => c.id === currentChatId)
-                )?.projectId ?? null
-              }
-              chatTitles={Object.fromEntries(
-                [...pinnedChats, ...chats].map((c) => [c.id, c.title])
-              )}
-              onOpenTask={handleOpenTask}
-
-              taskNavigationError={taskNavigationError}
-              onDismissTaskError={() => setTaskNavigationError(null)}
-              onTaskChat={async (chatId) => {
-                setTaskNavigationError(null);
-                try {
-                  await loadChat(chatId, { throwOnError: true, validateBeforeSwitch: true });
-                  return true;
-                } catch {
-                  setTaskNavigationError(t('taskFlow.openError'));
-                  return false;
+            <SidebarSpot host={rightSidebarHost}>
+              <RightSidebar
+                isOpen={isRightSidebarOpen && !peekOwnsSidebar}
+                headerSlot={peekOwnsSidebar ? null : rightSidebarHeaderSlot}
+                onClose={() => onRightSidebarToggle(false)}
+                onOpen={() => onRightSidebarToggle(true)}
+                onWidthChange={peekOwnsSidebar ? undefined : reportSidebarWidth}
+                maxWidthPx={rightSidebarMaxWidthPx}
+                wideContentDefaultWidthPx={rightSidebarWideDefaultWidthPx}
+                viewportWidthPx={viewportWidthPx}
+                forceFullView={rightSidebarForceFullView}
+                goal={goal}
+                tasks={tasks}
+                goalChatId={goalChatId}
+                kanban={kanban}
+                currentProjectName={
+                  (
+                    chats.find((c) => c.id === currentChatId) ??
+                    pinnedChats.find((c) => c.id === currentChatId)
+                  )?.projectName ?? null
                 }
-              }}
-              // Only an unsaved chat is "new". A saved chat whose messages are still
-              // loading must not count, or the sidebar collapses for a frame on every
-              // switch and re-expands once the transcript lands.
-              isNewChat={!currentChatId && safeMessages.length === 0 && !showTransientAssistant}
-              fileToPreview={sidebarFilePreview}
-              onMaximizeFile={handleMaximizeFile}
-              canvas={canvas}
-              onCanvasDispatch={handleCanvasDispatch}
-              viewingSubAgentTaskId={viewingSubAgentTaskId}
-              onCloseSubAgent={() => setViewingSubAgentTaskId(null)}
-              onSelectSubAgent={(taskId) => setViewingSubAgentTaskId(taskId)}
-              currentChatId={currentChatId}
-              hasSubAgents={
-                Object.keys(subAgentTasks).length > 0 ||
-                currentChatSummary?.platform === 'subagent' ||
-                safeConfig?.platform === 'subagent'
-              }
-              hasSubAgentHistory={transcriptHasSubAgentCall}
-              messages={safeMessages}
-              onOpenFile={handleFileClick}
-              forcedWebContextId={forcedWebContextId}
-              canvasRequestNonce={canvasRequestNonce}
-              canvasExpandNonce={canvasExpandNonce}
-              onClearForcedWebContext={() => setForcedWebContextId(null)}
-            />
+                currentProjectId={
+                  (
+                    chats.find((c) => c.id === currentChatId) ??
+                    pinnedChats.find((c) => c.id === currentChatId)
+                  )?.projectId ?? null
+                }
+                chatTitles={Object.fromEntries(
+                  [...pinnedChats, ...chats].map((c) => [c.id, c.title])
+                )}
+                onOpenTask={handleOpenTask}
+
+                taskNavigationError={taskNavigationError}
+                onDismissTaskError={() => setTaskNavigationError(null)}
+                onTaskChat={async (chatId) => {
+                  setTaskNavigationError(null);
+                  try {
+                    await loadChat(chatId, { throwOnError: true, validateBeforeSwitch: true });
+                    return true;
+                  } catch {
+                    setTaskNavigationError(t('taskFlow.openError'));
+                    return false;
+                  }
+                }}
+                // Only an unsaved chat is "new". A saved chat whose messages are still
+                // loading must not count, or the sidebar collapses for a frame on every
+                // switch and re-expands once the transcript lands.
+                isNewChat={!currentChatId && safeMessages.length === 0 && !showTransientAssistant}
+                fileToPreview={sidebarFilePreview}
+                onMaximizeFile={handleMaximizeFile}
+                canvas={canvas}
+                onCanvasDispatch={handleCanvasDispatch}
+                viewingSubAgentTaskId={viewingSubAgentTaskId}
+                onCloseSubAgent={() => setViewingSubAgentTaskId(null)}
+                onSelectSubAgent={(taskId) => setViewingSubAgentTaskId(taskId)}
+                currentChatId={currentChatId}
+                hasSubAgents={
+                  Object.keys(subAgentTasks).length > 0 ||
+                  currentChatSummary?.platform === 'subagent' ||
+                  safeConfig?.platform === 'subagent'
+                }
+                hasSubAgentHistory={transcriptHasSubAgentCall}
+                messages={safeMessages}
+                onOpenFile={handleFileClick}
+                forcedWebContextId={forcedWebContextId}
+                canvasRequestNonce={canvasRequestNonce}
+                canvasExpandNonce={canvasExpandNonce}
+                onClearForcedWebContext={() => setForcedWebContextId(null)}
+              />
+            </SidebarSpot>
+            {peekChatId && <div ref={setPeekSidebarHost} className="contents" />}
 
             <ImageViewer src={viewingImage} onClose={() => setViewingImage(null)} />
 
