@@ -1,99 +1,284 @@
 .cube-loading {
   position: relative;
-  height: 100px;
-  perspective: 420px;
+  display: grid;
+  place-items: center;
+  height: 110px;
+  perspective: 380px;
 }
+
+.cube-loading-rig,
 .cube-loading-unit,
 .cube-loading-solid {
   transform-style: preserve-3d;
 }
+
 .cube-loading-solid {
   position: relative;
   width: var(--edge);
   height: var(--edge);
 }
+
 .cube-loading-solid > span {
   position: absolute;
   inset: 0;
-  background: #202020;
-  border: 1px solid #666;
+  border: 1px solid rgba(255, 255, 255, 0.34);
   backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+
+.cube-loading-solid > span:nth-child(1) {
+  background: linear-gradient(155deg, #2b2b2b 0%, #141414 100%);
+}
+.cube-loading-solid > span:nth-child(2) {
+  background: #0d0d0d;
 }
 .cube-loading-solid > span:nth-child(3) {
-  background: #444;
+  background: linear-gradient(180deg, #464646 0%, #242424 100%);
+}
+.cube-loading-solid > span:nth-child(4) {
+  background: linear-gradient(180deg, #1b1b1b 0%, #0b0b0b 100%);
 }
 .cube-loading-solid > span:nth-child(5) {
-  background: #666;
+  background: linear-gradient(135deg, #757575 0%, #4a4a4a 100%);
+  border-color: rgba(255, 255, 255, 0.58);
 }
+.cube-loading-solid > span:nth-child(6) {
+  background: #050505;
+}
+
 .dark .cube-loading-solid > span {
-  background: #ddd;
-  border-color: #888;
+  border-color: rgba(0, 0, 0, 0.45);
+}
+.dark .cube-loading-solid > span:nth-child(1) {
+  background: linear-gradient(155deg, #e4e4e7 0%, #c4c4c8 100%);
+}
+.dark .cube-loading-solid > span:nth-child(2) {
+  background: #9ca3af;
 }
 .dark .cube-loading-solid > span:nth-child(3) {
-  background: #aaa;
+  background: linear-gradient(180deg, #d4d4d8 0%, #a1a1aa 100%);
+}
+.dark .cube-loading-solid > span:nth-child(4) {
+  background: linear-gradient(180deg, #b4b4bb 0%, #86868e 100%);
 }
 .dark .cube-loading-solid > span:nth-child(5) {
-  background: #fafafa;
+  background: linear-gradient(135deg, #ffffff 0%, #e4e4e7 100%);
+  border-color: rgba(255, 255, 255, 0.85);
 }
+.dark .cube-loading-solid > span:nth-child(6) {
+  background: #52525b;
+}
+
+/* 6-face shaded yellow accent block (middle slab in settings, lead block in skills) */
+.cube-loading-settings .cube-loading-unit:nth-child(2) span:nth-child(1),
+.cube-loading-skills .cube-loading-unit:first-child span:nth-child(1) {
+  background: linear-gradient(155deg, var(--brutal-yellow, #ffe666) 0%, #e6c832 100%);
+  border-color: #4a3f0e;
+}
+.cube-loading-settings .cube-loading-unit:nth-child(2) span:nth-child(2),
+.cube-loading-skills .cube-loading-unit:first-child span:nth-child(2) {
+  background: #bfa31a;
+  border-color: #4a3f0e;
+}
+.cube-loading-settings .cube-loading-unit:nth-child(2) span:nth-child(3),
+.cube-loading-skills .cube-loading-unit:first-child span:nth-child(3) {
+  background: linear-gradient(180deg, #f5d742 0%, #d4b520 100%);
+  border-color: #4a3f0e;
+}
+.cube-loading-settings .cube-loading-unit:nth-child(2) span:nth-child(4),
+.cube-loading-skills .cube-loading-unit:first-child span:nth-child(4) {
+  background: linear-gradient(180deg, #c9ab1c 0%, #9e8411 100%);
+  border-color: #4a3f0e;
+}
+.cube-loading-settings .cube-loading-unit:nth-child(2) span:nth-child(5),
+.cube-loading-skills .cube-loading-unit:first-child span:nth-child(5) {
+  background: linear-gradient(135deg, #fff9d2 0%, var(--brutal-yellow, #ffe666) 100%);
+  border-color: #6b5d1e;
+}
+.cube-loading-settings .cube-loading-unit:nth-child(2) span:nth-child(6),
+.cube-loading-skills .cube-loading-unit:first-child span:nth-child(6) {
+  background: #7a660c;
+  border-color: #4a3f0e;
+}
+
+/* =========================================================================
+   SETTINGS: Collision-Free 3D Front-Clearance Arch Shuffle (洗牌 A)
+   Shared isometric world frame guarantees 44px > 40px slab clearance!
+   ========================================================================= */
 .cube-loading-settings {
-  width: 120px;
+  width: 140px;
   --edge: 40px;
-  transform-style: preserve-3d;
+  perspective: 420px;
 }
+
+.cube-loading-settings .cube-loading-rig {
+  position: relative;
+  width: 40px;
+  height: 40px;
+  transform: rotateX(-24deg) rotateY(32deg);
+}
+
 .cube-loading-settings .cube-loading-unit {
   position: absolute;
-  left: 40px;
-  top: 28px;
-  animation: cube-loading-align 4s ease-in-out infinite;
-  animation-delay: calc(var(--index) * 0.15s);
+  inset: 0;
+  will-change: transform;
+  animation: cube-loading-shuffle-arch 1.14s cubic-bezier(0.22, 1, 0.36, 1) infinite;
+  animation-delay: calc(var(--index) * -0.38s);
 }
+
 .cube-loading-settings .cube-loading-solid {
-  transform: scaleY(0.3);
+  transform: scaleY(0.28);
 }
-.cube-loading-settings .cube-loading-unit:nth-child(2) span,
-.cube-loading-skills .cube-loading-unit:last-child span {
-  background: var(--brutal-yellow, var(--suzent-yellow));
-  border-color: #887930;
+
+@keyframes cube-loading-shuffle-arch {
+  0%,
+  6% {
+    transform: translate3d(0px, -15px, 0px) rotateY(0deg);
+  }
+  15% {
+    /* Pull straight out along local +Z (44px > 40px slab width = zero intersection) */
+    transform: translate3d(0px, -15px, 44px) rotateY(30deg);
+  }
+  24% {
+    /* Descend outside the stack bounding box */
+    transform: translate3d(0px, 15px, 44px) rotateY(75deg);
+  }
+  33.3%,
+  42% {
+    /* Slide cleanly into bottom slot at 90deg */
+    transform: translate3d(0px, 15px, 0px) rotateY(90deg);
+  }
+  58%,
+  75% {
+    /* Step up to middle slot */
+    transform: translate3d(0px, 0px, 0px) rotateY(90deg);
+  }
+  91%,
+  100% {
+    /* Step up to top slot */
+    transform: translate3d(0px, -15px, 0px) rotateY(90deg);
+  }
 }
+
+/* =========================================================================
+   SKILLS: Full-Track Tumbling Conveyor Belt (传送带 A)
+   Every cube rolls across all 4 slots (0 -> 28 -> 56 -> 84 -> 110px)!
+   ========================================================================= */
 .cube-loading-skills {
-  display: flex;
-  gap: 15px;
-  align-items: center;
+  width: 156px;
   --edge: 20px;
 }
+
+.cube-loading-skills .cube-loading-rig {
+  position: relative;
+  width: 112px;
+  height: 24px;
+  transform: rotateX(-22deg) rotateY(20deg);
+}
+
 .cube-loading-skills .cube-loading-unit {
-  animation: cube-loading-hop 2.6s ease-in-out infinite;
-  animation-delay: calc(var(--index) * 0.22s);
+  position: absolute;
+  top: 2px;
+  left: 0;
+  width: 20px;
+  height: 20px;
+  will-change: transform, opacity;
+  animation: cube-loading-conveyor-journey 1.28s linear infinite;
+  animation-delay: calc(var(--index) * -0.32s);
 }
-.cube-loading-skills .cube-loading-solid {
-  transform: rotateX(-22deg) rotateY(32deg);
+
+.cube-loading-belt {
+  position: absolute;
+  bottom: -9px;
+  left: -8px;
+  right: -8px;
+  height: 3px;
+  border-top: 2px solid #0a0a0a;
+  border-bottom: 1px solid #d4d4d4;
+  background: repeating-linear-gradient(90deg, #0a0a0a 0 5px, transparent 5px 12px);
+  animation: cube-loading-belt-scroll 0.32s linear infinite;
 }
-@keyframes cube-loading-align {
-  0%,
-  100% {
-    transform: rotateX(-24deg) rotateY(32deg) translateY(calc((var(--index) - 1) * 14px));
+
+.dark .cube-loading-belt {
+  border-top-color: #f4f4f5;
+  border-bottom-color: #3f3f46;
+  background: repeating-linear-gradient(90deg, #f4f4f5 0 5px, transparent 5px 12px);
+}
+
+@keyframes cube-loading-belt-scroll {
+  from {
+    background-position: 0 0;
   }
-  40%,
-  65% {
-    transform: rotateX(-24deg) rotateY(calc(32deg + (var(--index) - 1) * 35deg))
-      translateY(calc((var(--index) - 1) * 26px));
+  to {
+    background-position: 12px 0;
   }
 }
-@keyframes cube-loading-hop {
-  0%,
-  60%,
-  100% {
-    transform: translateY(5px) rotateY(0deg);
+
+@keyframes cube-loading-conveyor-journey {
+  0% {
+    transform: translateX(-16px) translateY(-6px) scale(0.5) rotateZ(-45deg);
+    opacity: 0;
   }
+  7% {
+    transform: translateX(0px) translateY(0px) scale(1) rotateZ(0deg);
+    opacity: 1;
+  }
+  17% {
+    transform: translateX(14px) translateY(-9px) scale(1) rotateZ(45deg);
+  }
+  25%,
   30% {
-    transform: translateY(-14px) rotateY(90deg);
+    transform: translateX(28px) translateY(0px) scale(1.06, 0.92) rotateZ(90deg);
+  }
+  42% {
+    transform: translateX(42px) translateY(-9px) scale(1) rotateZ(135deg);
+  }
+  50%,
+  55% {
+    transform: translateX(56px) translateY(0px) scale(1.06, 0.92) rotateZ(180deg);
+  }
+  67% {
+    transform: translateX(70px) translateY(-9px) scale(1) rotateZ(225deg);
+  }
+  75%,
+  80% {
+    transform: translateX(84px) translateY(0px) scale(1.06, 0.92) rotateZ(270deg);
+  }
+  92% {
+    transform: translateX(98px) translateY(-7px) scale(0.8) rotateZ(315deg);
+    opacity: 0.7;
+  }
+  100% {
+    transform: translateX(110px) translateY(2px) scale(0.4) rotateZ(360deg);
+    opacity: 0;
   }
 }
+
+/* =========================================================================
+   REDUCED MOTION (System preference & Suzent explicit data-motion='reduced')
+   ========================================================================= */
+html[data-motion='reduced'] .cube-loading-unit,
+html[data-motion='reduced'] .cube-loading-belt {
+  animation: none !important;
+}
+html[data-motion='reduced'] .cube-loading-settings .cube-loading-unit {
+  transform: translate3d(0px, calc((var(--index) - 1) * 16px), 0px) !important;
+}
+html[data-motion='reduced'] .cube-loading-skills .cube-loading-unit {
+  transform: translateX(calc(var(--index) * 28px)) !important;
+  opacity: 1 !important;
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .cube-loading-unit {
+  .cube-loading-unit,
+  .cube-loading-belt {
     animation: none !important;
   }
   .cube-loading-settings .cube-loading-unit {
-    transform: rotateX(-24deg) rotateY(32deg) translateY(calc((var(--index) - 1) * 20px));
+    transform: translate3d(0px, calc((var(--index) - 1) * 16px), 0px);
+  }
+  .cube-loading-skills .cube-loading-unit {
+    transform: translateX(calc(var(--index) * 28px));
+    opacity: 1;
   }
 }
