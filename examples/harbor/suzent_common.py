@@ -137,16 +137,29 @@ def resolve_model(model_name: str | None, environ: Mapping[str, str]) -> ModelRo
             )
 
 
+def checkout_command(ref: str | None, repo_url: str = REPO_URL) -> str:
+    """Shell command that fetches ``ref`` into the current git repository.
+
+    A bare fetch takes a branch, a tag or a full commit, so one path pins all
+    three. GitHub refuses an abbreviated commit there, so that one falls back
+    to fetching every branch and checking the commit out locally.
+    """
+    target = shlex.quote(ref or "main")
+    return (
+        f"((git fetch -q --depth 1 {repo_url} {target} && git checkout -q FETCH_HEAD)"
+        f" || (git fetch -q {repo_url} '+refs/heads/*:refs/remotes/origin/*'"
+        f" && git checkout -q {target}))"
+    )
+
+
 def install_command(ref: str | None) -> str:
     """Shell command that installs Suzent at ``ref`` for the current user."""
-    # A bare fetch takes a branch, a tag or a commit, so one path pins all three.
     return (
         "set -euo pipefail; "
         "curl -LsSf https://astral.sh/uv/install.sh | sh; "
         f"{_PATH}"
         f'mkdir -p "{SOURCE_DIR}" && cd "{SOURCE_DIR}" && '
-        f"git init -q && git fetch -q --depth 1 {REPO_URL} {shlex.quote(ref or 'main')} "
-        "&& git checkout -q FETCH_HEAD && "
+        f"git init -q && {checkout_command(ref)} && "
         "uv sync --frozen --no-dev --python 3.12"
     )
 
