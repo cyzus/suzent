@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { ArrowsPointingOutIcon, ChevronRightIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import { useEventBus } from '../../hooks/useEventBus';
 import { useI18n } from '../../i18n';
@@ -27,6 +27,8 @@ interface ChatPeekPanelProps {
   /** Whether the window's right sidebar is showing this chat's details. */
   sidebarOpen: boolean;
   onSidebarToggle: () => void;
+  /** Reports the width the panel takes, and 0 once it closes, so the window can make room. */
+  onShownWidthChange?: (widthPx: number) => void;
   onClose: () => void;
   onExpand: (chatId: string) => void;
   /** The chat itself: a full chat window scoped to `chatId`. */
@@ -46,6 +48,7 @@ export const ChatPeekPanel: React.FC<ChatPeekPanelProps> = ({
   maxWidthPx,
   sidebarOpen,
   onSidebarToggle,
+  onShownWidthChange,
   onClose,
   onExpand,
   renderChat,
@@ -65,6 +68,10 @@ export const ChatPeekPanel: React.FC<ChatPeekPanelProps> = ({
     }
   };
   const shownWidth = Math.min(width, maxWidthPx);
+  useEffect(() => {
+    onShownWidthChange?.(shownWidth);
+  }, [onShownWidthChange, shownWidth]);
+  useEffect(() => () => onShownWidthChange?.(0), [onShownWidthChange]);
   const label = title ?? chatId;
   const iconButton =
     'inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-neutral-400 hover:bg-neutral-100 hover:text-neutral-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brutal-blue dark:text-neutral-500 dark:hover:bg-zinc-800 dark:hover:text-neutral-200';

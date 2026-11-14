@@ -886,6 +886,8 @@ interface ChatWindowProps {
    * mounts.
    */
   rightSidebarHost?: HTMLElement | null;
+  /** The width the chat open beside this one takes, 0 when none, so the window can make room. */
+  onSidePanelWidthChange?: (widthPx: number) => void;
 }
 
 const SidebarSpot: React.FC<{ host?: HTMLElement | null; children: React.ReactNode }> = ({
@@ -923,6 +925,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   rightSidebarForceFullView = false,
   embedded = false,
   rightSidebarHost,
+  onSidePanelWidthChange,
 }) => {
   const seeds = embedded ? NO_STREAM_SEEDS : STREAM_SEEDS;
   // A chat open beside this one shares the window's one right sidebar, which
@@ -3961,6 +3964,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                 maxWidthPx={peekMaxWidthPx}
                 sidebarOpen={isRightSidebarOpen && peekOwnsSidebar}
                 onSidebarToggle={() => openPeekSidebar(!(isRightSidebarOpen && peekOwnsSidebar))}
+                onShownWidthChange={onSidePanelWidthChange}
                 onClose={() => setPeekChatId(null)}
                 onExpand={(chatId) => {
                   expandedPeek.current = chatId;
