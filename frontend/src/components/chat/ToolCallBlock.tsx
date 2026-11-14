@@ -456,13 +456,12 @@ const ToolCallBlockComponent: React.FC<ToolCallBlockProps> = ({
   const openChat = useOpenChat();
   const linkedChat = React.useMemo(() => {
     if (!openChat || !CHAT_LINK_TOOLS.has(canonicalToolName) || isFailed) return null;
+    // Only a local session carries agent_title; a paired Suzent or A2A agent
+    // address has no chat here to open.
     const id = rendererMetadata?.agent_id;
-    if (typeof id !== 'string' || !id) return null;
-    const title =
-      typeof rendererMetadata?.agent_title === 'string' && rendererMetadata.agent_title.trim()
-        ? rendererMetadata.agent_title.trim()
-        : null;
-    return { id, title };
+    const title = rendererMetadata?.agent_title;
+    if (typeof id !== 'string' || !id || typeof title !== 'string') return null;
+    return { id, title: title.trim() || null };
   }, [openChat, canonicalToolName, isFailed, rendererMetadata]);
   const headerDetail = linkedChat?.title
     ? canonicalToolName === 'mailbox' && summary.detail
