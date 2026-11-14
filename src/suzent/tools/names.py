@@ -79,12 +79,18 @@ def migrate_shell_tool_names(tool_names: List[str]) -> List[str]:
     return list(dict.fromkeys(migrated))
 
 
-def expand_tool_dependencies(tool_names: List[str]) -> List[str]:
-    """Normalize legacy aggregate selections while preserving modern choices."""
+def expand_tool_dependencies(
+    tool_names: List[str], *, with_builtins: bool = True
+) -> List[str]:
+    """Normalize legacy aggregate selections while preserving modern choices.
+
+    ``with_builtins=False`` is for a caller that asked for exactly these tools.
+    """
     expanded = migrate_shell_tool_names(tool_names)
     if "AgentTool" in expanded:
         expanded.extend(AGENT_LIFECYCLE_TOOL_NAMES)
     # The floor goes last so it also covers callers that never touch the picker
     # -- ACP, A2A and sub-agent configs build their tool lists directly.
-    expanded.extend(BUILTIN_TOOL_NAMES)
+    if with_builtins:
+        expanded.extend(BUILTIN_TOOL_NAMES)
     return list(dict.fromkeys(expanded))

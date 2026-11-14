@@ -84,6 +84,7 @@ def test_run_prints_reply_and_exits(invoke, tmp_path: Path):
     assert config["auto_title"] is False
     assert backend.client.chat.create_chat.await_args.args[0]["config"] == config
     assert "permission_mode" not in config
+    assert "exact_tools" not in config
     assert backend.payloads[0]["message"] == "Say hello"
 
 
@@ -194,6 +195,7 @@ def test_run_limits_the_agent_to_the_named_tools(invoke):
 
     assert result.exit_code == 0
     assert backend.payloads[0]["config"]["tools"] == ["ReadFileTool", "RunCommandTool"]
+    assert backend.payloads[0]["config"]["exact_tools"] is True
 
 
 def test_run_rejects_an_unknown_tool(invoke):
