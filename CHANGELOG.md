@@ -29,6 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Restarting Suzent no longer forces long chats to rebuild the model's prompt cache on the next message.
 - Projects in the sidebar open instantly the first time, because their chat lists load in the background.
 - Collapsing a project and opening it again no longer flashes the empty "New chat" button.
+- In Regent, the dispatch and re-route steps now show the target chat's title, and clicking it opens that chat.
 - Regent can look through the Mailbox, read any event and send one on to a project or to you.
 - Show Regent’s cross-conversation work queue instead of a per-chat plan in the mobile status panel.
 - Unify inbox threads across desktop and mobile with backend-owned grouping for all event sources.
