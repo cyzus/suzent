@@ -10469,7 +10469,8 @@ reminder bodies.
 
 ### Runtime provenance and ingress
 
-The process generates `RUNTIME_NONCE`. Default wrappers contain both the nonce
+`RUNTIME_NONCE` is generated once and persisted at
+`<data dir>/runtime/reminder_nonce` (mode 0600), so it survives restarts. Default wrappers contain both the nonce
 and PUA delimiters `U+E203` / `U+E204`; `SUZENT_XML_SYSTEM_REMINDER` switches to
 an XML wrapper carrying the nonce. These formats are presentation and parsing
 mechanisms, not permission grants. A model can see the nonce, so external text
@@ -10479,8 +10480,10 @@ must never gain runtime provenance by copying it.
 content is sanitized; runtime-authored content uses the explicit trusted call
 path. Tool payload sanitization and the tool-output history processor prevent
 untrusted output from becoming runtime reminder blocks. Stored user prompts are
-sanitized on reuse; blocks from an earlier process do not carry the current
-nonce. This does not imply all same-process reminder history is deduplicated.
+sanitized on reuse; blocks carrying any other nonce (history from before the
+nonce was persisted, or after the file was lost) are dropped. A per-process
+nonce would rewrite every stored reminder on each restart and miss the prompt
+cache for the whole history on the next request. This does not imply all same-process reminder history is deduplicated.
 
 Keep per-turn reminders in the user-prompt suffix so the stable system-prompt
 prefix can be cached. Do not move mutable context into that prefix as a shortcut
