@@ -900,6 +900,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     setIsStreaming,
     currentChatId,
     currentChatMessagesLoaded,
+    currentChatLoadFailed,
     createNewChat,
     loadChat,
     isStreaming,
@@ -2400,6 +2401,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   const isProbablyLoadingChatMessages =
     !!currentChatId &&
     !currentChatMessagesLoaded &&
+    !currentChatLoadFailed &&
     !showTransientAssistant &&
     safeMessages.length === 0 &&
     // Regent has no sidebar summary to count from, and its greeting flashed while its history loaded.
