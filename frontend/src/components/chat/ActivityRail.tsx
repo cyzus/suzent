@@ -683,6 +683,7 @@ export const ActivityRail: React.FC<{
         </button>
         {!visible && imagePaths.length > 0 && <RailImageThumbnails paths={imagePaths} />}
       </div>
+
       <div
         id={bodyId}
         aria-hidden={!visible}

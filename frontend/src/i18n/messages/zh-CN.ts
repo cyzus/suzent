@@ -2312,6 +2312,10 @@ export const zhCN = {
     regentReaction: 'Regent 回应了 {emoji}',
     quietReply: '无需你处理',
     sentByRegent: '由 Regent 转达',
+    dispatch: {
+      sentTo: '交给 {target}',
+      sentToMany: '交给 {count} 个对话',
+    },
     trigger: {
       goal: '目标模式',
       other: '后台事件',
@@ -2874,6 +2878,7 @@ export const zhCN = {
   },
   toolCallBlock: {
     readFileRange: '第 {start}–{end} 行，共 {total} 行',
+    openChat: '打开这个对话',
     openInPreview: '在文件预览中打开',
     failed: '失败',
     permissionRejectPlaceholder: '可选：说明原因或建议更安全的做法',
