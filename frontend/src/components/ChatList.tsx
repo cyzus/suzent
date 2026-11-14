@@ -7,7 +7,6 @@ import {
   XMarkIcon,
   ChevronRightIcon,
   CircleStackIcon,
-  ClockIcon,
   EllipsisVerticalIcon,
   InboxStackIcon,
   PencilSquareIcon,
@@ -26,22 +25,7 @@ import { refreshFocalStatus, useFocalStatus } from '../hooks/useFocalStatus';
 import { FOCAL_CHAT_ID } from '../lib/focalAgent';
 import { markOpenedFromRegent } from '../lib/regentReturn';
 import { useI18n } from '../i18n';
-import {
-  fetchCronJobs,
-  fetchHeartbeatStatus,
-  getApiBase,
-  markChatRead,
-  deleteCronJob,
-  updateCronJob,
-  triggerCronJob,
-  disableHeartbeat,
-  triggerHeartbeat,
-  fetchMailboxUnread,
-  MAILBOX_UNREAD_EVENT,
-  type CronJob,
-  type HeartbeatStatus,
-} from '../lib/api';
-import { getScheduledTaskChat } from '../lib/scheduledTaskChat';
+import { getApiBase, markChatRead, fetchMailboxUnread, MAILBOX_UNREAD_EVENT } from '../lib/api';
 import { detectDesktopPlatform } from '../lib/titleBarPlatform';
 import {
   applySelection,
@@ -53,19 +37,13 @@ import {
 } from '../lib/chatSelection';
 import { ChatRowMenu, type View as ChatRowMenuView } from './ChatRowMenu';
 import { ProjectRowMenu } from './ProjectRowMenu';
-import { HeartbeatRowMenu, ScheduledTaskMenu } from './sidebar/AutomationRowMenu';
-import { openOwnedMenu } from './chat/messageMenuActions';
 import { freshPointerPoint } from '../lib/menuPlacement';
-import { canStartRun } from '../lib/runNowGuard';
 import { ProjectSettingsDialog, SYSTEM_PROJECT_SLUGS } from './ProjectSettingsDialog';
 import { BrutalDialog } from './BrutalDialog';
 import { isImeComposing } from '../lib/ime';
 import { SidebarRenameInput } from './sidebar/SidebarRenameInput';
-import { hoverText } from '../lib/hoverText';
 
 const ALL_PROJECTS_FILTER = '__all__';
-const AUTOMATION_PREVIEW_LIMIT = 5;
-const AUTOMATION_STATUS_POLL_MS = 8_000;
 const ORGANIZATION_STORAGE_KEY = 'suzent-chat-organization';
 const EMPTY_SELECTION: SelectionState = { selected: new Set(), anchor: null };
 type ChatKind = 'you' | 'subagent' | 'scheduled';
@@ -74,11 +52,6 @@ type ChatOrganization = 'projects' | 'list';
 const MoreActionsIcon = (): React.ReactElement => (
   <EllipsisVerticalIcon className="h-4 w-4 stroke-[2.5]" />
 );
-
-const isCronFailureHandledInChat = (job: CronJob): boolean => {
-  if (!job.last_error || !job.chat_updated_at || !job.last_run_finished_at) return false;
-  return new Date(job.chat_updated_at).getTime() > new Date(job.last_run_finished_at).getTime();
-};
 
 /**
  * A chat's status: unread is carried by bold text, so the only
@@ -130,7 +103,6 @@ interface ChatListProps {
 }
 
 /** Search and new chat, as icons in the sidebar's logo row. */
-const AUTOMATION_OPEN_KEY = 'suzent.sidebar.scheduledOpen';
 const ARCHIVED_PAGE_SIZE = 50;
 
 /** One row of the sidebar's top-level navigation (scheduled tasks, memory, skills). */
@@ -255,19 +227,6 @@ export const ChatList: React.FC<ChatListProps> = ({
   } | null>(null);
   const [renamingProjectId, setRenamingProjectId] = useState<string | null>(null);
   const [settingsProjectId, setSettingsProjectId] = useState<string | null>(null);
-  const [taskMenu, setTaskMenu] = useState<{
-    jobId: number;
-    anchor: { x: number; y: number } | { rect: DOMRect };
-  } | null>(null);
-  const [heartbeatMenu, setHeartbeatMenu] = useState<{
-    chatId: string;
-    anchor: { x: number; y: number } | { rect: DOMRect };
-  } | null>(null);
-  const taskLockRef = useRef(new Set<number>());
-  const [taskLocks, setTaskLocks] = useState<ReadonlySet<number>>(new Set());
-  const heartbeatLockRef = useRef(new Set<string>());
-  const [heartbeatLocks, setHeartbeatLocks] = useState<ReadonlySet<string>>(new Set());
-  const [renamingTaskId, setRenamingTaskId] = useState<number | null>(null);
   const [organizationMenuOpen, setOrganizationMenuOpen] = useState(false);
   const platform = useMemo(
     () => detectDesktopPlatform(navigator.userAgent, navigator.platform),
@@ -403,9 +362,6 @@ export const ChatList: React.FC<ChatListProps> = ({
   const [projectChatOffset, setProjectChatOffset] = useState(0);
   const [loadingProjectChats, setLoadingProjectChats] = useState(false);
   const [loadingMoreProjectChats, setLoadingMoreProjectChats] = useState(false);
-  const [cronJobs, setCronJobs] = useState<CronJob[]>([]);
-  const [heartbeatStatus, setHeartbeatStatus] = useState<HeartbeatStatus | null>(null);
-  const [loadingAutomation, setLoadingAutomation] = useState(true);
   const focalStatus = useFocalStatus();
   // On Regent's chat the rest of the sidebar steps back behind its card.
   const regentOpen = currentChatId === FOCAL_CHAT_ID && (activeView ?? 'chat') === 'chat';
@@ -435,43 +391,9 @@ export const ChatList: React.FC<ChatListProps> = ({
     document.addEventListener('keydown', onKeyDown);
     return () => document.removeEventListener('keydown', onKeyDown);
   }, [regentConsole]);
-  const [automationOpen, setAutomationOpen] = useState<boolean>(() => {
-    try {
-      return window.localStorage.getItem(AUTOMATION_OPEN_KEY) === 'true';
-    } catch {
-      return false;
-    }
-  });
-  const toggleAutomationOpen = useCallback(() => {
-    setAutomationOpen((current) => {
-      const next = !current;
-      try {
-        window.localStorage.setItem(AUTOMATION_OPEN_KEY, String(next));
-      } catch {
-        // Remembering is a convenience; the list still opens and closes.
-      }
-      return next;
-    });
-  }, []);
 
   const { t } = useI18n();
   const mailboxUnread = useMailboxUnread();
-
-  const refreshAutomation = useCallback(async (): Promise<void> => {
-    const [cronResult, heartbeatResult] = await Promise.allSettled([
-      fetchCronJobs(),
-      fetchHeartbeatStatus(),
-    ]);
-    if (cronResult.status === 'fulfilled') setCronJobs(cronResult.value);
-    if (heartbeatResult.status === 'fulfilled') setHeartbeatStatus(heartbeatResult.value);
-    setLoadingAutomation(false);
-  }, []);
-
-  useEffect(() => {
-    void refreshAutomation();
-    const interval = window.setInterval(() => void refreshAutomation(), AUTOMATION_STATUS_POLL_MS);
-    return () => window.clearInterval(interval);
-  }, [refreshAutomation]);
 
   useEffect(() => {
     if (!organizationMenuOpen) return;
@@ -570,21 +492,6 @@ export const ChatList: React.FC<ChatListProps> = ({
       setProjectChats((prev) =>
         prev.map((item) => (item.id === chatId ? { ...item, unreadCount: 0 } : item))
       );
-      setCronJobs((prev) =>
-        prev.map((job) =>
-          getScheduledTaskChat(job).chatId === chatId ? { ...job, unread_count: 0 } : job
-        )
-      );
-      setHeartbeatStatus((prev) =>
-        prev
-          ? {
-              ...prev,
-              active_sessions: prev.active_sessions?.map((session) =>
-                session.chat_id === chatId ? { ...session, unread_count: 0 } : session
-              ),
-            }
-          : prev
-      );
       void markChatRead(chatId).then(() => {
         void refreshProjects();
         if (chatId === FOCAL_CHAT_ID) void refreshFocalStatus();
@@ -639,15 +546,22 @@ export const ChatList: React.FC<ChatListProps> = ({
     };
   }, [refreshingChats]);
 
+  // Reopening a project shows its last list at once while a fresh one loads.
+  const projectChatCacheRef = useRef(
+    new Map<string, { chats: ChatSummary[]; totals: ChatKindCounts }>()
+  );
+  const projectChatRequestRef = useRef<string | null>(null);
   const fetchProjectChats = useCallback(
     async (projectId: string, options?: { offset?: number; append?: boolean }) => {
       const offset = options?.offset ?? 0;
       const append = !!options?.append;
       if (append) setLoadingMoreProjectChats(true);
       else {
-        setLoadingProjectChats(true);
-        setProjectChats([]);
-        setProjectChatKindTotals({ you: 0, scheduled: 0, all: 0 });
+        projectChatRequestRef.current = projectId;
+        const cached = projectChatCacheRef.current.get(projectId);
+        setLoadingProjectChats(!cached);
+        setProjectChats(cached?.chats ?? []);
+        setProjectChatKindTotals(cached?.totals ?? { you: 0, scheduled: 0, all: 0 });
         setProjectChatOffset(0);
       }
 
@@ -662,15 +576,17 @@ export const ChatList: React.FC<ChatListProps> = ({
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
         const data = await res.json();
+        // A slower answer for a project the user already left must not replace the open one.
+        if (projectChatRequestRef.current !== projectId) return;
         const nextChats: ChatSummary[] = data.chats || [];
-        setProjectChatKindTotals(
-          data.kindCounts ?? {
-            you: nextChats.filter((chat) => (chat.platform || '').toLowerCase() !== 'cron').length,
-            scheduled: nextChats.filter((chat) => (chat.platform || '').toLowerCase() === 'cron')
-              .length,
-            all: data.total ?? nextChats.length,
-          }
-        );
+        const totals: ChatKindCounts = data.kindCounts ?? {
+          you: nextChats.filter((chat) => (chat.platform || '').toLowerCase() !== 'cron').length,
+          scheduled: nextChats.filter((chat) => (chat.platform || '').toLowerCase() === 'cron')
+            .length,
+          all: data.total ?? nextChats.length,
+        };
+        if (!append) projectChatCacheRef.current.set(projectId, { chats: nextChats, totals });
+        setProjectChatKindTotals(totals);
         setProjectChatOffset(offset);
         setProjectChats((prev) => {
           if (!append) return nextChats;
@@ -680,7 +596,7 @@ export const ChatList: React.FC<ChatListProps> = ({
         });
       } catch (error) {
         console.error('Error fetching project chats:', error);
-        if (!append) {
+        if (!append && projectChatRequestRef.current === projectId) {
           setProjectChats([]);
           setProjectChatKindTotals({ you: 0, scheduled: 0, all: 0 });
           setProjectChatOffset(0);
@@ -1053,45 +969,6 @@ export const ChatList: React.FC<ChatListProps> = ({
     await renameChat(chatId, name);
   };
 
-  const handleTaskRenameSave = async (job: CronJob, name: string): Promise<void> => {
-    setRenamingTaskId(null);
-    await updateCronJob(job.id, { name });
-    if (getScheduledTaskChat(job).ownsChat && job.last_run_at) {
-      try {
-        await renameChat(`cron-${job.id}`, `Cron: ${name}`);
-      } catch {
-        // The task may not have created its backing conversation yet.
-      }
-    }
-    await refreshAutomation();
-  };
-
-  const handleRequestTaskDelete = (job: CronJob): void => {
-    const deleteTask = async (): Promise<void> => {
-      await deleteCronJob(job.id);
-      if (job.last_run_at) {
-        try {
-          await deleteChat(`cron-${job.id}`);
-        } catch {
-          // The scheduled task is already removed even if its chat was absent.
-        }
-      }
-      await Promise.all([refreshAutomation(), refreshChatList(undefined, true), refreshProjects()]);
-    };
-    setDialog({
-      title: t('chatList.automation.deleteTaskTitle', { name: job.name }),
-      message: t(
-        getScheduledTaskChat(job).ownsChat
-          ? 'chatList.automation.deleteTaskMessage'
-          : 'chatList.automation.deleteBoundTaskMessage'
-      ),
-      actions: [
-        { label: t('common.cancel') },
-        { label: t('chatList.menu.delete'), tone: 'danger', onClick: deleteTask },
-      ],
-    });
-  };
-
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
     const now = new Date();
@@ -1121,21 +998,6 @@ export const ChatList: React.FC<ChatListProps> = ({
       setCurrentProjectId(project.id);
       setFilterId(project.id);
     }
-  };
-
-  const formatNextRun = (dateString: string): string => {
-    const date = new Date(dateString);
-    const now = new Date();
-    const sameDay =
-      date.getFullYear() === now.getFullYear() &&
-      date.getMonth() === now.getMonth() &&
-      date.getDate() === now.getDate();
-    return date.toLocaleString(
-      [],
-      sameDay
-        ? { hour: '2-digit', minute: '2-digit' }
-        : { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }
-    );
   };
 
   const handleTogglePin = async (chatId: string): Promise<void> => {
@@ -1520,35 +1382,6 @@ export const ChatList: React.FC<ChatListProps> = ({
   const filteredTotal = filterId === ALL_PROJECTS_FILTER ? chatTotal : projectChatKindTotals.all;
   const remaining = Math.max(0, filteredTotal - filteredChats.length);
   const isSearching = localSearchQuery.trim().length > 0;
-  // Heartbeats are scheduled-task rows too, but they get their own list below;
-  // showing the row here as well listed every heartbeat twice. Regent's own
-  // check-ins and wake-ups belong to it: they surface as new messages on its
-  // card, not as tasks.
-  const scheduledJobs = cronJobs.filter(
-    (job) => job.source !== 'heartbeat' && job.chat_id !== FOCAL_CHAT_ID
-  );
-  const visibleCronJobs = [...scheduledJobs]
-    .sort((left, right) => {
-      const leftPriority =
-        left.last_error && !isCronFailureHandledInChat(left) ? 0 : left.active ? 1 : 2;
-      const rightPriority =
-        right.last_error && !isCronFailureHandledInChat(right) ? 0 : right.active ? 1 : 2;
-      if (leftPriority !== rightPriority) return leftPriority - rightPriority;
-      const leftNext = left.next_run_at
-        ? new Date(left.next_run_at).getTime()
-        : Number.MAX_SAFE_INTEGER;
-      const rightNext = right.next_run_at
-        ? new Date(right.next_run_at).getTime()
-        : Number.MAX_SAFE_INTEGER;
-      return leftNext - rightNext;
-    })
-    .slice(0, AUTOMATION_PREVIEW_LIMIT);
-  const heartbeatSessions = (heartbeatStatus?.active_sessions ?? []).filter(
-    (session) => session.chat_id !== FOCAL_CHAT_ID
-  );
-  const showAutomation =
-    loadingAutomation || scheduledJobs.length > 0 || heartbeatSessions.length > 0;
-
   const projectUnread = (project: Project): number =>
     Object.entries(project.unreadChatCounts ?? {}).reduce(
       (total, [chatId, count]) => total + (chatId === currentChatId ? 0 : count),
@@ -1578,52 +1411,6 @@ export const ChatList: React.FC<ChatListProps> = ({
     beginNewChat();
     if (switchToView) switchToView('chat');
     onOpenChat?.();
-  };
-
-  const showAutomationError = (title: string): void => {
-    setDialog({
-      title,
-      message: t('chatList.automation.actionFailed'),
-      actions: [{ label: t('common.ok'), tone: 'primary' }],
-    });
-  };
-
-  const runTaskAction = async (job: CronJob, action: () => Promise<void>): Promise<void> => {
-    if (taskLockRef.current.has(job.id)) return;
-    taskLockRef.current.add(job.id);
-    setTaskLocks(new Set(taskLockRef.current));
-    try {
-      await action();
-      await refreshAutomation();
-    } catch (error) {
-      console.error('Scheduled task action failed', error);
-      showAutomationError(job.name);
-      await refreshAutomation();
-    } finally {
-      taskLockRef.current.delete(job.id);
-      setTaskLocks(new Set(taskLockRef.current));
-    }
-  };
-
-  const runHeartbeatAction = async (
-    chatId: string,
-    title: string,
-    action: () => Promise<void>
-  ): Promise<void> => {
-    if (heartbeatLockRef.current.has(chatId)) return;
-    heartbeatLockRef.current.add(chatId);
-    setHeartbeatLocks(new Set(heartbeatLockRef.current));
-    try {
-      await action();
-      await refreshAutomation();
-    } catch (error) {
-      console.error('Heartbeat action failed', error);
-      showAutomationError(title);
-      await refreshAutomation();
-    } finally {
-      heartbeatLockRef.current.delete(chatId);
-      setHeartbeatLocks(new Set(heartbeatLockRef.current));
-    }
   };
 
   exitRegentRef.current = () => {
@@ -1696,290 +1483,8 @@ export const ChatList: React.FC<ChatListProps> = ({
                   >
                     {mailboxUnread}
                   </span>
-                ) : (
-                  scheduledJobs.length + heartbeatSessions.length > 0 && (
-                    <span className="text-[10px] tabular-nums text-neutral-400 dark:text-neutral-500">
-                      {scheduledJobs.length + heartbeatSessions.length}
-                    </span>
-                  )
-                )}
+                ) : null}
               </button>
-              {false && showAutomation && automationOpen && (
-                <section className="pb-1">
-                  {loadingAutomation ? (
-                    <div>
-                      <SidebarRowSkeleton compact />
-                      <SidebarRowSkeleton compact />
-                    </div>
-                  ) : (
-                    <div>
-                      {scheduledJobs.length > 0 && (
-                        <div>
-                          <div>
-                            {visibleCronJobs.map((job) => {
-                              const { chatId, canOpen } = getScheduledTaskChat(job);
-                              const failureHandled = isCronFailureHandledInChat(job);
-                              const unresolvedError =
-                                job.last_error && !failureHandled ? job.last_error : null;
-                              const subtitle = !job.active
-                                ? unresolvedError
-                                  ? `${t('chatList.automation.paused')} · ${unresolvedError}`
-                                  : t('chatList.automation.paused')
-                                : unresolvedError
-                                  ? t('chatList.automation.lastRunFailed', {
-                                      error: unresolvedError,
-                                    })
-                                  : job.next_run_at
-                                    ? t('chatList.automation.nextRunAt', {
-                                        time: formatNextRun(job.next_run_at),
-                                      })
-                                    : t('chatList.automation.active');
-                              const latestActivityAt = failureHandled
-                                ? job.chat_updated_at
-                                : job.last_run_at;
-                              return (
-                                <div
-                                  key={job.id}
-                                  onContextMenu={(event) => {
-                                    if (renamingTaskId === job.id) return;
-                                    event.preventDefault();
-                                    event.stopPropagation();
-                                    setTaskMenu({
-                                      jobId: job.id,
-                                      anchor: freshPointerPoint(event) ?? {
-                                        rect: event.currentTarget.getBoundingClientRect(),
-                                      },
-                                    });
-                                  }}
-                                  className={`group/task relative transition-colors ${
-                                    currentChatId === chatId
-                                      ? 'bg-neutral-200/70 dark:bg-zinc-700'
-                                      : 'hover:bg-neutral-50 dark:hover:bg-zinc-700/80'
-                                  }`}
-                                >
-                                  {renamingTaskId === job.id ? (
-                                    <div className="flex items-center py-1.5 pl-6 pr-2">
-                                      <SidebarRenameInput
-                                        saveLabel={t('chatList.rename.confirm')}
-                                        cancelLabel={t('chatList.rename.cancel')}
-                                        initialValue={job.name}
-                                        ariaLabel={t('chatList.rename.placeholder')}
-                                        autoFocus={!mobile}
-                                        onSave={(name) => void handleTaskRenameSave(job, name)}
-                                        onCancel={() => setRenamingTaskId(null)}
-                                      />
-                                    </div>
-                                  ) : (
-                                    <>
-                                      <button
-                                        type="button"
-                                        disabled={!canOpen && !onOpenAutomation}
-                                        onClick={() =>
-                                          canOpen ? openChatById(chatId) : onOpenAutomation?.()
-                                        }
-                                        title={hoverText(unresolvedError ?? job.last_result)}
-                                        className="block w-full space-y-0.5 bg-transparent py-1.5 pl-8 pr-2 text-left disabled:cursor-default"
-                                      >
-                                        <span className="flex items-center gap-1.5 overflow-hidden">
-                                          <span
-                                            className={`min-w-0 flex-1 truncate text-xs leading-snug transition-colors ${
-                                              currentChatId !== chatId && job.unread_count > 0
-                                                ? 'font-extrabold text-neutral-950 dark:text-white'
-                                                : currentChatId === chatId
-                                                  ? 'font-medium text-brutal-black dark:text-white'
-                                                  : 'font-medium text-neutral-700 dark:text-neutral-200 group-hover/task:text-brutal-black dark:group-hover/task:text-white'
-                                            }`}
-                                          >
-                                            {job.name}
-                                          </span>
-                                          <span
-                                            className={`flex min-w-6 shrink-0 items-center justify-end transition-opacity ${
-                                              taskMenu?.jobId === job.id
-                                                ? 'opacity-0'
-                                                : 'group-hover/task:opacity-0 group-focus-within/task:opacity-0'
-                                            }`}
-                                          >
-                                            {isChatRunning(chatId, job.is_running) ? (
-                                              <RunningMark running />
-                                            ) : (
-                                              <span
-                                                className={`text-[10px] font-medium uppercase tabular-nums ${currentChatId === chatId ? 'text-neutral-600 dark:text-neutral-300' : 'text-neutral-400 dark:text-neutral-500'}`}
-                                              >
-                                                {latestActivityAt
-                                                  ? formatDate(latestActivityAt)
-                                                  : t('chatList.automation.notYet')}
-                                              </span>
-                                            )}
-                                          </span>
-                                        </span>
-                                        <span
-                                          className={`block truncate text-[10px] ${unresolvedError ? 'text-red-600 dark:text-red-400' : 'text-neutral-500 dark:text-neutral-400'}`}
-                                        >
-                                          {subtitle}
-                                        </span>
-                                      </button>
-                                      <button
-                                        type="button"
-                                        aria-label={t('chatList.menu.title')}
-                                        title={t('chatList.menu.title')}
-                                        onClick={(event) => {
-                                          event.stopPropagation();
-                                          setTaskMenu({
-                                            jobId: job.id,
-                                            anchor: {
-                                              rect: event.currentTarget.getBoundingClientRect(),
-                                            },
-                                          });
-                                        }}
-                                        className={`absolute right-1 top-1.5 flex items-center justify-center p-1 text-neutral-500 transition-opacity hover:bg-neutral-200 hover:text-brutal-black dark:text-neutral-400 dark:hover:bg-zinc-600 dark:hover:text-white ${
-                                          taskMenu?.jobId === job.id
-                                            ? 'opacity-100'
-                                            : 'opacity-0 group-hover/task:opacity-100 focus:opacity-100'
-                                        }`}
-                                      >
-                                        <MoreActionsIcon />
-                                      </button>
-                                    </>
-                                  )}
-                                </div>
-                              );
-                            })}
-                            {scheduledJobs.length > AUTOMATION_PREVIEW_LIMIT &&
-                              onOpenAutomation && (
-                                <button
-                                  type="button"
-                                  onClick={onOpenAutomation}
-                                  className="w-full py-1.5 pl-8 pr-2 text-left text-[10px] text-neutral-500 hover:bg-neutral-50 hover:text-brutal-black dark:text-neutral-400 dark:hover:bg-zinc-700/80 dark:hover:text-white"
-                                >
-                                  {t('chatList.automation.viewAllScheduled', {
-                                    count: scheduledJobs.length,
-                                  })}
-                                </button>
-                              )}
-                          </div>
-                        </div>
-                      )}
-
-                      {heartbeatSessions.length > 0 && (
-                        <div>
-                          <div>
-                            {heartbeatSessions.slice(0, AUTOMATION_PREVIEW_LIMIT).map((session) => {
-                              const heartbeatRunning = isChatRunning(
-                                session.chat_id,
-                                session.is_running
-                              );
-                              return (
-                                <div
-                                  key={session.chat_id}
-                                  onContextMenu={(event) =>
-                                    openOwnedMenu(event, (point) =>
-                                      setHeartbeatMenu({ chatId: session.chat_id, anchor: point })
-                                    )
-                                  }
-                                  className={`group/beat relative transition-colors ${
-                                    currentChatId === session.chat_id
-                                      ? 'bg-neutral-200/70 dark:bg-zinc-700'
-                                      : 'hover:bg-neutral-50 dark:hover:bg-zinc-700/80'
-                                  }`}
-                                >
-                                  <button
-                                    type="button"
-                                    onClick={() => openChatById(session.chat_id)}
-                                    onKeyDown={(event) => {
-                                      if (isImeComposing(event)) return;
-                                      if (
-                                        event.key !== 'ContextMenu' &&
-                                        !(event.shiftKey && event.key === 'F10')
-                                      ) {
-                                        return;
-                                      }
-                                      event.preventDefault();
-                                      setHeartbeatMenu({
-                                        chatId: session.chat_id,
-                                        anchor: {
-                                          rect: event.currentTarget.getBoundingClientRect(),
-                                        },
-                                      });
-                                    }}
-                                    className="block w-full space-y-0.5 bg-transparent py-1.5 pl-8 pr-8 text-left"
-                                  >
-                                    <span className="flex items-center gap-1.5 overflow-hidden">
-                                      <span
-                                        className={`min-w-0 flex-1 truncate text-xs leading-snug transition-colors ${
-                                          currentChatId !== session.chat_id &&
-                                          session.unread_count > 0
-                                            ? 'font-extrabold text-neutral-950 dark:text-white'
-                                            : currentChatId === session.chat_id
-                                              ? 'font-medium text-brutal-black dark:text-white'
-                                              : 'font-medium text-neutral-700 dark:text-neutral-200 group-hover/beat:text-brutal-black dark:group-hover/beat:text-white'
-                                        }`}
-                                      >
-                                        {session.title}
-                                      </span>
-                                      <span
-                                        className={`flex min-w-6 shrink-0 items-center justify-end transition-opacity ${
-                                          heartbeatMenu?.chatId === session.chat_id
-                                            ? 'opacity-0'
-                                            : 'group-hover/beat:opacity-0 group-focus-within/beat:opacity-0'
-                                        }`}
-                                      >
-                                        {heartbeatRunning ? (
-                                          <RunningMark running />
-                                        ) : (
-                                          <span
-                                            className={`text-[10px] font-medium uppercase tabular-nums ${currentChatId === session.chat_id ? 'text-neutral-600 dark:text-neutral-300' : 'text-neutral-400 dark:text-neutral-500'}`}
-                                          >
-                                            {session.last_run_at
-                                              ? formatDate(session.last_run_at)
-                                              : t('chatList.automation.notYet')}
-                                          </span>
-                                        )}
-                                      </span>
-                                    </span>
-                                    <span className="block truncate text-[10px] text-neutral-500 dark:text-neutral-400">
-                                      {t('chatList.automation.everyMinutes', {
-                                        minutes: session.interval_minutes,
-                                      })}
-                                    </span>
-                                  </button>
-                                  <button
-                                    type="button"
-                                    aria-label={t('chatList.menu.title')}
-                                    title={t('chatList.menu.title')}
-                                    onClick={(event) => {
-                                      event.stopPropagation();
-                                      setHeartbeatMenu({
-                                        chatId: session.chat_id,
-                                        anchor: {
-                                          rect: event.currentTarget.getBoundingClientRect(),
-                                        },
-                                      });
-                                    }}
-                                    className={`absolute right-1 top-1.5 flex items-center justify-center p-1 text-neutral-500 transition-opacity hover:bg-neutral-200 hover:text-brutal-black dark:text-neutral-400 dark:hover:bg-zinc-600 dark:hover:text-white ${
-                                      heartbeatMenu?.chatId === session.chat_id
-                                        ? 'opacity-100'
-                                        : 'opacity-0 group-hover/beat:opacity-100 focus:opacity-100'
-                                    }`}
-                                  >
-                                    <MoreActionsIcon />
-                                  </button>
-                                </div>
-                              );
-                            })}
-                            {heartbeatSessions.length > AUTOMATION_PREVIEW_LIMIT && (
-                              <div className="py-1.5 pl-8 pr-2 text-[10px] text-neutral-500 dark:text-neutral-400">
-                                {t('chatList.automation.moreHeartbeat', {
-                                  count: heartbeatSessions.length - AUTOMATION_PREVIEW_LIMIT,
-                                })}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </section>
-              )}
               <button
                 type="button"
                 aria-current={activeView === 'memory' ? 'page' : undefined}
@@ -2587,74 +2092,6 @@ export const ChatList: React.FC<ChatListProps> = ({
               }}
               onMoveToProject={(pid) => handleMoveChatToProject(chat.id, pid)}
               onClose={() => setOpenMenu(null)}
-            />
-          );
-        })()}
-
-      {taskMenu &&
-        (() => {
-          const job = cronJobs.find((item) => item.id === taskMenu.jobId);
-          if (!job) return null;
-          return (
-            <ScheduledTaskMenu
-              anchor={taskMenu.anchor}
-              boundary={sidebarBoundsRef.current?.getBoundingClientRect() ?? null}
-              active={job.active}
-              runDisabled={
-                !canStartRun(
-                  isChatRunning(getScheduledTaskChat(job).chatId, job.is_running),
-                  taskLocks.has(job.id)
-                )
-              }
-              onToggleActive={() =>
-                void runTaskAction(job, async () => {
-                  await updateCronJob(job.id, { active: !job.active });
-                })
-              }
-              onRunNow={() => {
-                if (
-                  !canStartRun(
-                    isChatRunning(getScheduledTaskChat(job).chatId, job.is_running),
-                    taskLocks.has(job.id)
-                  )
-                ) {
-                  return;
-                }
-                void runTaskAction(job, () => triggerCronJob(job.id));
-              }}
-              onRename={() => {
-                setRenamingTaskId(job.id);
-              }}
-              onDelete={() => handleRequestTaskDelete(job)}
-              onClose={() => setTaskMenu(null)}
-            />
-          );
-        })()}
-
-      {heartbeatMenu &&
-        (() => {
-          const session = heartbeatSessions.find((item) => item.chat_id === heartbeatMenu.chatId);
-          if (!session) return null;
-          const running = isChatRunning(session.chat_id, session.is_running);
-          const pending = heartbeatLocks.has(session.chat_id);
-          return (
-            <HeartbeatRowMenu
-              anchor={heartbeatMenu.anchor}
-              boundary={sidebarBoundsRef.current?.getBoundingClientRect() ?? null}
-              runDisabled={!canStartRun(running, pending)}
-              onOpen={() => openChatById(session.chat_id)}
-              onDisable={() =>
-                void runHeartbeatAction(session.chat_id, session.title, () =>
-                  disableHeartbeat(session.chat_id)
-                )
-              }
-              onRunNow={() => {
-                if (!canStartRun(running, pending)) return;
-                void runHeartbeatAction(session.chat_id, session.title, () =>
-                  triggerHeartbeat(session.chat_id)
-                );
-              }}
-              onClose={() => setHeartbeatMenu(null)}
             />
           );
         })()}

@@ -26,6 +26,7 @@ import {
   disableHeartbeat,
   fetchCronJobs,
   fetchHeartbeatStatus,
+  fetchMailboxItem,
   fetchMailboxItems,
   markMailboxRead,
   rotateMailboxEndpoint,
@@ -324,6 +325,28 @@ interface MailboxViewProps {
   onOpenChat: (chatId: string) => void;
   onOpenSettings?: () => void;
   initialTab?: MailboxTabId;
+}
+
+/** An event's payload; the list only carries the start of a long one, so the rest loads here. */
+function MailboxPayload({ item }: { item: MailboxItem }): React.ReactElement {
+  const [full, setFull] = useState<string | null>(null);
+  useEffect(() => {
+    if (!item.payload_truncated) return;
+    let alive = true;
+    void fetchMailboxItem(item.id)
+      .then((loaded) => {
+        if (alive) setFull(loaded.payload);
+      })
+      .catch(() => undefined);
+    return () => {
+      alive = false;
+    };
+  }, [item.id, item.payload_truncated]);
+  return (
+    <pre className="max-h-48 overflow-auto border border-neutral-300 bg-neutral-900 p-2.5 font-mono text-[11px] text-neutral-100 dark:border-zinc-700">
+      {full ?? (item.payload || item.summary)}
+    </pre>
+  );
 }
 
 export function MailboxView({
@@ -974,9 +997,7 @@ export function MailboxView({
                                 {latest.reason}
                               </p>
                             )}
-                            <pre className="max-h-48 overflow-auto border border-neutral-300 bg-neutral-900 p-2.5 font-mono text-[11px] text-neutral-100 dark:border-zinc-700">
-                              {latest.payload || latest.summary}
-                            </pre>
+                            <MailboxPayload item={latest} />
                             <div className="flex items-center justify-end gap-3 font-mono text-[11px]">
                               {latest.source_kind !== 'agent_inbox' &&
                                 !thread.isUnrouted &&

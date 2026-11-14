@@ -38,7 +38,9 @@ def test_cron_job_payload_includes_session_status(monkeypatch) -> None:
         title="Cron: Daily report", updated_at=now, config={"unread_count": 4}
     )
     database = SimpleNamespace(
-        get_chat=lambda _chat_id: chat,
+        chat_headlines=lambda ids: {
+            i: (chat.title, chat.updated_at, chat.config) for i in ids
+        },
         list_cron_runs=lambda _job_id, limit: [],
     )
     monkeypatch.setattr(
@@ -82,7 +84,9 @@ def test_a_bound_task_reports_the_chat_it_runs_in(monkeypatch) -> None:
     )
     chat = SimpleNamespace(title="Work", updated_at=now, config={})
     database = SimpleNamespace(
-        get_chat=lambda _chat_id: chat,
+        chat_headlines=lambda ids: {
+            i: (chat.title, chat.updated_at, chat.config) for i in ids
+        },
         list_cron_runs=lambda _job_id, limit: [],
     )
     seen: list[str] = []

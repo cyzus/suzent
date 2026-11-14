@@ -2,6 +2,7 @@
 Cron job management API routes.
 """
 
+import asyncio
 from datetime import datetime
 
 from croniter import croniter
@@ -38,10 +39,16 @@ def _webhook_urls(request: Request, path: str) -> dict[str, str]:
     return urls
 
 
-def _job_to_dict(job: CronJobModel, db: ChatDatabase) -> dict:
+def _job_to_dict(
+    job: CronJobModel,
+    db: ChatDatabase,
+    headlines: dict[str, tuple[str, datetime, dict]] | None = None,
+) -> dict:
     """Serialize a CronJobModel to a JSON-safe dict."""
     chat_id = _task_chat_id(job)
-    chat = db.get_chat(chat_id)
+    if headlines is None:
+        headlines = db.chat_headlines([chat_id])
+    title, chat_updated_at, chat_config = headlines.get(chat_id, (None, None, {}))
     latest_runs = db.list_cron_runs(job.id, limit=1)
     latest_run = latest_runs[0] if latest_runs else None
     return {
@@ -63,19 +70,19 @@ def _job_to_dict(job: CronJobModel, db: ChatDatabase) -> dict:
         "context_mode": job.context_mode,
         "suppress_ok": job.suppress_ok,
         "source": job.source,
-        "chat_title": chat.title if chat else None,
+        "chat_title": title,
         "last_run_at": job.last_run_at.isoformat() if job.last_run_at else None,
         "next_run_at": job.next_run_at.isoformat() if job.next_run_at else None,
         "last_result": job.last_result,
         "last_error": job.last_error,
-        "chat_updated_at": chat.updated_at.isoformat() if chat else None,
+        "chat_updated_at": chat_updated_at.isoformat() if chat_updated_at else None,
         "last_run_finished_at": (
             latest_run.finished_at.isoformat()
             if latest_run and latest_run.finished_at
             else None
         ),
         "is_running": is_background_streaming(chat_id),
-        "unread_count": (chat.config or {}).get("unread_count", 0) if chat else 0,
+        "unread_count": chat_config.get("unread_count", 0),
         "created_at": job.created_at.isoformat(),
         "updated_at": job.updated_at.isoformat(),
     }
@@ -83,9 +90,15 @@ def _job_to_dict(job: CronJobModel, db: ChatDatabase) -> dict:
 
 async def list_cron_jobs(request: Request) -> JSONResponse:
     """List all cron jobs."""
-    db = get_database()
-    jobs = db.list_cron_jobs()
-    return JSONResponse({"jobs": [_job_to_dict(j, db) for j in jobs]})
+
+    def build() -> list[dict]:
+        db = get_database()
+        jobs = db.list_cron_jobs()
+        headlines = db.chat_headlines([_task_chat_id(job) for job in jobs])
+        return [_job_to_dict(job, db, headlines) for job in jobs]
+
+    # The sidebar polls this every few seconds; SQLite work on the event loop stalls every stream.
+    return JSONResponse({"jobs": await asyncio.to_thread(build)})
 
 
 async def create_cron_job(request: Request) -> JSONResponse:
