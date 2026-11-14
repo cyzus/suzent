@@ -107,3 +107,43 @@ def test_library_of_a_project_with_only_archived_chats_stays_previewable(
 
     assert item.chat_id is None
     assert item.serve_chat_id == chat_id
+
+
+def test_index_rereads_only_changed_transcripts(temp_db, tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(CONFIG, "sandbox_data_path", str(tmp_path))
+    monkeypatch.setattr("suzent.database.get_database", lambda: temp_db)
+    project_id = temp_db.create_project("Poster", "poster")
+    images = tmp_path / "projects" / "poster" / "artifacts" / "images"
+    images.mkdir(parents=True)
+    (images / "cat.png").write_bytes(b"png")
+    (images / "dog.png").write_bytes(b"png")
+    first = _assistant(_tool("generate_image", ["/workspace/artifacts/images/cat.png"]))
+    chat_id = temp_db.create_chat(
+        "Make a poster", {}, messages=[first], project_id=project_id
+    )
+    idle_id = temp_db.create_chat("Idle", {}, messages=[], project_id=project_id)
+
+    before = artifact_index.build_artifact_index()
+    assert {item.name: item.chat_id for item in before.items} == {
+        "cat.png": chat_id,
+        "dog.png": None,
+    }
+
+    read: list[list[str]] = []
+    original = temp_db.chat_messages
+    monkeypatch.setattr(
+        temp_db, "chat_messages", lambda ids: read.append(sorted(ids)) or original(ids)
+    )
+    second = _assistant(
+        _tool("generate_image", ["/workspace/artifacts/images/dog.png"])
+    )
+    temp_db.rewrite_chat_messages(chat_id, [first, second])
+
+    index = artifact_index.build_artifact_index()
+
+    assert read == [[chat_id]]
+    assert idle_id not in read[0]
+    assert {item.name: item.chat_id for item in index.items} == {
+        "cat.png": chat_id,
+        "dog.png": chat_id,
+    }
