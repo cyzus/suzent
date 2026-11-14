@@ -200,6 +200,34 @@ export const GoalTasksProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   return React.createElement(GoalTasksContext.Provider, { value: contextValue }, children);
 };
 
+const ChatGoalTasksLoader: React.FC<{ chatId: string; projectId: string | null }> = ({
+  chatId,
+  projectId,
+}) => {
+  const { refresh, refreshKanban } = useGoalTasks();
+  React.useEffect(() => {
+    void refresh(projectId, chatId);
+    void refreshKanban(projectId);
+  }, [chatId, projectId, refresh, refreshKanban]);
+  return null;
+};
+
+/**
+ * Plan and task data for one chat other than the app's current one (the chat
+ * in Regent's side panel), so loading it leaves the app's own untouched.
+ */
+export const ChatGoalTasksScope: React.FC<{
+  chatId: string;
+  projectId: string | null;
+  children: React.ReactNode;
+}> = ({ chatId, projectId, children }) =>
+  React.createElement(
+    GoalTasksProvider,
+    null,
+    React.createElement(ChatGoalTasksLoader, { chatId, projectId }),
+    children
+  );
+
 export function useGoalTasks() {
   const ctx = useContext(GoalTasksContext);
   if (!ctx) throw new Error('useGoalTasks must be used within GoalTasksProvider');

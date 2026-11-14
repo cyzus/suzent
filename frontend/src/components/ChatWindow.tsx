@@ -31,7 +31,7 @@ import {
   restorePrependScrollSnapshot,
   type PrependScrollSnapshot,
 } from '../lib/chatScrollAnchor';
-import { useGoalTasks } from '../hooks/useGoalTasks';
+import { ChatGoalTasksScope, useGoalTasks } from '../hooks/useGoalTasks';
 import { useMemory } from '../hooks/useMemory';
 import { useCanvas } from '../hooks/useCanvas';
 import { InlineSurfaceProvider } from './a2ui/InlineSurfaceContext';
@@ -854,6 +854,8 @@ const composerDraft: { input: string; mentions: FileMentionSelection[] } = {
  * held in its state would be dropped without ever being sent.
  */
 let queuedMessageStore: Record<string, QueuedMessage[]> = {};
+// Regent's side panel runs a second window; each one mirrors the store.
+const queueListeners = new Set<(queues: Record<string, QueuedMessage[]>) => void>();
 
 /** Whether anything typed or queued would be lost if the app restarted now. */
 export function hasUnsentComposerWork(): boolean {
@@ -889,6 +891,19 @@ interface ChatWindowProps {
   /** The width the chat open beside this one takes, 0 when none, so the window can make room. */
   onSidePanelWidthChange?: (widthPx: number) => void;
 }
+
+/** The plan and task data of the chat a ChatScopeProvider points at. */
+const ScopedGoalTasks: React.FC<{ chatId: string; children: React.ReactNode }> = ({
+  chatId,
+  children,
+}) => {
+  const { currentChatProjectId } = useChatStore();
+  return (
+    <ChatGoalTasksScope chatId={chatId} projectId={currentChatProjectId ?? null}>
+      {children}
+    </ChatGoalTasksScope>
+  );
+};
 
 const SidebarSpot: React.FC<{ host?: HTMLElement | null; children: React.ReactNode }> = ({
   host,
@@ -1021,12 +1036,17 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   );
   // Messages held back until the running turn ends, keyed by chat.
   const [messageQueues, setMessageQueuesState] = useState(queuedMessageStore);
+  useEffect(() => {
+    queueListeners.add(setMessageQueuesState);
+    setMessageQueuesState(queuedMessageStore);
+    return () => {
+      queueListeners.delete(setMessageQueuesState);
+    };
+  }, []);
   const setMessageQueues = useCallback(
     (update: (prev: Record<string, QueuedMessage[]>) => Record<string, QueuedMessage[]>) => {
-      // Read the module store, not this window's copy: Regent's side panel runs
-      // a second window, and either may have changed it since.
       queuedMessageStore = update(queuedMessageStore);
-      setMessageQueuesState(queuedMessageStore);
+      queueListeners.forEach((listener) => listener(queuedMessageStore));
     },
     []
   );
@@ -3984,18 +4004,20 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                       </p>
                     )}
                   >
-                    <ChatWindow
-                      embedded
-                      rightSidebarHost={peekSidebarHost}
-                      isRightSidebarOpen={isRightSidebarOpen && peekOwnsSidebar}
-                      onRightSidebarToggle={openPeekSidebar}
-                      onRightSidebarWidthChange={peekOwnsSidebar ? reportSidebarWidth : undefined}
-                      rightSidebarHeaderSlot={peekOwnsSidebar ? rightSidebarHeaderSlot : null}
-                      rightSidebarMaxWidthPx={rightSidebarMaxWidthPx}
-                      rightSidebarWideDefaultWidthPx={rightSidebarWideDefaultWidthPx}
-                      viewportWidthPx={viewportWidthPx}
-                      rightSidebarForceFullView={rightSidebarForceFullView}
-                    />
+                    <ScopedGoalTasks chatId={chatId}>
+                      <ChatWindow
+                        embedded
+                        rightSidebarHost={peekSidebarHost}
+                        isRightSidebarOpen={isRightSidebarOpen && peekOwnsSidebar}
+                        onRightSidebarToggle={openPeekSidebar}
+                        onRightSidebarWidthChange={peekOwnsSidebar ? reportSidebarWidth : undefined}
+                        rightSidebarHeaderSlot={peekOwnsSidebar ? rightSidebarHeaderSlot : null}
+                        rightSidebarMaxWidthPx={rightSidebarMaxWidthPx}
+                        rightSidebarWideDefaultWidthPx={rightSidebarWideDefaultWidthPx}
+                        viewportWidthPx={viewportWidthPx}
+                        rightSidebarForceFullView={rightSidebarForceFullView}
+                      />
+                    </ScopedGoalTasks>
                   </ChatScopeProvider>
                 )}
               />
