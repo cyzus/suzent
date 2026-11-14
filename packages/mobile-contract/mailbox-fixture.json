@@ -1,0 +1,9 @@
+{
+  "items": [
+    {"id": 3, "source": "Calendar", "sourceKind": "schedule", "eventType": "reminder", "summary": "Meeting soon", "payload": "Meeting details", "status": "notified", "chatId": null, "createdAt": "2026-11-14T12:30:00.123456+00:00", "readAt": null},
+    {"id": 2, "source": "Task", "sourceKind": "agent_inbox", "eventType": "finished", "summary": "Finished", "payload": "", "status": "notified", "chatId": "shared", "createdAt": "2026-11-14T11:30:00+00:00", "readAt": "2026-11-14T12:00:00+00:00"},
+    {"id": 1, "source": "Webhook", "sourceKind": "webhook", "eventType": "event", "summary": "Stored", "payload": "Text", "status": "unrouted", "chatId": null, "createdAt": "2026-11-14T10:30:00+00:00", "readAt": null}
+  ],
+  "unread": 7,
+  "hasMore": true
+}

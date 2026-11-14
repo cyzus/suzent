@@ -81,7 +81,9 @@ class MailboxOperationsMixin:
         offset: int = 0,
         route_status: Optional[str] = None,
         source_kind: Optional[str] = None,
+        exclude_source_kind: Optional[str] = None,
         unread_only: bool = False,
+        chat_ids: list[str] | None = None,
     ) -> List[MailboxItemModel]:
         """Items newest first.
 
@@ -91,6 +93,8 @@ class MailboxOperationsMixin:
         """
         with self._session() as session:
             stmt = select(MailboxItemModel)
+            if chat_ids is not None:
+                stmt = stmt.where(col(MailboxItemModel.target_chat_id).in_(chat_ids))
             failed = select(AgentInboxMessageModel.message_id).where(
                 AgentInboxMessageModel.status == "failed"
             )
@@ -119,6 +123,8 @@ class MailboxOperationsMixin:
                 )
             if source_kind:
                 stmt = stmt.where(MailboxItemModel.source_kind == source_kind)
+            if exclude_source_kind:
+                stmt = stmt.where(MailboxItemModel.source_kind != exclude_source_kind)
             stmt = stmt.order_by(MailboxItemModel.id.desc()).offset(offset).limit(limit)
             return list(session.exec(stmt).all())
 
@@ -132,27 +138,36 @@ class MailboxOperationsMixin:
             ).all()
             return {status: count for status, count in rows}
 
-    def count_unread_mailbox_notifications(self) -> int:
-        """Notifications the user has not seen yet."""
+    def count_unread_mailbox_notifications(
+        self, *, chat_ids: list[str] | None = None
+    ) -> int:
+        """Notifications the user has not seen, optionally scoped to shared chats."""
         with self._session() as session:
-            return session.exec(
-                select(func.count()).where(
+            stmt = (
+                select(func.count())
+                .select_from(MailboxItemModel)
+                .where(
                     MailboxItemModel.route_status == "notified",
-                    MailboxItemModel.read_at.is_(None),
+                    col(MailboxItemModel.read_at).is_(None),
                 )
-            ).one()
+            )
+            if chat_ids is not None:
+                stmt = stmt.where(col(MailboxItemModel.target_chat_id).in_(chat_ids))
+            return session.exec(stmt).one()
 
     def mark_mailbox_notifications_read(
-        self, item_ids: Optional[List[int]] = None
+        self, item_ids: list[int] | None = None, *, chat_ids: list[str] | None = None
     ) -> int:
-        """Mark the given notifications read, or all of them; returns how many changed."""
+        """Mark notifications read within the caller's scope; repeat calls are harmless."""
         with self._session() as session:
             stmt = select(MailboxItemModel).where(
                 MailboxItemModel.route_status == "notified",
-                MailboxItemModel.read_at.is_(None),
+                col(MailboxItemModel.read_at).is_(None),
             )
             if item_ids is not None:
-                stmt = stmt.where(MailboxItemModel.id.in_(item_ids))
+                stmt = stmt.where(col(MailboxItemModel.id).in_(item_ids))
+            if chat_ids is not None:
+                stmt = stmt.where(col(MailboxItemModel.target_chat_id).in_(chat_ids))
             items = session.exec(stmt).all()
             now = datetime.now()
             for item in items:

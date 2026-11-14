@@ -45,6 +45,7 @@ import {
   type MailboxDestination,
   type WebhookUrls,
 } from '../../lib/api';
+import { groupMailboxItems } from '../../lib/mailboxThreads';
 import { FOCAL_CHAT_ID } from '../../lib/focalAgent';
 import { formatRelativeTime } from '../../lib/chatUtils';
 import { getScheduledTaskChat } from '../../lib/scheduledTaskChat';
@@ -289,29 +290,12 @@ function plainPreview(text?: string | null): string {
     .trim();
 }
 
-function compactEventLabel(sourceName: string, eventType: string): string {
-  const shortEvent = eventType
-    .replace(/^pull_request\b/, 'pr')
-    .replace(/^workflow_run\b/, 'ci')
-    .replace(/^check_run\b/, 'check')
-    .replace(/^check_suite\b/, 'suite')
-    .replace(/\.synchronize$/, '.sync');
-  return `${sourceName}:${shortEvent}`;
-}
-
 function shortParticipantLabel(label: string): string {
   if (label.startsWith('sub_')) return 'subagent';
   if (label.includes(' · ')) {
     return label.split(' · ')[0].trim();
   }
   return label;
-}
-
-function compactSummary(text?: string | null): string {
-  return plainPreview(text).replace(
-    /\s+\((synchronize|opened|closed|edited|reopened|released|published|updated)\)$/i,
-    ''
-  );
 }
 
 function compactRelativeTime(iso: string | null | undefined, locale: string): string {
@@ -364,12 +348,13 @@ export function MailboxView({
   const [destinations, setDestinations] = useState<MailboxDestination[]>([]);
   const [endpoint, setEndpoint] = useState<WebhookUrls>({});
   const [expandedThreads, setExpandedThreads] = useState<Set<string>>(new Set());
+  const [expandedSteps, setExpandedSteps] = useState<Set<number>>(new Set());
   const [copiedUrl, setCopiedUrl] = useState(false);
   const [loading, setLoading] = useState(false);
   const [busyId, setBusyId] = useState<number | string | null>(null);
 
-  const loadAll = useCallback(async () => {
-    setLoading(true);
+  const loadAll = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
     try {
       const [itemRes, ruleRes, jobList, hbStatus] = await Promise.all([
         fetchMailboxItems({ limit: 150 }),
@@ -386,33 +371,27 @@ export function MailboxView({
     } catch (err) {
       console.error('Failed to load mailbox data:', err);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, []);
 
   useEffect(() => {
     void loadAll();
+    const refresh = () => {
+      if (document.visibilityState === 'visible') void loadAll(true);
+    };
+    const timer = window.setInterval(refresh, 10_000);
+    document.addEventListener('visibilitychange', refresh);
+    window.addEventListener('focus', refresh);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener('visibilitychange', refresh);
+      window.removeEventListener('focus', refresh);
+    };
   }, [loadAll]);
 
   const threads = useMemo<MailboxThread[]>(() => {
-    const map = new Map<string, MailboxItem[]>();
-
-    for (const item of items) {
-      let key: string;
-      if (item.source_kind === 'agent_inbox') {
-        const fromId = item.headers?.from?.startsWith('subagent-')
-          ? 'subagent'
-          : item.headers?.from || item.source_name || 'system';
-        const toId = item.target_chat_id || 'unknown';
-        const pair = [fromId, toId].sort().join('<->');
-        key = `agent:${pair}`;
-      } else {
-        key = `ext:${item.signature}`;
-      }
-      const list = map.get(key);
-      if (list) list.push(item);
-      else map.set(key, [item]);
-    }
+    const map = groupMailboxItems(items);
 
     const result: MailboxThread[] = [];
     for (const [key, group] of map.entries()) {
@@ -420,7 +399,8 @@ export function MailboxView({
       const isAgent = latest.source_kind === 'agent_inbox';
       const isUnrouted = latest.route_status === 'unrouted';
 
-      let fromLabel = compactEventLabel(latest.source_name, latest.event_type);
+      let fromLabel =
+        latest.presentation?.context || latest.presentation?.source || latest.source_name;
       let primaryChatId = latest.target_chat_id;
       const targetLabel = shortParticipantLabel(latest.target_label || 'Regent');
 
@@ -572,6 +552,61 @@ export function MailboxView({
       console.error('Failed to delete mailbox item:', err);
     }
   };
+
+  const toggleStep = (id: number) =>
+    setExpandedSteps((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+
+  /** One event's reason, payload and actions; threads show it per step so grouping hides nothing. */
+  const renderEventDetail = (item: MailboxItem, openChatId: string | null) => (
+    <div className="space-y-2">
+      {item.reason && (
+        <p
+          className={`font-mono text-[11px] ${
+            item.route_status === 'error'
+              ? 'text-brutal-red'
+              : 'text-neutral-500 dark:text-neutral-400'
+          }`}
+        >
+          {item.reason}
+        </p>
+      )}
+      <MailboxPayload item={item} />
+      <div className="flex items-center justify-end gap-3 font-mono text-[11px]">
+        {item.source_kind !== 'agent_inbox' &&
+          item.route_status !== 'unrouted' &&
+          item.target_chat_id && (
+            <button
+              type="button"
+              onClick={() => void handleItemRouteChange(item, item.target_chat_id!, false)}
+              className="inline-flex items-center gap-1 text-neutral-600 hover:text-brutal-black dark:text-neutral-400 dark:hover:text-white"
+            >
+              <ArrowPathIcon className="h-3 w-3" /> Replay
+            </button>
+          )}
+        <button
+          type="button"
+          onClick={() => void handleDeleteItem(item.id)}
+          className="inline-flex items-center gap-1 text-neutral-500 hover:text-brutal-red"
+        >
+          <TrashIcon className="h-3 w-3" /> Delete
+        </button>
+        {openChatId && (
+          <button
+            type="button"
+            onClick={() => onOpenChat(openChatId)}
+            className="inline-flex items-center gap-1 font-semibold hover:underline"
+          >
+            Open Chat <ArrowTopRightOnSquareIcon className="h-3 w-3" />
+          </button>
+        )}
+      </div>
+    </div>
+  );
 
   const cadenceOptions = (rule: MailboxRule) => {
     const digestMinutes = [15, 60, 1440];
@@ -917,7 +952,9 @@ export function MailboxView({
                               aria-label={t('mailboxView.unread')}
                             />
                           )}
-                          <span className="truncate">{compactSummary(latest.summary)}</span>
+                          <span className="truncate">
+                            {plainPreview(latest.presentation?.title || latest.summary)}
+                          </span>
                         </div>
                         <div className="mt-0.5 flex min-w-0 items-center gap-1.5 font-mono text-[10px] text-neutral-500 dark:text-neutral-400">
                           <span className="truncate" title={thread.fromLabel}>
@@ -954,24 +991,43 @@ export function MailboxView({
                       <div className="border-t border-dashed border-neutral-200 bg-neutral-50/80 px-4 py-2.5 dark:border-zinc-700 dark:bg-zinc-900/60">
                         {thread.items.length > 1 ? (
                           <div className="space-y-1.5">
-                            {thread.items.slice(0, 12).map((step) => (
-                              <div
-                                key={step.id}
-                                className="flex items-baseline justify-between gap-3 border-b border-neutral-200/70 pb-1 last:border-b-0 dark:border-zinc-800"
-                              >
-                                <span className="w-40 shrink-0 truncate font-mono text-[10px] text-neutral-500">
-                                  {step.source_name} → {step.target_label || 'Unrouted'}
-                                </span>
-                                <span className="min-w-0 flex-1 truncate text-[11px] text-neutral-700 dark:text-neutral-300">
-                                  {plainPreview(step.summary)}
-                                </span>
-                                <span className="shrink-0 font-mono text-[10px] text-neutral-400">
-                                  {step.created_at
-                                    ? formatRelativeTime(step.created_at, locale)
-                                    : ''}
-                                </span>
-                              </div>
-                            ))}
+                            {thread.items.slice(0, 12).map((step) => {
+                              const stepOpen = expandedSteps.has(step.id);
+                              return (
+                                <div
+                                  key={step.id}
+                                  className="border-b border-neutral-200/70 pb-1 last:border-b-0 dark:border-zinc-800"
+                                >
+                                  <button
+                                    type="button"
+                                    aria-expanded={stepOpen}
+                                    onClick={() => toggleStep(step.id)}
+                                    className="flex w-full items-baseline justify-between gap-3 text-left hover:text-brutal-black dark:hover:text-white"
+                                  >
+                                    <span className="w-40 shrink-0 truncate font-mono text-[10px] text-neutral-500">
+                                      {step.source_name} → {step.target_label || 'Unrouted'}
+                                    </span>
+                                    <span className="min-w-0 flex-1 truncate text-[11px] text-neutral-700 dark:text-neutral-300">
+                                      {step.presentation?.activity
+                                        ? t(`mailboxView.activity.${step.presentation.activity}`)
+                                        : plainPreview(step.presentation?.title || step.summary)}
+                                      {step.presentation?.detail &&
+                                        ` · ${step.presentation.detail}`}
+                                    </span>
+                                    <span className="shrink-0 font-mono text-[10px] text-neutral-400">
+                                      {step.created_at
+                                        ? formatRelativeTime(step.created_at, locale)
+                                        : ''}
+                                    </span>
+                                  </button>
+                                  {stepOpen && (
+                                    <div className="pb-1.5 pl-2 pt-2">
+                                      {renderEventDetail(step, null)}
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
                             {thread.primaryChatId && (
                               <div className="flex justify-end pt-1">
                                 <button
@@ -985,55 +1041,7 @@ export function MailboxView({
                             )}
                           </div>
                         ) : (
-                          <div className="space-y-2">
-                            {latest.reason && (
-                              <p
-                                className={`font-mono text-[11px] ${
-                                  latest.route_status === 'error'
-                                    ? 'text-brutal-red'
-                                    : 'text-neutral-500 dark:text-neutral-400'
-                                }`}
-                              >
-                                {latest.reason}
-                              </p>
-                            )}
-                            <MailboxPayload item={latest} />
-                            <div className="flex items-center justify-end gap-3 font-mono text-[11px]">
-                              {latest.source_kind !== 'agent_inbox' &&
-                                !thread.isUnrouted &&
-                                latest.target_chat_id && (
-                                  <button
-                                    type="button"
-                                    onClick={() =>
-                                      void handleItemRouteChange(
-                                        latest,
-                                        latest.target_chat_id!,
-                                        false
-                                      )
-                                    }
-                                    className="inline-flex items-center gap-1 text-neutral-600 hover:text-brutal-black dark:text-neutral-400 dark:hover:text-white"
-                                  >
-                                    <ArrowPathIcon className="h-3 w-3" /> Replay
-                                  </button>
-                                )}
-                              <button
-                                type="button"
-                                onClick={() => void handleDeleteItem(latest.id)}
-                                className="inline-flex items-center gap-1 text-neutral-500 hover:text-brutal-red"
-                              >
-                                <TrashIcon className="h-3 w-3" /> Delete
-                              </button>
-                              {thread.primaryChatId && (
-                                <button
-                                  type="button"
-                                  onClick={() => onOpenChat(thread.primaryChatId!)}
-                                  className="inline-flex items-center gap-1 font-semibold hover:underline"
-                                >
-                                  Open Chat <ArrowTopRightOnSquareIcon className="h-3 w-3" />
-                                </button>
-                              )}
-                            </div>
-                          </div>
+                          renderEventDetail(latest, thread.primaryChatId)
                         )}
                       </div>
                     )}

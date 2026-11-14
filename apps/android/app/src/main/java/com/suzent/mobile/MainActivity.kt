@@ -115,6 +115,7 @@ private fun MobileScreen(model: MobileModel) {
     var repairScanner by remember { mutableStateOf(false) }
     if (repairScanner) PairingScanner(model) { repairScanner = false }
     var showHome by rememberSaveable { mutableStateOf(true) }
+    var mailboxWide by rememberSaveable { mutableStateOf(false) }
     var tab by rememberSaveable { mutableStateOf(HomeTab.CHATS) }
     var desktopsOpen by rememberSaveable { mutableStateOf(false) }
     var searching by rememberSaveable { mutableStateOf(false) }
@@ -147,12 +148,18 @@ private fun MobileScreen(model: MobileModel) {
         val home: @Composable () -> Unit = {
             pageState.SaveableStateProvider("home") {
                 Surface(Modifier.fillMaxSize()) {
-                    if (wide) sidebar()
+                    if (wide) Column {
+                        val inboxLabel = stringResource(R.string.mailbox_title)
+                        SuzentSegmentedTabs(listOf(false, true), mailboxWide, { mailboxWide = it },
+                            { if (!it) stringResource(R.string.tab_chats) else if (model.mailbox.unread > 0) "$inboxLabel · ${model.mailbox.unread}" else inboxLabel },
+                            Modifier.statusBarsPadding().padding(horizontal = 16.dp, vertical = 8.dp))
+                        Box(Modifier.weight(1f).consumeWindowInsets(WindowInsets.statusBars)) { if (mailboxWide) MailboxView(model, openChat) else sidebar() }
+                    }
                     else if (searching) SearchPage(model, openChat, close = { focus.clearFocus(); searching = false })
-                    else TabHome(tab, { focus.clearFocus(); tab = it }) {
+                    else TabHome(tab, { focus.clearFocus(); tab = it }, model.mailbox.unread) {
                         when (it) {
                             HomeTab.CHATS -> sidebar()
-                            HomeTab.TASKS -> TasksTab(model, openChat)
+                            HomeTab.INBOX -> MailboxView(model, openChat)
                             HomeTab.SETTINGS -> Column(Modifier.fillMaxSize().statusBarsPadding()) {
                                 androidx.activity.compose.BackHandler(enabled = desktopsOpen) { desktopsOpen = false }
                                 if (desktopsOpen) DesktopsView(model, back = { desktopsOpen = false })
@@ -612,7 +619,7 @@ private fun Sidebar(model: MobileModel, hideSelection: Boolean, tabs: Boolean, o
             if (search.isEmpty() && listMode == HomeListMode.RECENT && recentRows.isEmpty() && pinnedRows.isEmpty()) item(key = "empty") {
                 Text(stringResource(R.string.sidebar_empty), modifier = Modifier.padding(vertical = 24.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            if (scheduledGroups.isNotEmpty() && !tabs) {
+            if (scheduledGroups.isNotEmpty() && !tabs && search.isNotEmpty()) {
                 item(key = "scheduled-heading") {
                     SuzentTextButton(onClick = { scheduledExpanded = !scheduledExpanded }, modifier = Modifier.fillMaxWidth()) {
                         Icon(painterResource(R.drawable.ic_clock), contentDescription = null, modifier = Modifier.padding(end = 10.dp).size(18.dp))
@@ -1385,43 +1392,20 @@ private fun SidebarSectionHeading(label: String, count: Int? = null, start: Dp =
 
 private enum class HomeListMode(val label: Int) { RECENT(R.string.recent_chats), PROJECTS(R.string.sidebar_projects) }
 
-/** The desktop's BrutalSegmentedTabs, lightened to sit with the sidebar: a thin-bordered track whose solid block slides under the active list. */
 @Composable
 private fun HomeListPicker(selection: HomeListMode, select: (HomeListMode) -> Unit, modifier: Modifier = Modifier) {
-    val dark = isSystemInDarkTheme()
-    val block = if (dark) suzentYellow() else Color(PresentationTokens.black)
-    val blockText = if (dark) Color.Black else Color.White
-    BoxWithConstraints(modifier.fillMaxWidth()
-        .background(Color(if (dark) PresentationTokens.code_header_dark else PresentationTokens.code_bg))
-        .border(1.dp, MaterialTheme.colorScheme.outline)
-        .padding(3.dp)) {
-        val segment = maxWidth / HomeListMode.entries.size
-        val slider by androidx.compose.animation.core.animateDpAsState(segment * selection.ordinal,
-            androidx.compose.animation.core.tween(300), label = "home list slider")
-        Box(Modifier.offset(x = slider).width(segment).height(30.dp).background(block))
-        Row(Modifier.fillMaxWidth().selectableGroup()) {
-            HomeListMode.entries.forEach { mode ->
-                val selected = mode == selection
-                Box(Modifier.weight(1f).height(30.dp).selectable(selected, role = Role.Tab) { select(mode) },
-                    contentAlignment = Alignment.Center) {
-                    Text(stringResource(mode.label).uppercase(java.util.Locale.getDefault()), fontSize = PresentationTokens.typeLabel.sp,
-                        fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal, letterSpacing = .6.sp, maxLines = 1,
-                        color = if (selected) blockText else MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            }
-        }
-    }
+    SuzentSegmentedTabs(HomeListMode.entries, selection, select, { stringResource(it.label) }, modifier)
 }
 
 private enum class HomeTab(val label: Int, val icon: Int) {
     CHATS(R.string.tab_chats, R.drawable.ic_tool_chat_bubble_left_right),
-    TASKS(R.string.tab_tasks, R.drawable.ic_clock),
+    INBOX(R.string.mailbox_title, R.drawable.ic_inbox),
     SETTINGS(R.string.settings, R.drawable.ic_settings)
 }
 
 /** Phone home: one page per tab above a bottom bar. A pushed conversation covers the bar entirely. */
 @Composable
-private fun TabHome(tab: HomeTab, select: (HomeTab) -> Unit, page: @Composable (HomeTab) -> Unit) {
+private fun TabHome(tab: HomeTab, select: (HomeTab) -> Unit, unread: Int = 0, page: @Composable (HomeTab) -> Unit) {
     // The keyboard covers the bar anyway; dropping it keeps the page's own ime padding exact.
     val keyboardVisible = WindowInsets.ime.getBottom(LocalDensity.current) > 0
     Column(Modifier.fillMaxSize()) {
@@ -1436,7 +1420,10 @@ private fun TabHome(tab: HomeTab, select: (HomeTab) -> Unit, page: @Composable (
                         .drawBehind { if (selected) drawRect(color, androidx.compose.ui.geometry.Offset((size.width - 32.dp.toPx()) / 2, 0f), Size(32.dp.toPx(), 3.dp.toPx())) }
                         .padding(vertical = 6.dp),
                         horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-                        Icon(painterResource(item.icon), contentDescription = null, tint = color, modifier = Modifier.size(22.dp))
+                        Box {
+                            Icon(painterResource(item.icon), contentDescription = null, tint = color, modifier = Modifier.size(22.dp))
+                            if (item == HomeTab.INBOX && unread > 0) SuzentCountBadge(unread, Modifier.align(Alignment.TopStart).offset(x = 14.dp, y = (-6).dp))
+                        }
                         Text(stringResource(item.label), fontSize = PresentationTokens.typeMeta.sp, color = color,
                             fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal, maxLines = 1)
                     }
@@ -1447,11 +1434,14 @@ private fun TabHome(tab: HomeTab, select: (HomeTab) -> Unit, page: @Composable (
 }
 
 @Composable
-private fun TabTitle(title: String, model: MobileModel? = null) {
-    Column(Modifier.fillMaxWidth().heightIn(min = 52.dp).padding(vertical = 8.dp), horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center) {
-        Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, maxLines = 1)
-        model?.let { ActiveDesktopLabel(it) }
+internal fun TabTitle(title: String, model: MobileModel? = null, actions: @Composable BoxScope.() -> Unit = {}) {
+    Box(Modifier.fillMaxWidth().heightIn(min = 52.dp)) {
+        Column(Modifier.align(Alignment.Center).padding(horizontal = 56.dp, vertical = 8.dp), horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center) {
+            Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, maxLines = 1)
+            model?.let { ActiveDesktopLabel(it) }
+        }
+        actions()
     }
     HorizontalDivider(thickness = PresentationTokens.borderWidth.dp, color = MaterialTheme.colorScheme.outline)
 }
@@ -1476,14 +1466,13 @@ private fun DesktopSquare(id: String, size: Dp) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun TasksTab(model: MobileModel, open: (Chat) -> Unit) {
+internal fun InboxTasks(model: MobileModel, open: (Chat) -> Unit) {
     var expandedAgents by remember { mutableStateOf(setOf<String>()) }
     fun toggleAgents(id: String) { expandedAgents = if (id in expandedAgents) expandedAgents - id else expandedAgents + id }
     val groups = scheduledSidebarGroups(model.chats, model.scheduledTasks, "", expandedAgents)
     val scope = rememberCoroutineScope()
     var refreshing by remember { mutableStateOf(false) }
-    Column(Modifier.fillMaxSize().statusBarsPadding()) {
-        TabTitle(stringResource(R.string.tab_tasks), model)
+    Column(Modifier.fillMaxSize()) {
         PullToRefreshBox(isRefreshing = refreshing, modifier = Modifier.weight(1f).fillMaxWidth(), onRefresh = {
             refreshing = true
             scope.launch { try { model.refresh().join() } finally { refreshing = false } }
