@@ -1718,6 +1718,45 @@ service can reach it; a service on the internet needs a
 [relay or tunnel](https://suzent.com/zh-Hans/docs/features/automation#webhooks). If you issued a new address, update
 the service.
 
+## On your phone
+
+Open **Inbox** in the iOS or Android app to see events from the connected
+desktop. The filters at the top match the desktop: **All** (where the inbox opens),
+**Notifications** (with the unread count), **External** and **Agent**. Tap the clock in the top
+right to check scheduled tasks, their next run and current status; the check
+mark in the top left marks everything read.
+
+Each row shows where the event came from (GitHub, email, a schedule, an agent or
+another device), its title, the time and where it went: the conversation it was
+handed to, or **Notified**, **Queued**, **Error** or **Unrouted**. Unread rows
+have a yellow marker and a bold title. Older events load as you scroll.
+
+Related updates are grouped into threads using the same rules on desktop and
+mobile. GitHub updates group by pull request or issue; other sources group by
+their topic or event rule. Tap a thread to open it: the page shows the
+**Related conversation** card, the thread's activity (including the specific
+label for label changes) and the latest event's **Original content**. Opening a
+thread marks its unread notifications read together, and going back from its
+conversation returns you to the thread.
+On iPad, use the Inbox button above the sidebar; on an Android tablet, switch
+the sidebar from Chats to Inbox.
+
+Opening a notification marks it read. **Mark all read** clears unread
+notifications you have access to, including those on other pages. Simply opening
+the inbox does not clear unread messages. Task counts do not contribute to the
+unread badge, and marking notifications read does not change task status.
+Read status is shared with the desktop
+and your other paired phones; while the apps are open, allow a few seconds for
+changes to appear, or pull down to refresh.
+
+Your phone only sees events linked to conversations shared with it. To also see
+global notifications without a linked conversation, the desktop must grant it
+access to all conversations. If the app asks you to update the desktop, update
+Suzent on that desktop before using the inbox.
+
+This inbox refreshes while the app is open and connected. It does not yet send
+system push notifications while the phone app is closed.
+
 
 ---
 
@@ -8440,21 +8479,87 @@ only the desktop that returned it. Node tokens and remembered model choices stay
 per connection. The pure list logic lives in `Desktops.kt` and
 `SuzentCore/SavedDesktops.swift`, with unit tests on both platforms.
 
-Phones show a bottom bar with Chats, Tasks and Settings. It's hidden while a
+Phones show a bottom bar with Chats, Inbox and Settings. It's hidden while a
 conversation is open. The desktop card at the top of Settings opens the Desktops
 page (switch, swipe to forget, pair another). Tablets keep the split view with
 the settings button in the sidebar. The Chats list shows one of Recent (pinned,
 then the recent page) or Projects at a time, picked with a segmented switch under
 the search field; iOS keeps the choice in `@AppStorage("homeListMode")`, Android in
-saved state. On iPad the switch adds Tasks, which replaces the scheduled section,
-and the sidebar can be hidden from its header and shown again from the detail
-toolbar. Android tablets keep the scheduled section below the list.
+saved state. The sidebar can be hidden on iPad from its header and shown again from the detail
+toolbar. Scheduled tasks on both platforms open from the clock button in the Inbox header.
 
 On phones a header search icon (beside the New conversation icon) opens a separate search page
 (iOS: a `Route.search` pushed under the conversation; Android: a `searching`
 flag that replaces the tab home). Its query survives opening a result, so back
 from that chat returns to the results; Cancel or back from the page clears it.
 Tablets keep the inline sidebar field.
+
+### Inbox and shared read state
+
+Both clients offer an Inbox with the desktop's filters (All, Notifications,
+External, Agent; the page request's `category`), a thread page, shared unread
+counts, read actions and links to target conversations. Tasks opens from the
+header's clock button and Mark all read from its check button. Phones use the
+Inbox tab; iPad opens it as a sheet from the sidebar toolbar, and Android tablets
+switch the sidebar between Chats and Inbox. English and Chinese labels
+are included. Tasks reuses the scheduled task list, including run state, next run
+time, conversation links and expandable child sessions. It remains available on
+older backends without the mailbox capability. Only notifications contribute to
+the Inbox badge or the Mark all read action. Inbox pages resolve their target
+chat ids through the existing scoped chat-status API, so destination cards show
+actual conversation titles and project names rather than the event summary.
+Targets missing from that response have a disabled unavailable state.
+
+The conversation list and the Android tablet sidebar share each platform’s `SuzentSegmentedTabs`
+component. It owns sizing, colors, selection animation, disabled state and
+accessibility; pages supply typed options, localized labels and selection
+callbacks. Inbox filtering and task loading remain page responsibilities.
+
+`core/mailbox_threads.py` owns the shared `presentation` contract returned by both
+mailbox APIs: `threadKey`, `title`, `source`, `context`, `icon`, `activity`, and
+`detail`. Keys are opaque hashes of source-scoped identities. Webhooks can supply
+`thread_id` and `subject` (plus optional `context`, semantic `activity`, and
+`detail`) in their JSON body. Without an explicit subject, source kind/name and
+routing signature form the thread. Agent messages use their participant pair.
+The GitHub adapter resolves repository/PR/issue identity and label details only
+on the backend; legacy stored summaries are supported there too.
+
+Desktop, Android and iOS only group by the returned key. They never infer thread
+identity or parse a provider payload. Missing presentation from older backends
+falls back to one row per item. Semantic activity codes are localized by each UI.
+`mailbox-thread-fixtures.json` verifies the same contract across clients and Python.
+Source-specific regression cases live in the backend tests.
+
+`MailboxEventCard` holds the shared pieces on each native platform: the count
+badge (also used by the tab bar), the source mark chosen from `sourceKind`, the
+status pill chosen from `status`, the thread row and the thread page. Status
+colors come from the `info` and `warning` presentation tokens next to `danger`.
+iOS pushes the thread page as `Route.mailbox(key)` (a `String` path inside the
+iPad sheet); Android swaps it in place with a back handler, keeping it in saved
+state so returning from a conversation lands on the thread.
+Newest IDs sort first and duplicate IDs are removed. Opening a thread sends all
+its loaded unread IDs to the existing read endpoint in batches of at most 100.
+Authorization filters rows before presentation; no hidden thread counts or routing
+metadata are exposed. Counts cover loaded events rather than full server history.
+Reaching the last row extends the window by 50. Refresh
+fetches the loaded window from offset zero and replaces it atomically on success,
+so shared read changes and removed events propagate.
+
+The `/mobile/client/mailbox/page` and `/mobile/client/mailbox/read` endpoints
+reuse paired-device authentication and chat grants. Full-chat grants see global
+events; limited grants see only events linked to permitted target chats. The same
+scope is applied before pagination, counting and marking all read. Read-only
+access is sufficient to mark messages read. The desktop's existing
+`mailbox_items.read_at` is the shared source of truth; the background notification
+drain is not used. Session capability `mailbox: 1` gates the feature on older
+backends. See the [wire contract](https://github.com/cyzus/suzent/blob/main/packages/mobile-contract/README.md#mobile-inbox).
+
+Inbox refresh uses the existing ten-second foreground navigation poll, plus
+opening the view, resuming and manual refresh. The desktop inbox also refreshes
+while visible. Neither listing nor polling marks messages read; expanding a
+notification or explicitly choosing a read action does. Device switches clear
+state and ignore stale responses. Failed writes remain unread until a successful
+refresh confirms the server state. No APNs/FCM or push gateway is involved.
 
 ### iOS
 
