@@ -150,6 +150,7 @@ async def test_focal_agent_starts_auto_primary_session_with_task(db, enqueued) -
     new_chat = db.get_chat(result.metadata["agent_id"])
     assert new_chat.project_id == project_id
     assert new_chat.title == "Vector DB survey"
+    assert result.metadata["agent_title"] == "Vector DB survey"
     assert new_chat.config["permission_mode"] == "auto"
     assert new_chat.config["parent_chat_id"] == FOCAL_CHAT_ID
     task = db.get_task(result.metadata["task_id"])
@@ -923,6 +924,7 @@ async def test_focal_never_waits_on_a_session(
     assert result.success
     assert enqueued[0]["target_chat_id"] == chat_id
     assert "reply will wake you" in result.message
+    assert result.metadata["agent_title"] == db.get_chat(chat_id).title
 
 
 @pytest.mark.asyncio

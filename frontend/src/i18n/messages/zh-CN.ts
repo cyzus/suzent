@@ -2874,6 +2874,7 @@ export const zhCN = {
   },
   toolCallBlock: {
     readFileRange: '第 {start}–{end} 行，共 {total} 行',
+    openChat: '打开这个对话',
     openInPreview: '在文件预览中打开',
     failed: '失败',
     permissionRejectPlaceholder: '可选：说明原因或建议更安全的做法',

@@ -10,6 +10,7 @@ import type { ToolTense } from './toolSummary';
 import { FileDiffViewer } from './FileDiffViewer';
 import { countChangedLines, fileToolPath, metadataLineCounts } from '../../lib/fileToolPreview';
 import { useOpenFile } from './openFileContext';
+import { useOpenChat } from './openChatContext';
 import { ReadFileRenderer } from './ReadFileRenderer';
 import { BashCommandRenderer, BashOutputRenderer } from './BashRenderer';
 import type { ApprovalRememberScope } from '../../hooks/useAGUI';
@@ -53,6 +54,8 @@ const OUTPUT_RENDERERS: Record<string, React.FC<ToolRendererProps> | undefined> 
 };
 
 const FILE_PREVIEW_TOOLS = new Set(['read_file', 'edit_file', 'write_file']);
+// Regent's tools whose result names the session the work went to.
+const CHAT_LINK_TOOLS = new Set(['agent_dispatch', 'mailbox']);
 
 export type ApprovalState = 'pending' | 'approved' | 'denied' | undefined;
 
@@ -448,6 +451,25 @@ const ToolCallBlockComponent: React.FC<ToolCallBlockProps> = ({
       ? fileToolPath(parsedToolArgs, rendererMetadata) || null
       : null;
 
+  // Regent's dispatch and re-route name the session they reached, so the
+  // header links to it like a file tool links its file.
+  const openChat = useOpenChat();
+  const linkedChat = React.useMemo(() => {
+    if (!openChat || !CHAT_LINK_TOOLS.has(canonicalToolName) || isFailed) return null;
+    const id = rendererMetadata?.agent_id;
+    if (typeof id !== 'string' || !id) return null;
+    const title =
+      typeof rendererMetadata?.agent_title === 'string' && rendererMetadata.agent_title.trim()
+        ? rendererMetadata.agent_title.trim()
+        : null;
+    return { id, title };
+  }, [openChat, canonicalToolName, isFailed, rendererMetadata]);
+  const headerDetail = linkedChat?.title
+    ? canonicalToolName === 'mailbox' && summary.detail
+      ? `${summary.detail} → ${linkedChat.title}`
+      : linkedChat.title
+    : summary.detail;
+
   const { addedLines, removedLines } = React.useMemo(() => {
     const none = { addedLines: 0, removedLines: 0 };
     if (toolName !== 'edit_file' && toolName !== 'write_file') return none;
@@ -645,8 +667,21 @@ const ToolCallBlockComponent: React.FC<ToolCallBlockProps> = ({
             action stays readable longest. */}
           <span className="flex min-w-0 items-center gap-1.5">
             <span className="truncate min-w-0">{summary.verb}</span>
-            {summary.detail &&
-              (openableFilePath ? (
+            {headerDetail &&
+              (linkedChat ? (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    void openChat?.(linkedChat.id);
+                  }}
+                  onKeyDown={(e) => e.stopPropagation()}
+                  title={`${t('toolCallBlock.openChat')} · ${linkedChat.title ?? linkedChat.id}`}
+                  className="truncate min-w-0 shrink-[3] max-w-[320px] cursor-pointer text-left font-normal normal-case tracking-normal opacity-80 decoration-1 underline-offset-2 hover:underline hover:opacity-100"
+                >
+                  {headerDetail}
+                </button>
+              ) : openableFilePath ? (
                 <button
                   type="button"
                   onClick={(e) => {
@@ -661,11 +696,11 @@ const ToolCallBlockComponent: React.FC<ToolCallBlockProps> = ({
                   title={`${t('toolCallBlock.openInPreview')} · ${openableFilePath}`}
                   className="truncate min-w-0 shrink-[3] max-w-[320px] cursor-pointer text-left font-normal normal-case tracking-normal opacity-80 decoration-1 underline-offset-2 hover:underline hover:opacity-100"
                 >
-                  {summary.detail}
+                  {headerDetail}
                 </button>
               ) : (
                 <span className="truncate min-w-0 shrink-[3] max-w-[320px] font-normal normal-case tracking-normal opacity-80">
-                  {summary.detail}
+                  {headerDetail}
                 </span>
               ))}
 

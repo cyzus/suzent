@@ -163,8 +163,9 @@ class FocalDispatchTool(AgentSendTool):
                     "permission_mode": "default",
                 }
             )
+        chat_title = (title or "").strip() or task_title or message[:60]
         new_chat_id = db.create_chat(
-            title=(title or "").strip() or task_title or message[:60],
+            title=chat_title,
             config=config,
             project_id=project.id,
         )
@@ -197,6 +198,7 @@ class FocalDispatchTool(AgentSendTool):
             metadata={
                 "message_id": record["message_id"],
                 "agent_id": new_chat_id,
+                "agent_title": chat_title,
                 "project_id": project.id,
                 "project_slug": project.slug,
                 "task_id": task.id if task is not None else None,

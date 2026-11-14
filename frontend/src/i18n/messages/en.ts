@@ -2940,6 +2940,7 @@ export const en = {
   },
   toolCallBlock: {
     readFileRange: 'Lines {start}–{end} of {total}',
+    openChat: 'Open this chat',
     openInPreview: 'Open in file preview',
     failed: 'Failed',
     permissionRejectPlaceholder: 'Optional reason or safer direction',
