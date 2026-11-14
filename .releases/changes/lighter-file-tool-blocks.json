@@ -1,0 +1,1 @@
+{"products": {"desktop": "patch"}, "summary": "File reads in chat show plain text with the file's real line numbers, edits show only the changed lines, long chats with many edits open faster, and clicking a file name in a read or edit step opens it in the file preview."}
