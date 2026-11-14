@@ -653,6 +653,10 @@ export const ChatList: React.FC<ChatListProps> = ({
 
   useEffect(() => {
     if (filterId === ALL_PROJECTS_FILTER) {
+      // Forget which project projectChats held, or reopening it would render
+      // the emptied list as that project's and flash the empty state.
+      projectChatRequestRef.current = null;
+      setProjectChatsFor(null);
       setProjectChats([]);
       setProjectChatKindTotals({ you: 0, scheduled: 0, all: 0 });
       setProjectChatOffset(0);
