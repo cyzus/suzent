@@ -35,6 +35,14 @@ def test_replaces_malformed_token(tmp_path: Path, contents: str) -> None:
     assert path.read_text() == token
 
 
+def test_replaces_non_ascii_token_file(tmp_path: Path) -> None:
+    """A damaged file must not raise at import time and block startup."""
+    path = tmp_path / "reminder_nonce"
+    path.write_bytes(b"\xff" * 16)
+    token = _load_or_create_nonce(path)
+    assert path.read_text() == token
+
+
 def test_falls_back_when_data_dir_is_unwritable(tmp_path: Path) -> None:
     blocker = tmp_path / "file"
     blocker.write_text("")

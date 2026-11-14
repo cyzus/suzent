@@ -70,7 +70,10 @@ _NONCE_FULL_RE = re.compile(rf"{_NONCE_PAT}")
 
 
 def _read_nonce(path: Path) -> Optional[str]:
-    token = path.read_text(encoding="ascii").strip()
+    try:
+        token = path.read_text(encoding="ascii").strip()
+    except UnicodeDecodeError:
+        return None
     return token if _NONCE_FULL_RE.fullmatch(token) else None
 
 
