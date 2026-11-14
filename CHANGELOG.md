@@ -5,6 +5,41 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v0.27.0] - 2026-11-14
+
+### Release notes
+- Redesign the 3D cube loading animations in ChatWindow (3D Klotski sliding puzzle), SkillsView (full-track tumbling conveyor), and SettingsModal (collision-free 3D card shuffle) with 6-face accent shading and reduced-motion support.
+- The safety reviewer now explains approval requests in your language, and when you refuse a flagged action the agent is told why instead of retrying it.
+- Canvas pages use Suzent's scrollbar and fit on screen in chat, exiting fullscreen returns a canvas to its chat message, and the sidebar overview no longer shows a scrollbar.
+- Messages from other chats, scheduled tasks and goal mode now show as one quiet line in the chat; repeats with no reply merge, and a reply notes what it answers.
+- Tidy the chat composer: attachments, working folders, slash commands and mentions now live under one + menu, with mounted folders shown as a small chip beside it.
+- Optional decision models (OpenAI or Gemini Decisions) in Model Roles route new kinds of Mailbox events in a fraction of a second, falling back to the Decision model when unsure.
+- Each event in a grouped Mailbox thread can be expanded to show its original content, failure reason, Replay and Delete.
+- Email plugin: sign in with your browser (OAuth2) to connect Outlook, Hotmail, Microsoft 365, and Google Workspace school or work mailboxes.
+- Mailbox, Artifacts and project lists in the sidebar open faster, and the app no longer slows down the longer scheduled tasks run.
+- A one-shot `suzent run` now works in the folder it was given instead of the project scratch folder, and `--tools` gives the agent exactly the tools listed.
+- A chat kept under a collapsed project can expand its subagents again.
+- File reads in chat show plain text with the file's real line numbers, edits show only the changed lines, long chats with many edits open faster, and clicking a file name in a read or edit step opens it in the file preview.
+- Email can feed the Mailbox: switch on Watch inbox for a mailbox and new mail arrives there, sorted by the same rules as webhooks. Plugins can now run watchers and send events to the Mailbox.
+- Newly added MCP servers and newly connected services now start off; switch them on in Settings or a chat's Tools tab.
+- Mobile Inbox now uses the desktop's filters, shows each event's source and delivery status, and opens threads on their own page.
+- Fix mobile inline code wrapping and show previews for uploaded images.
+- Read your inbox on iOS and Android with shared unread status across your authorized devices.
+- Opening a project or Regent no longer flashes an empty "New chat" screen before the list or history loads.
+- Restarting Suzent no longer forces long chats to rebuild the model's prompt cache on the next message.
+- Writing a new file in chat now shows it as light plain text with line numbers, and read and write previews no longer show a second scrollbar beside the line numbers.
+- Projects in the sidebar open instantly the first time, because their chat lists load in the background.
+- Collapsing a project and opening it again no longer flashes the empty "New chat" button.
+- In Regent, the dispatch and re-route steps now show the target chat's title, and clicking it opens that chat.
+- Regent can look through the Mailbox, read any event and send one on to a project or to you.
+- Show Regent’s cross-conversation work queue instead of a per-chat plan in the mobile status panel.
+- Drop the black frame around Regent's open sidebar card, show each waiting chat's reason or summary in Regent's sidebar queue instead of a generic 'Your turn' label, and refine the custom scrollbar gutter.
+- Files the agent sends you now appear together under its reply, as artifact cards on desktop and a clearer file row on the phone.
+- Unify inbox threads across desktop and mobile with backend-owned grouping for all event sources.
+- Renaming a chat, task or project now edits the name in place in the sidebar (Enter or click away saves, Esc cancels), and archived chats are tucked behind the sidebar's more menu.
+- New Mailbox: one place for webhooks, scheduled runs, peer devices and agent messages, with a router that learns where each kind of event should go.
+- Drop shadows now use three consistent sizes for controls, menus and dialogs, with one shadow colour per theme.
+
 ## [v0.26.0] - 2026-11-13
 
 ### Release notes
