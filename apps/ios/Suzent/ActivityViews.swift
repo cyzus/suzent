@@ -119,6 +119,8 @@ struct ActivityTurn: View {
                                     bubbleMenu: bubbleMenu)
                 }
             }
+            let sent = sentMediaItems(parts)
+            if !sent.isEmpty { SentFilesSection(items: sent) }
         }.frame(maxWidth: .infinity, alignment: .leading)
             .onChange(of: live) { old, new in if old && !new { expanded = false } }
     }

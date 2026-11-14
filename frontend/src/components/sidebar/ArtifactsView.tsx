@@ -11,6 +11,7 @@ import { useChatStore } from '../../hooks/useChatStore';
 import { getApiBase, getSandboxParams } from '../../lib/api';
 import type { ChatArtifact } from '../../lib/chatArtifacts';
 import { ImageViewer } from '../ImageViewer';
+import { ArtifactCover } from '../artifacts/ArtifactCard';
 
 export type OpenArtifact = (path: string, name: string) => void;
 
@@ -31,29 +32,16 @@ const Thumbnail: React.FC<{ artifact: ChatArtifact; src: string; onOpen: () => v
   artifact,
   src,
   onOpen,
-}) => {
-  const [failed, setFailed] = useState(false);
-  return (
-    <button
-      type="button"
-      onClick={onOpen}
-      title={artifact.displayPath}
-      className="group relative aspect-square overflow-hidden border border-neutral-200 bg-neutral-100 cursor-zoom-in focus-visible:outline focus-visible:outline-2 focus-visible:outline-neutral-500 dark:border-zinc-700 dark:bg-zinc-800"
-    >
-      {failed ? (
-        <PhotoIcon className="absolute inset-0 m-auto h-6 w-6 text-neutral-400" />
-      ) : (
-        <img
-          src={src}
-          alt={artifact.name}
-          loading="lazy"
-          onError={() => setFailed(true)}
-          className="h-full w-full object-cover transition-transform group-hover:scale-[1.03]"
-        />
-      )}
-    </button>
-  );
-};
+}) => (
+  <button
+    type="button"
+    onClick={onOpen}
+    title={artifact.displayPath}
+    className="group relative aspect-square overflow-hidden border border-neutral-200 bg-neutral-100 cursor-zoom-in focus-visible:outline focus-visible:outline-2 focus-visible:outline-neutral-500 dark:border-zinc-700 dark:bg-zinc-800"
+  >
+    <ArtifactCover kind="image" name={artifact.name} src={src} />
+  </button>
+);
 
 const ArtifactRow: React.FC<{
   artifact: ChatArtifact;

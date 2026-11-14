@@ -68,6 +68,17 @@ import Testing
     #expect(body == "--edge\r\nContent-Disposition: form-data; name=\"files\"; filename=\"a'b.txt\"\r\nContent-Type: text/plain\r\n\r\nabc\r\n--edge--\r\n")
 }
 
+@Test func sentFilesAreSeparatedFromInlineMedia() throws {
+    let a = "0123456789abcdef0123456789abcdef", b = "fedcba9876543210fedcba9876543210"
+    let parts = try ["""
+    {"type":"tool","toolName":"generate_image","media":[{"id":"\(a)","kind":"image","name":"a.png"}]}
+    """, """
+    {"type":"tool","toolName":"send_file","media":[{"id":"\(b)","kind":"file","name":"report.pdf"}]}
+    """].map { try JSONDecoder().decode(MessagePart.self, from: Data($0.utf8)) }
+    #expect(mediaItems(parts).map(\.id) == [a])
+    #expect(sentMediaItems(parts).map(\.id) == [b])
+}
+
 @Test func toolMediaDecodesLenientlyAndKeepsOnlyValidItems() throws {
     let id = "0123456789abcdef0123456789abcdef"
     let json = """

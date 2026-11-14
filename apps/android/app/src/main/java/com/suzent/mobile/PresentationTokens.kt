@@ -57,6 +57,7 @@ object PresentationTokens {
     const val sidebarWidth = 320
     const val pressedAlpha = 0.08
     const val disabledAlpha = 0.45
+    val fileCovers: Map<String, Pair<Long, Long>> = mapOf("default" to (0xFFF5F5F5 to 0xFF18181B), "pdf" to (0xFFFFD7D7 to 0xFF4A1D1D), "csv" to (0xFFA8E6A3 to 0xFF1F3B1D), "xlsx" to (0xFFA8E6A3 to 0xFF1F3B1D), "json" to (0xFFD6E4FF to 0xFF1B2A4A), "html" to (0xFFD6E4FF to 0xFF1B2A4A), "docx" to (0xFFD6E4FF to 0xFF1B2A4A), "pptx" to (0xFFFFE0C2 to 0xFF4A2E1B))
     val ignoredToolNames = listOf("final_answer", "final answer")
     val compactionSummaryMarkers = listOf("[CONTEXT SUMMARY — READ BEFORE RESPONDING]", "--- ARCHIVED CONTEXT SUMMARY ---")
 }

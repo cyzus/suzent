@@ -1,27 +1,23 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ChatBubbleLeftRightIcon,
-  CheckIcon,
-  ClipboardDocumentIcon,
-  FolderOpenIcon,
   ListBulletIcon,
   MagnifyingGlassIcon,
-  MusicalNoteIcon,
-  PlayIcon,
   RectangleStackIcon,
   Squares2X2Icon,
 } from '@heroicons/react/24/outline';
 import { useI18n } from '../../i18n';
 import { getApiBase, getSandboxParams } from '../../lib/api';
 import { formatRelativeTime } from '../../lib/chatUtils';
+import type { ChatArtifactKind } from '../../lib/chatArtifacts';
 import { isImeComposing } from '../../lib/ime';
-import { BrutalIconButton } from '../BrutalButton';
+import { ArtifactActions, ArtifactCard, ArtifactCover, revealArtifact } from './ArtifactCard';
 import { BrutalSegmentedTabs } from '../BrutalSegmentedTabs';
 import { RefreshButton } from '../RefreshButton';
 import { FileViewer } from '../FileViewer';
 import { ImageViewer } from '../ImageViewer';
 
-type ArtifactKind = 'image' | 'video' | 'audio' | 'file';
+type ArtifactKind = ChatArtifactKind;
 
 interface IndexedArtifact {
   path: string;
@@ -60,26 +56,10 @@ function readViewMode(): ViewMode {
   }
 }
 
-/** Cover colors for files without a picture, so a grid of documents still reads at a glance. */
-const FILE_COVERS: Record<string, string> = {
-  pdf: 'bg-[#FFD7D7] dark:bg-[#4A1D1D]',
-  csv: 'bg-brutal-green dark:bg-[#1F3B1D]',
-  xlsx: 'bg-brutal-green dark:bg-[#1F3B1D]',
-  json: 'bg-[#D6E4FF] dark:bg-[#1B2A4A]',
-  html: 'bg-[#D6E4FF] dark:bg-[#1B2A4A]',
-  docx: 'bg-[#D6E4FF] dark:bg-[#1B2A4A]',
-  pptx: 'bg-[#FFE0C2] dark:bg-[#4A2E1B]',
-};
-
 function matchesKind(filter: KindFilter, kind: ArtifactKind): boolean {
   if (filter === 'all') return true;
   if (filter === 'media') return kind === 'video' || kind === 'audio';
   return filter === kind;
-}
-
-function extension(name: string): string {
-  const dot = name.lastIndexOf('.');
-  return dot > 0 ? name.slice(dot + 1).toLowerCase() : '';
 }
 
 function serveUrl(item: IndexedArtifact): string {
@@ -91,77 +71,6 @@ function formatSize(bytes: number): string {
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
-
-const AUDIO_BARS = [40, 75, 55, 95, 65, 30, 80, 50, 70, 35, 60, 45];
-const TEXT_LINES = [100, 85, 92, 60, 78];
-
-const Cover: React.FC<{ item: IndexedArtifact }> = ({ item }) => {
-  const [failed, setFailed] = useState(!item.serve_chat_id);
-  const ext = extension(item.name);
-
-  if (item.kind === 'image' && !failed) {
-    return (
-      <img
-        src={serveUrl(item)}
-        alt={item.name}
-        loading="lazy"
-        onError={() => setFailed(true)}
-        className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.04]"
-      />
-    );
-  }
-  if (item.kind === 'video' && !failed) {
-    return (
-      <>
-        <video
-          src={`${serveUrl(item)}#t=0.1`}
-          muted
-          playsInline
-          preload="metadata"
-          onError={() => setFailed(true)}
-          className="h-full w-full bg-black object-cover"
-        />
-        <span className="absolute inset-0 m-auto flex h-11 w-11 items-center justify-center border-2 border-brutal-black bg-white text-brutal-black shadow-brutal-sm transition-transform group-hover:scale-110">
-          <PlayIcon className="ml-0.5 h-5 w-5 stroke-[2.5]" />
-        </span>
-      </>
-    );
-  }
-  if (item.kind === 'audio') {
-    return (
-      <div className="flex h-full w-full flex-col items-center justify-center gap-3 bg-brutal-yellow dark:bg-[#3A3410]">
-        <MusicalNoteIcon className="h-8 w-8 stroke-2 text-brutal-black dark:text-brutal-yellow" />
-        <div className="flex h-6 items-end gap-[3px]" aria-hidden="true">
-          {AUDIO_BARS.map((height, index) => (
-            <span
-              key={index}
-              style={{ height: `${height}%` }}
-              className="w-1 bg-brutal-black/70 dark:bg-brutal-yellow/70"
-            />
-          ))}
-        </div>
-      </div>
-    );
-  }
-  return (
-    <div
-      className={`relative flex h-full w-full items-center justify-center ${FILE_COVERS[ext] ?? 'bg-neutral-100 dark:bg-zinc-900'}`}
-    >
-      <div className="absolute inset-x-6 top-5 space-y-2 opacity-40" aria-hidden="true">
-        {TEXT_LINES.map((width, index) => (
-          <div
-            key={index}
-            style={{ width: `${width}%` }}
-            className="h-1 bg-neutral-500 dark:bg-zinc-500"
-          />
-        ))}
-      </div>
-      <span className="relative border-2 border-brutal-black bg-white px-2.5 py-1 font-brutal text-lg uppercase tracking-tight text-brutal-black shadow-brutal-sm">
-        {ext ? `.${ext}` : 'FILE'}
-      </span>
-    </div>
-  );
-};
 
 interface ArtifactsPageProps {
   onOpenChat: (chatId: string) => void;
@@ -180,7 +89,6 @@ export const ArtifactsPage: React.FC<ArtifactsPageProps> = ({ onOpenChat }) => {
   const [query, setQuery] = useState('');
   const [viewingImage, setViewingImage] = useState<string | null>(null);
   const [previewing, setPreviewing] = useState<IndexedArtifact | null>(null);
-  const [copiedPath, setCopiedPath] = useState<string | null>(null);
   const [view, setView] = useState<ViewMode>(readViewMode);
   const [showAllProjects, setShowAllProjects] = useState(false);
 
@@ -252,30 +160,9 @@ export const ArtifactsPage: React.FC<ArtifactsPageProps> = ({ onOpenChat }) => {
   );
 
   const open = (item: IndexedArtifact): void => {
-    if (!item.serve_chat_id) reveal(item);
+    if (!item.serve_chat_id) revealArtifact(item.path);
     else if (item.kind === 'image') setViewingImage(serveUrl(item));
     else setPreviewing(item);
-  };
-
-  const reveal = (item: IndexedArtifact): void => {
-    void fetch(`${getApiBase()}/system/open_explorer`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ path: item.path }),
-    });
-  };
-
-  const copyLocation = async (item: IndexedArtifact): Promise<void> => {
-    try {
-      await navigator.clipboard.writeText(item.path);
-      setCopiedPath(item.path);
-      window.setTimeout(
-        () => setCopiedPath((current) => (current === item.path ? null : current)),
-        1500
-      );
-    } catch {
-      setCopiedPath(null);
-    }
   };
 
   const kindCount = (filter: KindFilter): number =>
@@ -288,23 +175,7 @@ export const ArtifactsPage: React.FC<ArtifactsPageProps> = ({ onOpenChat }) => {
     file: t('artifacts.files'),
   };
 
-  const actions = (item: IndexedArtifact): React.ReactNode => (
-    <>
-      <BrutalIconButton onClick={() => reveal(item)} label={t('fileViewer.revealInExplorer')}>
-        <FolderOpenIcon className="h-3.5 w-3.5 stroke-2" />
-      </BrutalIconButton>
-      <BrutalIconButton
-        onClick={() => void copyLocation(item)}
-        label={copiedPath === item.path ? t('sandbox.locationCopied') : t('sandbox.copyLocation')}
-      >
-        {copiedPath === item.path ? (
-          <CheckIcon className="h-3.5 w-3.5 stroke-2" />
-        ) : (
-          <ClipboardDocumentIcon className="h-3.5 w-3.5 stroke-2" />
-        )}
-      </BrutalIconButton>
-    </>
-  );
+  const actions = (item: IndexedArtifact): React.ReactNode => <ArtifactActions path={item.path} />;
 
   const chatLink = (item: IndexedArtifact): React.ReactNode =>
     item.chat_id ? (
@@ -338,7 +209,11 @@ export const ArtifactsPage: React.FC<ArtifactsPageProps> = ({ onOpenChat }) => {
         aria-label={item.name}
         className="relative h-10 w-14 shrink-0 overflow-hidden border-2 border-brutal-black bg-neutral-100 dark:bg-zinc-900 [&_div[aria-hidden]]:hidden [&_span]:scale-50"
       >
-        <Cover item={item} />
+        <ArtifactCover
+          kind={item.kind}
+          name={item.name}
+          src={item.serve_chat_id ? serveUrl(item) : null}
+        />
       </button>
       <div className="flex min-w-0 flex-1 flex-col gap-0.5 sm:flex-row sm:items-center sm:gap-4">
         <button
@@ -361,37 +236,18 @@ export const ArtifactsPage: React.FC<ArtifactsPageProps> = ({ onOpenChat }) => {
   );
 
   const card = (item: IndexedArtifact): React.ReactNode => (
-    <article
+    <ArtifactCard
       key={item.path}
-      className="group relative flex min-w-0 flex-col border-2 border-brutal-black bg-white shadow-brutal-sm transition-[transform,box-shadow] duration-150 hover:-translate-x-0.5 hover:-translate-y-0.5 hover:shadow-brutal dark:bg-zinc-800"
+      kind={item.kind}
+      name={item.name}
+      src={item.serve_chat_id ? serveUrl(item) : null}
+      title={item.path}
+      onOpen={() => open(item)}
+      actions={actions(item)}
     >
-      <button
-        type="button"
-        onClick={() => open(item)}
-        title={item.path}
-        aria-label={item.name}
-        className={`relative block aspect-[4/3] w-full overflow-hidden border-b-2 border-brutal-black bg-neutral-100 dark:bg-zinc-900 ${item.kind === 'image' ? 'cursor-zoom-in' : ''}`}
-      >
-        <Cover item={item} />
-      </button>
-      <div className="absolute right-2 top-2 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
-        {actions(item)}
-      </div>
-      <div className="flex min-w-0 flex-1 flex-col gap-1 px-3 py-2.5">
-        <button
-          type="button"
-          onClick={() => open(item)}
-          title={item.name}
-          className="truncate text-left font-mono text-xs font-bold text-brutal-black hover:underline dark:text-white"
-        >
-          {item.name}
-        </button>
-        <div className="flex min-w-0 flex-col gap-0.5">
-          {chatLink(item)}
-          <span className="shrink-0 font-mono text-[10px] text-neutral-400">{meta(item)}</span>
-        </div>
-      </div>
-    </article>
+      {chatLink(item)}
+      <span className="shrink-0 font-mono text-[10px] text-neutral-400">{meta(item)}</span>
+    </ArtifactCard>
   );
 
   const projectChip = (id: string | null, label: string, count: number): React.ReactNode => {
