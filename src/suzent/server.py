@@ -1212,7 +1212,6 @@ def _allowed_origin_regex() -> str:
     return "|".join(patterns)
 
 
-@asynccontextmanager
 async def _warm_artifact_index(chat_log_import: asyncio.Task) -> None:
     """Read every transcript once at start, so the first Artifacts visit is quick."""
     from suzent.core.artifact_index import build_artifact_index
@@ -1225,6 +1224,7 @@ async def _warm_artifact_index(chat_log_import: asyncio.Task) -> None:
         logger.warning("Artifact index warm-up failed: {}", exc)
 
 
+@asynccontextmanager
 async def lifespan(app):
     await startup()
     from suzent.config import USER_CONFIG_DIR
