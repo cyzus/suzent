@@ -484,3 +484,61 @@ def test_pier_job_env_overrides_the_provider_endpoint(kit):
     )
 
     assert agent.network_allowlist().domains == ["gateway.example"]
+
+
+@pytest.mark.parametrize("ref_kind", ["branch", "full_sha", "short_sha", "default"])
+def test_checkout_command_pins_a_branch_a_full_commit_or_a_short_commit(
+    kit, tmp_path, ref_kind
+):
+    import subprocess
+
+    def git(*args: str, cwd=None) -> str:
+        return subprocess.run(
+            ["git", *args],
+            cwd=cwd,
+            check=True,
+            capture_output=True,
+            text=True,
+            env={**os.environ, "GIT_CONFIG_GLOBAL": "/dev/null"},
+        ).stdout.strip()
+
+    origin = tmp_path / "origin"
+    origin.mkdir()
+    git("init", "-q", "-b", "main", cwd=origin)
+    for name in ("one", "two"):
+        (origin / name).write_text(name)
+        git("add", name, cwd=origin)
+        git(
+            "-c",
+            "user.name=t",
+            "-c",
+            "user.email=t@example.com",
+            "commit",
+            "-q",
+            "-m",
+            name,
+            cwd=origin,
+        )
+    git("branch", "release", cwd=origin)
+    first = git("rev-parse", "HEAD~1", cwd=origin)
+    refs = {
+        "branch": ("release", git("rev-parse", "release", cwd=origin)),
+        "full_sha": (first, first),
+        "short_sha": (first[:9], first),
+        "default": (None, git("rev-parse", "main", cwd=origin)),
+    }
+    ref, expected = refs[ref_kind]
+    checkout = tmp_path / "checkout"
+    checkout.mkdir()
+    git("init", "-q", cwd=checkout)
+
+    command = kit.common.checkout_command(ref, repo_url=f"file://{origin}")
+    subprocess.run(
+        ["bash", "-c", f"set -euo pipefail; {command}"],
+        cwd=checkout,
+        check=True,
+        capture_output=True,
+        env={**os.environ, "GIT_CONFIG_GLOBAL": "/dev/null"},
+    )
+
+    assert git("rev-parse", "HEAD", cwd=checkout) == expected
