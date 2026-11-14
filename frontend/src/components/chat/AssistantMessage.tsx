@@ -21,6 +21,8 @@ import { parseSubAgentResult } from './subAgentResult';
 import { AcpPermissionPrompt } from './AcpPermissionPrompt';
 import { AcpAgentIcon } from '../AcpAgentIcon';
 import { RegentMark } from '../regent/RegentMark';
+import { DispatchReference } from './StatusMessages';
+import { linkedChatsFromTools } from './chatToolLink';
 import { AcpSessionResetNotice } from './AcpSessionResetNotice';
 import { IncomingMessage } from './IncomingMessage';
 import { splitLeadingTriggers } from '../../lib/streamingDrafts';
@@ -839,6 +841,21 @@ const AssistantMessageComponent: React.FC<AssistantMessageProps> = ({
     [regent, rawParts, isStreamingThis]
   );
   const hasParts = effectiveParts && effectiveParts.length > 0;
+  const dispatchedChats = useMemo(
+    () =>
+      regent && rawParts && !isStreamingThis
+        ? linkedChatsFromTools(
+            rawParts
+              .filter((part) => part.type === 'tool')
+              .map((part) => ({
+                toolName: part.toolName,
+                output: part.output,
+                failed: part.state === 'error' || toolCallFailed(part.outcome, part.output),
+              }))
+          )
+        : [],
+    [regent, rawParts, isStreamingThis]
+  );
   // The ACP runtime stamps `acp/<agent-id>` on the response it produced; the
   // chat-level fallback carries the same shape for turns saved before that.
   const signature = message.model || fallbackModel;
@@ -1197,6 +1214,7 @@ const AssistantMessageComponent: React.FC<AssistantMessageProps> = ({
                   onForceWebContext={onForceWebContext}
                 />
               ) : null}
+              {dispatchedChats.length > 0 && <DispatchReference chats={dispatchedChats} />}
               {fileChangeSummary}
               {messageFooter}
             </div>

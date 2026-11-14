@@ -516,6 +516,7 @@ class AgentSendTool(Tool):
             metadata={
                 "message_id": record["message_id"],
                 "agent_id": target.id,
+                "agent_title": target.title,
                 "status": record["status"],
             },
         )

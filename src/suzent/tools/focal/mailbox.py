@@ -258,9 +258,19 @@ def _reroute(item_id: Optional[int], destination: Optional[str]) -> ToolResult:
         return ToolResult.success_result(
             f"Event #{item.id} is now a notification for the user."
         )
+    session = (
+        get_database().get_chat(routed.target_chat_id)
+        if routed.target_chat_id
+        else None
+    )
     return ToolResult.success_result(
         f"Event #{item.id} went to {routed.target_label or target}"
-        + (f" (session {routed.target_chat_id})." if routed.target_chat_id else ".")
+        + (f" (session {routed.target_chat_id})." if routed.target_chat_id else "."),
+        metadata=(
+            {"agent_id": session.id, "agent_title": session.title}
+            if session is not None
+            else {}
+        ),
     )
 
 
