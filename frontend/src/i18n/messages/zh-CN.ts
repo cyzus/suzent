@@ -2320,6 +2320,10 @@ export const zhCN = {
       peekLoading: '加载中…',
       peekError: '无法加载这个对话',
       peekRunning: '进行中',
+      peekReply: '回复这个对话…',
+      peekSteer: '引导这个对话…',
+      peekSend: '发送',
+      peekSendFailed: '没发出去，再试一次。',
     },
     trigger: {
       goal: '目标模式',

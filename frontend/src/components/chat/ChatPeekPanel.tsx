@@ -1,7 +1,13 @@
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { ArrowsPointingOutIcon, ChevronRightIcon, XMarkIcon } from '@heroicons/react/24/outline';
+import {
+  ArrowUpIcon,
+  ArrowsPointingOutIcon,
+  ChevronRightIcon,
+  XMarkIcon,
+} from '@heroicons/react/24/outline';
 import { getApiBase } from '../../lib/api';
 import { mapServerMessages } from '../../lib/serverMessages';
+import { isImeComposing } from '../../lib/ime';
 import { useEventBus } from '../../hooks/useEventBus';
 import { useI18n } from '../../i18n';
 import type { Message } from '../../types/api';
@@ -35,7 +41,8 @@ interface ChatPeekPanelProps {
 
 /**
  * A chat opened beside the one you are in, so following a hand-off does not
- * mean leaving it. Read-only: the expand button switches to the chat itself.
+ * mean leaving it. Its composer writes to that chat (redirecting it while it
+ * runs); the expand button switches to the chat itself.
  */
 export const ChatPeekPanel: React.FC<ChatPeekPanelProps> = ({
   chatId,
@@ -52,6 +59,8 @@ export const ChatPeekPanel: React.FC<ChatPeekPanelProps> = ({
   const [messages, setMessages] = useState<Message[] | null>(null);
   const [title, setTitle] = useState<string | undefined>(knownTitle);
   const [failed, setFailed] = useState(false);
+  const [config, setConfig] = useState<Record<string, unknown>>({});
+  const [pending, setPending] = useState<string | null>(null);
   const [width, setWidth] = useState(storedWidth);
   const panelRef = useRef<HTMLElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -67,8 +76,11 @@ export const ChatPeekPanel: React.FC<ChatPeekPanelProps> = ({
       const chat = await res.json();
       // A slow read for the previous chat must not land in this one.
       if (currentChat.current !== chatId) return;
-      setMessages(mapServerMessages(chat.messages ?? []));
+      const mapped = mapServerMessages(chat.messages ?? []);
+      setMessages(mapped);
+      setPending((text) => (text !== null && lastUserText(mapped) === text ? null : text));
       if (chat.title) setTitle(chat.title);
+      if (chat.config && typeof chat.config === 'object') setConfig(chat.config);
       setFailed(false);
     } catch {
       if (currentChat.current === chatId) setFailed(true);
@@ -78,6 +90,7 @@ export const ChatPeekPanel: React.FC<ChatPeekPanelProps> = ({
   useEffect(() => {
     setMessages(null);
     setFailed(false);
+    setPending(null);
     setTitle(knownTitle);
     stickToBottom.current = true;
     // The known title only seeds a newly opened chat; a list refresh must not reset it.
@@ -95,7 +108,31 @@ export const ChatPeekPanel: React.FC<ChatPeekPanelProps> = ({
   useLayoutEffect(() => {
     const el = scrollRef.current;
     if (el && stickToBottom.current) el.scrollTop = el.scrollHeight;
-  }, [messages]);
+  }, [messages, pending]);
+
+  // A running chat is redirected, as its own composer would; an idle one starts a turn.
+  const send = async (text: string): Promise<boolean> => {
+    const res = await fetch(`${getApiBase()}/chat/${running ? 'steer-send' : 'send'}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: chatId,
+        message: text,
+        config,
+        client_run_token: crypto.randomUUID(),
+      }),
+    }).catch(() => null);
+    if (!res?.ok) return false;
+    stickToBottom.current = true;
+    setPending(text);
+    void load();
+    return true;
+  };
+
+  const shown =
+    messages && pending !== null
+      ? [...messages, { role: 'user' as const, content: pending }]
+      : messages;
 
   const changeWidth = (next: number): void => {
     setWidth(next);
@@ -114,7 +151,7 @@ export const ChatPeekPanel: React.FC<ChatPeekPanelProps> = ({
       ref={panelRef}
       data-testid="chat-peek-panel"
       aria-label={title ?? chatId}
-      className="chat-peek-panel relative flex h-full min-h-0 shrink-0 flex-col border-l border-neutral-200 bg-neutral-50 dark:border-zinc-800 dark:bg-zinc-900"
+      className="chat-peek-panel relative flex h-full min-h-0 shrink-0 flex-col border-l-3 border-brutal-black bg-neutral-50 dark:bg-zinc-900"
       style={{ width: shownWidth }}
     >
       <PanelResizeHandle
@@ -185,9 +222,90 @@ export const ChatPeekPanel: React.FC<ChatPeekPanelProps> = ({
             {failed ? t('chatMessage.dispatch.peekError') : t('chatMessage.dispatch.peekLoading')}
           </p>
         ) : (
-          renderMessages(chatId, messages)
+          renderMessages(chatId, shown ?? [])
         )}
       </div>
+      <PeekComposer
+        key={chatId}
+        placeholder={t(
+          running ? 'chatMessage.dispatch.peekSteer' : 'chatMessage.dispatch.peekReply'
+        )}
+        onSend={send}
+      />
     </aside>
+  );
+};
+
+function lastUserText(messages: Message[]): string | null {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (messages[i].role === 'user') return (messages[i].content ?? '').trim();
+  }
+  return null;
+}
+
+const PeekComposer: React.FC<{
+  placeholder: string;
+  onSend: (text: string) => Promise<boolean>;
+}> = ({ placeholder, onSend }) => {
+  const { t } = useI18n();
+  const [text, setText] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const ref = useRef<HTMLTextAreaElement>(null);
+
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
+  }, [text]);
+
+  const submit = async (): Promise<void> => {
+    const message = text.trim();
+    if (!message || busy) return;
+    setBusy(true);
+    setFailed(false);
+    const sent = await onSend(message);
+    setBusy(false);
+    if (sent) setText('');
+    else setFailed(true);
+  };
+
+  return (
+    <div className="shrink-0 px-3 pb-3 pt-1">
+      {failed && (
+        <p role="alert" className="px-1 pb-1 text-xs text-red-600 dark:text-red-400">
+          {t('chatMessage.dispatch.peekSendFailed')}
+        </p>
+      )}
+      <div className="flex items-end gap-2 border-2 border-brutal-black bg-white px-3 py-2 dark:bg-zinc-800">
+        <textarea
+          ref={ref}
+          rows={1}
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => {
+            if (isImeComposing(e)) return;
+            if (e.key === 'Enter' && !e.shiftKey) {
+              e.preventDefault();
+              void submit();
+            }
+          }}
+          placeholder={placeholder}
+          aria-label={placeholder}
+          className="max-h-40 min-h-[24px] flex-1 resize-none bg-transparent text-sm leading-6 text-brutal-black outline-none placeholder:text-neutral-400 dark:text-white dark:placeholder:text-neutral-500"
+        />
+        <button
+          type="button"
+          onClick={() => void submit()}
+          disabled={!text.trim() || busy}
+          title={t('chatMessage.dispatch.peekSend')}
+          aria-label={t('chatMessage.dispatch.peekSend')}
+          className="inline-flex h-7 w-7 shrink-0 items-center justify-center border-2 border-brutal-black bg-brutal-black text-white disabled:border-neutral-300 disabled:bg-transparent disabled:text-neutral-300 dark:border-white dark:bg-white dark:text-brutal-black dark:disabled:border-zinc-600 dark:disabled:bg-transparent dark:disabled:text-zinc-600"
+        >
+          <ArrowUpIcon className="h-4 w-4 stroke-[2.5]" aria-hidden="true" />
+        </button>
+      </div>
+    </div>
   );
 };
