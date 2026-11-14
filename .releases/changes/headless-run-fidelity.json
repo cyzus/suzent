@@ -1,0 +1,1 @@
+{"products": {"desktop": "patch"}, "summary": "A one-shot `suzent run` now works in the folder it was given instead of the project scratch folder, and `--tools` gives the agent exactly the tools listed."}

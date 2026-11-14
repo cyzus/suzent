@@ -4,6 +4,7 @@ Standard library only: Harbor and Pier import their agents inside their own
 isolated environments, where Suzent's dependencies are not installed.
 """
 
+import functools
 import json
 import shlex
 from collections.abc import Mapping
@@ -22,7 +23,6 @@ PROXY_PORT = 8899
 _OPENAI_BASE_URL = "https://api.openai.com/v1"
 
 _PATH = 'export PATH="$HOME/.local/bin:$PATH"; '
-_FORWARDED_ENV_SUFFIXES = ("_API_KEY", "_BASE_URL")
 
 # Every tool definition is resent on each model call, so a terminal coding
 # task runs with file and shell tools only.
@@ -42,6 +42,35 @@ ROOT_INSTALL_COMMAND = (
 )
 
 
+_PROVIDERS_FILE = Path(__file__).resolve().parents[2] / "config" / "providers.json"
+
+
+@functools.cache
+def _credential_names() -> dict[str, tuple[str, ...]]:
+    """Variable names Suzent reads a provider's credentials from, by provider id
+    and alias (`zai` and `zhipuai` share one list). Empty outside a checkout."""
+    try:
+        catalog = json.loads(_PROVIDERS_FILE.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    providers = catalog.get("providers", catalog)
+    entries = providers if isinstance(providers, list) else []
+    names: dict[str, tuple[str, ...]] = {}
+    for entry in entries:
+        keys = tuple(entry.get("env_keys") or ())
+        for name in (entry.get("id"), *entry.get("aliases", ())):
+            if name and keys:
+                names[name] = keys
+    return names
+
+
+def provider_env_names(provider: str) -> tuple[str, ...]:
+    """The runner's variables a provider needs, and no others."""
+    default = provider.upper().replace("-", "_")
+    keys = _credential_names().get(provider) or (f"{default}_API_KEY",)
+    return tuple(dict.fromkeys((*keys, f"{default}_BASE_URL")))
+
+
 @dataclass(frozen=True)
 class ModelRoute:
     """How a benchmark's model name reaches a provider through Suzent."""
@@ -53,6 +82,10 @@ class ModelRoute:
     base_url: str | None = None
     base_url_env: str | None = None
     env: dict[str, str] = field(default_factory=dict)
+    # The runner's own variables this provider needs. Anything else in the
+    # runner's environment belongs to other services and stays out of the
+    # task container.
+    forwarded_env: tuple[str, ...] = ()
 
     @property
     def host(self) -> str | None:
@@ -85,6 +118,7 @@ def resolve_model(model_name: str | None, environ: Mapping[str, str]) -> ModelRo
                 base_url=environ.get("MOONSHOT_BASE_URL")
                 or "https://api.moonshot.cn/v1",
                 base_url_env="MOONSHOT_BASE_URL",
+                forwarded_env=("MOONSHOT_API_KEY",),
             )
         case "openai":
             base_url = environ.get("OPENAI_BASE_URL") or _OPENAI_BASE_URL
@@ -95,9 +129,12 @@ def resolve_model(model_name: str | None, environ: Mapping[str, str]) -> ModelRo
                 model=model_name,
                 base_url=base_url,
                 base_url_env=None if first_party else "OPENAI_BASE_URL",
+                forwarded_env=("OPENAI_API_KEY",),
             )
         case _:
-            return ModelRoute(model=model_name)
+            return ModelRoute(
+                model=model_name, forwarded_env=provider_env_names(provider)
+            )
 
 
 def install_command(ref: str | None) -> str:
@@ -116,11 +153,7 @@ def install_command(ref: str | None) -> str:
 
 def run_env(route: ModelRoute, environ: Mapping[str, str]) -> dict[str, str]:
     """Environment for the run: provider credentials, and the proxy when used."""
-    env = {
-        key: value
-        for key, value in environ.items()
-        if key.endswith(_FORWARDED_ENV_SUFFIXES)
-    }
+    env = {key: environ[key] for key in route.forwarded_env if key in environ}
     env.update(route.env)
     if route.base_url and route.base_url_env:
         path = urlsplit(route.base_url).path
