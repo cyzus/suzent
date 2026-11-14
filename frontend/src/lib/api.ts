@@ -1790,6 +1790,8 @@ export interface MailboxItem {
   summary: string;
   headers: Record<string, string>;
   payload: string;
+  /** The list carries only the start of a long payload; fetchMailboxItem has it whole. */
+  payload_truncated?: boolean;
   route_status: 'routed' | 'unrouted' | 'error' | 'queued' | 'notified';
   target_chat_id: string | null;
   target_label: string | null;
@@ -1867,6 +1869,12 @@ export async function fetchMailboxItems(params?: {
   const res = await fetch(`${getApiBase()}/mailbox/items${qs ? `?${qs}` : ''}`);
   if (!res.ok) throw new Error('Failed to fetch mailbox items');
   return res.json();
+}
+
+export async function fetchMailboxItem(itemId: number): Promise<MailboxItem> {
+  const res = await fetch(`${getApiBase()}/mailbox/items/${itemId}`);
+  if (!res.ok) throw new Error('Failed to fetch mailbox item');
+  return ((await res.json()) as { item: MailboxItem }).item;
 }
 
 export async function routeMailboxItem(

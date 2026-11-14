@@ -213,6 +213,7 @@ from suzent.routes.plugin_routes import (
 from suzent.routes.skill_routes import get_skills, reload_skills, toggle_skill
 from suzent.routes.mailbox_routes import (
     delete_mailbox_item_route,
+    get_mailbox_item_route,
     delete_mailbox_rule_route,
     get_mailbox_endpoint_route,
     list_mailbox_items_route,
@@ -964,6 +965,9 @@ async def startup():
         asyncio.to_thread(get_database().import_unlogged_chats),
         name="chat_log_import",
     )
+    app.state.artifact_index_warmup = asyncio.create_task(
+        _warm_artifact_index(app.state.chat_log_import), name="artifact_index_warmup"
+    )
 
     global social_brain, channel_manager
     if social_brain is not None:
@@ -1209,6 +1213,18 @@ def _allowed_origin_regex() -> str:
 
 
 @asynccontextmanager
+async def _warm_artifact_index(chat_log_import: asyncio.Task) -> None:
+    """Read every transcript once at start, so the first Artifacts visit is quick."""
+    from suzent.core.artifact_index import build_artifact_index
+
+    try:
+        # Chats get their log index here, and only indexed chats are cached.
+        await chat_log_import
+        await asyncio.to_thread(build_artifact_index)
+    except Exception as exc:
+        logger.warning("Artifact index warm-up failed: {}", exc)
+
+
 async def lifespan(app):
     await startup()
     from suzent.config import USER_CONFIG_DIR
@@ -1616,6 +1632,11 @@ app = Starlette(
             "/mailbox/items/{item_id:int}/route",
             route_mailbox_item_route,
             methods=["POST"],
+        ),
+        Route(
+            "/mailbox/items/{item_id:int}",
+            get_mailbox_item_route,
+            methods=["GET"],
         ),
         Route(
             "/mailbox/items/{item_id:int}",
