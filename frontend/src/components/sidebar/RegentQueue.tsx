@@ -65,7 +65,15 @@ export function RegentQueueView({ rows, onOpenChat }: RegentQueueViewProps): Rea
   };
 
   const renderRow = (row: ChatStateRow): React.ReactNode => {
-    const reason = row.state === 'waiting' ? (row.waitingReason ?? row.summary) : row.summary;
+    const reason =
+      row.state === 'waiting'
+        ? (row.waitingReason ??
+          (row.waitingKind && row.waitingKind !== 'reply'
+            ? t(`chatBoard.reason.${row.waitingKind}`)
+            : null) ??
+          row.summary ??
+          (row.waitingKind ? t(`chatBoard.reason.${row.waitingKind}`) : null))
+        : row.summary;
     const dot =
       row.state === 'running'
         ? 'bg-brutal-blue animate-pulse'
@@ -89,13 +97,8 @@ export function RegentQueueView({ rows, onOpenChat }: RegentQueueViewProps): Rea
             <span className="block truncate text-xs font-medium text-brutal-black dark:text-white">
               {row.title}
             </span>
-            <span className="mt-0.5 block truncate text-[10px] text-neutral-500 dark:text-neutral-400">
-              {[
-                row.projectName,
-                row.waitingKind ? t(`chatBoard.reason.${row.waitingKind}`) : reason,
-              ]
-                .filter(Boolean)
-                .join(' · ')}
+            <span className="mt-0.5 line-clamp-2 text-[10px] leading-snug text-neutral-500 dark:text-neutral-400">
+              {[row.projectName, reason].filter(Boolean).join(' · ')}
             </span>
           </span>
         </button>
