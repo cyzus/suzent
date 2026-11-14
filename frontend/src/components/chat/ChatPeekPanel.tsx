@@ -7,6 +7,7 @@ import { useI18n } from '../../i18n';
 import type { ChatConfig, ConfigOptions, FileAttachment, Message } from '../../types/api';
 import type { VoiceSession } from '../../hooks/useVoiceSession';
 import { PeekChatComposer } from './PeekChatComposer';
+import type { QueuedMessage } from './QueuedMessages';
 import { PanelResizeHandle } from '../PanelResizeHandle';
 
 const WIDTH_KEY = 'suzent.chatPeekWidth';
@@ -36,6 +37,9 @@ interface ChatPeekPanelProps {
   backendConfig: ConfigOptions | null;
   voice: VoiceSession;
   onImageClick?: (src: string) => void;
+  /** This chat's queue, shared with its own composer so it carries over on expand. */
+  queue: QueuedMessage[];
+  onQueueChange: (update: (queue: QueuedMessage[]) => QueuedMessage[]) => void;
 }
 
 /**
@@ -54,6 +58,8 @@ export const ChatPeekPanel: React.FC<ChatPeekPanelProps> = ({
   backendConfig,
   voice,
   onImageClick,
+  queue,
+  onQueueChange,
 }) => {
   const { t } = useI18n();
   const { activeStreams, snapshotReady } = useEventBus();
@@ -123,6 +129,7 @@ export const ChatPeekPanel: React.FC<ChatPeekPanelProps> = ({
     sendConfig: ChatConfig,
     files?: FileAttachment[]
   ): Promise<boolean> => {
+    // A send while the chat runs redirects it, as Enter does in its own composer.
     const res = await fetch(`${getApiBase()}/chat/${running ? 'steer-send' : 'send'}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -247,6 +254,8 @@ export const ChatPeekPanel: React.FC<ChatPeekPanelProps> = ({
           running={running}
           onSend={send}
           onImageClick={onImageClick}
+          queue={queue}
+          onQueueChange={onQueueChange}
         />
       )}
     </aside>
