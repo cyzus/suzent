@@ -517,6 +517,7 @@ export interface MailProvider {
   smtp_host: string;
   smtp_port: number;
   smtp_security: 'ssl' | 'starttls';
+  oauth_provider?: 'google' | 'microsoft' | null;
   oauth_only: boolean;
   password_help_url: string;
   domains: string[];
@@ -527,6 +528,8 @@ export interface MailAccount {
   email: string;
   display_name: string;
   provider: string;
+  auth_type?: 'password' | 'xoauth2';
+  oauth_provider?: 'google' | 'microsoft' | null;
   imap_host: string;
   smtp_host: string;
   allow_send: boolean;
@@ -535,10 +538,21 @@ export interface MailAccount {
   has_password: boolean;
 }
 
+export interface MailOAuthSignIn {
+  state: 'idle' | 'waiting' | 'signed_in' | 'failed';
+  email: string;
+  provider: string;
+  authorizeUrl?: string | null;
+  error?: string | null;
+  accountId?: string | null;
+}
+
 export interface MailAccountInput {
   email: string;
-  password: string;
+  password?: string;
   provider: string;
+  auth_type?: 'password' | 'xoauth2';
+  oauth_provider?: 'google' | 'microsoft';
   display_name?: string;
   imap_host?: string;
   imap_port?: number;
@@ -574,6 +588,26 @@ export async function fetchMailAccounts(): Promise<MailAccount[]> {
   const res = await fetch(`${getApiBase()}/plugins/email/api/accounts`);
   if (!res.ok) throw new Error('Failed to fetch mail accounts');
   return (await res.json()).accounts;
+}
+
+export async function fetchMailState(): Promise<{
+  accounts: MailAccount[];
+  oauthSignIn?: MailOAuthSignIn | null;
+}> {
+  const res = await fetch(`${getApiBase()}/plugins/email/api/accounts`);
+  if (!res.ok) throw new Error('Failed to fetch mail accounts');
+  return await res.json();
+}
+
+export async function startMailOAuthSignIn(
+  input: Omit<MailAccountInput, 'password'>
+): Promise<MailOAuthSignIn> {
+  return (
+    await postMail<{ oauthSignIn: MailOAuthSignIn }>('accounts/oauth/start', {
+      ...input,
+      auth_type: 'xoauth2',
+    })
+  ).oauthSignIn;
 }
 
 export async function addMailAccount(input: MailAccountInput): Promise<MailAccount> {
