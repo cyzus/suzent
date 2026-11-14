@@ -423,9 +423,7 @@ export function MailAccounts({
               className="text-xs text-neutral-500 underline dark:text-neutral-400"
               onClick={() => update({ usePasswordForOAuth: !form.usePasswordForOAuth })}
             >
-              {useOAuth
-                ? t('settings.email.useAppPassword')
-                : t('settings.email.useBrowserSignIn')}
+              {useOAuth ? t('settings.email.useAppPassword') : t('settings.email.useBrowserSignIn')}
             </button>
           ) : !useOAuth && provider?.password_help_url ? (
             <button
