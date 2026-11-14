@@ -885,7 +885,7 @@
       ],
       "max_input_tokens": 8192,
       "max_output_tokens": 16384,
-      "supports_prompt_caching": true
+      "supports_prompt_caching": false
     },
     "gemini/gemini-3.8-flash-lite-tts": {
       "mode": "tts",
@@ -894,7 +894,7 @@
       ],
       "max_input_tokens": 8192,
       "max_output_tokens": 16384,
-      "supports_prompt_caching": true
+      "supports_prompt_caching": false
     },
     "gemini/lyria-realtime-exp": {
       "mode": "chat",
@@ -973,6 +973,24 @@
       "supports_response_schema": false,
       "supports_reasoning": false,
       "supports_prompt_caching": false
+    },
+    "gemini/nano-banana-latest": {
+      "mode": "chat"
+    },
+    "gemini/gemini-4-hydrogen": {
+      "mode": "chat",
+      "supported_endpoints": [
+        "/v1/chat/completions",
+        "/v1/completions"
+      ],
+      "max_input_tokens": 1048576,
+      "max_output_tokens": 1048576,
+      "supports_video": true,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
     }
   }
 }
