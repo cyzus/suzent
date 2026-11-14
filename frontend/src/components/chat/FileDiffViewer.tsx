@@ -1,5 +1,7 @@
-import React, { Suspense, lazy, useMemo } from 'react';
-import type { BeforeMount } from '@monaco-editor/react';
+import React, { Suspense, lazy, useCallback, useMemo, useState } from 'react';
+import type { BeforeMount, DiffOnMount } from '@monaco-editor/react';
+import { useOpenFile } from './openFileContext';
+import { countChangedLines, fileToolPath, metadataLineCounts } from '../../lib/fileToolPreview';
 import { SCHEME_COLORS, type Scheme, useTheme } from '../../hooks/useTheme';
 
 // Monaco is bundled, not fetched from a CDN — see ./monacoEditors. Loading it
@@ -35,6 +37,19 @@ const EDITOR_OPTIONS = {
     ambiguousCharacters: false,
     invisibleCharacters: false,
     nonBasicASCII: false,
+  },
+} as const;
+
+// Only the changed lines and a little context: a one-line edit to a long file
+// used to fill the whole box with unchanged code around it.
+const DIFF_EDITOR_OPTIONS = {
+  ...EDITOR_OPTIONS,
+  renderOverviewRuler: false,
+  hideUnchangedRegions: {
+    enabled: true,
+    contextLineCount: 3,
+    minimumLineCount: 3,
+    revealLineCount: 20,
   },
 } as const;
 
@@ -141,9 +156,6 @@ const FILE_TOOL_PREVIEW_CONFIG: Record<string, FileToolPreviewConfig | undefined
   write_file: {
     modifiedArg: 'content',
   },
-  read_file: {
-    modifiedArg: '__read_file_output__',
-  },
 };
 
 const getLanguageFromPath = (filePath: string): string => {
@@ -204,48 +216,6 @@ const hasProp = (
   return Boolean(source && key && Object.prototype.hasOwnProperty.call(source, key));
 };
 
-function countChangedLines(
-  original: string,
-  modified: string
-): { addedLines: number; removedLines: number } {
-  const originalLines = original.split('\n');
-  const modifiedLines = modified.split('\n');
-  const lengths = Array.from({ length: originalLines.length + 1 }, () =>
-    Array<number>(modifiedLines.length + 1).fill(0)
-  );
-
-  for (let i = originalLines.length - 1; i >= 0; i -= 1) {
-    for (let j = modifiedLines.length - 1; j >= 0; j -= 1) {
-      lengths[i][j] =
-        originalLines[i] === modifiedLines[j]
-          ? lengths[i + 1][j + 1] + 1
-          : Math.max(lengths[i + 1][j], lengths[i][j + 1]);
-    }
-  }
-
-  let i = 0;
-  let j = 0;
-  let addedLines = 0;
-  let removedLines = 0;
-
-  while (i < originalLines.length && j < modifiedLines.length) {
-    if (originalLines[i] === modifiedLines[j]) {
-      i += 1;
-      j += 1;
-    } else if (lengths[i + 1][j] >= lengths[i][j + 1]) {
-      removedLines += 1;
-      i += 1;
-    } else {
-      addedLines += 1;
-      j += 1;
-    }
-  }
-
-  removedLines += originalLines.length - i;
-  addedLines += modifiedLines.length - j;
-  return { addedLines, removedLines };
-}
-
 export interface FileContentDiffViewerProps {
   filePath: string;
   original: string;
@@ -255,7 +225,11 @@ export interface FileContentDiffViewerProps {
   removedLines?: number;
   embedded?: boolean;
   showFullPath?: boolean;
+  /** Makes the file name a link to the file preview. */
+  onOpenFile?: (shiftKey: boolean) => void;
 }
+
+const DIFF_MAX_HEIGHT = 500;
 
 export const FileContentDiffViewer: React.FC<FileContentDiffViewerProps> = ({
   filePath,
@@ -266,22 +240,39 @@ export const FileContentDiffViewer: React.FC<FileContentDiffViewerProps> = ({
   removedLines,
   embedded = false,
   showFullPath = false,
+  onOpenFile,
 }) => {
   const { theme, scheme } = useTheme();
   const editorTheme = getMonacoThemeName(theme, scheme);
   const beforeMount = useMemo(() => makeBeforeMount(), []);
   const language = getLanguageFromPath(filePath);
   const lineCount = Math.max(original.split('\n').length, modified.split('\n').length);
-  const height = Math.min(Math.max(lineCount * 19 + 16, 110), embedded ? 360 : 500);
+  const maxHeight = embedded ? 360 : DIFF_MAX_HEIGHT;
+  const estimatedHeight = Math.min(Math.max(lineCount * 19 + 16, 110), maxHeight);
+  // With unchanged regions folded the diff is usually far shorter than the
+  // file, so size the box to what the editor actually lays out.
+  const [contentHeight, setContentHeight] = useState<number | null>(null);
+  const height =
+    isDiff && contentHeight !== null
+      ? Math.min(Math.max(contentHeight, 60), maxHeight)
+      : estimatedHeight;
+  const handleDiffMount = useCallback<DiffOnMount>((editor) => {
+    const modifiedEditor = editor.getModifiedEditor();
+    const update = (): void => setContentHeight(modifiedEditor.getContentHeight());
+    modifiedEditor.onDidContentSizeChange(update);
+    update();
+  }, []);
   const segments = filePath.split(/[/\\]/).filter(Boolean);
   const namePart = segments.pop() || filePath;
   const counts = useMemo(
     () =>
       addedLines === undefined || removedLines === undefined
-        ? countChangedLines(original, modified)
+        ? (countChangedLines(original, modified) ?? { addedLines: 0, removedLines: 0 })
         : { addedLines, removedLines },
     [addedLines, modified, original, removedLines]
   );
+  const nameLabel = showFullPath ? filePath : namePart;
+  const nameClassName = `${showFullPath || embedded ? '' : 'uppercase'} truncate`;
 
   return (
     <div
@@ -301,12 +292,20 @@ export const FileContentDiffViewer: React.FC<FileContentDiffViewerProps> = ({
         ].join(' ')}
       >
         <span className="flex min-w-0 items-center gap-3">
-          <span
-            className={`${showFullPath || embedded ? '' : 'uppercase'} truncate`}
-            title={filePath}
-          >
-            {showFullPath ? filePath : namePart}
-          </span>
+          {onOpenFile ? (
+            <button
+              type="button"
+              onClick={(event) => onOpenFile(event.shiftKey)}
+              className={`${nameClassName} min-w-0 cursor-pointer text-left decoration-1 underline-offset-2 hover:underline`}
+              title={filePath}
+            >
+              {nameLabel}
+            </button>
+          ) : (
+            <span className={nameClassName} title={filePath}>
+              {nameLabel}
+            </span>
+          )}
           {!embedded && isDiff && (counts.addedLines > 0 || counts.removedLines > 0) && (
             <span className="flex items-center gap-1.5 opacity-90 text-[11px] shrink-0 font-bold">
               {counts.addedLines > 0 && (
@@ -328,8 +327,9 @@ export const FileContentDiffViewer: React.FC<FileContentDiffViewerProps> = ({
               modified={modified}
               language={language}
               theme={editorTheme}
-              options={EDITOR_OPTIONS}
+              options={DIFF_EDITOR_OPTIONS}
               beforeMount={beforeMount}
+              onMount={handleDiffMount}
               loading={LOADING_FALLBACK}
               // Chat blocks mount and unmount quickly. Keeping models alive avoids
               // a Monaco teardown race that can abort the surrounding React render.
@@ -358,60 +358,43 @@ export const FileDiffViewer: React.FC<FileDiffViewerProps> = ({
   metadata,
   output,
 }) => {
+  const openFile = useOpenFile();
   const { filePath, isDiff, original, modified, canPreview, addedLines, removedLines } =
     useMemo(() => {
       const config = FILE_TOOL_PREVIEW_CONFIG[toolName];
-      const rawPath =
-        typeof metadata?.abs_path === 'string'
-          ? metadata.abs_path
-          : typeof parsedArgs?.file_path === 'string'
-            ? parsedArgs.file_path
-            : typeof parsedArgs?.path === 'string'
-              ? parsedArgs.path
-              : '';
-
-      const filePath = rawPath;
+      const filePath = fileToolPath(parsedArgs, metadata);
 
       let isDiff = false;
       let original = '';
       let modified = '';
       let canPreview = false;
-      let addedLines = 0;
-      let removedLines = 0;
+      let counts = metadataLineCounts(metadata);
 
       if (config) {
-        if (toolName === 'read_file' && output) {
-          // Strip the "[Lines X-Y of Z]\n" header and tab-prefixed line numbers
-          const bodyStart = output.indexOf('\n');
-          const body = bodyStart >= 0 ? output.slice(bodyStart + 1) : output;
-          modified = body.replace(/^\d+\t/gm, '');
-          canPreview = modified.length > 0;
-          isDiff = false;
-        } else {
-          const metadataOriginal = getStringProp(metadata, 'old_content');
-          const metadataModified = getStringProp(metadata, 'new_content');
-          const hasArgModified = hasProp(parsedArgs, config.modifiedArg);
-          const hasArgOriginal = hasProp(parsedArgs, config.originalArg);
+        const metadataOriginal = getStringProp(metadata, 'old_content');
+        const metadataModified = getStringProp(metadata, 'new_content');
+        const hasArgModified = hasProp(parsedArgs, config.modifiedArg);
+        const hasArgOriginal = hasProp(parsedArgs, config.originalArg);
 
-          original = metadataOriginal ?? getStringProp(parsedArgs, config.originalArg) ?? '';
-          modified = metadataModified ?? getStringProp(parsedArgs, config.modifiedArg) ?? '';
-          canPreview =
-            metadataModified !== undefined ||
-            (hasArgModified && (!config.requireOriginalArg || hasArgOriginal));
-          isDiff = Boolean(
-            config.alwaysDiff || metadataOriginal !== undefined || config.originalArg
-          );
-          if (metadataOriginal === undefined && !config.alwaysDiff) {
-            isDiff = false;
-          }
+        original = metadataOriginal ?? getStringProp(parsedArgs, config.originalArg) ?? '';
+        modified = metadataModified ?? getStringProp(parsedArgs, config.modifiedArg) ?? '';
+        canPreview =
+          metadataModified !== undefined ||
+          (hasArgModified && (!config.requireOriginalArg || hasArgOriginal));
+        isDiff = Boolean(config.alwaysDiff || metadataOriginal !== undefined);
 
-          if (isDiff) {
-            ({ addedLines, removedLines } = countChangedLines(original, modified));
-          }
-        }
+        if (isDiff && !counts) counts = countChangedLines(original, modified);
       }
 
-      return { filePath, isDiff, original, modified, canPreview, addedLines, removedLines };
+      return {
+        filePath,
+        isDiff,
+        original,
+        modified,
+        canPreview,
+        addedLines: counts?.addedLines ?? 0,
+        removedLines: counts?.removedLines ?? 0,
+      };
     }, [toolName, parsedArgs, metadata]);
 
   if (!canPreview) {
@@ -427,6 +410,7 @@ export const FileDiffViewer: React.FC<FileDiffViewerProps> = ({
     );
   }
 
+  const fileName = filePath.split(/[/\\]/).filter(Boolean).pop() || filePath;
   return (
     <FileContentDiffViewer
       filePath={filePath}
@@ -435,6 +419,9 @@ export const FileDiffViewer: React.FC<FileDiffViewerProps> = ({
       isDiff={isDiff}
       addedLines={addedLines}
       removedLines={removedLines}
+      onOpenFile={
+        openFile && filePath ? (shiftKey) => openFile(filePath, fileName, shiftKey) : undefined
+      }
     />
   );
 };

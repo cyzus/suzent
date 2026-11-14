@@ -69,3 +69,14 @@ def test_reads_line_slice_with_offset_and_limit(tmp_path):
     assert "b\n" in normalized
     assert "c\n" in normalized
     assert "d\n" not in normalized
+
+
+def test_reports_resolved_path_for_the_file_preview(tmp_path):
+    file_path = tmp_path / "notes.md"
+    file_path.write_text("a\nb\n", encoding="utf-8")
+
+    result = ReadFileTool().forward(_ctx(tmp_path), str(file_path))
+
+    assert result.success
+    assert result.metadata["abs_path"] == str(file_path)
+    assert "abs_path" in ReadFileTool.model_excluded_metadata

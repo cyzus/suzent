@@ -2,6 +2,7 @@
 Shared helpers for file-oriented tools.
 """
 
+import difflib
 import os
 from typing import TYPE_CHECKING
 
@@ -51,3 +52,19 @@ def is_binary_content(raw: bytes, encoding: str) -> bool:
     UTF-16 naturally contains null bytes, so the null-byte heuristic applies only to UTF-8 mode.
     """
     return encoding == "utf-8" and b"\x00" in raw
+
+
+def count_changed_lines(old: str, new: str) -> tuple[int, int]:
+    """Return ``(added, removed)`` line counts between two versions of a file.
+
+    Computed here so the chat UI can show "+N -M" without diffing whole files
+    in the browser for every edit it renders.
+    """
+    matcher = difflib.SequenceMatcher(None, old.splitlines(), new.splitlines())
+    added = removed = 0
+    for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+        if tag in ("replace", "delete"):
+            removed += i2 - i1
+        if tag in ("replace", "insert"):
+            added += j2 - j1
+    return added, removed

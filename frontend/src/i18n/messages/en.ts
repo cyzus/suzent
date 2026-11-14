@@ -2921,6 +2921,8 @@ export const en = {
     },
   },
   toolCallBlock: {
+    readFileRange: 'Lines {start}–{end} of {total}',
+    openInPreview: 'Open in file preview',
     failed: 'Failed',
     permissionRejectPlaceholder: 'Optional reason or safer direction',
     permissionContractUnavailable:
