@@ -1,0 +1,1 @@
+{"products": {"desktop": "patch"}, "summary": "Restarting Suzent no longer forces long chats to rebuild the model's prompt cache on the next message."}
