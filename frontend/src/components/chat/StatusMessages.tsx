@@ -7,6 +7,7 @@ import { compactionNoticeDetails } from '../../lib/compactionNotices';
 import { DisclosureChevron } from '../DisclosureChevron';
 import {
   ArrowTurnDownRightIcon,
+  ArrowUpRightIcon,
   BoltIcon,
   ChatBubbleLeftRightIcon,
   ClockIcon,
@@ -19,6 +20,8 @@ import {
   type TriggerEntry,
   type TriggerKind,
 } from '../../lib/triggerRows';
+import type { LinkedChat } from './chatToolLink';
+import { useOpenChat } from './openChatContext';
 import './CoreConnectionIndicator.css';
 
 /**
@@ -238,6 +241,39 @@ export const TriggerReference: React.FC<{ entries: TriggerEntry[]; className?: s
         )}
       </button>
       {expanded && <TriggerDetails entries={entries} />}
+    </div>
+  );
+};
+
+/**
+ * The sessions a Regent reply handed work to, under the bubble: the outgoing
+ * counterpart of the TriggerReference above it.
+ */
+export const DispatchReference: React.FC<{ chats: LinkedChat[] }> = ({ chats }) => {
+  const { t } = useI18n();
+  const openChat = useOpenChat();
+  if (!openChat || chats.length === 0) return null;
+  return (
+    <div className="chat-dispatch-reference flex min-w-0 max-w-full flex-wrap items-center gap-x-1.5 gap-y-0.5 py-0.5 text-[12px] text-neutral-400 dark:text-neutral-500">
+      <ArrowUpRightIcon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+      <span className="shrink-0">{t('chatMessage.dispatch.sentTo')}</span>
+      {chats.map((chat, index) => (
+        <React.Fragment key={chat.id}>
+          {index > 0 && (
+            <span className="shrink-0 text-neutral-300 dark:text-neutral-600" aria-hidden="true">
+              |
+            </span>
+          )}
+          <button
+            type="button"
+            onClick={() => void openChat(chat.id)}
+            title={`${t('toolCallBlock.openChat')} · ${chat.title ?? chat.id}`}
+            className="min-w-0 max-w-[260px] truncate text-left text-neutral-500 decoration-1 underline-offset-2 hover:text-neutral-800 hover:underline dark:text-neutral-400 dark:hover:text-neutral-100"
+          >
+            {chat.title ?? chat.id}
+          </button>
+        </React.Fragment>
+      ))}
     </div>
   );
 };

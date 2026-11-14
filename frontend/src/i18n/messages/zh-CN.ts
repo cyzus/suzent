@@ -2312,6 +2312,9 @@ export const zhCN = {
     regentReaction: 'Regent 回应了 {emoji}',
     quietReply: '无需你处理',
     sentByRegent: '由 Regent 转达',
+    dispatch: {
+      sentTo: '已交给',
+    },
     trigger: {
       goal: '目标模式',
       other: '后台事件',

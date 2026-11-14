@@ -2376,6 +2376,9 @@ export const en = {
     regentReaction: 'Regent reacted {emoji}',
     quietReply: 'Nothing needed from you',
     sentByRegent: 'Sent by Regent',
+    dispatch: {
+      sentTo: 'Sent to',
+    },
     trigger: {
       goal: 'Goal mode',
       other: 'Background event',
