@@ -221,7 +221,7 @@ export const TriggerReference: React.FC<{ entries: TriggerEntry[]; className?: s
     <div className={`chat-trigger-reference w-full max-w-3xl ${className}`}>
       <button
         type="button"
-        className="flex max-w-full min-w-0 items-center gap-1.5 py-0.5 text-left text-[12px] text-neutral-400 hover:text-neutral-700 dark:text-neutral-500 dark:hover:text-neutral-200"
+        className="group/ref flex max-w-full min-w-0 items-center gap-1.5 py-0.5 text-left text-[12px] text-neutral-400 hover:text-neutral-700 dark:text-neutral-500 dark:hover:text-neutral-200"
         onClick={() => hasDetails && setExpanded((value) => !value)}
         aria-expanded={hasDetails ? expanded : undefined}
         title={t(`chatMessage.trigger.kind.${trigger.kind}`)}
@@ -237,7 +237,10 @@ export const TriggerReference: React.FC<{ entries: TriggerEntry[]; className?: s
           </span>
         )}
         {hasDetails && (
-          <DisclosureChevron expanded={expanded} className="h-3 w-3 transition-transform" />
+          <DisclosureChevron
+            expanded={expanded}
+            className={`h-3 w-3 transition-[transform,opacity] ${expanded ? '' : 'opacity-0 group-hover/ref:opacity-100 group-focus-visible/ref:opacity-100'}`}
+          />
         )}
       </button>
       {expanded && <TriggerDetails entries={entries} />}
@@ -261,7 +264,7 @@ export const DispatchReference: React.FC<{ chats: LinkedChat[] }> = ({ chats }) 
     ? t('chatMessage.dispatch.sentTo', { target: single.title ?? single.id })
     : t('chatMessage.dispatch.sentToMany', { count: chats.length });
   const rowClass =
-    'flex max-w-full min-w-0 items-center gap-1.5 py-0.5 text-left text-[12px] text-neutral-400 hover:text-neutral-700 dark:text-neutral-500 dark:hover:text-neutral-200';
+    'group/ref flex max-w-full min-w-0 items-center gap-1.5 py-0.5 text-left text-[12px] text-neutral-400 hover:text-neutral-700 dark:text-neutral-500 dark:hover:text-neutral-200';
 
   return (
     <div className="chat-dispatch-reference w-full max-w-3xl">
@@ -275,7 +278,10 @@ export const DispatchReference: React.FC<{ chats: LinkedChat[] }> = ({ chats }) 
         <PaperAirplaneIcon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
         <span className="min-w-0 truncate">{label}</span>
         {!single && (
-          <DisclosureChevron expanded={expanded} className="h-3 w-3 transition-transform" />
+          <DisclosureChevron
+            expanded={expanded}
+            className={`h-3 w-3 transition-[transform,opacity] ${expanded ? '' : 'opacity-0 group-hover/ref:opacity-100 group-focus-visible/ref:opacity-100'}`}
+          />
         )}
       </button>
       {expanded && !single && (
