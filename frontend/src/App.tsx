@@ -408,7 +408,12 @@ function AppInner(): React.ReactElement {
   const [rightSidebarHeaderSlot, setRightSidebarHeaderSlot] = useState<HTMLDivElement | null>(null);
   const [preferredLeftWidth, setPreferredLeftWidth] = useState(LEFT_SIDEBAR_WIDTH_PX);
   const [rightSidebarWidth, setRightSidebarWidth] = useState<number | null>(null);
+  // A chat open beside the current one (Regent's side panel) takes room like
+  // the right sidebar does.
+  const [sidePanelWidth, setSidePanelWidth] = useState(0);
+  const rightPanesOpen = isRightSidebarOpen || sidePanelWidth > 0;
   const [viewportWidth, setViewportWidth] = useState(window.innerWidth);
+  const roomBesideSidePanel = viewportWidth - sidePanelWidth;
 
   const mobile = viewportWidth < DESKTOP_BREAKPOINT_PX;
   const mobileNavigation = useMobileNavigation(mobile);
@@ -422,7 +427,7 @@ function AppInner(): React.ReactElement {
     MIN_LEFT_SIDEBAR_WIDTH_PX,
     Math.min(
       MAX_LEFT_SIDEBAR_WIDTH_PX,
-      viewportWidth -
+      roomBesideSidePanel -
         SQUEEZED_MIN_CHAT_WIDTH_PX -
         (isRightSidebarOpen ? (rightSidebarWidth ?? 384) : 0)
     )
@@ -432,21 +437,24 @@ function AppInner(): React.ReactElement {
     Math.min(
       preferredLeftWidth,
       MAX_LEFT_SIDEBAR_WIDTH_PX,
-      viewportWidth -
+      roomBesideSidePanel -
         SQUEEZED_MIN_CHAT_WIDTH_PX -
         (isRightSidebarOpen ? MIN_RIGHT_SIDEBAR_WIDTH_PX : 0)
     )
   );
   const panesCannotShareViewport = shouldCollapseLeftSidebarOnRightOpen(
-    viewportWidth,
+    isRightSidebarOpen ? roomBesideSidePanel : roomBesideSidePanel + MIN_RIGHT_SIDEBAR_WIDTH_PX,
     leftSidebarWidth
   );
   const leftSidebarReservedWidthPx = isLeftSidebarOpen ? leftSidebarWidth : 0;
 
-  const rightSidebarMaxWidthPx = getRightSidebarMaxWidth(viewportWidth, leftSidebarReservedWidthPx);
+  const rightSidebarMaxWidthPx = getRightSidebarMaxWidth(
+    roomBesideSidePanel,
+    leftSidebarReservedWidthPx
+  );
   // Wide content has its own starting width, but shares the manual resize limit.
   const rightSidebarWideDefaultWidthPx = getCanvasSidebarWidth(
-    viewportWidth,
+    roomBesideSidePanel,
     leftSidebarReservedWidthPx
   );
   const rightSidebarForceFullView = shouldUseFullWidthRightSidebar(
@@ -659,7 +667,7 @@ function AppInner(): React.ReactElement {
       return;
     }
 
-    if (shouldCollapseLeftSidebarOnRightOpen(currentWidth, leftSidebarWidth)) {
+    if (shouldCollapseLeftSidebarOnRightOpen(currentWidth - sidePanelWidth, leftSidebarWidth)) {
       if (isLeftSidebarOpen) {
         leftCollapsedByLayoutRef.current = true;
       }
@@ -729,7 +737,7 @@ function AppInner(): React.ReactElement {
 
   // Both open and the room ran out: the left one steps aside, on loan.
   React.useEffect(() => {
-    if (!isLeftSidebarOpen || !isRightSidebarOpen) {
+    if (!isLeftSidebarOpen || !rightPanesOpen) {
       return;
     }
 
@@ -737,7 +745,7 @@ function AppInner(): React.ReactElement {
       leftCollapsedByLayoutRef.current = true;
       setIsLeftSidebarOpen(false);
     }
-  }, [isLeftSidebarOpen, isRightSidebarOpen, panesCannotShareViewport]);
+  }, [isLeftSidebarOpen, rightPanesOpen, panesCannotShareViewport]);
 
   // Room came back -- the right sidebar closed, or the window grew back past
   // mobile width. Repay the loan.
@@ -745,7 +753,7 @@ function AppInner(): React.ReactElement {
     if (viewportWidth < DESKTOP_BREAKPOINT_PX) {
       return;
     }
-    if (isRightSidebarOpen && panesCannotShareViewport) {
+    if (rightPanesOpen && panesCannotShareViewport) {
       return;
     }
 
@@ -753,7 +761,7 @@ function AppInner(): React.ReactElement {
       leftCollapsedByLayoutRef.current = false;
       setIsLeftSidebarOpen(true);
     }
-  }, [isRightSidebarOpen, panesCannotShareViewport, viewportWidth]);
+  }, [rightPanesOpen, panesCannotShareViewport, viewportWidth]);
 
   // Track previous width to only auto-close when crossing the threshold
   const prevWidthRef = React.useRef(window.innerWidth);
@@ -980,6 +988,7 @@ function AppInner(): React.ReactElement {
                   rightSidebarWideDefaultWidthPx={rightSidebarWideDefaultWidthPx}
                   viewportWidthPx={viewportWidth}
                   rightSidebarForceFullView={rightSidebarForceFullView}
+                  onSidePanelWidthChange={setSidePanelWidth}
                 />
               </div>
             )}

@@ -5,7 +5,8 @@ import { parseModelWait, requestModelWaitExtension, type ModelWaitState } from '
 import { createSpeechJob, speechQueue } from '../lib/speechPlayback';
 import { parseToolResultEnvelope } from './chat/ToolCallBlock';
 import React, { useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo } from 'react';
-import { useChatStore } from '../hooks/useChatStore';
+import { createPortal } from 'react-dom';
+import { ChatScopeProvider, useChatStore } from '../hooks/useChatStore';
 import { forgetReply, watchForReply } from '../lib/desktopNotifications';
 import { useAGUI, type AGUIPart, type ApprovalRememberScope } from '../hooks/useAGUI';
 import {
@@ -30,7 +31,7 @@ import {
   restorePrependScrollSnapshot,
   type PrependScrollSnapshot,
 } from '../lib/chatScrollAnchor';
-import { useGoalTasks } from '../hooks/useGoalTasks';
+import { ChatGoalTasksScope, useGoalTasks } from '../hooks/useGoalTasks';
 import { useMemory } from '../hooks/useMemory';
 import { useCanvas } from '../hooks/useCanvas';
 import { InlineSurfaceProvider } from './a2ui/InlineSurfaceContext';
@@ -89,6 +90,7 @@ import type { SubAgentStatus } from './chat/SubAgentCallBlock';
 import type { CitationSourcesMap } from './chat/Citations';
 import { OpenFileContext } from './chat/openFileContext';
 import { OpenChatContext } from './chat/openChatContext';
+import { ChatPeekPanel } from './chat/ChatPeekPanel';
 import { markOpenedFromRegent, unmarkOpenedFromRegent } from '../lib/regentReturn';
 import type {
   SubAgentSpawnedPayload,
@@ -852,6 +854,8 @@ const composerDraft: { input: string; mentions: FileMentionSelection[] } = {
  * held in its state would be dropped without ever being sent.
  */
 let queuedMessageStore: Record<string, QueuedMessage[]> = {};
+// Regent's side panel runs a second window; each one mirrors the store.
+const queueListeners = new Set<(queues: Record<string, QueuedMessage[]>) => void>();
 
 /** Whether anything typed or queued would be lost if the app restarted now. */
 export function hasUnsentComposerWork(): boolean {
@@ -871,7 +875,54 @@ interface ChatWindowProps {
   rightSidebarWideDefaultWidthPx?: number;
   viewportWidthPx?: number;
   rightSidebarForceFullView?: boolean;
+  /**
+   * A second chat shown beside the current one (Regent's side panel), inside a
+   * ChatScopeProvider. It keeps its own composer draft and side panel, and
+   * leaves app-wide things -- the refresh seed, voice triggers, external sends
+   * -- to the main window.
+   */
+  embedded?: boolean;
+  /**
+   * Where an embedded chat's side panel goes: the host window's sidebar spot,
+   * so the window keeps one right sidebar at its edge. Null while that spot
+   * mounts.
+   */
+  rightSidebarHost?: HTMLElement | null;
+  /** The width the chat open beside this one takes, 0 when none, so the window can make room. */
+  onSidePanelWidthChange?: (widthPx: number) => void;
 }
+
+/** The plan and task data of the chat a ChatScopeProvider points at. */
+const ScopedGoalTasks: React.FC<{ chatId: string; children: React.ReactNode }> = ({
+  chatId,
+  children,
+}) => {
+  const { currentChatProjectId } = useChatStore();
+  return (
+    <ChatGoalTasksScope chatId={chatId} projectId={currentChatProjectId ?? null}>
+      {children}
+    </ChatGoalTasksScope>
+  );
+};
+
+const SidebarSpot: React.FC<{ host?: HTMLElement | null; children: React.ReactNode }> = ({
+  host,
+  children,
+}) => {
+  if (host === undefined) return <>{children}</>;
+  return host ? createPortal(children, host) : null;
+};
+
+const STREAM_SEEDS = {
+  save: _saveStreamSeed,
+  load: _loadStreamSeed,
+  clear: _clearStreamSeed,
+};
+const NO_STREAM_SEEDS: typeof STREAM_SEEDS = {
+  save: () => {},
+  load: () => null,
+  clear: () => {},
+};
 
 // An abandoned start rejects its own fetch; that is this client giving up on
 // it, not a failure to report.
@@ -881,13 +932,47 @@ const isAbortError = (err: unknown) =>
 export const ChatWindow: React.FC<ChatWindowProps> = ({
   isRightSidebarOpen = false,
   rightSidebarHeaderSlot,
-  onRightSidebarToggle = () => {},
+  onRightSidebarToggle: requestRightSidebar = () => {},
   onRightSidebarWidthChange,
   rightSidebarMaxWidthPx,
   rightSidebarWideDefaultWidthPx,
   viewportWidthPx,
   rightSidebarForceFullView = false,
+  embedded = false,
+  rightSidebarHost,
+  onSidePanelWidthChange,
 }) => {
+  const seeds = embedded ? NO_STREAM_SEEDS : STREAM_SEEDS;
+  // A chat open beside this one shares the window's one right sidebar, which
+  // shows whichever of the two last asked for it.
+  const [sidebarOwner, setSidebarOwner] = useState<'own' | 'peek'>('own');
+  const onRightSidebarToggle = useCallback(
+    (isOpen: boolean) => {
+      if (isOpen) setSidebarOwner('own');
+      requestRightSidebar(isOpen);
+    },
+    [requestRightSidebar]
+  );
+  const [sidebarWidthPx, setSidebarWidthPx] = useState(0);
+  const reportSidebarWidth = useCallback(
+    (width: number | null) => {
+      setSidebarWidthPx(width ?? 0);
+      onRightSidebarWidthChange?.(width);
+    },
+    [onRightSidebarWidthChange]
+  );
+  const [rowWidthPx, setRowWidthPx] = useState(0);
+  const rowObserver = useRef<ResizeObserver | null>(null);
+  const attachRow = useCallback((element: HTMLDivElement | null) => {
+    rowObserver.current?.disconnect();
+    rowObserver.current = null;
+    if (!element) return;
+    const observer = new ResizeObserver(([entry]) => {
+      if (entry) setRowWidthPx(Math.round(entry.contentRect.width));
+    });
+    observer.observe(element);
+    rowObserver.current = observer;
+  }, []);
   // Store hooks
   const {
     messages,
@@ -933,22 +1018,35 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   const setHeartbeatRunning = useHeartbeatRunning((s) => s.setRunning);
 
   // Local state
-  const [input, setInputState] = useState(composerDraft.input);
-  const setInput = useCallback((value: React.SetStateAction<string>) => {
-    setInputState((current) => {
-      const next = typeof value === 'function' ? value(current) : value;
-      composerDraft.input = next;
-      return next;
-    });
-  }, []);
+  // The module draft survives the main window's remounts; a side panel's
+  // composer is a different conversation's and keeps its own.
+  const draft = useRef<typeof composerDraft>(
+    embedded ? { input: '', mentions: [] } : composerDraft
+  ).current;
+  const [input, setInputState] = useState(draft.input);
+  const setInput = useCallback(
+    (value: React.SetStateAction<string>) => {
+      setInputState((current) => {
+        const next = typeof value === 'function' ? value(current) : value;
+        draft.input = next;
+        return next;
+      });
+    },
+    [draft]
+  );
   // Messages held back until the running turn ends, keyed by chat.
   const [messageQueues, setMessageQueuesState] = useState(queuedMessageStore);
+  useEffect(() => {
+    queueListeners.add(setMessageQueuesState);
+    setMessageQueuesState(queuedMessageStore);
+    return () => {
+      queueListeners.delete(setMessageQueuesState);
+    };
+  }, []);
   const setMessageQueues = useCallback(
     (update: (prev: Record<string, QueuedMessage[]>) => Record<string, QueuedMessage[]>) => {
-      setMessageQueuesState((current) => {
-        queuedMessageStore = update(current);
-        return queuedMessageStore;
-      });
+      queuedMessageStore = update(queuedMessageStore);
+      queueListeners.forEach((listener) => listener(queuedMessageStore));
     },
     []
   );
@@ -985,16 +1083,17 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   // Bumped each time the user pops a chat surface out to the side panel.
   const [canvasRequestNonce, setCanvasRequestNonce] = useState(0);
   const [canvasExpandNonce, setCanvasExpandNonce] = useState(0);
-  const [fileMentions, setFileMentionsState] = useState<FileMentionSelection[]>(
-    composerDraft.mentions
+  const [fileMentions, setFileMentionsState] = useState<FileMentionSelection[]>(draft.mentions);
+  const setFileMentions = useCallback(
+    (value: React.SetStateAction<FileMentionSelection[]>) => {
+      setFileMentionsState((current) => {
+        const next = typeof value === 'function' ? value(current) : value;
+        draft.mentions = next;
+        return next;
+      });
+    },
+    [draft]
   );
-  const setFileMentions = useCallback((value: React.SetStateAction<FileMentionSelection[]>) => {
-    setFileMentionsState((current) => {
-      const next = typeof value === 'function' ? value(current) : value;
-      composerDraft.mentions = next;
-      return next;
-    });
-  }, []);
   const [cronModelSelection, setCronModelSelection] = useState<{
     jobId: number;
     model: string | null;
@@ -1319,7 +1418,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
             setCurrentUsage(null);
             setCurrentStreamDisplayRole('assistant');
           },
-          clearSeed: () => _clearStreamSeed(chatId),
+          clearSeed: () => seeds.clear(chatId),
         });
       if (!isLiveStreamRef.current && activeChatIdRef.current !== chatId) {
         heartbeatInFlightRef.current = false;
@@ -1340,7 +1439,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         setIsStreaming(false, chatId);
         streamingChatIdRef.current = null;
         clearParts();
-        _clearStreamSeed();
+        seeds.clear();
         setCurrentUsage(null);
         setCurrentStreamDisplayRole('assistant');
         // Reload chat from DB to reflect rolled-back state.
@@ -1587,7 +1686,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         }
       }
       clearParts();
-      _clearStreamSeed();
+      seeds.clear();
       setCurrentUsage(null);
       liveStreamPartsRef.current = [];
       setCurrentStreamDisplayRole('assistant');
@@ -1596,6 +1695,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
 
   // Listen for external message triggers (e.g. from Heartbeat "Run Now")
   useEffect(() => {
+    if (embedded) return;
     const handler = (e: any) => {
       const { body, options } = e.detail || {};
       const isHeartbeat = Boolean(body?.is_heartbeat);
@@ -1622,7 +1722,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     };
     window.addEventListener('agui:send-message', handler);
     return () => window.removeEventListener('agui:send-message', handler);
-  }, [sendAGUI, currentChatId, setHeartbeatRunning, setIsStreaming, retireStopAttempt]);
+  }, [embedded, sendAGUI, currentChatId, setHeartbeatRunning, setIsStreaming, retireStopAttempt]);
 
   // Save the current streaming parts to sessionStorage on page hide so they
   // can be used as a seed (or to detect a missed completion) after a refresh.
@@ -1632,7 +1732,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       if (!chatId) return;
       const parts = getStreamingParts();
       if (parts.length > 0) {
-        _saveStreamSeed(chatId, parts, resumeBasePartsRef.current.get(chatId));
+        seeds.save(chatId, parts, resumeBasePartsRef.current.get(chatId));
       }
     };
     document.addEventListener('visibilitychange', saveOnHide);
@@ -2212,7 +2312,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     if (configReady && !voice.active) voice.start(currentChatId ?? null);
   };
   const wakeWord = useWakeWord(
-    !!voiceTriggers?.wake_word && configReady && voice.supported && !voice.active,
+    !embedded && !!voiceTriggers?.wake_word && configReady && voice.supported && !voice.active,
     JSON.stringify([voiceTriggers?.wake_phrases, voiceTriggers?.wake_sensitivity]),
     () => {
       playNotificationSound('ping');
@@ -2227,7 +2327,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     phrase: voiceTriggers?.wake_phrases?.find((phrase) => phrase.trim()) ?? '',
     hotkey: voiceTriggers?.voice_hotkey ?? '',
   };
-  useVoiceHotkey(voiceTriggers?.voice_hotkey ?? '', () => {
+  useVoiceHotkey(embedded ? '' : (voiceTriggers?.voice_hotkey ?? ''), () => {
     if (voice.active) voice.stop();
     else startVoiceHandsFree();
   });
@@ -2262,7 +2362,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   };
 
   // From Regent, the opened session's header offers the way back.
-  const handleOpenChat = useCallback(
+  const switchToChat = useCallback(
     async (chatId: string): Promise<boolean> => {
       const fromRegent = currentChatId === FOCAL_CHAT_ID;
       if (fromRegent) markOpenedFromRegent(chatId);
@@ -2275,6 +2375,41 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       }
     },
     [currentChatId, loadChat]
+  );
+
+  // Regent hands work to other chats; following one opens it beside Regent
+  // instead of leaving, and the panel's expand button still switches over.
+  const [peekChatId, setPeekChatId] = useState<string | null>(null);
+  // Coming back to Regent from a chat expanded out of the panel puts it back
+  // in the panel, so the way back lands where you left.
+  const expandedPeek = useRef<string | null>(null);
+  useEffect(() => {
+    const reopen = currentChatId === FOCAL_CHAT_ID ? expandedPeek.current : null;
+    if (currentChatId !== expandedPeek.current) expandedPeek.current = null;
+    setPeekChatId(reopen);
+  }, [currentChatId]);
+  useEffect(() => {
+    setSidebarOwner(peekChatId ? 'peek' : 'own');
+  }, [peekChatId]);
+  const peekOwnsSidebar = peekChatId !== null && sidebarOwner === 'peek';
+  const peekRoomPx =
+    (rowWidthPx || viewportWidthPx || 1280) - (isRightSidebarOpen ? sidebarWidthPx : 0);
+  const peekMaxWidthPx = Math.max(400, Math.min(Math.round(peekRoomPx * 0.6), peekRoomPx - 360));
+  const [peekSidebarHost, setPeekSidebarHost] = useState<HTMLDivElement | null>(null);
+  const openPeekSidebar = useCallback(
+    (isOpen: boolean) => {
+      if (isOpen) setSidebarOwner('peek');
+      requestRightSidebar(isOpen);
+    },
+    [requestRightSidebar]
+  );
+  const handleOpenChat = useCallback(
+    async (chatId: string): Promise<boolean> => {
+      if (currentChatId !== FOCAL_CHAT_ID) return switchToChat(chatId);
+      setPeekChatId(chatId);
+      return true;
+    },
+    [currentChatId, switchToChat]
   );
 
   const handleOpenForkOrigin = useCallback(
@@ -2440,9 +2575,9 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     // Restore stream seed saved before a page refresh so we can either:
     // (a) seed an in-progress reconnect with prior visual state, or
     // (b) detect that the stream completed while we were gone and reload from DB.
-    const savedSeed = _loadStreamSeed(chatIdAtMount);
+    const savedSeed = seeds.load(chatIdAtMount);
     if (savedSeed) {
-      _clearStreamSeed();
+      seeds.clear();
       if (savedSeed.parts.length > 0) {
         // Pre-populate the abandoned-parts map so tryConnect below can use it
         // as a visual seed — even if the snapshot hasn't arrived yet.
@@ -2615,7 +2750,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       // Stream finished cleanly — drop preserved reconnect state for this chat.
       streamStartByChatRef.current.delete(chatIdAtMount);
       abandonedPartsRef.current.delete(chatIdAtMount);
-      _clearStreamSeed();
+      seeds.clear();
 
       // Keep the completed stream visible while replacing it with the backend-authored
       // message. The backend attaches file_changes as the stream closes, so every chat
@@ -2679,7 +2814,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       setIsStreaming(false, chatIdAtMount);
       streamStartByChatRef.current.delete(chatIdAtMount);
       abandonedPartsRef.current.delete(chatIdAtMount);
-      _clearStreamSeed();
+      seeds.clear();
       clearParts();
       loadChat(chatIdAtMount, { force: true }).catch(() => {});
     };
@@ -3601,6 +3736,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       <OpenFileContext.Provider value={handleFileClick}>
         <OpenChatContext.Provider value={handleOpenChat}>
           <div
+            ref={attachRow}
             className="flex flex-row flex-1 h-full min-h-0 overflow-x-hidden bg-neutral-50 dark:bg-zinc-900 relative"
             onDragEnter={handleDragEnter}
             onDragLeave={handleDragLeave}
@@ -3839,75 +3975,126 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
               </div>
             </ChatImageGallery>
 
-            {/* Right Sidebar */}
-            <RightSidebar
-              isOpen={isRightSidebarOpen}
-              headerSlot={rightSidebarHeaderSlot}
-              onClose={() => onRightSidebarToggle(false)}
-              onOpen={() => onRightSidebarToggle(true)}
-              onWidthChange={onRightSidebarWidthChange}
-              maxWidthPx={rightSidebarMaxWidthPx}
-              wideContentDefaultWidthPx={rightSidebarWideDefaultWidthPx}
-              viewportWidthPx={viewportWidthPx}
-              forceFullView={rightSidebarForceFullView}
-              goal={goal}
-              tasks={tasks}
-              goalChatId={goalChatId}
-              kanban={kanban}
-              currentProjectName={
-                (
-                  chats.find((c) => c.id === currentChatId) ??
-                  pinnedChats.find((c) => c.id === currentChatId)
-                )?.projectName ?? null
-              }
-              currentProjectId={
-                (
-                  chats.find((c) => c.id === currentChatId) ??
-                  pinnedChats.find((c) => c.id === currentChatId)
-                )?.projectId ?? null
-              }
-              chatTitles={Object.fromEntries(
-                [...pinnedChats, ...chats].map((c) => [c.id, c.title])
-              )}
-              onOpenTask={handleOpenTask}
+            {peekChatId && (
+              <ChatPeekPanel
+                key="chat-peek"
+                chatId={peekChatId}
+                parentLabel={t('chatList.focal.name')}
+                title={[...pinnedChats, ...chats].find((chat) => chat.id === peekChatId)?.title}
+                maxWidthPx={peekMaxWidthPx}
+                sidebarOpen={isRightSidebarOpen && peekOwnsSidebar}
+                onSidebarToggle={() => openPeekSidebar(!(isRightSidebarOpen && peekOwnsSidebar))}
+                onShownWidthChange={onSidePanelWidthChange}
+                onClose={() => setPeekChatId(null)}
+                onExpand={(chatId) => {
+                  expandedPeek.current = chatId;
+                  void switchToChat(chatId);
+                }}
+                renderChat={(chatId) => (
+                  <ChatScopeProvider
+                    key={chatId}
+                    chatId={chatId}
+                    fallback={(failed) => (
+                      <p className="w-full pt-6 text-center text-xs text-neutral-400 dark:text-neutral-500">
+                        {t(
+                          failed
+                            ? 'chatMessage.dispatch.peekError'
+                            : 'chatMessage.dispatch.peekLoading'
+                        )}
+                      </p>
+                    )}
+                  >
+                    <ScopedGoalTasks chatId={chatId}>
+                      <ChatWindow
+                        embedded
+                        rightSidebarHost={peekSidebarHost}
+                        isRightSidebarOpen={isRightSidebarOpen && peekOwnsSidebar}
+                        onRightSidebarToggle={openPeekSidebar}
+                        onRightSidebarWidthChange={peekOwnsSidebar ? reportSidebarWidth : undefined}
+                        rightSidebarHeaderSlot={peekOwnsSidebar ? rightSidebarHeaderSlot : null}
+                        rightSidebarMaxWidthPx={rightSidebarMaxWidthPx}
+                        rightSidebarWideDefaultWidthPx={rightSidebarWideDefaultWidthPx}
+                        viewportWidthPx={viewportWidthPx}
+                        rightSidebarForceFullView={rightSidebarForceFullView}
+                      />
+                    </ScopedGoalTasks>
+                  </ChatScopeProvider>
+                )}
+              />
+            )}
 
-              taskNavigationError={taskNavigationError}
-              onDismissTaskError={() => setTaskNavigationError(null)}
-              onTaskChat={async (chatId) => {
-                setTaskNavigationError(null);
-                try {
-                  await loadChat(chatId, { throwOnError: true, validateBeforeSwitch: true });
-                  return true;
-                } catch {
-                  setTaskNavigationError(t('taskFlow.openError'));
-                  return false;
+            {/* Right Sidebar */}
+            <SidebarSpot host={rightSidebarHost}>
+              <RightSidebar
+                isOpen={isRightSidebarOpen && !peekOwnsSidebar}
+                headerSlot={peekOwnsSidebar ? null : rightSidebarHeaderSlot}
+                onClose={() => onRightSidebarToggle(false)}
+                onOpen={() => onRightSidebarToggle(true)}
+                onWidthChange={peekOwnsSidebar ? undefined : reportSidebarWidth}
+                maxWidthPx={rightSidebarMaxWidthPx}
+                wideContentDefaultWidthPx={rightSidebarWideDefaultWidthPx}
+                viewportWidthPx={viewportWidthPx}
+                forceFullView={rightSidebarForceFullView}
+                goal={goal}
+                tasks={tasks}
+                goalChatId={goalChatId}
+                kanban={kanban}
+                currentProjectName={
+                  (
+                    chats.find((c) => c.id === currentChatId) ??
+                    pinnedChats.find((c) => c.id === currentChatId)
+                  )?.projectName ?? null
                 }
-              }}
-              // Only an unsaved chat is "new". A saved chat whose messages are still
-              // loading must not count, or the sidebar collapses for a frame on every
-              // switch and re-expands once the transcript lands.
-              isNewChat={!currentChatId && safeMessages.length === 0 && !showTransientAssistant}
-              fileToPreview={sidebarFilePreview}
-              onMaximizeFile={handleMaximizeFile}
-              canvas={canvas}
-              onCanvasDispatch={handleCanvasDispatch}
-              viewingSubAgentTaskId={viewingSubAgentTaskId}
-              onCloseSubAgent={() => setViewingSubAgentTaskId(null)}
-              onSelectSubAgent={(taskId) => setViewingSubAgentTaskId(taskId)}
-              currentChatId={currentChatId}
-              hasSubAgents={
-                Object.keys(subAgentTasks).length > 0 ||
-                currentChatSummary?.platform === 'subagent' ||
-                safeConfig?.platform === 'subagent'
-              }
-              hasSubAgentHistory={transcriptHasSubAgentCall}
-              messages={safeMessages}
-              onOpenFile={handleFileClick}
-              forcedWebContextId={forcedWebContextId}
-              canvasRequestNonce={canvasRequestNonce}
-              canvasExpandNonce={canvasExpandNonce}
-              onClearForcedWebContext={() => setForcedWebContextId(null)}
-            />
+                currentProjectId={
+                  (
+                    chats.find((c) => c.id === currentChatId) ??
+                    pinnedChats.find((c) => c.id === currentChatId)
+                  )?.projectId ?? null
+                }
+                chatTitles={Object.fromEntries(
+                  [...pinnedChats, ...chats].map((c) => [c.id, c.title])
+                )}
+                onOpenTask={handleOpenTask}
+
+                taskNavigationError={taskNavigationError}
+                onDismissTaskError={() => setTaskNavigationError(null)}
+                onTaskChat={async (chatId) => {
+                  setTaskNavigationError(null);
+                  try {
+                    await loadChat(chatId, { throwOnError: true, validateBeforeSwitch: true });
+                    return true;
+                  } catch {
+                    setTaskNavigationError(t('taskFlow.openError'));
+                    return false;
+                  }
+                }}
+                // Only an unsaved chat is "new". A saved chat whose messages are still
+                // loading must not count, or the sidebar collapses for a frame on every
+                // switch and re-expands once the transcript lands.
+                isNewChat={!currentChatId && safeMessages.length === 0 && !showTransientAssistant}
+                fileToPreview={sidebarFilePreview}
+                onMaximizeFile={handleMaximizeFile}
+                canvas={canvas}
+                onCanvasDispatch={handleCanvasDispatch}
+                viewingSubAgentTaskId={viewingSubAgentTaskId}
+                onCloseSubAgent={() => setViewingSubAgentTaskId(null)}
+                onSelectSubAgent={(taskId) => setViewingSubAgentTaskId(taskId)}
+                currentChatId={currentChatId}
+                hasSubAgents={
+                  Object.keys(subAgentTasks).length > 0 ||
+                  currentChatSummary?.platform === 'subagent' ||
+                  safeConfig?.platform === 'subagent'
+                }
+                hasSubAgentHistory={transcriptHasSubAgentCall}
+                messages={safeMessages}
+                onOpenFile={handleFileClick}
+                forcedWebContextId={forcedWebContextId}
+                canvasRequestNonce={canvasRequestNonce}
+                canvasExpandNonce={canvasExpandNonce}
+                onClearForcedWebContext={() => setForcedWebContextId(null)}
+              />
+            </SidebarSpot>
+            {peekChatId && <div ref={setPeekSidebarHost} className="contents" />}
 
             <ImageViewer src={viewingImage} onClose={() => setViewingImage(null)} />
 
