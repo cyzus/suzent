@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [v0.27.0] - 2026-11-13
+## [v0.27.0] - 2026-11-14
 
 ### Release notes
 - The safety reviewer now explains approval requests in your language, and when you refuse a flagged action the agent is told why instead of retrying it.
@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Messages from other chats, scheduled tasks and goal mode now show as one quiet line in the chat; repeats with no reply merge, and a reply notes what it answers.
 - Tidy the chat composer: attachments, working folders, slash commands and mentions now live under one + menu, with mounted folders shown as a small chip beside it.
 - Optional decision models (OpenAI or Gemini Decisions) in Model Roles route new kinds of Mailbox events in a fraction of a second, falling back to the Decision model when unsure.
+- Mailbox, Artifacts and project lists in the sidebar open faster, and the app no longer slows down the longer scheduled tasks run.
 - Email can feed the Mailbox: switch on Watch inbox for a mailbox and new mail arrives there, sorted by the same rules as webhooks. Plugins can now run watchers and send events to the Mailbox.
 - Newly added MCP servers and newly connected services now start off; switch them on in Settings or a chat's Tools tab.
 - Fix mobile inline code wrapping and show previews for uploaded images.
