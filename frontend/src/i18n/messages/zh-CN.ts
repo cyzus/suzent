@@ -2860,6 +2860,8 @@ export const zhCN = {
     },
   },
   toolCallBlock: {
+    readFileRange: '第 {start}–{end} 行，共 {total} 行',
+    openInPreview: '在文件预览中打开',
     failed: '失败',
     permissionRejectPlaceholder: '可选：说明原因或建议更安全的做法',
     permissionContractUnavailable: '此审批缺少服务端权限契约，请重试该请求。',

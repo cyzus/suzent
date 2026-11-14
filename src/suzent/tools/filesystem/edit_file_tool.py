@@ -11,6 +11,7 @@ from pydantic_ai import RunContext
 from suzent.core.agent_deps import AgentDeps
 from suzent.tools.base import Tool, ToolErrorCode, ToolGroup, ToolResult
 from suzent.tools.filesystem.file_tool_utils import (
+    count_changed_lines,
     detect_text_encoding,
     get_or_create_path_resolver,
     is_binary_content,
@@ -204,7 +205,9 @@ class EditFileTool(Tool):
 
     name = "EditFileTool"
     tool_name = "edit_file"
-    model_excluded_metadata = frozenset({"old_content", "new_content"})
+    model_excluded_metadata = frozenset(
+        {"old_content", "new_content", "added_lines", "removed_lines"}
+    )
     group = ToolGroup.FILESYSTEM
     requires_approval = True
 
@@ -468,6 +471,9 @@ class EditFileTool(Tool):
                 "file_path": file_path,
                 "abs_path": str(resolved_path),
             }
+            metadata["added_lines"], metadata["removed_lines"] = count_changed_lines(
+                content, new_content
+            )
             if len(content) <= 200 * 1024 and len(new_content) <= 200 * 1024:
                 metadata["old_content"] = content
                 metadata["new_content"] = new_content

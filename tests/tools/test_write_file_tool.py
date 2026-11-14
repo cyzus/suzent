@@ -78,3 +78,19 @@ def test_rejects_oversized_file(monkeypatch, tmp_path):
     assert not result.success
     assert result.error_code == ToolErrorCode.FILE_TOO_LARGE
     assert "File too large to overwrite" in result.message
+
+
+def test_reports_changed_line_counts_for_new_and_overwritten_files(tmp_path):
+    file_path = tmp_path / "sample.txt"
+
+    created = WriteFileTool().forward(_ctx(tmp_path), str(file_path), "a\nb\n")
+    assert (created.metadata["added_lines"], created.metadata["removed_lines"]) == (
+        2,
+        0,
+    )
+
+    overwritten = WriteFileTool().forward(_ctx(tmp_path), str(file_path), "a\nc\nd\n")
+    assert (
+        overwritten.metadata["added_lines"],
+        overwritten.metadata["removed_lines"],
+    ) == (2, 1)
