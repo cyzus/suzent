@@ -73,7 +73,8 @@ def _build_mcp_servers(config: Dict[str, Any]) -> List:
 
     Returns MCP toolsets that can be passed to a pydantic-ai Agent.
     """
-    if config.get("mcp_disabled"):
+    # An exact-tools run gets only the tools it named, MCP tools included.
+    if config.get("mcp_disabled") or config.get("exact_tools"):
         return []
     from suzent.core import mcp_store as _mcp_store
 
@@ -324,9 +325,13 @@ def create_agent(config: Dict[str, Any]) -> Agent[AgentDeps, str]:
     denied_tools = frozenset(
         migrate_shell_tool_names(list(config.get("denied_tools") or []))
     ) - set(BUILTIN_TOOL_NAMES)
+    # `exact_tools` is a run that named its tools and wants no others: neither
+    # the builtin floor (which includes SendFileTool) nor the searchable pool of
+    # deferred tools below applies to it.
+    exact_tools = bool(config.get("exact_tools"))
     tool_names = [
         name
-        for name in expand_tool_dependencies(tool_names)
+        for name in expand_tool_dependencies(tool_names, with_builtins=not exact_tools)
         if name not in denied_tools
     ]
     capability_groups = group_tools_by_capability(tool_names)
@@ -359,9 +364,10 @@ def create_agent(config: Dict[str, Any]) -> Agent[AgentDeps, str]:
     # All remaining deferrable tools are registered once with defer_loading=True.
     # Pydantic AI exposes its native provider-side search where supported and
     # transparently falls back to a local keyword search elsewhere.
-    tool_functions.extend(
-        get_deferred_tool_functions(enabled_tool_names | denied_tools)
-    )
+    if not exact_tools:
+        tool_functions.extend(
+            get_deferred_tool_functions(enabled_tool_names | denied_tools)
+        )
 
     # Auto-equip SocialMessageTool
     social_ctx = config.get("social_context")

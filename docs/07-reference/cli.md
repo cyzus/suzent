@@ -103,7 +103,7 @@ again when the task is done.
 | `--cwd <folder>` | The folder the agent works in. Defaults to the folder you run the command from. |
 | `--model`, `-m` | The model to use. It must be one of your enabled models. Defaults to your default model. |
 | `--permission-mode <mode>` | The permission mode for this run. Defaults to your saved mode. |
-| `--tools <names>` | A comma-separated list of the tools the agent may use for this run, for example `ReadFileTool,RunCommandTool`. Defaults to your saved tools. Built-in tools stay on. |
+| `--tools <names>` | A comma-separated list of the tools the agent may use for this run, for example `ReadFileTool,RunCommandTool`. Defaults to your saved tools. The agent gets exactly these tools and no others, so include the file tools (`ReadFileTool`, `GlobTool`, `GrepTool`) if it should read files. |
 | `--code-mode` / `--no-code-mode` | Turn code mode on or off for this run. Defaults to your saved setting. |
 | `--json` | Print one JSON object when the task is done, with the reply, the token usage, and the conversation ID. |
 | `--keep-background-processes` | Leave commands the agent started in the background running after the run ends, for example a server the task asks for. Without it they stop with the run. Only applies when the command starts Suzent itself. |

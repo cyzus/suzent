@@ -174,6 +174,9 @@ async def _chat_config(
         config["permission_mode"] = permission_mode
     if tools:
         config["tools"] = tools
+        # A run that names its tools gets those and no others: the builtin
+        # floor would add tools such as send_file that mean nothing to a script.
+        config["exact_tools"] = True
     if code_mode is not None:
         config["code_mode"] = code_mode
     return config
@@ -272,7 +275,7 @@ def register_run_command(app: typer.Typer) -> None:
             "--tools",
             help=(
                 "Comma-separated tools the agent may use for this run "
-                "(default: your saved tools). Built-in tools stay on"
+                "(default: your saved tools). Only these tools are given"
             ),
         ),
         code_mode: bool = typer.Option(
