@@ -1,5 +1,27 @@
 # Mobile changelog
 
+## [mobile-v0.10.0] - 2026-11-14
+
+### Release notes
+- Show the specific GitHub label added or removed in inbox events.
+- Clarify event status wording and remove button-like styling from event labels.
+- Make the mobile inbox more compact and load older events without replacing the list.
+- Inbox events show the linked conversation title and project before you open it.
+- Group related GitHub inbox events into expandable PR and issue threads.
+- Find scheduled tasks inside Inbox, with simpler navigation and a clearer, unclipped message list.
+- Mobile Inbox now uses the desktop's filters, shows each event's source and delivery status, and opens threads on their own page.
+- Polish Inbox with consistent selection colors, clearer conversation cards, and quieter event details.
+- Fix mobile inline code wrapping and show previews for uploaded images.
+- Make inbox events easier to scan with compact cards, clear titles, repository context and readable action labels.
+- Read your inbox on iOS and Android with shared unread status across your authorized devices.
+- Unify the conversation and inbox section controls with consistent sizing, styling, and selection behavior.
+- Messages from other chats, scheduled tasks and goal mode now show as one quiet line in mobile chats; repeats with no reply merge, and a reply notes what it answers.
+- Display uploaded images outside user text bubbles and match desktop message colors in light and dark mode.
+- Unify Regent conversation bubbles and make its status panel available on mobile.
+- Show Regent’s cross-conversation work queue instead of a per-chat plan in the mobile status panel.
+- Files the agent sends you now appear together under its reply, as artifact cards on desktop and a clearer file row on the phone.
+- Unify inbox threads across desktop and mobile with backend-owned grouping for all event sources.
+
 ## [mobile-v0.9.0] - 2026-11-13
 
 ### Release notes
