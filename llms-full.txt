@@ -3400,14 +3400,12 @@ from the npmmirror copy in mainland China.
 |---|---|
 | **QQ Mail** | QQ Mail web → Settings → Account → POP3/IMAP/SMTP service → generate an authorization code |
 | **NetEase 163 / 126 / yeah.net** | Mail web → Settings → POP3/SMTP/IMAP → turn on IMAP → new authorization code |
-| **Gmail** | Turn on 2-Step Verification, then create one at [myaccount.google.com/apppasswords](https://myaccount.google.com/apppasswords) |
+| **Gmail / Google Workspace** | Click **Sign in with browser** (supports school mailboxes like `@berkeley.edu`), or click **Use app password instead** and create one at [myaccount.google.com/apppasswords](https://myaccount.google.com/apppasswords) |
+| **Outlook / Hotmail / Microsoft 365** | Click **Sign in with browser** (supports personal Outlook and school/work Microsoft 365 accounts) |
 | **iCloud Mail** | [account.apple.com](https://account.apple.com) → Sign-In and Security → App-Specific Passwords |
 | **Yahoo Mail** | Account security → Generate app password |
 | **Aliyun Mail, Tencent Exmail** | The mailbox's client settings page |
 | **Anything else** | Choose **Other (IMAP/SMTP)** and type the IMAP and SMTP servers yourself |
-
-**Outlook, Hotmail and Microsoft 365** no longer accept passwords over IMAP.
-They need Microsoft sign-in, which is planned but not available yet.
 
 You can connect several mailboxes. When there is more than one, tell the agent
 which to use ("check my work mail").
