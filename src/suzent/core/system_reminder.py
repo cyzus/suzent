@@ -21,6 +21,8 @@ import threading
 import os
 import re
 import secrets
+import tempfile
+from pathlib import Path
 from typing import Any, Callable, Awaitable, Optional, List, Sequence, Union
 
 from pydantic_ai.tools import RunContext
@@ -45,21 +47,81 @@ PUA_END = ""  # hidden-content end
 # label out of the transcript and sends it back cannot have it read as one.
 TRIGGER_MARK = ""
 
-# Per-process runtime token embedded in every reminder we author.
+# Runtime token embedded in every reminder we author.
 #
 # The delimiters above are public constants, so any text that reaches the model
 # — a user message, a fetched web page, a tool result — could otherwise carry a
 # byte-identical block and be read as trusted out-of-band context. The token
-# makes a genuine block unforgeable by anything that cannot read this process's
-# memory, and lets the display path tell runtime-authored blocks apart from
-# look-alike text a user legitimately typed.
+# makes a genuine block unforgeable by anything that cannot read it, and lets the
+# display path tell runtime-authored blocks apart from look-alike text a user
+# legitimately typed.
+#
+# It is persisted in the data directory rather than drawn per process. A fresh
+# token on every start made each restart rewrite every stored reminder in a
+# chat's history, so the first request afterwards missed the provider's prompt
+# cache from the first user message onward — on a long chat, the whole prefix.
 #
 # Scope note: the token is embedded in persisted history, so anyone able to read
 # a raw transcript can learn it. It is defence in depth behind
-# ``sanitize_untrusted_text()``, not a secret to rely on by itself.
-RUNTIME_NONCE = secrets.token_hex(8)
-
+# ``sanitize_untrusted_text()``, not a secret to rely on by itself; keeping it
+# across restarts does not change that.
 _NONCE_PAT = "[0-9a-f]{16}"
+_NONCE_FULL_RE = re.compile(rf"{_NONCE_PAT}")
+
+
+def _read_nonce(path: Path) -> Optional[str]:
+    try:
+        token = path.read_text(encoding="ascii").strip()
+    except UnicodeDecodeError:
+        return None
+    return token if _NONCE_FULL_RE.fullmatch(token) else None
+
+
+def _load_or_create_nonce(path: Path) -> str:
+    """Return the token stored at *path*, creating it on first use.
+
+    The token is written to a private temp file and hard-linked into place, so
+    the file is never seen half-written and two processes starting together
+    agree on one token instead of the later write invalidating the earlier
+    one's blocks. Any failure falls back to a per-process token: that costs one
+    cache miss per restart, which is what every start cost before this existed.
+    """
+    fallback = secrets.token_hex(8)
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            existing = _read_nonce(path)
+        except FileNotFoundError:
+            existing = None
+        else:
+            if existing:
+                return existing
+            logger.warning("Replacing a malformed reminder token file")
+            path.unlink(missing_ok=True)
+
+        fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=".reminder_nonce.")
+        try:
+            with os.fdopen(fd, "w", encoding="ascii") as handle:
+                handle.write(fallback)
+            try:
+                os.link(tmp, path)
+                return fallback
+            except FileExistsError:
+                return _read_nonce(path) or fallback
+        finally:
+            os.unlink(tmp)
+    except OSError as exc:
+        logger.warning(f"Could not persist the reminder token: {exc}")
+        return fallback
+
+
+def _nonce_path() -> Path:
+    from suzent.config.paths import get_data_dir
+
+    return get_data_dir() / "runtime" / "reminder_nonce"
+
+
+RUNTIME_NONCE = _load_or_create_nonce(_nonce_path())
 
 # --- Runtime-authored blocks from *this* process ---------------------------
 _PUA_STRIP_RE = re.compile(
@@ -78,8 +140,8 @@ _EXTRACT_RE = re.compile(
 )
 
 # --- Blocks authored by any run of the runtime -----------------------------
-# The display path must keep hiding reminders persisted before the last restart,
-# whose token differs from ours (or is absent, for pre-nonce history).
+# The display path must keep hiding reminders persisted under an earlier token
+# (before tokens were persisted, or after the token file was lost) or none.
 _ANY_PUA_STRIP_RE = re.compile(
     rf"{PUA_START}(?:{_NONCE_PAT})?.*?(?:{_NONCE_PAT})?{PUA_END}", re.DOTALL
 )
@@ -406,11 +468,11 @@ def _sanitize_fields(value: Any, names: list, rebuild, _depth: int, _seen: set) 
     return value
 
 
-# Only this process's token authenticates a block. A token *shape* proves
-# nothing — an earlier design accepted any 16 hex characters, which meant a
-# stored prompt containing PUA_START + "0"*16 + payload + "0"*16 + PUA_END was
-# waved through as runtime-authored. Provenance cannot be verified across a
-# restart, so blocks we cannot authenticate are not trusted, full stop.
+# Only our token authenticates a block. A token *shape* proves nothing — an
+# earlier design accepted any 16 hex characters, which meant a stored prompt
+# containing PUA_START + "0"*16 + payload + "0"*16 + PUA_END was waved through as
+# runtime-authored. Blocks under any other token cannot be authenticated, so they
+# are not trusted, full stop.
 _OWN_BLOCK_RE = re.compile(
     rf"{PUA_START}{RUNTIME_NONCE}.*?{RUNTIME_NONCE}{PUA_END}"
     rf'|<{REMINDER_TAG} nonce="{RUNTIME_NONCE}">.*?</{REMINDER_TAG}>',
@@ -764,8 +826,9 @@ def iter_reminder_fragments(
 
     With *authenticated_only*, blocks are limited to those this process wrote.
     Callers deciding whether they have already said something need that: this
-    runs before the history processor strips unauthenticated blocks, so on the
-    first turn after a restart the previous process's reminders are still here,
+    runs before the history processor strips unauthenticated blocks, so when the
+    token has changed (pre-persistence history, a lost token file) the older
+    reminders are still here,
     and treating them as current means concluding you have spoken when the model
     is about to lose that text.
     """
@@ -809,7 +872,7 @@ def is_scheduled_trigger_only(text: str) -> bool:
 
     Recognises both forms such a prompt takes in history: the reminder block it
     was sent as, and the placeholder line the history sanitizer leaves once a
-    restart makes that block unauthenticatable. Used only to *discard* prompts,
+    token change makes that block unauthenticatable. Used only to *discard* prompts,
     never to trust one, so an unauthenticated block is acceptable evidence.
     """
     stripped = (text or "").strip()
