@@ -332,6 +332,9 @@
     <string name="media_unavailable">%1$s can\'t be opened. It may have been moved or deleted on your computer.</string>
     <string name="media_play">Play %1$s</string>
     <string name="media_pause">Pause %1$s</string>
+    <string name="sent_files_heading">Files for you · %1$d</string>
+    <string name="sent_file_tap_to_share">Tap to share</string>
+    <string name="media_loading_short">Loading…</string>
     <string name="media_share">Share %1$s</string>
     <string name="media_open">Open %1$s full screen</string>
     <string name="media_actions">Save or share</string>

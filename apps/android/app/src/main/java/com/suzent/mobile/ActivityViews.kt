@@ -108,10 +108,13 @@ fun ActivityTurn(parts: List<MessagePart>, live: Boolean = false, regent: Boolea
             ActivityDisclosure(expanded || pending) {
                 Box(Modifier.padding(bottom = 10.dp)) { ActivityContent(work, false, citationSources, regent) }
             }
-            val media = remember(parts) { parts.flatMap { it.media } }
+            // What send_file handed over is the turn's deliverable: it goes under the reply, not here.
+            val media = remember(parts) { parts.filter { it.toolName != "send_file" }.flatMap { it.media } }
             if (media.isNotEmpty()) Box(Modifier.padding(bottom = 10.dp)) { MediaGallery(media) }
             ActivityContent(persistent + parts.drop(start), false, citationSources, regent, onBubbleLongPress)
         }
+        val sent = remember(parts) { parts.filter { it.toolName == "send_file" }.flatMap { it.media } }
+        if (sent.isNotEmpty()) SentFilesSection(sent)
     }
 }
 

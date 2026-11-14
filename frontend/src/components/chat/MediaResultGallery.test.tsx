@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import {
   getImageResultPaths,
   getPlayableResults,
-  getSentFilePaths,
+  getSentPaths,
   hasMediaResults,
   hasVisualMediaResults,
 } from './ImageResultGallery';
@@ -52,23 +52,19 @@ describe('media results', () => {
     expect(media).toHaveLength(1);
     expect(media[0].path).toBe('/video.mp4');
   });
-  it('sorts files handed over with send_file by kind, including failed chat-app sends', () => {
+  it('keeps send_file results out of the inline gallery so they gather under the reply', () => {
     const sent = call('send_file', {
-      saved_paths: ['/w/chart.PNG', '/w/clip.mp4', '/w/voice.mp3', '/w/report.pdf'],
+      saved_paths: ['/w/chart.PNG', '/w/clip.mp4', '/w/report.pdf', '/w/report.pdf'],
     });
-    expect(getImageResultPaths([sent])).toEqual(['/w/chart.PNG']);
-    expect(getPlayableResults([sent]).map((item) => [item.kind, item.path])).toEqual([
-      ['video', '/w/clip.mp4'],
-      ['audio', '/w/voice.mp3'],
+    expect(getImageResultPaths([sent])).toEqual([]);
+    expect(getPlayableResults([sent])).toEqual([]);
+    expect(hasVisualMediaResults([sent])).toBe(false);
+    expect(hasMediaResults([sent])).toBe(false);
+    expect(getSentPaths([sent])).toEqual(['/w/chart.PNG', '/w/clip.mp4', '/w/report.pdf']);
+    expect(getSentPaths([call('send_file', { saved_paths: ['/w/a.zip'] }, false)])).toEqual([
+      '/w/a.zip',
     ]);
-    expect(getSentFilePaths([sent])).toEqual(['/w/report.pdf']);
-    expect(hasVisualMediaResults([call('send_file', { saved_paths: ['/w/report.pdf'] })])).toBe(
-      true
-    );
-    expect(hasMediaResults([call('send_file', { saved_paths: ['/w/report.pdf'] }, false)])).toBe(
-      true
-    );
-    expect(hasMediaResults([call('send_file', {}, false)])).toBe(false);
+    expect(getSentPaths([call('send_file', {}, false)])).toEqual([]);
   });
   it('renders an explicit playback control and unavailable-device hint without autoplay', () => {
     const html = renderToStaticMarkup(

@@ -50,14 +50,14 @@ export function artifactKind(path: string): ChatArtifactKind {
   return EXTENSION_KINDS[extension] ?? 'file';
 }
 
-function displayPathOf(path: string): string {
+export function displayPathOf(path: string): string {
   const normalized = path.replace(/\\/g, '/');
   const projectMatch = normalized.match(/\/sandbox\/projects\/[^/]+\/(.+)$/);
   if (projectMatch) return projectMatch[1];
   return normalized.replace(/^\/workspace\//, '');
 }
 
-function savedPaths(toolName: string | undefined, output: string | undefined): string[] {
+export function savedPaths(toolName: string | undefined, output: string | undefined): string[] {
   if (!toolName || !OUTPUT_TOOLS.has(toolName)) return [];
   const envelope = parseToolResultEnvelope(output);
   if (!envelope) return [];

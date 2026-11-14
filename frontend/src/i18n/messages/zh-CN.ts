@@ -296,8 +296,7 @@ export const zhCN = {
     },
   },
   sentFile: {
-    label: '发送的文件',
-    reveal: '在文件夹中显示',
+    heading: '交付文件',
   },
   videoPlayer: {
     reveal: '找到文件位置',

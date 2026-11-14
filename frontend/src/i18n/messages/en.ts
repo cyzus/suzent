@@ -306,8 +306,7 @@ export const en = {
     },
   },
   sentFile: {
-    label: 'Sent file',
-    reveal: 'Show in folder',
+    heading: 'Files for you',
   },
   videoPlayer: {
     reveal: 'Show file location',

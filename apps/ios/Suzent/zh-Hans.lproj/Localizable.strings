@@ -372,6 +372,9 @@
 "Loading %@…" = "正在加载 %@…";
 "Share %@" = "分享 %@";
 "Download %@" = "下载 %@";
+"Files for you" = "交付文件";
+"Tap to download" = "轻点下载";
+"Ready to share" = "可以分享";
 "Save to Photos" = "保存到相册";
 "Saved to Photos" = "已保存到相册";
 "Couldn't save to Photos" = "保存到相册失败";
