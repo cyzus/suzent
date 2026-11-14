@@ -9,7 +9,6 @@ import {
   ArrowTurnDownRightIcon,
   BoltIcon,
   ChatBubbleLeftRightIcon,
-  ChevronRightIcon,
   ClockIcon,
   FlagIcon,
   PaperAirplaneIcon,
@@ -275,9 +274,7 @@ export const DispatchReference: React.FC<{ chats: LinkedChat[] }> = ({ chats }) 
       >
         <PaperAirplaneIcon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
         <span className="min-w-0 truncate">{label}</span>
-        {single ? (
-          <ChevronRightIcon className="h-3 w-3 shrink-0" aria-hidden="true" />
-        ) : (
+        {!single && (
           <DisclosureChevron expanded={expanded} className="h-3 w-3 transition-transform" />
         )}
       </button>
@@ -293,7 +290,6 @@ export const DispatchReference: React.FC<{ chats: LinkedChat[] }> = ({ chats }) 
             >
               <ChatBubbleLeftRightIcon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
               <span className="min-w-0 truncate">{chat.title ?? chat.id}</span>
-              <ChevronRightIcon className="h-3 w-3 shrink-0" aria-hidden="true" />
             </button>
           ))}
         </div>
