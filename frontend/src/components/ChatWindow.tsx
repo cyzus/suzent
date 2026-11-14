@@ -3897,6 +3897,9 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                   void switchToChat(chatId);
                 }}
                 renderMessages={renderPeekMessages}
+                backendConfig={safeBackendConfig}
+                voice={voice}
+                onImageClick={setViewingImage}
               />
             )}
 

@@ -1,16 +1,12 @@
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import {
-  ArrowUpIcon,
-  ArrowsPointingOutIcon,
-  ChevronRightIcon,
-  XMarkIcon,
-} from '@heroicons/react/24/outline';
+import { ArrowsPointingOutIcon, ChevronRightIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import { getApiBase } from '../../lib/api';
 import { mapServerMessages } from '../../lib/serverMessages';
-import { isImeComposing } from '../../lib/ime';
 import { useEventBus } from '../../hooks/useEventBus';
 import { useI18n } from '../../i18n';
-import type { Message } from '../../types/api';
+import type { ChatConfig, ConfigOptions, FileAttachment, Message } from '../../types/api';
+import type { VoiceSession } from '../../hooks/useVoiceSession';
+import { PeekChatComposer } from './PeekChatComposer';
 import { PanelResizeHandle } from '../PanelResizeHandle';
 
 const WIDTH_KEY = 'suzent.chatPeekWidth';
@@ -37,6 +33,9 @@ interface ChatPeekPanelProps {
   onClose: () => void;
   onExpand: (chatId: string) => void;
   renderMessages: (chatId: string, messages: Message[]) => React.ReactNode;
+  backendConfig: ConfigOptions | null;
+  voice: VoiceSession;
+  onImageClick?: (src: string) => void;
 }
 
 /**
@@ -52,6 +51,9 @@ export const ChatPeekPanel: React.FC<ChatPeekPanelProps> = ({
   onClose,
   onExpand,
   renderMessages,
+  backendConfig,
+  voice,
+  onImageClick,
 }) => {
   const { t } = useI18n();
   const { activeStreams, snapshotReady } = useEventBus();
@@ -59,7 +61,7 @@ export const ChatPeekPanel: React.FC<ChatPeekPanelProps> = ({
   const [messages, setMessages] = useState<Message[] | null>(null);
   const [title, setTitle] = useState<string | undefined>(knownTitle);
   const [failed, setFailed] = useState(false);
-  const [config, setConfig] = useState<Record<string, unknown>>({});
+  const [config, setConfig] = useState<Partial<ChatConfig> | null>(null);
   const [pending, setPending] = useState<string | null>(null);
   const [width, setWidth] = useState(storedWidth);
   const panelRef = useRef<HTMLElement>(null);
@@ -80,7 +82,11 @@ export const ChatPeekPanel: React.FC<ChatPeekPanelProps> = ({
       setMessages(mapped);
       setPending((text) => (text !== null && lastUserText(mapped) === text ? null : text));
       if (chat.title) setTitle(chat.title);
-      if (chat.config && typeof chat.config === 'object') setConfig(chat.config);
+      // The composer seeds from the first read; later reads must not reset its picks.
+      setConfig(
+        (previous) =>
+          previous ?? (chat.config && typeof chat.config === 'object' ? chat.config : {})
+      );
       setFailed(false);
     } catch {
       if (currentChat.current === chatId) setFailed(true);
@@ -91,6 +97,7 @@ export const ChatPeekPanel: React.FC<ChatPeekPanelProps> = ({
     setMessages(null);
     setFailed(false);
     setPending(null);
+    setConfig(null);
     setTitle(knownTitle);
     stickToBottom.current = true;
     // The known title only seeds a newly opened chat; a list refresh must not reset it.
@@ -111,14 +118,19 @@ export const ChatPeekPanel: React.FC<ChatPeekPanelProps> = ({
   }, [messages, pending]);
 
   // A running chat is redirected, as its own composer would; an idle one starts a turn.
-  const send = async (text: string): Promise<boolean> => {
+  const send = async (
+    text: string,
+    sendConfig: ChatConfig,
+    files?: FileAttachment[]
+  ): Promise<boolean> => {
     const res = await fetch(`${getApiBase()}/chat/${running ? 'steer-send' : 'send'}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         chat_id: chatId,
         message: text,
-        config,
+        config: sendConfig,
+        ...(files?.length ? { files } : {}),
         client_run_token: crypto.randomUUID(),
       }),
     }).catch(() => null);
@@ -225,13 +237,18 @@ export const ChatPeekPanel: React.FC<ChatPeekPanelProps> = ({
           renderMessages(chatId, shown ?? [])
         )}
       </div>
-      <PeekComposer
-        key={chatId}
-        placeholder={t(
-          running ? 'chatMessage.dispatch.peekSteer' : 'chatMessage.dispatch.peekReply'
-        )}
-        onSend={send}
-      />
+      {config && (
+        <PeekChatComposer
+          key={chatId}
+          chatId={chatId}
+          savedConfig={config}
+          backendConfig={backendConfig}
+          voice={voice}
+          running={running}
+          onSend={send}
+          onImageClick={onImageClick}
+        />
+      )}
     </aside>
   );
 };
@@ -242,70 +259,3 @@ function lastUserText(messages: Message[]): string | null {
   }
   return null;
 }
-
-const PeekComposer: React.FC<{
-  placeholder: string;
-  onSend: (text: string) => Promise<boolean>;
-}> = ({ placeholder, onSend }) => {
-  const { t } = useI18n();
-  const [text, setText] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [failed, setFailed] = useState(false);
-  const ref = useRef<HTMLTextAreaElement>(null);
-
-  useLayoutEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    el.style.height = 'auto';
-    el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
-  }, [text]);
-
-  const submit = async (): Promise<void> => {
-    const message = text.trim();
-    if (!message || busy) return;
-    setBusy(true);
-    setFailed(false);
-    const sent = await onSend(message);
-    setBusy(false);
-    if (sent) setText('');
-    else setFailed(true);
-  };
-
-  return (
-    <div className="shrink-0 px-3 pb-3 pt-1">
-      {failed && (
-        <p role="alert" className="px-1 pb-1 text-xs text-red-600 dark:text-red-400">
-          {t('chatMessage.dispatch.peekSendFailed')}
-        </p>
-      )}
-      <div className="flex items-end gap-2 border-2 border-brutal-black bg-white px-3 py-2 dark:bg-zinc-800">
-        <textarea
-          ref={ref}
-          rows={1}
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          onKeyDown={(e) => {
-            if (isImeComposing(e)) return;
-            if (e.key === 'Enter' && !e.shiftKey) {
-              e.preventDefault();
-              void submit();
-            }
-          }}
-          placeholder={placeholder}
-          aria-label={placeholder}
-          className="max-h-40 min-h-[24px] flex-1 resize-none bg-transparent text-sm leading-6 text-brutal-black outline-none placeholder:text-neutral-400 dark:text-white dark:placeholder:text-neutral-500"
-        />
-        <button
-          type="button"
-          onClick={() => void submit()}
-          disabled={!text.trim() || busy}
-          title={t('chatMessage.dispatch.peekSend')}
-          aria-label={t('chatMessage.dispatch.peekSend')}
-          className="inline-flex h-7 w-7 shrink-0 items-center justify-center border-2 border-brutal-black bg-brutal-black text-white disabled:border-neutral-300 disabled:bg-transparent disabled:text-neutral-300 dark:border-white dark:bg-white dark:text-brutal-black dark:disabled:border-zinc-600 dark:disabled:bg-transparent dark:disabled:text-zinc-600"
-        >
-          <ArrowUpIcon className="h-4 w-4 stroke-[2.5]" aria-hidden="true" />
-        </button>
-      </div>
-    </div>
-  );
-};
