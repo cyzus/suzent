@@ -7,11 +7,12 @@ import { compactionNoticeDetails } from '../../lib/compactionNotices';
 import { DisclosureChevron } from '../DisclosureChevron';
 import {
   ArrowTurnDownRightIcon,
-  ArrowUpRightIcon,
   BoltIcon,
   ChatBubbleLeftRightIcon,
+  ChevronRightIcon,
   ClockIcon,
   FlagIcon,
+  PaperAirplaneIcon,
 } from '@heroicons/react/24/outline';
 import {
   parseTrigger,
@@ -247,33 +248,56 @@ export const TriggerReference: React.FC<{ entries: TriggerEntry[]; className?: s
 
 /**
  * The sessions a Regent reply handed work to, under the bubble: the outgoing
- * counterpart of the TriggerReference above it.
+ * counterpart of the TriggerReference above it. One target opens directly;
+ * several fold into a count that lists them.
  */
 export const DispatchReference: React.FC<{ chats: LinkedChat[] }> = ({ chats }) => {
   const { t } = useI18n();
   const openChat = useOpenChat();
+  const [expanded, setExpanded] = React.useState(false);
   if (!openChat || chats.length === 0) return null;
+
+  const single = chats.length === 1 ? chats[0] : null;
+  const label = single
+    ? t('chatMessage.dispatch.sentTo', { target: single.title ?? single.id })
+    : t('chatMessage.dispatch.sentToMany', { count: chats.length });
+  const rowClass =
+    'flex max-w-full min-w-0 items-center gap-1.5 py-0.5 text-left text-[12px] text-neutral-400 hover:text-neutral-700 dark:text-neutral-500 dark:hover:text-neutral-200';
+
   return (
-    <div className="chat-dispatch-reference flex min-w-0 max-w-full flex-wrap items-center gap-x-1.5 gap-y-0.5 py-0.5 text-[12px] text-neutral-400 dark:text-neutral-500">
-      <ArrowUpRightIcon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-      <span className="shrink-0">{t('chatMessage.dispatch.sentTo')}</span>
-      {chats.map((chat, index) => (
-        <React.Fragment key={chat.id}>
-          {index > 0 && (
-            <span className="shrink-0 text-neutral-300 dark:text-neutral-600" aria-hidden="true">
-              |
-            </span>
-          )}
-          <button
-            type="button"
-            onClick={() => void openChat(chat.id)}
-            title={`${t('toolCallBlock.openChat')} · ${chat.title ?? chat.id}`}
-            className="min-w-0 max-w-[260px] truncate text-left text-neutral-500 decoration-1 underline-offset-2 hover:text-neutral-800 hover:underline dark:text-neutral-400 dark:hover:text-neutral-100"
-          >
-            {chat.title ?? chat.id}
-          </button>
-        </React.Fragment>
-      ))}
+    <div className="chat-dispatch-reference w-full max-w-3xl">
+      <button
+        type="button"
+        className={rowClass}
+        onClick={() => (single ? void openChat(single.id) : setExpanded((value) => !value))}
+        aria-expanded={single ? undefined : expanded}
+        title={single ? `${t('toolCallBlock.openChat')} · ${single.title ?? single.id}` : label}
+      >
+        <PaperAirplaneIcon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+        <span className="min-w-0 truncate">{label}</span>
+        {single ? (
+          <ChevronRightIcon className="h-3 w-3 shrink-0" aria-hidden="true" />
+        ) : (
+          <DisclosureChevron expanded={expanded} className="h-3 w-3 transition-transform" />
+        )}
+      </button>
+      {expanded && !single && (
+        <div className="mt-0.5 max-h-60 overflow-y-auto border-l-2 border-neutral-200 pl-3 dark:border-zinc-700">
+          {chats.map((chat) => (
+            <button
+              key={chat.id}
+              type="button"
+              className={rowClass}
+              onClick={() => void openChat(chat.id)}
+              title={`${t('toolCallBlock.openChat')} · ${chat.title ?? chat.id}`}
+            >
+              <ChatBubbleLeftRightIcon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+              <span className="min-w-0 truncate">{chat.title ?? chat.id}</span>
+              <ChevronRightIcon className="h-3 w-3 shrink-0" aria-hidden="true" />
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 };

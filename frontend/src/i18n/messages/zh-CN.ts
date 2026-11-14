@@ -2313,7 +2313,8 @@ export const zhCN = {
     quietReply: '无需你处理',
     sentByRegent: '由 Regent 转达',
     dispatch: {
-      sentTo: '已交给',
+      sentTo: '交给 {target}',
+      sentToMany: '交给 {count} 个对话',
     },
     trigger: {
       goal: '目标模式',

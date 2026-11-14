@@ -2377,7 +2377,8 @@ export const en = {
     quietReply: 'Nothing needed from you',
     sentByRegent: 'Sent by Regent',
     dispatch: {
-      sentTo: 'Sent to',
+      sentTo: 'Sent to {target}',
+      sentToMany: 'Sent to {count} chats',
     },
     trigger: {
       goal: 'Goal mode',
