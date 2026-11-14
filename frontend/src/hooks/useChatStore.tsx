@@ -19,11 +19,38 @@ import {
   type ThinkingEffort,
 } from '../types/api';
 import { getApiBase } from '../lib/api';
-import { mapServerMessages } from '../lib/serverMessages';
+import { hideStreamingDrafts } from '../lib/streamingDrafts';
+import { collectRunTimings } from '../lib/runTiming';
+import { hasToolContinuation } from '../lib/toolContinuation';
 import { stripDenyApprovalPolicies } from '../lib/approvalPolicy';
 import { pairLastTurnAssistants, shouldKeepLocalAssistantContent } from '../lib/chatSyncGuards';
 import { useContextUsageStore } from './useContextUsageStore';
 import { useProjects } from './useProjects';
+
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+/**
+ * Track the newest server row folded into a coalesced assistant bubble.
+ *
+ * A turn's rows collapse into one bubble that keeps the *first* model
+ * response's timestamp, and that timestamp marks when the response began --
+ * every tool result and follow-up response it led to is later. Without this,
+ * nothing downstream can tell how long the turn actually worked.
+ */
+function noteTurnActivity(bubble: Partial<Message>, timestamp?: string, source?: Message): void {
+  bubble.run_timings = collectRunTimings([bubble, ...(source ? [source] : [])]);
+  if (!timestamp) return;
+  const current = bubble.turn_last_activity_at;
+  if (!current || new Date(timestamp).getTime() > new Date(current).getTime()) {
+    bubble.turn_last_activity_at = timestamp;
+  }
+}
 
 function userMessageFingerprint(message: Message): string {
   const files = (message.files ?? [])
@@ -72,12 +99,18 @@ interface ChatStreamingContextValue {
   messages: Message[];
   isStreaming: boolean;
   activeStreamingChatId: string | null;
+  /** Every cached chat's messages, keyed like the store's cache; read through `messagesForChat`. */
+  messagesByChat: Record<string, Message[]>;
+  configByChat: Record<string, ChatConfig>;
+  failedChatLoads: ReadonlySet<string>;
 }
 
 interface ChatCoreContextValue {
   config: ChatConfig;
   setConfig: (c: ChatConfig | ((prev: ChatConfig) => ChatConfig)) => void;
   setChatConfigForId: (chatId: string, config: ChatConfig) => Promise<void>;
+  /** Change one chat's config without touching the current chat's (a side panel's chat). */
+  setConfigForChat: (chatId: string, config: ChatConfig) => void;
   addMessage: (m: Message, chatId?: string | null) => void;
   updateLastUserMessageImages: (images: any[], chatId?: string | null) => void;
   updateAssistantStreaming: (delta: string, chatId?: string | null) => void;
@@ -113,6 +146,8 @@ interface ChatCoreContextValue {
       trusted?: boolean;
       throwOnError?: boolean;
       validateBeforeSwitch?: boolean;
+      /** Fetch into the cache without making it the current chat (a side panel's chat). */
+      background?: boolean;
     }
   ) => Promise<void>;
   saveCurrentChat: (skipRefresh?: boolean) => Promise<void>;
@@ -1087,6 +1122,16 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
     if (!res.ok) throw new Error(`Failed to save ACP chat config: ${res.status}`);
   }, []);
 
+  const setConfigForChat = useCallback(
+    (chatId: string, nextConfig: ChatConfig) => {
+      const key = keyForChat(chatId);
+      const previousConfig = configByChatRef.current[key];
+      setConfigByChat((prev) => ({ ...prev, [key]: nextConfig }));
+      if (!configsEqual(previousConfig, nextConfig)) scheduleSave(chatId, 1500);
+    },
+    [scheduleSave]
+  );
+
   const addMessage = useCallback(
     (message: Message, chatId: string | null = currentChatId) => {
       setMessagesForChat(chatId, (prev) => [...prev, message]);
@@ -1395,8 +1440,10 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
         trusted?: boolean;
         throwOnError?: boolean;
         validateBeforeSwitch?: boolean;
+        background?: boolean;
       }
     ) => {
+      const background = !!options?.background;
       // Task links can outlive their chat. Validate before changing the active conversation.
       let validatedResponse: Response | undefined;
       if (options?.validateBeforeSwitch) {
@@ -1419,7 +1466,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
       const authoritative = !!options?.authoritative;
       const serverWins = authoritative || !!options?.trusted;
       // Clear any pending saves for the previous chat before switching
-      if (currentChatId && currentChatId !== chatId) {
+      if (!background && currentChatId && currentChatId !== chatId) {
         clearScheduledSave(currentChatId);
       }
       // The optimistic append that is about to be discarded also scheduled a
@@ -1431,16 +1478,18 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
 
       const key = keyForChat(chatId);
       const cachedMessages = messagesByChatRef.current[key];
-      setCurrentChatId(chatId);
-      setShouldResetNext(false);
+      if (!background) {
+        setCurrentChatId(chatId);
+        setShouldResetNext(false);
+      }
 
       const summary = chats.find((c) => c.id === chatId);
-      if (summary) {
+      if (summary && !background) {
         setCurrentChatTitle(summary.title);
       }
 
       const cachedConfig = configByChat[key];
-      if (cachedConfig) {
+      if (cachedConfig && !background) {
         setConfigState(cachedConfig);
         // Save reusable preferences for the next new chat without chat-scoped state.
         try {
@@ -1460,7 +1509,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
           const chat: Chat = await res.json();
           markChatLoad(chatId, false);
           setLoadedChatProjects((previous) => ({ ...previous, [chatId]: chat.projectId ?? null }));
-          setCurrentChatTitle(chat.title);
+          if (!background) setCurrentChatTitle(chat.title);
 
           if (chat.contextUsage || chat.contextTokens) {
             const contextUsageStore = useContextUsageStore.getState();
@@ -1495,7 +1544,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
             computeDefaultConfig()
           );
           setConfigByChat((prev) => ({ ...prev, [key]: loadedConfig }));
-          setConfigState(loadedConfig);
+          if (!background) setConfigState(loadedConfig);
           // The backend config listing is fetched once on mount, so a backend that
           // restarted (or gained a model) since then leaves this window holding a
           // listing that can't size the chat's model — which is how the context
@@ -1513,20 +1562,153 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
             void fetchConfigWithRetry(1, 5, false);
           }
           // Save reusable preferences for the next new chat without chat-scoped state.
-          try {
-            localStorage.setItem(
-              LAST_CONFIG_KEY,
-              JSON.stringify(stripReusableConfig(loadedConfig))
-            );
-          } catch (e) {
-            console.warn('Failed to save config to localStorage:', e);
+          if (!background) {
+            try {
+              localStorage.setItem(
+                LAST_CONFIG_KEY,
+                JSON.stringify(stripReusableConfig(loadedConfig))
+              );
+            } catch (e) {
+              console.warn('Failed to save config to localStorage:', e);
+            }
           }
           setMessagesByChat((prev) => {
             const rollbackExpected = rollbackExpectedChatIdsRef.current.has(chatId);
             // 100% Backend Authored: backend is ALWAYS the source of truth for ALL chats.
             // Map backend JSON (which includes strict tool_calls arrays and 'tool' roles)
             // into the legacy HTML `<details>` string blocks that the UI parser expects.
-            const mappedMessages = mapServerMessages(chat.messages || []);
+            const serverMessages: any[] = chat.messages || [];
+            // Match recovery drafts before tool continuations change the response content.
+            // Keep the original array indices for forks and file-change references.
+            const visibleServerMessages = new Set(hideStreamingDrafts(serverMessages, false));
+            const mappedMessages: Message[] = [];
+
+            let currentAssistant: Partial<Message> | null = null;
+            // True while the currentAssistant had tool_calls but hasn't yet received
+            // a follow-up assistant message (the final-text continuation of that turn).
+            // Reset to false once the continuation arrives so the NEXT assistant is a
+            // new independent bubble (e.g. a wakeup turn).
+            let awaitingToolContinuation = false;
+
+            for (const [serverMessageIndex, msg] of serverMessages.entries()) {
+              if (!visibleServerMessages.has(msg)) continue;
+              if (msg.role === 'user') {
+                // Empty user rows are tool-resume continuations (system-reminder injected
+                // by the backend, then stripped to empty). Drop them — they don't represent
+                // a real turn and must not flush the assistant buffer or act as boundaries.
+                if (!(msg.content || '').trim() && !msg.images?.length && !msg.files?.length) {
+                  continue;
+                }
+                if (currentAssistant) {
+                  mappedMessages.push(currentAssistant as Message);
+                  currentAssistant = null;
+                }
+                awaitingToolContinuation = false;
+                mappedMessages.push({
+                  ...msg,
+                  raw_message_end_index: serverMessageIndex + 1,
+                });
+              } else if (msg.role === 'system_triggered' || msg.role === 'trigger') {
+                // 'trigger' is the legacy name; normalize to 'system_triggered' so the
+                // rest of the render pipeline only needs to handle one role.
+                if (currentAssistant) {
+                  mappedMessages.push(currentAssistant as Message);
+                  currentAssistant = null;
+                }
+                awaitingToolContinuation = false;
+                mappedMessages.push({
+                  ...msg,
+                  role: 'system_triggered',
+                  raw_message_end_index: serverMessageIndex + 1,
+                } as Message);
+              } else if (msg.role === 'assistant') {
+                if (!currentAssistant) {
+                  currentAssistant = {
+                    ...msg,
+                    content: msg.content || '',
+                    raw_message_end_index: serverMessageIndex + 1,
+                    file_change_message_index: msg.file_changes?.length
+                      ? serverMessageIndex
+                      : undefined,
+                  };
+                  awaitingToolContinuation = false;
+                } else if (awaitingToolContinuation) {
+                  // This assistant message is the final-text continuation of the
+                  // preceding tool-call turn — merge it into the same bubble.
+                  if (msg.content) {
+                    currentAssistant.content =
+                      (currentAssistant.content ? currentAssistant.content + '\n\n' : '') +
+                      msg.content;
+                  }
+                  if (Array.isArray(msg.parts) && msg.parts.length > 0) {
+                    currentAssistant.parts = [
+                      ...((currentAssistant.parts as any[] | undefined) || []),
+                      ...msg.parts,
+                    ];
+                  }
+                  if (Array.isArray(msg.file_changes) && msg.file_changes.length > 0) {
+                    currentAssistant.file_changes = msg.file_changes;
+                    currentAssistant.file_changes_undone = msg.file_changes_undone === true;
+                    currentAssistant.file_change_message_index = serverMessageIndex;
+                  }
+                  currentAssistant.raw_message_end_index = serverMessageIndex + 1;
+                  awaitingToolContinuation = false;
+                } else {
+                  // Independent assistant turn (e.g. wakeup) — new bubble.
+                  mappedMessages.push(currentAssistant as Message);
+                  currentAssistant = {
+                    ...msg,
+                    content: msg.content || '',
+                    raw_message_end_index: serverMessageIndex + 1,
+                    file_change_message_index: msg.file_changes?.length
+                      ? serverMessageIndex
+                      : undefined,
+                  };
+                  awaitingToolContinuation = false;
+                }
+                noteTurnActivity(currentAssistant!, msg.timestamp, msg);
+                awaitingToolContinuation = hasToolContinuation(msg);
+                if (msg.tool_calls && Array.isArray(msg.tool_calls)) {
+                  msg.tool_calls.forEach((tc: any) => {
+                    const args = escapeHtml(
+                      typeof tc.function.arguments === 'string'
+                        ? tc.function.arguments
+                        : JSON.stringify(tc.function.arguments)
+                    );
+                    const stateAttr =
+                      tc.state === 'approval-requested' ? ' data-approval-state="pending"' : '';
+                    const idAttr = tc.id ? ` data-approval-id="${escapeHtml(tc.id)}"` : '';
+                    currentAssistant!.content += `\n<details data-tool-call-id="${escapeHtml(tc.id ?? '')}"${idAttr}${stateAttr}><summary>🔧 ${escapeHtml(tc.function.name)}</summary>\n<pre><code class="language-json">${args}</code></pre>\n</details>\n`;
+                  });
+                  awaitingToolContinuation = true;
+                }
+              } else if (msg.role === 'tool') {
+                if (!currentAssistant) {
+                  currentAssistant = {
+                    role: 'assistant',
+                    content: '',
+                    raw_message_end_index: serverMessageIndex + 1,
+                  };
+                }
+                currentAssistant.content += `\n<details data-tool-call-id="${escapeHtml(msg.tool_call_id ?? '')}"><summary>📦 ${escapeHtml(msg.name ?? '')}</summary>\n<pre><code class="language-text">${escapeHtml(msg.content ?? '')}</code></pre>\n</details>\n`;
+                currentAssistant.raw_message_end_index = serverMessageIndex + 1;
+                noteTurnActivity(currentAssistant!, msg.timestamp, msg);
+                awaitingToolContinuation = true;
+              } else {
+                if (currentAssistant) {
+                  mappedMessages.push(currentAssistant as Message);
+                  currentAssistant = null;
+                }
+                awaitingToolContinuation = false;
+                mappedMessages.push({
+                  ...msg,
+                  raw_message_end_index: serverMessageIndex + 1,
+                });
+              }
+            }
+            if (currentAssistant) {
+              mappedMessages.push(currentAssistant as Message);
+            }
             if (serverWins) {
               rollbackExpectedChatIdsRef.current.delete(chatId);
               return { ...prev, [key]: mappedMessages };
@@ -1667,7 +1849,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
             rollbackExpectedChatIdsRef.current.delete(chatId);
             return { ...prev, [key]: mappedMessages };
           });
-          setShouldResetNext(false);
+          if (!background) setShouldResetNext(false);
         } else {
           console.error('Failed to load chat:', res.status, res.statusText);
           markChatLoad(chatId, true);
@@ -1785,6 +1967,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
       config,
       setConfig: optimizedSetConfig,
       setChatConfigForId,
+      setConfigForChat,
       addMessage,
       updateLastUserMessageImages,
       updateAssistantStreaming,
@@ -1834,6 +2017,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
       config,
       optimizedSetConfig,
       setChatConfigForId,
+      setConfigForChat,
       addMessage,
       updateLastUserMessageImages,
       updateAssistantStreaming,
@@ -1886,8 +2070,11 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
       messages,
       isStreaming,
       activeStreamingChatId,
+      messagesByChat,
+      configByChat,
+      failedChatLoads,
     }),
-    [messages, isStreaming, activeStreamingChatId]
+    [messages, isStreaming, activeStreamingChatId, messagesByChat, configByChat, failedChatLoads]
   );
 
   return (
@@ -1915,4 +2102,100 @@ export const useChatStore = (): ChatContextValue => {
   const core = useChatCoreStore();
   const streaming = useChatStreamingStore();
   return useMemo(() => ({ ...core, ...streaming }), [core, streaming]);
+};
+
+const NO_MESSAGES: Message[] = [];
+
+/**
+ * Runs a ChatWindow on a chat other than the current one (Regent's side panel).
+ * The store keeps one "current chat" with one config and one streaming flag;
+ * inside this provider those read and write `chatId` instead, so the window
+ * works as it would on the chat itself while the app's current chat stays put.
+ * Renders nothing until the chat's messages and config are cached.
+ */
+export const ChatScopeProvider: React.FC<{
+  chatId: string;
+  children: React.ReactNode;
+  /** Shown until the chat is cached, given whether loading it failed. */
+  fallback?: (failed: boolean) => React.ReactNode;
+}> = ({ chatId, children, fallback }) => {
+  const core = useChatCoreStore();
+  const streaming = useChatStreamingStore();
+  const [scopeStreaming, setScopeStreaming] = useState(false);
+  const key = keyForChat(chatId);
+  const scopedConfig = streaming.configByChat[key];
+  const messages = streaming.messagesByChat[key] ?? NO_MESSAGES;
+  const loaded = key in streaming.messagesByChat && !!scopedConfig;
+  const { loadChat, setConfigForChat } = core;
+
+  // Once per chat: loadChat changes identity whenever the chat list or any
+  // config does, and a reload mid-turn would throw away the streaming bubble.
+  const loadChatRef = useRef(loadChat);
+  loadChatRef.current = loadChat;
+  useEffect(() => {
+    void loadChatRef.current(chatId, { background: true, force: true });
+  }, [chatId]);
+
+  const coreValue = useMemo<ChatCoreContextValue | null>(() => {
+    if (!scopedConfig) return null;
+    const scoped = <T,>(id: T | undefined): T | string => (id === undefined ? chatId : id);
+    const summary = [...core.pinnedChats, ...core.chats].find((chat) => chat.id === chatId);
+    return {
+      ...core,
+      currentChatId: chatId,
+      currentChatMessagesLoaded: key in streaming.messagesByChat,
+      currentChatLoadFailed: streaming.failedChatLoads.has(chatId),
+      currentChatProjectId: summary?.projectId ?? null,
+      config: scopedConfig,
+      setConfig: (next) =>
+        setConfigForChat(chatId, typeof next === 'function' ? next(scopedConfig) : next),
+      shouldResetNext: false,
+      consumeResetFlag: () => {},
+      setIsStreaming: (value, id) => {
+        if (scoped(id) === chatId) setScopeStreaming(value);
+      },
+      loadChat: (id, options) =>
+        loadChat(id, id === chatId ? { ...options, background: true } : options),
+      saveCurrentChat: () => core.forceSaveNow(chatId),
+      finalSave: (id) => core.finalSave(scoped(id)),
+      forceSaveNow: (id) => core.forceSaveNow(scoped(id)),
+      addMessage: (message, id) => core.addMessage(message, scoped(id)),
+      updateLastUserMessageImages: (images, id) =>
+        core.updateLastUserMessageImages(images, scoped(id)),
+      updateAssistantStreaming: (delta, id) => core.updateAssistantStreaming(delta, scoped(id)),
+      newAssistantMessage: (id) => core.newAssistantMessage(scoped(id)),
+      removeEmptyAssistantMessage: (id) => core.removeEmptyAssistantMessage(scoped(id)),
+      updateMessage: (index, update, id) => core.updateMessage(index, update, scoped(id)),
+      truncateMessagesFrom: (index, id) => core.truncateMessagesFrom(index, scoped(id)),
+      markChatRollbackExpected: (id) => core.markChatRollbackExpected(scoped(id)),
+    };
+  }, [
+    core,
+    chatId,
+    key,
+    scopedConfig,
+    streaming.messagesByChat,
+    streaming.failedChatLoads,
+    loadChat,
+    setConfigForChat,
+  ]);
+
+  const streamingValue = useMemo<ChatStreamingContextValue>(
+    () => ({
+      ...streaming,
+      messages,
+      isStreaming: scopeStreaming,
+      activeStreamingChatId: scopeStreaming ? chatId : null,
+    }),
+    [streaming, messages, scopeStreaming, chatId]
+  );
+
+  if (!loaded || !coreValue) return <>{fallback?.(streaming.failedChatLoads.has(chatId))}</>;
+  return (
+    <ChatCoreContext.Provider value={coreValue}>
+      <ChatStreamingContext.Provider value={streamingValue}>
+        {children}
+      </ChatStreamingContext.Provider>
+    </ChatCoreContext.Provider>
+  );
 };
