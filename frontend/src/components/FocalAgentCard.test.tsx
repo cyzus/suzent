@@ -81,6 +81,13 @@ describe('Regent contact card', () => {
     expect(text(html)).toContain('chatList.focal.waitingCount:1');
   });
 
+  it('draws no frame of its own inside the sidebar', () => {
+    const html = render(status({ waiting: 1 }), true);
+    expect(html).not.toContain('border-brutal-black');
+    expect(html).not.toContain('border-2');
+    expect(html).not.toContain('shadow-brutal');
+  });
+
   it('offers a way back out of Regent once it is open', () => {
     const open = renderToStaticMarkup(
       <FocalAgentCardView status={status()} active onOpen={() => {}} onExit={() => {}} />

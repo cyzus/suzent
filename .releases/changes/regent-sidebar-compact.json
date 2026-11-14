@@ -1,0 +1,4 @@
+{
+  "products": {"desktop": "patch"},
+  "summary": "Drop the black frame around Regent's open sidebar card, show each waiting chat's reason or summary in Regent's sidebar queue instead of a generic 'Your turn' label, and refine the custom scrollbar gutter."
+}

@@ -96,13 +96,14 @@ export function FocalAgentCardView({
         : t('chatList.focal.allClear');
 
   // Opening Regent turns its row into a profile: the flat mark grows into the
-  // cube, and the sidebar turns into Regent's queue (see ChatList).
+  // cube, and the sidebar turns into Regent's queue (see ChatList). The panel
+  // sits on the sidebar's own surface, so it carries no frame of its own.
   if (active) {
     return (
       <section
         aria-current={onReturn ? undefined : 'page'}
         aria-label={t('chatList.focal.name')}
-        className={`group/regent regent-card-hero relative w-full flex flex-col items-center gap-1 border-2 border-brutal-black bg-white px-3 pt-2 pb-3 text-center text-brutal-black dark:bg-zinc-800 dark:text-white ${onReturn ? 'hover:bg-neutral-50 dark:hover:bg-zinc-700/60' : ''}`}
+        className={`group/regent regent-card-hero relative w-full flex flex-col items-center gap-1 bg-white px-3 pt-2 pb-3 text-center text-brutal-black dark:bg-zinc-800 dark:text-white ${onReturn ? 'hover:bg-neutral-50 dark:hover:bg-zinc-700/60' : ''}`}
       >
         {/* Above the animated cube and text, under the back button. */}
         {onReturn && (
