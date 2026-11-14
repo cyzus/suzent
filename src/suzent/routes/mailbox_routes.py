@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 
 from starlette.requests import Request
@@ -30,7 +31,13 @@ def _endpoint_urls(request: Request, path: str) -> dict[str, str]:
     return urls
 
 
-def _item_to_dict(item: MailboxItemModel) -> dict:
+# The list shows a preview; the full payload (often tens of KB per webhook) loads on open.
+LIST_PAYLOAD_PREVIEW_CHARS = 2000
+
+
+def _item_to_dict(item: MailboxItemModel, *, preview: bool = False) -> dict:
+    payload = item.payload or ""
+    truncated = preview and len(payload) > LIST_PAYLOAD_PREVIEW_CHARS
     try:
         headers = json.loads(item.headers_json or "{}")
     except ValueError:
@@ -43,7 +50,8 @@ def _item_to_dict(item: MailboxItemModel) -> dict:
         "signature": item.signature,
         "summary": item.summary,
         "headers": headers,
-        "payload": item.payload,
+        "payload": payload[:LIST_PAYLOAD_PREVIEW_CHARS] if truncated else payload,
+        "payload_truncated": truncated,
         "route_status": item.route_status,
         "target_chat_id": item.target_chat_id,
         "target_label": item.target_label,
@@ -83,32 +91,35 @@ def _safe_int(value: str | None, default: int) -> int:
 
 
 async def list_mailbox_items_route(request: Request) -> JSONResponse:
-    db = get_database()
     limit = min(200, max(1, _safe_int(request.query_params.get("limit"), 60)))
     offset = max(0, _safe_int(request.query_params.get("offset"), 0))
-    rows = db.list_mailbox_items(
-        limit=limit,
-        offset=offset,
-        route_status=request.query_params.get("route_status") or None,
-        source_kind=request.query_params.get("source_kind") or None,
-    )
-    # Delivery happens after the item is stored, so read its current status.
-    statuses = db.agent_message_statuses(
-        [row.inbox_message_id for row in rows if row.inbox_message_id]
-    )
-    items = []
-    for row in rows:
-        item = _item_to_dict(row)
-        status = statuses.get(row.inbox_message_id or "")
-        if status:
-            item["headers"]["status"] = status
-            if status == "failed":
-                item["route_status"] = "error"
-        items.append(item)
+    route_status = request.query_params.get("route_status") or None
+    source_kind = request.query_params.get("source_kind") or None
 
-    counts = db.count_mailbox_items()
-    return JSONResponse(
-        {
+    def build() -> dict:
+        db = get_database()
+        rows = db.list_mailbox_items(
+            limit=limit,
+            offset=offset,
+            route_status=route_status,
+            source_kind=source_kind,
+        )
+        # Delivery happens after the item is stored, so read its current status.
+        statuses = db.agent_message_statuses(
+            [row.inbox_message_id for row in rows if row.inbox_message_id]
+        )
+        items = []
+        for row in rows:
+            item = _item_to_dict(row, preview=True)
+            status = statuses.get(row.inbox_message_id or "")
+            if status:
+                item["headers"]["status"] = status
+                if status == "failed":
+                    item["route_status"] = "error"
+            items.append(item)
+
+        counts = db.count_mailbox_items()
+        return {
             "items": items,
             "counts": {
                 "all": sum(counts.values()),
@@ -117,9 +128,19 @@ async def list_mailbox_items_route(request: Request) -> JSONResponse:
                 "unread": db.count_unread_mailbox_notifications(),
             },
             "destinations": list_destinations(db),
+            # The token lives in the OS keyring, which can be slow to read.
             "endpoint": _endpoint_urls(request, get_mailbox_webhook_path()),
         }
-    )
+
+    # SQLite work on the event loop stalls every chat stream in flight.
+    return JSONResponse(await asyncio.to_thread(build))
+
+
+async def get_mailbox_item_route(request: Request) -> JSONResponse:
+    item = get_database().get_mailbox_item(int(request.path_params["item_id"]))
+    if item is None:
+        return JSONResponse({"error": "Mailbox item not found"}, status_code=404)
+    return JSONResponse({"item": _item_to_dict(item)})
 
 
 async def mailbox_unread_route(request: Request) -> JSONResponse:

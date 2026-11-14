@@ -420,6 +420,25 @@ async def test_failed_delivery_shows_as_error_and_items_can_be_deleted(db):
 
 
 @pytest.mark.asyncio
+async def test_list_previews_large_payloads_and_the_item_has_them_whole(db):
+    payload = json.dumps({"body": "x" * 50_000})
+    db.create_mailbox_item(signature="s", summary="big", payload=payload)
+
+    [item] = (await _list())["items"]
+    assert item["payload_truncated"] is True
+    assert len(item["payload"]) == mailbox_routes.LIST_PAYLOAD_PREVIEW_CHARS
+
+    res = await mailbox_routes.get_mailbox_item_route(
+        _request(
+            "GET", f"/mailbox/items/{item['id']}", path_params={"item_id": item["id"]}
+        )
+    )
+    full = json.loads(res.body)["item"]
+    assert full["payload"] == payload
+    assert full["payload_truncated"] is False
+
+
+@pytest.mark.asyncio
 async def test_notify_only_tells_the_user(db, monkeypatch):
     _fake_router(monkeypatch, _decision(destination="user"))
 
