@@ -468,6 +468,9 @@ interface LiveTurn {
 
 const LIVE_ASSISTANT_MESSAGE: Message = { role: 'assistant', content: '' };
 
+const noop = (): void => {};
+const NO_SURFACES: A2UISurface[] = [];
+
 // Message list component: store messages, then the live turn. The live turn
 // takes the row its saved message will occupy (same key, same element tree),
 // so when the stream ends React updates that row in place instead of swapping
@@ -2291,13 +2294,21 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     [currentChatId, switchToChat]
   );
   const renderPeekMessages = useCallback(
+    // Read-only: its surfaces, files and images must not reach into Regent's
+    // canvas, preview or action handler, which all act for Regent's chat.
     (chatId: string, messages: Message[]) => (
-      <MessageListMemo
-        messages={messages}
-        streamingForCurrentChat={false}
-        chatId={chatId}
-        onImageClick={setViewingImage}
-      />
+      <InlineSurfaceProvider openInCanvas={noop} surfaces={NO_SURFACES} onAction={noop}>
+        <OpenFileContext.Provider value={null}>
+          <ChatImageGallery key={chatId}>
+            <MessageListMemo
+              messages={messages}
+              streamingForCurrentChat={false}
+              chatId={chatId}
+              onImageClick={setViewingImage}
+            />
+          </ChatImageGallery>
+        </OpenFileContext.Provider>
+      </InlineSurfaceProvider>
     ),
     []
   );
