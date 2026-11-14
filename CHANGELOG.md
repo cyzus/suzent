@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Optional decision models (OpenAI or Gemini Decisions) in Model Roles route new kinds of Mailbox events in a fraction of a second, falling back to the Decision model when unsure.
 - Email plugin: sign in with your browser (OAuth2) to connect Outlook, Hotmail, Microsoft 365, and Google Workspace school or work mailboxes.
 - Mailbox, Artifacts and project lists in the sidebar open faster, and the app no longer slows down the longer scheduled tasks run.
+- File reads in chat show plain text with the file's real line numbers, edits show only the changed lines, long chats with many edits open faster, and clicking a file name in a read or edit step opens it in the file preview.
 - Email can feed the Mailbox: switch on Watch inbox for a mailbox and new mail arrives there, sorted by the same rules as webhooks. Plugins can now run watchers and send events to the Mailbox.
 - Newly added MCP servers and newly connected services now start off; switch them on in Settings or a chat's Tools tab.
 - Fix mobile inline code wrapping and show previews for uploaded images.
