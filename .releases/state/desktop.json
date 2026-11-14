@@ -211,6 +211,7 @@
     ".releases/changes/plugin-integrations.json",
     ".releases/changes/plugin-system.json",
     ".releases/changes/prebuilt-webui.json",
+    ".releases/changes/prefetch-project-chats.json",
     ".releases/changes/presentation-generator-formatting-only.json",
     ".releases/changes/preserve-pending-approvals.json",
     ".releases/changes/prevent-viewport-overscroll.json",

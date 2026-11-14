@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Newly added MCP servers and newly connected services now start off; switch them on in Settings or a chat's Tools tab.
 - Fix mobile inline code wrapping and show previews for uploaded images.
 - Opening a project or Regent no longer flashes an empty "New chat" screen before the list or history loads.
+- Projects in the sidebar open instantly the first time, because their chat lists load in the background.
 - Regent can look through the Mailbox, read any event and send one on to a project or to you.
 - Show Regent’s cross-conversation work queue instead of a per-chat plan in the mobile status panel.
 - Renaming a chat, task or project now edits the name in place in the sidebar (Enter or click away saves, Esc cancels), and archived chats are tucked behind the sidebar's more menu.
