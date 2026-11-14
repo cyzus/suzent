@@ -2284,7 +2284,14 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   // Regent hands work to other chats; following one opens it beside Regent
   // instead of leaving, and the panel's expand button still switches over.
   const [peekChatId, setPeekChatId] = useState<string | null>(null);
-  useEffect(() => setPeekChatId(null), [currentChatId]);
+  // Coming back to Regent from a chat expanded out of the panel puts it back
+  // in the panel, so the way back lands where you left.
+  const expandedPeek = useRef<string | null>(null);
+  useEffect(() => {
+    const reopen = currentChatId === FOCAL_CHAT_ID ? expandedPeek.current : null;
+    if (currentChatId !== expandedPeek.current) expandedPeek.current = null;
+    setPeekChatId(reopen);
+  }, [currentChatId]);
   const handleOpenChat = useCallback(
     async (chatId: string): Promise<boolean> => {
       if (currentChatId !== FOCAL_CHAT_ID) return switchToChat(chatId);
@@ -3885,7 +3892,10 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                 }
                 maxWidthPx={Math.max(360, Math.round((viewportWidthPx ?? 1280) * 0.6))}
                 onClose={() => setPeekChatId(null)}
-                onExpand={(chatId) => void switchToChat(chatId)}
+                onExpand={(chatId) => {
+                  expandedPeek.current = chatId;
+                  void switchToChat(chatId);
+                }}
                 renderMessages={renderPeekMessages}
               />
             )}
