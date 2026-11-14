@@ -208,6 +208,7 @@
     ".releases/changes/npm-release-mirror.json",
     ".releases/changes/onboarding-model-roles.json",
     ".releases/changes/persist-completed-stream-response.json",
+    ".releases/changes/persist-reminder-nonce.json",
     ".releases/changes/persistent-chat-canvas.json",
     ".releases/changes/pin-litellm.json",
     ".releases/changes/plugin-deps-broken-dist-info.json",

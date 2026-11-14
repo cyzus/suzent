@@ -25,6 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fix mobile inline code wrapping and show previews for uploaded images.
 - Read your inbox on iOS and Android with shared unread status across your authorized devices.
 - Opening a project or Regent no longer flashes an empty "New chat" screen before the list or history loads.
+- Restarting Suzent no longer forces long chats to rebuild the model's prompt cache on the next message.
 - Projects in the sidebar open instantly the first time, because their chat lists load in the background.
 - Collapsing a project and opening it again no longer flashes the empty "New chat" button.
 - Regent can look through the Mailbox, read any event and send one on to a project or to you.
