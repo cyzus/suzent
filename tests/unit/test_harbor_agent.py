@@ -283,6 +283,37 @@ def test_run_forwards_provider_credentials_only(kit, agent_module, monkeypatch):
     assert "UNRELATED_SETTING" not in seen
 
 
+def test_other_providers_credentials_stay_out_of_the_container(
+    kit, agent_module, monkeypatch
+):
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "stub-key")
+    monkeypatch.setenv("OPENAI_API_KEY", "another-service")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "another-service")
+    monkeypatch.setenv("SOME_BASE_URL", "https://internal.example")
+
+    kit.run(agent_module, "deepseek/deepseek-v4-flash", "Do the task")
+
+    seen = kit.seen_env()
+    assert seen["DEEPSEEK_API_KEY"] == "stub-key"
+    for name in ("OPENAI_API_KEY", "ANTHROPIC_API_KEY", "SOME_BASE_URL"):
+        assert name not in seen
+
+
+def test_fireworks_route_does_not_leak_an_unrelated_openai_key(
+    kit, agent_module, monkeypatch
+):
+    monkeypatch.setenv("FIREWORKS_API_KEY", "fw-stub")
+    monkeypatch.setenv("OPENAI_API_KEY", "another-service")
+
+    kit.run(
+        agent_module, "fireworks_ai/accounts/fireworks/models/kimi-k3", "Do the task"
+    )
+
+    seen = kit.seen_env()
+    assert seen["OPENAI_API_KEY"] == "fw-stub"
+    assert "FIREWORKS_API_KEY" not in seen
+
+
 def test_a_provider_suzent_cannot_redirect_runs_without_the_proxy(kit, agent_module):
     kit.run(agent_module, "deepseek/deepseek-v4-flash", "Do the task")
 

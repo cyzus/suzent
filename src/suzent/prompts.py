@@ -161,6 +161,11 @@ Throwaway work (scripts, downloads, intermediate output, reference clones) goes 
 Knowledge useful beyond this project belongs in the notebook, when filing there is allowed.
 """
 
+PROJECT_LIBRARY_SECTION_WITH_CWD = """# Project Library
+`{library}` is this project's library, shared by every chat in the project. Keep only what a later chat should find there: notes in `notes/`, each listed on one line in the file index of `context.md`.
+This chat works in `{working_dir}`, your working directory. Files the task asks for, and anything else you create for the task, go there, and relative paths land there. Do not put them in the library or its `scratch/` folder.
+"""
+
 BASE_INSTRUCTIONS_SECTION = """# Base Instructions
 {base_instructions}
 """
@@ -395,15 +400,25 @@ def build_execution_mode_section(
     workspace_root: str = "",
     shell_type: str = "unknown",
     project_dir: str = "",
+    working_dir: str = "",
 ) -> str:
-    """Build environment mode section for host or sandbox execution."""
-    if sandbox_enabled:
-        return (
-            EXECUTION_MODE_SECTION_SANDBOX
-            + "\n"
-            + PROJECT_LIBRARY_SECTION.format(library="/workspace")
-        )
+    """Build environment mode section for host or sandbox execution.
 
+    ``working_dir`` is the chat's own working folder, when it has one. The
+    default scratch/ folder is then not where the agent works, so the library
+    section must not say it is.
+    """
+    working_dir = working_dir.replace("\\", "/")
+    if sandbox_enabled:
+        if working_dir:
+            library_section = PROJECT_LIBRARY_SECTION_WITH_CWD.format(
+                library="/workspace", working_dir=working_dir
+            )
+        else:
+            library_section = PROJECT_LIBRARY_SECTION.format(library="/workspace")
+        return EXECUTION_MODE_SECTION_SANDBOX + "\n" + library_section
+
+    library = project_dir.replace("\\", "/") or "$PROJECT_PATH"
     return (
         EXECUTION_MODE_SECTION_HOST.format(
             workspace_root=workspace_root.replace("\\", "/"),
@@ -411,8 +426,12 @@ def build_execution_mode_section(
             shell_type=shell_type,
         )
         + "\n"
-        + PROJECT_LIBRARY_SECTION.format(
-            library=project_dir.replace("\\", "/") or "$PROJECT_PATH"
+        + (
+            PROJECT_LIBRARY_SECTION_WITH_CWD.format(
+                library=library, working_dir=working_dir
+            )
+            if working_dir
+            else PROJECT_LIBRARY_SECTION.format(library=library)
         )
     )
 
@@ -695,6 +714,7 @@ def register_dynamic_instructions(
             workspace_root=ctx.deps.workspace_root,
             shell_type=shell_type,
             project_dir=str(resolver.project_dir) if resolver is not None else "",
+            working_dir=str(resolver.cwd) if getattr(resolver, "cwd", None) else "",
         )
 
     @agent.instructions

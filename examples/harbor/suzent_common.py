@@ -22,7 +22,6 @@ PROXY_PORT = 8899
 _OPENAI_BASE_URL = "https://api.openai.com/v1"
 
 _PATH = 'export PATH="$HOME/.local/bin:$PATH"; '
-_FORWARDED_ENV_SUFFIXES = ("_API_KEY", "_BASE_URL")
 
 # Every tool definition is resent on each model call, so a terminal coding
 # task runs with file and shell tools only.
@@ -53,6 +52,10 @@ class ModelRoute:
     base_url: str | None = None
     base_url_env: str | None = None
     env: dict[str, str] = field(default_factory=dict)
+    # The runner's own variables this provider needs. Anything else in the
+    # runner's environment belongs to other services and stays out of the
+    # task container.
+    forwarded_env: tuple[str, ...] = ()
 
     @property
     def host(self) -> str | None:
@@ -85,6 +88,7 @@ def resolve_model(model_name: str | None, environ: Mapping[str, str]) -> ModelRo
                 base_url=environ.get("MOONSHOT_BASE_URL")
                 or "https://api.moonshot.cn/v1",
                 base_url_env="MOONSHOT_BASE_URL",
+                forwarded_env=("MOONSHOT_API_KEY",),
             )
         case "openai":
             base_url = environ.get("OPENAI_BASE_URL") or _OPENAI_BASE_URL
@@ -95,9 +99,14 @@ def resolve_model(model_name: str | None, environ: Mapping[str, str]) -> ModelRo
                 model=model_name,
                 base_url=base_url,
                 base_url_env=None if first_party else "OPENAI_BASE_URL",
+                forwarded_env=("OPENAI_API_KEY",),
             )
         case _:
-            return ModelRoute(model=model_name)
+            name = provider.upper().replace("-", "_")
+            return ModelRoute(
+                model=model_name,
+                forwarded_env=(f"{name}_API_KEY", f"{name}_BASE_URL"),
+            )
 
 
 def install_command(ref: str | None) -> str:
@@ -116,11 +125,7 @@ def install_command(ref: str | None) -> str:
 
 def run_env(route: ModelRoute, environ: Mapping[str, str]) -> dict[str, str]:
     """Environment for the run: provider credentials, and the proxy when used."""
-    env = {
-        key: value
-        for key, value in environ.items()
-        if key.endswith(_FORWARDED_ENV_SUFFIXES)
-    }
+    env = {key: environ[key] for key in route.forwarded_env if key in environ}
     env.update(route.env)
     if route.base_url and route.base_url_env:
         path = urlsplit(route.base_url).path
