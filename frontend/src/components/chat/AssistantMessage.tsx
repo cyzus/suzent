@@ -12,7 +12,12 @@ import {
 } from '../../lib/chatUtils';
 import { ThinkingAnimation, AgentBadge, RobotIcon } from './ThinkingAnimation';
 import { MarkdownRenderer } from './MarkdownRenderer';
-import { ImageResultGallery, hasVisualMediaResults, getRailImagePaths } from './ImageResultGallery';
+import {
+  ImageResultGallery,
+  SentFiles,
+  hasVisualMediaResults,
+  getRailImagePaths,
+} from './ImageResultGallery';
 import { ImageWithFallback } from './ImageWithFallback';
 import { ToolCallBlock } from './ToolCallBlock';
 import { toolCallFailed } from './toolSummary';
@@ -1197,6 +1202,12 @@ const AssistantMessageComponent: React.FC<AssistantMessageProps> = ({
                   onForceWebContext={onForceWebContext}
                 />
               ) : null}
+              {hasParts && (
+                <SentFiles
+                  calls={response.flatMap((part) => (part.type === 'tool' ? [part] : []))}
+                  onFileClick={onFileClick}
+                />
+              )}
               {fileChangeSummary}
               {messageFooter}
             </div>
@@ -1557,6 +1568,17 @@ const AssistantMessageComponent: React.FC<AssistantMessageProps> = ({
                 );
               })}
             </TurnActivity>
+            <SentFiles
+              calls={validChunks.flatMap((chunk) =>
+                chunk.type === 'toolCall'
+                  ? chunk.blocks.map((block) => ({
+                      toolName: block.toolName,
+                      output: block.content,
+                    }))
+                  : []
+              )}
+              onFileClick={onFileClick}
+            />
             {fileChangeSummary}
             {messageFooter}
           </div>

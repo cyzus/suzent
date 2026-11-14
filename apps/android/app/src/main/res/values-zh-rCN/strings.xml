@@ -330,6 +330,9 @@
     <string name="media_unavailable">无法打开 %1$s，它可能已在电脑上被移动或删除。</string>
     <string name="media_play">播放 %1$s</string>
     <string name="media_pause">暂停 %1$s</string>
+    <string name="sent_files_heading">交付文件 · %1$d</string>
+    <string name="sent_file_tap_to_share">轻点分享</string>
+    <string name="media_loading_short">正在加载…</string>
     <string name="media_share">分享 %1$s</string>
     <string name="media_open">全屏查看 %1$s</string>
     <string name="media_actions">保存或分享</string>

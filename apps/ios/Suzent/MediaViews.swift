@@ -37,6 +37,24 @@ struct MediaGallery: View {
     }
 }
 
+/// What the agent handed over with send_file, gathered under the reply as the turn's deliverable.
+struct SentFilesSection: View {
+    let items: [MediaItem]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 6) {
+                Text("Files for you")
+                Text(verbatim: "\(items.count)").monospacedDigit()
+            }
+            .suzentFont(PresentationTokens.typeMeta, weight: .bold, design: .monospaced)
+            .textCase(.uppercase).foregroundStyle(Color.suzentMuted)
+            .accessibilityElement(children: .combine).accessibilityAddTraits(.isHeader)
+            MediaGallery(items: items)
+        }
+    }
+}
+
 /// A sent document or archive: fetched only when the user asks for it, then shared.
 private struct FileRow: View {
     let item: MediaItem
@@ -47,37 +65,53 @@ private struct FileRow: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 10) {
-                Image(systemName: "doc").foregroundStyle(Color.suzentMuted)
-                Text(item.name).suzentFont(PresentationTokens.typeMeta).lineLimit(1).truncationMode(.middle)
+            HStack(spacing: 12) {
+                Text(verbatim: ".\(item.fileExtension)".uppercased())
+                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                    .foregroundStyle(Color.suzentText).lineLimit(1).minimumScaleFactor(0.7)
+                    .frame(width: 40, height: 40).background(Color.suzentFileCover(item.fileExtension))
+                    .overlay(Rectangle().stroke(Color.suzentOutline, lineWidth: 1))
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(item.name).suzentFont(PresentationTokens.typeChat, weight: .semibold)
+                        .lineLimit(1).truncationMode(.middle)
+                    Text(loading ? String(localized: "Loading \(item.name)…") : file == nil ? String(localized: "Tap to download") : String(localized: "Ready to share"))
+                        .suzentFont(PresentationTokens.typeMeta).foregroundStyle(Color.suzentMuted).lineLimit(1)
+                }
                 Spacer(minLength: 0)
                 if let file {
-                    ShareLink(item: file) { Image(systemName: "square.and.arrow.up") }
+                    ShareLink(item: file) { Image(systemName: "square.and.arrow.up").frame(width: 44, height: 44) }
                         .accessibilityLabel(Text("Share \(item.name)"))
+                } else if loading {
+                    ProgressView().frame(width: 44, height: 44)
                 } else {
-                    Button {
-                        Task {
-                            loading = true
-                            failed = false
-                            file = await loader.load(item)
-                            failed = file == nil
-                            loading = false
-                        }
-                    } label: { Image(systemName: "arrow.down.circle") }
-                        .disabled(loading)
-                        .accessibilityLabel(Text("Download \(item.name)"))
+                    Image(systemName: "arrow.down.circle").frame(width: 44, height: 44).accessibilityHidden(true)
                 }
-            }.padding(.horizontal, 12).frame(minHeight: 44)
-            if loading {
-                Text(String(localized: "Loading \(item.name)…")).suzentFont(PresentationTokens.typeMeta)
-                    .foregroundStyle(Color.suzentMuted).padding([.horizontal, .bottom], 12)
-            } else if failed {
+            }
+            .padding(.leading, 10).padding(.vertical, 10).padding(.trailing, 4)
+            .contentShape(Rectangle())
+            .onTapGesture { if file == nil && !loading { download() } }
+            .accessibilityElement(children: file == nil ? .ignore : .contain)
+            .accessibilityLabel(file == nil ? Text("Download \(item.name)") : Text(item.name))
+            .accessibilityAddTraits(file == nil ? .isButton : [])
+            .accessibilityAction { if file == nil && !loading { download() } }
+            if failed {
                 Text(String(localized: "\(item.name) can't be opened. It may have been moved or deleted on your computer."))
                     .suzentFont(PresentationTokens.typeMeta).foregroundStyle(Color.suzentMuted).padding([.horizontal, .bottom], 12)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .overlay(Rectangle().stroke(Color.suzentOutline, lineWidth: 1))
+        .overlay(Rectangle().stroke(Color.suzentOutline, lineWidth: 1.5))
+    }
+
+    private func download() {
+        Task {
+            loading = true
+            failed = false
+            file = await loader.load(item)
+            failed = file == nil
+            loading = false
+        }
     }
 }
 

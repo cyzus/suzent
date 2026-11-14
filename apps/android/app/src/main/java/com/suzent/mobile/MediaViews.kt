@@ -16,6 +16,7 @@ import android.widget.VideoView
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
@@ -60,6 +61,10 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.semantics.heading
+import androidx.compose.foundation.clickable
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
@@ -91,6 +96,19 @@ fun MediaGallery(items: List<MediaItem>) {
     }
 }
 
+/** What the agent handed over with send_file, gathered under the reply as the turn's deliverable. */
+@Composable
+fun SentFilesSection(items: List<MediaItem>) {
+    if (LocalMediaLoader.current == null) return
+    val count = items.distinctBy { it.id }.size
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(stringResource(R.string.sent_files_heading, count).uppercase(), Modifier.semantics { heading() },
+            fontSize = PresentationTokens.typeMeta.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onSurfaceVariant)
+        MediaGallery(items)
+    }
+}
+
 /** A sent document or archive: fetched only when the user asks to share or open it. */
 @Composable
 private fun FileRow(item: MediaItem, loader: suspend (MediaItem) -> File?) {
@@ -98,28 +116,44 @@ private fun FileRow(item: MediaItem, loader: suspend (MediaItem) -> File?) {
     val scope = rememberCoroutineScope()
     var busy by remember(item.id) { mutableStateOf(false) }
     var failed by remember(item.id) { mutableStateOf(false) }
-    val frame = Modifier.fillMaxWidth().border(1.dp, MaterialTheme.colorScheme.outline)
-    Column(frame) {
-        Row(Modifier.padding(start = 12.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-            Icon(painterResource(R.drawable.ic_attach_file), contentDescription = null, modifier = Modifier.size(18.dp),
-                tint = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text(item.name, Modifier.weight(1f).padding(horizontal = 10.dp), fontSize = PresentationTokens.typeMeta.sp,
-                maxLines = 1, overflow = TextOverflow.Ellipsis)
-            SuzentIconButton(onClick = {
-                busy = true
-                failed = false
-                scope.launch {
-                    val file = loader(item)
-                    busy = false
-                    if (file == null) failed = true else shareFile(context, file)
-                }
-            }, label = stringResource(R.string.media_share, item.name), enabled = !busy) {
+    val extension = item.name.substringAfterLast('.', "").lowercase().filter { it.isLetterOrDigit() }.take(4)
+    val share = {
+        busy = true
+        failed = false
+        scope.launch {
+            val file = loader(item)
+            busy = false
+            if (file == null) failed = true else shareFile(context, file)
+        }
+        Unit
+    }
+    Column(Modifier.fillMaxWidth().border(1.5.dp, MaterialTheme.colorScheme.outline)) {
+        Row(Modifier.clickable(enabled = !busy, onClickLabel = stringResource(R.string.media_share, item.name), onClick = share)
+            .padding(start = 10.dp, top = 10.dp, bottom = 10.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.size(40.dp).background(fileCover(extension)).border(1.dp, MaterialTheme.colorScheme.outline),
+                contentAlignment = Alignment.Center) {
+                Text(if (extension.isEmpty()) "FILE" else ".${extension.uppercase()}", color = MaterialTheme.colorScheme.onSurface, fontSize = 10.sp,
+                    fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold, maxLines = 1)
+            }
+            Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
+                Text(item.name, fontSize = PresentationTokens.typeChat.sp, fontWeight = FontWeight.SemiBold,
+                    maxLines = 1, overflow = TextOverflow.MiddleEllipsis)
+                Text(stringResource(if (busy) R.string.media_loading_short else R.string.sent_file_tap_to_share),
+                    fontSize = PresentationTokens.typeMeta.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+            }
+            SuzentIconButton(onClick = share, label = stringResource(R.string.media_share, item.name), enabled = !busy) {
                 Icon(painterResource(R.drawable.ic_share), contentDescription = null, modifier = Modifier.size(18.dp))
             }
         }
-        if (busy) MediaNote(stringResource(R.string.media_loading, item.name), Modifier)
         if (failed) MediaNote(stringResource(R.string.media_unavailable, item.name), Modifier)
     }
+}
+
+/** The desktop artifact covers' colours, from the shared presentation tokens. */
+@Composable
+private fun fileCover(extension: String): Color {
+    val (light, dark) = PresentationTokens.fileCovers[extension] ?: PresentationTokens.fileCovers.getValue("default")
+    return Color(if (isSystemInDarkTheme()) dark else light)
 }
 
 private fun shareFile(context: Context, file: File) {

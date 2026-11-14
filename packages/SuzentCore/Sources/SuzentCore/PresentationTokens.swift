@@ -55,6 +55,7 @@ public enum PresentationTokens {
     public static let sidebarWidth: Double = 320
     public static let pressedAlpha: Double = 0.08
     public static let disabledAlpha: Double = 0.45
+    public static let fileCovers: [String: (light: UInt32, dark: UInt32)] = ["default": (light: 0xF5F5F5, dark: 0x18181B), "pdf": (light: 0xFFD7D7, dark: 0x4A1D1D), "csv": (light: 0xA8E6A3, dark: 0x1F3B1D), "xlsx": (light: 0xA8E6A3, dark: 0x1F3B1D), "json": (light: 0xD6E4FF, dark: 0x1B2A4A), "html": (light: 0xD6E4FF, dark: 0x1B2A4A), "docx": (light: 0xD6E4FF, dark: 0x1B2A4A), "pptx": (light: 0xFFE0C2, dark: 0x4A2E1B)]
     public static let ignoredToolNames: [String] = ["final_answer", "final answer"]
     public static let compactionSummaryMarkers: [String] = ["[CONTEXT SUMMARY — READ BEFORE RESPONDING]", "--- ARCHIVED CONTEXT SUMMARY ---"]
 }
