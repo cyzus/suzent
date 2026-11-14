@@ -217,6 +217,7 @@
     ".releases/changes/prevent-viewport-overscroll.json",
     ".releases/changes/product-release-plans.json",
     ".releases/changes/project-library.json",
+    ".releases/changes/project-reopen-flash.json",
     ".releases/changes/project-root-installed.json",
     ".releases/changes/project-settings-folder-picker.json",
     ".releases/changes/project-settings-working-directory.json",
