@@ -32,6 +32,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - In Regent, the dispatch and re-route steps now show the target chat's title, and clicking it opens that chat.
 - Regent can look through the Mailbox, read any event and send one on to a project or to you.
 - Show Regent’s cross-conversation work queue instead of a per-chat plan in the mobile status panel.
+- Drop the black frame around Regent's open sidebar card, show each waiting chat's reason or summary in Regent's sidebar queue instead of a generic 'Your turn' label, and refine the custom scrollbar gutter.
 - Files the agent sends you now appear together under its reply, as artifact cards on desktop and a clearer file row on the phone.
 - Unify inbox threads across desktop and mobile with backend-owned grouping for all event sources.
 - Renaming a chat, task or project now edits the name in place in the sidebar (Enter or click away saves, Esc cancels), and archived chats are tucked behind the sidebar's more menu.
