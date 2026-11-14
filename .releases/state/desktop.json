@@ -212,6 +212,7 @@
     ".releases/changes/persist-reminder-nonce.json",
     ".releases/changes/persistent-chat-canvas.json",
     ".releases/changes/pin-litellm.json",
+    ".releases/changes/plain-new-file-writes.json",
     ".releases/changes/plugin-deps-broken-dist-info.json",
     ".releases/changes/plugin-extras-on-demand.json",
     ".releases/changes/plugin-icons.json",

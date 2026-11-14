@@ -27,6 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Read your inbox on iOS and Android with shared unread status across your authorized devices.
 - Opening a project or Regent no longer flashes an empty "New chat" screen before the list or history loads.
 - Restarting Suzent no longer forces long chats to rebuild the model's prompt cache on the next message.
+- Writing a new file in chat now shows it as light plain text with line numbers, and read and write previews no longer show a second scrollbar beside the line numbers.
 - Projects in the sidebar open instantly the first time, because their chat lists load in the background.
 - Collapsing a project and opening it again no longer flashes the empty "New chat" button.
 - In Regent, the dispatch and re-route steps now show the target chat's title, and clicking it opens that chat.
