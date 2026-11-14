@@ -14,6 +14,8 @@ import { DisclosureChevron } from '../DisclosureChevron';
 import { AgentAvatar } from '../sidebar/subAgentDisplay';
 import { useSubAgentStatus, watchSubAgentTask } from '../../hooks/useSubAgentStatus';
 import { parseSubAgentResult } from './subAgentResult';
+import { linkedChatsFromTools } from './chatToolLink';
+import { useOpenChat } from './openChatContext';
 import { isSubAgentActive, isSubAgentTerminal } from './subAgentStatus';
 
 export type AguiChunkType =
@@ -584,6 +586,13 @@ export const ActivityRail: React.FC<{
     'activity-rail-scroll min-w-0 w-full max-h-[min(24rem,50vh)] overflow-y-auto';
   const summary = !hasPending && summaryTools ? summarizeActivity(summaryTools, t) : undefined;
   const latestTool = summaryTools?.[summaryTools.length - 1];
+  // The sessions Regent handed work to stay reachable while the rail is
+  // folded, which is how a finished turn is read.
+  const openChat = useOpenChat();
+  const linkedChats = React.useMemo(
+    () => (openChat && summaryTools ? linkedChatsFromTools(summaryTools) : []),
+    [openChat, summaryTools]
+  );
   const thinking = isCurrent && isThinking;
   const { taskStates } = useSubAgentStatus();
   const agentResult =
@@ -683,6 +692,24 @@ export const ActivityRail: React.FC<{
         </button>
         {!visible && imagePaths.length > 0 && <RailImageThumbnails paths={imagePaths} />}
       </div>
+      {!visible && linkedChats.length > 0 && (
+        <div className="activity-rail-chat-links mt-1 flex min-w-0 flex-wrap gap-1.5">
+          {linkedChats.map((chat) => (
+            <button
+              key={chat.id}
+              type="button"
+              onClick={() => void openChat?.(chat.id)}
+              title={`${t('toolCallBlock.openChat')} · ${chat.title ?? chat.id}`}
+              className="flex min-w-0 max-w-[280px] items-center gap-1 rounded-sm border border-neutral-300 bg-white px-2 py-0.5 text-[11px] text-neutral-700 transition-colors hover:border-neutral-500 hover:bg-neutral-100 dark:border-zinc-600 dark:bg-zinc-800 dark:text-neutral-200 dark:hover:border-zinc-400 dark:hover:bg-zinc-700"
+            >
+              <span aria-hidden="true" className="shrink-0 opacity-60">
+                ↗
+              </span>
+              <span className="truncate">{chat.title ?? chat.id}</span>
+            </button>
+          ))}
+        </div>
+      )}
       <div
         id={bodyId}
         aria-hidden={!visible}

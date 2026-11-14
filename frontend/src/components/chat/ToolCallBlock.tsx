@@ -11,6 +11,7 @@ import { FileDiffViewer } from './FileDiffViewer';
 import { countChangedLines, fileToolPath, metadataLineCounts } from '../../lib/fileToolPreview';
 import { useOpenFile } from './openFileContext';
 import { useOpenChat } from './openChatContext';
+import { linkedChatFor } from './chatToolLink';
 import { ReadFileRenderer } from './ReadFileRenderer';
 import { BashCommandRenderer, BashOutputRenderer } from './BashRenderer';
 import type { ApprovalRememberScope } from '../../hooks/useAGUI';
@@ -54,8 +55,6 @@ const OUTPUT_RENDERERS: Record<string, React.FC<ToolRendererProps> | undefined> 
 };
 
 const FILE_PREVIEW_TOOLS = new Set(['read_file', 'edit_file', 'write_file']);
-// Regent's tools whose result names the session the work went to.
-const CHAT_LINK_TOOLS = new Set(['agent_dispatch', 'mailbox']);
 
 export type ApprovalState = 'pending' | 'approved' | 'denied' | undefined;
 
@@ -454,15 +453,10 @@ const ToolCallBlockComponent: React.FC<ToolCallBlockProps> = ({
   // Regent's dispatch and re-route name the session they reached, so the
   // header links to it like a file tool links its file.
   const openChat = useOpenChat();
-  const linkedChat = React.useMemo(() => {
-    if (!openChat || !CHAT_LINK_TOOLS.has(canonicalToolName) || isFailed) return null;
-    // Only a local session carries agent_title; a paired Suzent or A2A agent
-    // address has no chat here to open.
-    const id = rendererMetadata?.agent_id;
-    const title = rendererMetadata?.agent_title;
-    if (typeof id !== 'string' || !id || typeof title !== 'string') return null;
-    return { id, title: title.trim() || null };
-  }, [openChat, canonicalToolName, isFailed, rendererMetadata]);
+  const linkedChat = React.useMemo(
+    () => (openChat && !isFailed ? linkedChatFor(toolName, rendererMetadata) : null),
+    [openChat, isFailed, toolName, rendererMetadata]
+  );
   const headerDetail = linkedChat?.title
     ? canonicalToolName === 'mailbox' && summary.detail
       ? `${summary.detail} → ${linkedChat.title}`
