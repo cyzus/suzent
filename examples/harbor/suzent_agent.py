@@ -27,11 +27,13 @@ class SuzentAgent(BaseInstalledAgent):
         *args,
         tools: str | None = None,
         code_mode: bool | str = False,
+        tool_output_limit: int | str | None = None,
         **kwargs,
     ):
         super().__init__(*args, **kwargs)
         self._tools = tools or common.CODING_TOOLS
         self._code_mode = common.as_bool(code_mode)
+        self._tool_output_limit = int(tool_output_limit) if tool_output_limit else None
 
     @staticmethod
     @override
@@ -61,7 +63,11 @@ class SuzentAgent(BaseInstalledAgent):
         await self.exec_as_agent(
             environment,
             command=common.run_command(
-                route, instruction, self._tools, self._code_mode
+                route,
+                instruction,
+                self._tools,
+                self._code_mode,
+                self._tool_output_limit,
             ),
             env=common.run_env(route, os.environ),
         )

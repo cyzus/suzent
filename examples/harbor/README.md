@@ -118,7 +118,9 @@ whatever the saved setting is.
 Change either with the runner's agent keyword option, for example
 `--ak tools=ReadFileTool,RunCommandTool` or `--ak code_mode=true`. Report both
 with any result you publish, since they are part of the harness configuration
-being measured.
+being measured. `--ak tool_output_limit=10000` caps each tool result at that
+many characters (the rest stays in a file the agent can read); it is off by
+default and is part of the configuration to report too.
 
 ## What ends up in the trial's agent logs
 

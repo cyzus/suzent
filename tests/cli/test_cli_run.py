@@ -282,3 +282,18 @@ def test_run_keeps_background_processes_only_when_asked(
 
     assert result.exit_code == 0
     assert started.call_args.args[1] is expected
+
+
+def test_run_passes_the_tool_output_limit_to_the_backend(tmp_path: Path):
+    backend = FakeBackend([_text("ok")])
+    with (
+        patch("suzent.cli.run.get_client", return_value=backend.client),
+        patch("suzent.cli.run._backend", return_value=nullcontext()) as started,
+    ):
+        result = runner.invoke(
+            app,
+            ["run", "Do it", "--tool-output-limit", "10000", "--cwd", str(tmp_path)],
+        )
+
+    assert result.exit_code == 0
+    assert started.call_args.args[2] == 10000

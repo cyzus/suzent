@@ -283,6 +283,11 @@ def test_run_forwards_provider_credentials_only(kit, agent_module, monkeypatch):
     assert "UNRELATED_SETTING" not in seen
 
 
+def test_the_tool_output_limit_is_passed_only_when_asked(kit, agent_module):
+    kit.run(agent_module, "deepseek/deepseek-v4-flash", "Do the task")
+    assert "--tool-output-limit" not in kit.summary()["argv"]
+
+
 def test_other_providers_credentials_stay_out_of_the_container(
     kit, agent_module, monkeypatch
 ):

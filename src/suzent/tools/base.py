@@ -10,6 +10,7 @@ success/failure indicators, machine-readable error codes, user-friendly
 messages, and optional metadata for advanced retry and recovery logic.
 """
 
+import os
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Optional, Union
@@ -21,6 +22,21 @@ from suzent.logger import get_logger
 logger = get_logger(__name__)
 
 OUTPUT_CHAR_LIMIT = 30_000
+OUTPUT_LIMIT_ENV = "SUZENT_TOOL_OUTPUT_CHAR_LIMIT"
+
+
+def effective_output_limit(tool_limit: int) -> int:
+    """A tool's cap, lowered by SUZENT_TOOL_OUTPUT_CHAR_LIMIT when it is set.
+
+    A one-shot run can ask for tighter results: whatever a tool returns stays
+    in the context for every later call, so a smaller cap costs fewer tokens.
+    The override only lowers a cap, never raises it.
+    """
+    try:
+        override = int(os.environ.get(OUTPUT_LIMIT_ENV, ""))
+    except ValueError:
+        return tool_limit
+    return min(tool_limit, override) if override > 0 else tool_limit
 
 
 def truncate_tool_output(

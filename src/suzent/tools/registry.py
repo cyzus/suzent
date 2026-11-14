@@ -17,7 +17,7 @@ from typing import Any, Callable, Dict, List, Optional, Union
 from pydantic_ai import Tool as PydanticTool
 
 from suzent.logger import get_logger
-from suzent.tools.base import ToolResult, truncate_tool_output
+from suzent.tools.base import ToolResult, effective_output_limit, truncate_tool_output
 from suzent.tools.overflow import spill_overflow_async, spill_overflow_bounded
 
 
@@ -71,7 +71,7 @@ def _make_tool(
     template = tool_cls()
     original = template.forward
 
-    limit = tool_cls.output_char_limit
+    limit = effective_output_limit(tool_cls.output_char_limit)
     keep_tail = tool_cls.keep_output_tail
 
     def _needs_cap(result: Any) -> bool:

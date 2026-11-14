@@ -164,7 +164,11 @@ def run_env(route: ModelRoute, environ: Mapping[str, str]) -> dict[str, str]:
 
 
 def run_command(
-    route: ModelRoute, instruction: str, tools: str, code_mode: bool
+    route: ModelRoute,
+    instruction: str,
+    tools: str,
+    code_mode: bool,
+    tool_output_limit: int | None = None,
 ) -> str:
     """Shell command that runs one task and leaves its evidence in LOGS_DIR."""
     # Pinning MODEL_OPTIONS makes the requested model the only one Suzent may
@@ -192,6 +196,7 @@ def run_command(
         f"{'--code-mode' if code_mode else '--no-code-mode'} "
         # A task can ask for a server left running for the verifier.
         "--keep-background-processes "
+        f"{f'--tool-output-limit {int(tool_output_limit)} ' if tool_output_limit else ''}"
         f"-- {shlex.quote(instruction)} "
         f"> {LOGS_DIR}/{SUMMARY_FILE} 2> {LOGS_DIR}/suzent.log; "
         "status=$?; "

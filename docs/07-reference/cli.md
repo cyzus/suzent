@@ -107,6 +107,7 @@ again when the task is done.
 | `--code-mode` / `--no-code-mode` | Turn code mode on or off for this run. Defaults to your saved setting. |
 | `--json` | Print one JSON object when the task is done, with the reply, the token usage, and the conversation ID. |
 | `--keep-background-processes` | Leave commands the agent started in the background running after the run ends, for example a server the task asks for. Without it they stop with the run. Only applies when the command starts Suzent itself. |
+| `--tool-output-limit <characters>` | Cap each tool result at this many characters; the rest is kept in a file the agent can read. Lower values use fewer tokens on long runs. Only applies when the command starts Suzent itself. |
 | `--startup-timeout <seconds>` | How long to wait for Suzent to start when the command has to start it. |
 
 Leave out the task to read it from standard input, for example

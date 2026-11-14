@@ -80,11 +80,15 @@ def _fail(message: str, code: int) -> typer.Exit:
 
 
 @contextmanager
-def _backend(startup_timeout: float, keep_background: bool = False) -> Iterator[None]:
+def _backend(
+    startup_timeout: float,
+    keep_background: bool = False,
+    tool_output_limit: int | None = None,
+) -> Iterator[None]:
     """Use the running backend, or run one for the life of this command.
 
-    A running backend keeps its own background commands; only a backend started
-    here can be told to leave them running when the command ends.
+    A running backend keeps its own settings; only a backend started here can
+    be told to leave background commands running or to cap tool results.
     """
     from suzent.cli.main import (
         _is_suzent_server_running,
@@ -105,6 +109,10 @@ def _backend(startup_timeout: float, keep_background: bool = False) -> Iterator[
         from suzent.tools.shell.host_process_registry import KEEP_BACKGROUND_ENV
 
         env[KEEP_BACKGROUND_ENV] = "1"
+    if tool_output_limit:
+        from suzent.tools.base import OUTPUT_LIMIT_ENV
+
+        env[OUTPUT_LIMIT_ENV] = str(tool_output_limit)
     # The reply owns stdout, so the server's own output goes to stderr.
     process = subprocess.Popen(
         [sys.executable, "-m", "suzent.server"], env=env, stdout=sys.stderr
@@ -299,6 +307,15 @@ def register_run_command(app: typer.Typer) -> None:
                 "after the run ends, such as a server the task asks for"
             ),
         ),
+        tool_output_limit: int = typer.Option(
+            None,
+            "--tool-output-limit",
+            min=1000,
+            help=(
+                "Cap each tool result at this many characters, keeping the rest "
+                "in a file the agent can read (default: the built-in limit)"
+            ),
+        ),
         startup_timeout: float = typer.Option(
             120.0,
             "--startup-timeout",
@@ -337,7 +354,7 @@ def register_run_command(app: typer.Typer) -> None:
             )
             return await _run(prompt.strip(), config, quiet=as_json)
 
-        with _backend(startup_timeout, keep_background):
+        with _backend(startup_timeout, keep_background, tool_output_limit):
             try:
                 result = asyncio.run(_execute())
             except ClientError as e:

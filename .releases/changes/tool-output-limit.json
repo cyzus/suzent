@@ -1,0 +1,1 @@
+{"products": {"desktop": "patch"}, "summary": "Add `suzent run --tool-output-limit` to cap each tool result for one run."}
