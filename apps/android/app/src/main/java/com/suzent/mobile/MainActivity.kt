@@ -149,8 +149,11 @@ private fun MobileScreen(model: MobileModel) {
             pageState.SaveableStateProvider("home") {
                 Surface(Modifier.fillMaxSize()) {
                     if (wide) Column {
-                        TextButton({ mailboxWide = !mailboxWide }) { Text(stringResource(if (mailboxWide) R.string.tab_chats else R.string.mailbox_title) + if (!mailboxWide && model.mailbox.unread > 0) " (${model.mailbox.unread})" else "") }
-                        Box(Modifier.weight(1f)) { if (mailboxWide) MailboxView(model, openChat) else sidebar() }
+                        val inboxLabel = stringResource(R.string.mailbox_title)
+                        SuzentSegmentedTabs(listOf(false, true), mailboxWide, { mailboxWide = it },
+                            { if (!it) stringResource(R.string.tab_chats) else if (model.mailbox.unread > 0) "$inboxLabel · ${model.mailbox.unread}" else inboxLabel },
+                            Modifier.statusBarsPadding().padding(horizontal = 16.dp, vertical = 8.dp))
+                        Box(Modifier.weight(1f).consumeWindowInsets(WindowInsets.statusBars)) { if (mailboxWide) MailboxView(model, openChat) else sidebar() }
                     }
                     else if (searching) SearchPage(model, openChat, close = { focus.clearFocus(); searching = false })
                     else TabHome(tab, { focus.clearFocus(); tab = it }, model.mailbox.unread) {
@@ -1417,8 +1420,9 @@ private fun TabHome(tab: HomeTab, select: (HomeTab) -> Unit, unread: Int = 0, pa
                         .drawBehind { if (selected) drawRect(color, androidx.compose.ui.geometry.Offset((size.width - 32.dp.toPx()) / 2, 0f), Size(32.dp.toPx(), 3.dp.toPx())) }
                         .padding(vertical = 6.dp),
                         horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-                        BadgedBox(badge = { if (item == HomeTab.INBOX && unread > 0) Badge { Text(if (unread > 99) "99+" else unread.toString()) } }) {
+                        Box {
                             Icon(painterResource(item.icon), contentDescription = null, tint = color, modifier = Modifier.size(22.dp))
+                            if (item == HomeTab.INBOX && unread > 0) SuzentCountBadge(unread, Modifier.align(Alignment.TopStart).offset(x = 14.dp, y = (-6).dp))
                         }
                         Text(stringResource(item.label), fontSize = PresentationTokens.typeMeta.sp, color = color,
                             fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal, maxLines = 1)
@@ -1430,11 +1434,14 @@ private fun TabHome(tab: HomeTab, select: (HomeTab) -> Unit, unread: Int = 0, pa
 }
 
 @Composable
-internal fun TabTitle(title: String, model: MobileModel? = null) {
-    Column(Modifier.fillMaxWidth().heightIn(min = 52.dp).padding(vertical = 8.dp), horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center) {
-        Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, maxLines = 1)
-        model?.let { ActiveDesktopLabel(it) }
+internal fun TabTitle(title: String, model: MobileModel? = null, actions: @Composable BoxScope.() -> Unit = {}) {
+    Box(Modifier.fillMaxWidth().heightIn(min = 52.dp)) {
+        Column(Modifier.align(Alignment.Center).padding(horizontal = 56.dp, vertical = 8.dp), horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center) {
+            Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, maxLines = 1)
+            model?.let { ActiveDesktopLabel(it) }
+        }
+        actions()
     }
     HorizontalDivider(thickness = PresentationTokens.borderWidth.dp, color = MaterialTheme.colorScheme.outline)
 }

@@ -95,7 +95,7 @@ the settings button in the sidebar. The Chats list shows one of Recent (pinned,
 then the recent page) or Projects at a time, picked with a segmented switch under
 the search field; iOS keeps the choice in `@AppStorage("homeListMode")`, Android in
 saved state. The sidebar can be hidden on iPad from its header and shown again from the detail
-toolbar. Scheduled tasks on both platforms live in Inbox → Tasks.
+toolbar. Scheduled tasks on both platforms open from the clock button in the Inbox header.
 
 On phones a header search icon (beside the New conversation icon) opens a separate search page
 (iOS: a `Route.search` pushed under the conversation; Android: a `searching`
@@ -105,10 +105,12 @@ Tablets keep the inline sidebar field.
 
 ### Inbox and shared read state
 
-Both clients offer an Inbox with Notifications, Tasks and All events sections, paged
-lists, expandable details, shared unread counts, read actions and links to target
-conversations. Phones use the Inbox tab; iPad opens it from the sidebar toolbar,
-and Android tablets use the sidebar's Inbox button. English and Chinese labels
+Both clients offer an Inbox with the desktop's filters (All, Notifications,
+External, Agent; the page request's `category`), a thread page, shared unread
+counts, read actions and links to target conversations. Tasks opens from the
+header's clock button and Mark all read from its check button. Phones use the
+Inbox tab; iPad opens it as a sheet from the sidebar toolbar, and Android tablets
+switch the sidebar between Chats and Inbox. English and Chinese labels
 are included. Tasks reuses the scheduled task list, including run state, next run
 time, conversation links and expandable child sessions. It remains available on
 older backends without the mailbox capability. Only notifications contribute to
@@ -117,7 +119,7 @@ chat ids through the existing scoped chat-status API, so destination cards show
 actual conversation titles and project names rather than the event summary.
 Targets missing from that response have a disabled unavailable state.
 
-The conversation list and Inbox share each platform’s `SuzentSegmentedTabs`
+The conversation list and the Android tablet sidebar share each platform’s `SuzentSegmentedTabs`
 component. It owns sizing, colors, selection animation, disabled state and
 accessibility; pages supply typed options, localized labels and selection
 callbacks. Inbox filtering and task loading remain page responsibilities.
@@ -137,12 +139,18 @@ falls back to one row per item. Semantic activity codes are localized by each UI
 `mailbox-thread-fixtures.json` verifies the same contract across clients and Python.
 Source-specific regression cases live in the backend tests.
 
-`MailboxEventCard` renders normal and compact history rows on each native platform.
+`MailboxEventCard` holds the shared pieces on each native platform: the count
+badge (also used by the tab bar), the source mark chosen from `sourceKind`, the
+status pill chosen from `status`, the thread row and the thread page. Status
+colors come from the `info` and `warning` presentation tokens next to `danger`.
+iOS pushes the thread page as `Route.mailbox(key)` (a `String` path inside the
+iPad sheet); Android swaps it in place with a back handler, keeping it in saved
+state so returning from a conversation lands on the thread.
 Newest IDs sort first and duplicate IDs are removed. Opening a thread sends all
 its loaded unread IDs to the existing read endpoint in batches of at most 100.
 Authorization filters rows before presentation; no hidden thread counts or routing
 metadata are exposed. Counts cover loaded events rather than full server history.
-Load more extends the window by 50 without clearing expansion state. Refresh
+Reaching the last row extends the window by 50. Refresh
 fetches the loaded window from offset zero and replaces it atomically on success,
 so shared read changes and removed events propagate.
 

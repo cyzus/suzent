@@ -28,6 +28,10 @@ object PresentationTokens {
     const val danger_dark: Long = 0xFFFF6B6B
     const val error_surface: Long = 0xFFFFE1E1
     const val error_surface_dark: Long = 0xFF4A1D1D
+    const val info: Long = 0xFF0369A1
+    const val info_dark: Long = 0xFF7DD3FC
+    const val warning: Long = 0xFFB45309
+    const val warning_dark: Long = 0xFFFCD34D
     const val borderWidth = 2
     const val shadowOffset = 2
     const val borderWidthHeavy = 3

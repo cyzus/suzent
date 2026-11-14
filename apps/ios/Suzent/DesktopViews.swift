@@ -41,8 +41,7 @@ struct HomeTabBar: View {
                     .frame(height: 24)
                     .overlay(alignment: .topTrailing) {
                         if tab == .inbox && unread > 0 {
-                            Text(unread > 99 ? "99+" : String(unread)).font(.system(size: 9, weight: .bold))
-                                .padding(3).background(Color.accentColor, in: Capsule()).foregroundStyle(.white).offset(x: 16, y: -5)
+                            SuzentCountBadge(count: unread).offset(x: 14, y: -6)
                         }
                     }
                 Text(title).suzentFont(11, weight: selected ? .bold : .medium)

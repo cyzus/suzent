@@ -43,7 +43,7 @@ class MailboxPageRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     offset: Annotated[StrictInt, Field(ge=0)] = 0
     limit: Annotated[StrictInt, Field(ge=1, le=100)] = 50
-    category: Literal["notifications", "all"] = "notifications"
+    category: Literal["notifications", "all", "external", "agent"] = "notifications"
 
 
 class MailboxReadRequest(BaseModel):
@@ -601,6 +601,13 @@ async def mailbox_page(request: Request) -> JSONResponse:
         offset=body.offset,
         chat_ids=scope,
         route_status="notified" if body.category == "notifications" else None,
+        source_kind="agent_inbox" if body.category == "agent" else None,
+        exclude_source_kind="agent_inbox" if body.category == "external" else None,
+    )
+    page = rows[: body.limit]
+    # Delivery happens after the item is stored, so a failed hand-off reads as an error.
+    deliveries = db.agent_message_statuses(
+        [row.inbox_message_id for row in page if row.inbox_message_id]
     )
     # Routing metadata and webhook headers are host-only; expose just the inbox content.
     return reply(
@@ -609,18 +616,21 @@ async def mailbox_page(request: Request) -> JSONResponse:
                 {
                     "id": item.id,
                     "source": item.source_name,
+                    "sourceKind": item.source_kind,
                     "eventType": item.event_type,
                     "presentation": mailbox_presentation(item).model_dump(),
                     "summary": item.summary,
                     "payload": item.payload,
-                    "status": item.route_status,
+                    "status": "error"
+                    if deliveries.get(item.inbox_message_id or "") == "failed"
+                    else item.route_status,
                     "chatId": item.target_chat_id,
                     "createdAt": item.created_at.astimezone().isoformat(),
                     "readAt": item.read_at.astimezone().isoformat()
                     if item.read_at
                     else None,
                 }
-                for item in rows[: body.limit]
+                for item in page
             ],
             "unread": db.count_unread_mailbox_notifications(chat_ids=scope),
             "hasMore": len(rows) > body.limit,

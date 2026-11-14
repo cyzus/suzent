@@ -252,3 +252,55 @@ def test_page_validation(
         ).status_code
         == 400
     )
+
+
+def test_categories_split_external_and_agent_events(
+    mailbox_client: MailboxClient,
+) -> None:
+    client, store, db = mailbox_client
+    webhook = item(db, "shared", "routed")
+    agent = db.create_mailbox_item(
+        source_kind="agent_inbox",
+        signature="agent",
+        summary="Subagent finished",
+        target_chat_id="shared",
+        route_status="routed",
+    )
+    auth = headers(store, all_chats=True)
+
+    def ids(category: str) -> list[int]:
+        response = client.post(
+            "/mobile/client/mailbox/page", headers=auth, json={"category": category}
+        )
+        assert response.status_code == 200
+        return [row["id"] for row in response.json()["items"]]
+
+    assert ids("external") == [webhook.id]
+    assert ids("agent") == [agent.id]
+    assert ids("all") == [agent.id, webhook.id]
+
+
+def test_page_exposes_source_kind_and_failed_delivery(
+    mailbox_client: MailboxClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client, store, db = mailbox_client
+    failed = db.create_mailbox_item(
+        source_kind="email",
+        signature="mail",
+        summary="Invoice",
+        target_chat_id="shared",
+        route_status="routed",
+        inbox_message_id="msg-1",
+    )
+    monkeypatch.setattr(
+        db, "agent_message_statuses", lambda ids: {"msg-1": "failed"} if ids else {}
+    )
+    response = client.post(
+        "/mobile/client/mailbox/page",
+        headers=headers(store, all_chats=True),
+        json={"category": "all"},
+    )
+    row = response.json()["items"][0]
+    assert row["id"] == failed.id
+    assert row["sourceKind"] == "email"
+    assert row["status"] == "error"

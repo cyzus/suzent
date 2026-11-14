@@ -18,7 +18,7 @@ import MarkdownUI
     }
 }
 
-private enum Route: Hashable { case search, conversation }
+private enum Route: Hashable { case search, conversation, mailbox(String) }
 
 private struct SidebarFoldAnchorKey: PreferenceKey {
     static var defaultValue: Anchor<CGRect>? { nil }
@@ -231,6 +231,7 @@ struct ContentView: View {
     @State private var regentPressed = false
     @State private var tab: HomeTab = .chats
     @State private var mailboxOpen = false
+    @State private var mailboxPath: [String] = []
     @State private var sidebarVisibility: NavigationSplitViewVisibility = .all
     @FocusState private var composing: Bool
     @State private var keyboardVisible = false
@@ -292,13 +293,20 @@ struct ContentView: View {
                         .toolbar(removing: .sidebarToggle)
                         .toolbar {
                             ToolbarItem(placement: .topBarTrailing) {
-                                Button { mailboxOpen = true } label: { Label("Inbox", systemImage: model.mailbox.unread > 0 ? "tray.full" : "tray") }
+                                Button { mailboxPath = []; mailboxOpen = true } label: {
+                                    Image(systemName: "tray").overlay(alignment: .topTrailing) {
+                                        if model.mailbox.unread > 0 { SuzentCountBadge(count: model.mailbox.unread).offset(x: 12, y: -8) }
+                                    }
+                                }.accessibilityLabel("Inbox")
                             }
                         }
                         .sheet(isPresented: $mailboxOpen) {
-                            NavigationStack {
-                                MailboxView(model: model, openChat: { chat in mailboxOpen = false; openSidebarChat(chat) }, tasks: { inboxTasks })
+                            NavigationStack(path: $mailboxPath) {
+                                MailboxView(model: model, openThread: { mailboxPath.append($0) }, tasks: { inboxTasks })
                                     .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { mailboxOpen = false } } }
+                                    .navigationDestination(for: String.self) { key in
+                                        MailboxThreadDetail(model: model, key: key, openChat: openSidebarChat)
+                                    }
                             }
                         }
                 } detail: {
@@ -309,7 +317,7 @@ struct ContentView: View {
                     VStack(spacing: 0) {
                         switch tab {
                         case .chats: sidebar(home: true)
-                        case .inbox: MailboxView(model: model, openChat: openSidebarChat, tasks: { inboxTasks })
+                        case .inbox: MailboxView(model: model, openThread: { path.append(.mailbox($0)) }, tasks: { inboxTasks })
                         case .settings: settingsTab
                         }
                         HomeTabBar(selection: $tab, unread: model.mailbox.unread)
@@ -319,6 +327,7 @@ struct ContentView: View {
                             switch route {
                             case .search: searchPage
                             case .conversation: detail
+                            case .mailbox(let key): MailboxThreadDetail(model: model, key: key, openChat: openSidebarChat)
                             }
                         }
                 }
@@ -403,8 +412,12 @@ struct ContentView: View {
     private func showConversation() {
         composing = false
         showSettings = false
-        // Opened from the search page, back returns to the results.
-        if !wide && path.last != .conversation { path = path.last == .search ? [.search, .conversation] : [.conversation] }
+        // Opened from search results or an inbox thread, back returns there.
+        guard !wide, path.last != .conversation else { return }
+        switch path.last {
+        case .search, .mailbox: path.append(.conversation)
+        default: path = [.conversation]
+        }
     }
 
     private func openSettings() {

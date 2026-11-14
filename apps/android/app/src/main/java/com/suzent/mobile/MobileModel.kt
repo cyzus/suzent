@@ -45,7 +45,7 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
     var mailbox by mutableStateOf(MailboxPage())
     var mailboxChats by mutableStateOf<Map<String, Chat>>(emptyMap())
     var mailboxSupported by mutableStateOf(false)
-    var mailboxCategory by mutableStateOf("notifications")
+    var mailboxCategory by mutableStateOf("all")
     var mailboxLoading by mutableStateOf(false)
         private set
     var mailboxOffset by mutableStateOf(0)
@@ -1340,7 +1340,7 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
         retiredClients.clear()
         voice.stop()
         scheduledTasks = emptyList()
-        mailbox = MailboxPage(); mailboxLoading = false; mailboxChats = emptyMap(); mailboxSupported = false; mailboxOffset = 0; mailboxCategory = "notifications"
+        mailbox = MailboxPage(); mailboxLoading = false; mailboxChats = emptyMap(); mailboxSupported = false; mailboxOffset = 0; mailboxCategory = "all"
         mailboxBusy = false; mailboxError = null; mailboxRevision++; mailboxMutation++
         projects = emptyList(); selectedModel = null; drafts.clear(); discardAttachments(); discardQueues(); attachmentsSupported = false
         pendingApprovals = emptyList(); approvalChoices = emptyMap(); approvalBusy = false

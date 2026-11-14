@@ -157,22 +157,26 @@ the service.
 
 ## On your phone
 
-Open **Inbox** in the iOS or Android app to see notifications from the connected
-desktop. Switch to **Tasks** to check scheduled tasks, their next run and current
-status. Choose **All events** for other mailbox activity, expand an item to
-read its details, or tap the **Related conversation** card. The card shows the
-conversation title and project before you open it; unavailable conversations
-cannot be opened.
+Open **Inbox** in the iOS or Android app to see events from the connected
+desktop. The filters at the top match the desktop: **All** (where the inbox opens),
+**Notifications** (with the unread count), **External** and **Agent**. Tap the clock in the top
+right to check scheduled tasks, their next run and current status; the check
+mark in the top left marks everything read.
 
-Events appear as compact rows with a source, time and readable title. Use
-**Load more** at the bottom to add older events without leaving the list. Related updates are grouped into threads using the same rules on desktop and
+Each row shows where the event came from (GitHub, email, a schedule, an agent or
+another device), its title, the time and where it went: the conversation it was
+handed to, or **Notified**, **Queued**, **Error** or **Unrouted**. Unread rows
+have a yellow marker and a bold title. Older events load as you scroll.
+
+Related updates are grouped into threads using the same rules on desktop and
 mobile. GitHub updates group by pull request or issue; other sources group by
-their topic or event rule. Expand a thread to see
-its activity, then select an event for its related conversation and **Original
-content**. Label changes show the specific label when available. Opening a thread
-marks its unread notifications read together.
-On iPad, use the Inbox button above the sidebar; on an Android tablet, use the
-Inbox button in the sidebar.
+their topic or event rule. Tap a thread to open it: the page shows the
+**Related conversation** card, the thread's activity (including the specific
+label for label changes) and the latest event's **Original content**. Opening a
+thread marks its unread notifications read together, and going back from its
+conversation returns you to the thread.
+On iPad, use the Inbox button above the sidebar; on an Android tablet, switch
+the sidebar from Chats to Inbox.
 
 Opening a notification marks it read. **Mark all read** clears unread
 notifications you have access to, including those on other pages. Simply opening

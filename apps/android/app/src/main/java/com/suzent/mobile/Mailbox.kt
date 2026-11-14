@@ -3,12 +3,13 @@ package com.suzent.mobile
 import org.json.JSONObject
 
 data class MailboxItem(val id: Int, val source: String, val eventType: String, val summary: String,
-    val payload: String, val status: String, val chatId: String?, val createdAt: String, val readAt: String?, val presentation: MailboxPresentation? = null) {
+    val payload: String, val status: String, val chatId: String?, val createdAt: String, val readAt: String?, val presentation: MailboxPresentation? = null, val sourceKind: String? = null) {
     val unread: Boolean get() = status == "notified" && readAt == null
     companion object {
         fun parse(value: JSONObject) = MailboxItem(value.getInt("id"), value.getString("source"),
             value.getString("eventType"), value.getString("summary"), value.getString("payload"),
-            value.getString("status"), value.opt("chatId") as? String, value.getString("createdAt"), value.opt("readAt") as? String, value.optJSONObject("presentation")?.let(MailboxPresentation::parse))
+            value.getString("status"), value.opt("chatId") as? String, value.getString("createdAt"), value.opt("readAt") as? String, value.optJSONObject("presentation")?.let(MailboxPresentation::parse),
+            value.opt("sourceKind") as? String)
     }
 }
 

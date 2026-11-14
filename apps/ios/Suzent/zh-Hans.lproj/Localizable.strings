@@ -389,52 +389,34 @@
 
 "Inbox" = "收件箱";
 "Update the desktop to use the mobile inbox." = "请更新桌面端以使用手机收件箱。";
+"Inbox unavailable" = "收件箱不可用";
+"All" = "全部";
 "Notifications" = "通知";
-"All events" = "全部事件";
-"Unread: %1$d" = "未读：%1$d";
+"External" = "外部";
+"Agent" = "Agent";
 "Mark all read" = "全部标为已读";
-"Mark read" = "标为已读";
 "No inbox messages" = "暂无收件箱消息";
 "Only events linked to shared conversations are shown." = "仅显示与已共享会话关联的事件。";
-"Open conversation" = "打开会话";
-"Previous page" = "上一页";
-"Next page" = "下一页";
 "Unread" = "未读";
 "Could not sync inbox. Pull to refresh and try again." = "无法同步收件箱，请下拉刷新重试。";
 "Could not mark inbox messages read. Please try again." = "无法将收件箱消息标为已读，请重试。";
-"Inbox unavailable" = "收件箱不可用";
-"Inbox filter" = "收件箱筛选";
-"Unread: %lld" = "未读：%lld";
-
+"Event unavailable" = "事件已不可用";
 "Original content" = "原始内容";
-
 "Related conversation" = "关联会话";
-
 "Conversation unavailable" = "会话暂不可用";
-
-"Opened" = "已创建";
-
+"Queued" = "已排队";
+"Notified" = "已通知";
+"Unrouted" = "未路由";
+"Error" = "出错";
+"Delivered" = "已转交";
+"Opened" = "已打开";
 "Closed" = "已关闭";
-
 "Reopened" = "已重新打开";
-
-"Updated" = "有新提交";
-
+"Updated" = "已更新";
 "Edited" = "已编辑";
-
 "Label added" = "已添加标签";
-
 "Label removed" = "已移除标签";
-
 "Assigned" = "已分配";
-
 "Unassigned" = "已取消分配";
-
 "Ready for review" = "待审阅";
-
 "Draft" = "已转为草稿";
-
-"Added label: %@" = "新增标签：%@";
-"Removed label: %@" = "移除标签：%@";
-
-"%d events" = "%d 条事件";

@@ -12,6 +12,7 @@ import Testing
     #expect(page.items.map(\.unread) == [true, false, false])
     #expect(page.items[0].chatId == nil)
     #expect(page.items[1].chatId == "shared")
+    #expect(page.items.map(\.sourceKind) == ["schedule", "agent_inbox", "webhook"])
 }
 
 @Test func legacyDesktopDoesNotAdvertiseMailbox() throws {

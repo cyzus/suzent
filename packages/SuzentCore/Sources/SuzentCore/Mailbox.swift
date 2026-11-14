@@ -11,6 +11,7 @@ public struct MailboxItem: Decodable, Identifiable, Sendable, Equatable {
     public let createdAt: String
     public let readAt: String?
     public var presentation: MailboxPresentation? = nil
+    public var sourceKind: String? = nil
     public var unread: Bool { status == "notified" && readAt == nil }
 }
 

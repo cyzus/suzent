@@ -12,6 +12,7 @@ class MailboxTest {
         assertEquals(listOf(true, false, false), page.items.map { it.unread })
         assertNull(page.items[0].chatId)
         assertEquals("shared", page.items[1].chatId)
+        assertEquals(listOf("schedule", "agent_inbox", "webhook"), page.items.map { it.sourceKind })
     }
     @Test fun rendersBackendPresentationAndGroupsOnlyByServerKey() {
         val fixtures = org.json.JSONArray(javaClass.getResource("/mailbox-thread-fixtures.json")!!.readText())

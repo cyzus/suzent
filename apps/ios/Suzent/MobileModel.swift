@@ -107,7 +107,7 @@ import SuzentCore
     var mailbox: MailboxPage = .empty
     var mailboxChats: [String: Chat] = [:]
     var mailboxSupported = false
-    var mailboxCategory = "notifications"
+    var mailboxCategory = "all"
     var mailboxLoading = false
     var mailboxOffset = 0
     var mailboxBusy = false
@@ -1386,7 +1386,7 @@ import SuzentCore
         voice.stop()
         voiceSupported = false
         scheduledTasks = []
-        mailbox = .empty; mailboxLoading = false; mailboxChats = [:]; mailboxSupported = false; mailboxOffset = 0; mailboxCategory = "notifications"
+        mailbox = .empty; mailboxLoading = false; mailboxChats = [:]; mailboxSupported = false; mailboxOffset = 0; mailboxCategory = "all"
         mailboxBusy = false; mailboxError = nil; mailboxRevision = UUID(); mailboxMutation = UUID()
         projects = []; selectedModel = nil; drafts = [:]; discardAttachments(); attachmentsSupported = false; overviewSupported = false; surfacesSupported = false; steerSupported = false
         discardQueues()

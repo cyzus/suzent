@@ -81,6 +81,7 @@ class MailboxOperationsMixin:
         offset: int = 0,
         route_status: Optional[str] = None,
         source_kind: Optional[str] = None,
+        exclude_source_kind: Optional[str] = None,
         unread_only: bool = False,
         chat_ids: list[str] | None = None,
     ) -> List[MailboxItemModel]:
@@ -122,6 +123,8 @@ class MailboxOperationsMixin:
                 )
             if source_kind:
                 stmt = stmt.where(MailboxItemModel.source_kind == source_kind)
+            if exclude_source_kind:
+                stmt = stmt.where(MailboxItemModel.source_kind != exclude_source_kind)
             stmt = stmt.order_by(MailboxItemModel.id.desc()).offset(offset).limit(limit)
             return list(session.exec(stmt).all())
 
