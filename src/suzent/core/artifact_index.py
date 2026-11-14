@@ -7,6 +7,7 @@ transcripts. Transcripts also tell which chat produced a library file.
 
 import json
 from pathlib import Path
+from threading import Lock
 from collections.abc import Callable
 from typing import Any, Literal
 
@@ -153,6 +154,42 @@ def _library_files(project_dir: Path) -> list[Path]:
     return files
 
 
+_outputs_cache: dict[str, tuple[int, list[str]]] = {}
+_outputs_lock = Lock()
+
+
+def _outputs_by_chat(
+    db: Any, revisions: list[tuple[str, str, str, int | None]]
+) -> dict[str, list[str]]:
+    """Each chat's delivered paths, reading only transcripts changed since last time.
+
+    Transcripts are the bulk of the database, so parsing all of them on every
+    visit made the page slower the longer Suzent was used.
+    """
+    with _outputs_lock:
+        cached = {
+            chat_id: _outputs_cache[chat_id][1]
+            for chat_id, _title, _project, seq in revisions
+            if seq is not None
+            and chat_id in _outputs_cache
+            and _outputs_cache[chat_id][0] == seq
+        }
+    stale = [chat_id for chat_id, *_ in revisions if chat_id not in cached]
+    seqs = {chat_id: seq for chat_id, _title, _project, seq in revisions}
+    fresh = {
+        chat_id: transcript_outputs(messages)
+        for chat_id, messages in db.chat_messages(stale).items()
+    }
+    with _outputs_lock:
+        _outputs_cache.clear()
+        _outputs_cache.update(
+            (chat_id, (seqs[chat_id], outputs))
+            for chat_id, outputs in (cached | fresh).items()
+            if seqs.get(chat_id) is not None
+        )
+    return cached | fresh
+
+
 def build_artifact_index() -> ArtifactIndex:
     """Every project's deliverables, newest first."""
     from suzent.database import get_database
@@ -163,15 +200,16 @@ def build_artifact_index() -> ArtifactIndex:
         project.id: Path(CONFIG.sandbox_data_path) / "projects" / project.slug
         for project in projects
     }
-    transcripts = db.list_chat_transcripts(list(project_dirs))
+    revisions = db.list_chat_revisions(list(project_dirs))
+    chat_outputs = _outputs_by_chat(db, revisions)
 
     origin: dict[Path, tuple[str, str]] = {}
     # Archived chats still exist, so they can serve a library whose chats are all archived.
     serve_chat: dict[str, str] = db.project_chat_ids(list(project_dirs))
     delivered: dict[Path, str] = {}
-    for chat_id, title, project_id, messages in transcripts:
+    for chat_id, title, project_id, _seq in revisions:
         serve_chat[project_id] = chat_id
-        outputs = transcript_outputs(messages)
+        outputs = chat_outputs.get(chat_id)
         if not outputs:
             continue
         resolver = _lazy_resolver(chat_id)

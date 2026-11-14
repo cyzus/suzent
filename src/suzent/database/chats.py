@@ -1390,22 +1390,63 @@ class ChatOperationsMixin:
             statement = statement.order_by(ChatModel.updated_at.desc()).limit(limit)
             return [(row[0], row[1]) for row in session.exec(statement).all()]
 
-    def list_chat_transcripts(
+    def chat_headlines(
+        self, chat_ids: list[str]
+    ) -> dict[str, tuple[str, datetime, dict[str, Any]]]:
+        """``id -> (title, updated_at, config)`` without loading transcripts or state."""
+        if not chat_ids:
+            return {}
+        with self._session() as session:
+            statement = select(
+                ChatModel.id, ChatModel.title, ChatModel.updated_at, ChatModel.config
+            ).where(ChatModel.id.in_(chat_ids))
+            return {
+                row[0]: (row[1], row[2], row[3] or {})
+                for row in session.exec(statement).all()
+            }
+
+    def list_chat_revisions(
         self, project_ids: list[str]
-    ) -> list[tuple[str, str, str, list]]:
-        """``(id, title, project_id, messages)`` for unarchived chats in *project_ids*."""
+    ) -> list[tuple[str, str, str, int | None]]:
+        """``(id, title, project_id, log_seq)`` for unarchived chats in *project_ids*.
+
+        ``log_seq`` advances with every committed change to the chat, so callers
+        can tell which transcripts changed without reading them. It is ``None``
+        for a chat without a log index.
+        """
         if not project_ids:
             return []
         with self._session() as session:
-            statement = select(
-                ChatModel.id, ChatModel.title, ChatModel.project_id, ChatModel.messages
-            ).where(
-                ChatModel.archived.is_(False), ChatModel.project_id.in_(project_ids)
+            statement = (
+                select(
+                    ChatModel.id,
+                    ChatModel.title,
+                    ChatModel.project_id,
+                    ChatLogIndexModel.seq,
+                )
+                .join(
+                    ChatLogIndexModel,
+                    ChatLogIndexModel.chat_id == ChatModel.id,
+                    isouter=True,
+                )
+                .where(
+                    ChatModel.archived.is_(False), ChatModel.project_id.in_(project_ids)
+                )
             )
             return [
-                (row[0], row[1], row[2], row[3] or [])
+                (row[0], row[1], row[2], row[3])
                 for row in session.exec(statement).all()
             ]
+
+    def chat_messages(self, chat_ids: list[str]) -> dict[str, list]:
+        """``id -> messages`` for *chat_ids*, without agent state."""
+        if not chat_ids:
+            return {}
+        with self._session() as session:
+            statement = select(ChatModel.id, ChatModel.messages).where(
+                ChatModel.id.in_(chat_ids)
+            )
+            return {row[0]: row[1] or [] for row in session.exec(statement).all()}
 
     def project_chat_ids(self, project_ids: list[str]) -> dict[str, str]:
         """One chat id per project in *project_ids*, archived chats included."""

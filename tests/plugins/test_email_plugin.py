@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import importlib
 import uuid
 import importlib.util
@@ -162,17 +163,95 @@ def test_passwords_are_private_plugin_secrets(secrets):
     assert secrets.values == {}
 
 
-def test_outlook_is_refused_until_microsoft_sign_in():
-    with pytest.raises(ValueError, match="Microsoft sign-in"):
+def test_outlook_rejects_password_and_allows_xoauth2(secrets):
+    with pytest.raises(ValueError, match="browser sign-in"):
         accounts.build_account(
             accounts.MailAccountInput(
                 email="me@outlook.com", password="x", provider="outlook"
             )
         )
+    account = accounts.build_account(
+        accounts.MailAccountInput(
+            email="me@outlook.com", provider="outlook", auth_type="xoauth2"
+        )
+    )
+    assert account.auth_type == "xoauth2"
+    assert account.oauth_provider == "microsoft"
+    config = himalaya.config_toml(account, python="/py")
+    assert 'imap.sasl.xoauth2.username = "me@outlook.com"' in config
+    assert 'imap.sasl.xoauth2.token.command = ["/py", "-c",' in config
+    assert 'smtp.sasl.xoauth2.username = "me@outlook.com"' in config
+    assert 'smtp.sasl.xoauth2.token.command = ["/py", "-c",' in config
+
+
+async def test_oauth_loopback_sign_in_and_refresh(monkeypatch, fake, secrets):
+    import urllib.parse
+    import urllib.request
+
+    oauth = importlib.import_module("suzent_plugin_email.oauth")
+    providers = importlib.import_module("suzent_plugin_email.providers")
+    assert providers.guess_provider("student@berkeley.edu").id == "gmail"
+
+    token_calls = []
+
+    def fake_post_token(url, form):
+        token_calls.append((url, form))
+        if form.get("grant_type") == "refresh_token":
+            return {
+                "access_token": "fresh-access-token",
+                "refresh_token": "fresh-refresh-token",
+                "expires_in": 3600,
+            }
+        return {
+            "access_token": "initial-access-token",
+            "refresh_token": "initial-refresh-token",
+            "expires_in": 1,
+        }
+
+    monkeypatch.setattr(oauth, "_post_token_form", fake_post_token)
+
+    session = await oauth.start_oauth_sign_in(
+        accounts.MailAccountInput(
+            email="student@berkeley.edu",
+            provider="gmail",
+            auth_type="xoauth2",
+        )
+    )
+    assert session.state == "waiting"
+    assert session.authorize_url is not None
+    parsed = urllib.parse.urlsplit(session.authorize_url)
+    params = urllib.parse.parse_qs(parsed.query)
+    redirect_uri = params["redirect_uri"][0]
+    state = params["state"][0]
+
+    callback_url = f"{redirect_uri}/?{urllib.parse.urlencode({'code': 'auth-code-123', 'state': state})}"
+    await asyncio.to_thread(urllib.request.urlopen, callback_url, timeout=5)
+    await asyncio.wait_for(session.task, timeout=5)
+
+    assert session.state == "signed_in"
+    saved = accounts.get_account("student-berkeley-edu")
+    assert saved is not None
+    assert saved.auth_type == "xoauth2"
+    assert saved.oauth_provider == "google"
+    assert accounts.has_credentials(saved)
+
+    # Expire the token to verify automatic refresh before himalaya runs.
+    stored = accounts.get_oauth_tokens(saved)
+    stored["expires_at"] = 0
+    accounts.set_oauth_tokens(saved, stored)
+
+    token = await accounts.resolve_credential(saved)
+    assert token == "fresh-access-token"
+    assert any(f.get("grant_type") == "refresh_token" for _, f in token_calls)
+
+    folders_result = await tools.MailSearchTool().forward(None, list_folders=True)
+    assert folders_result.success
+    assert "folders: INBOX" in folders_result.message
+    assert "password missing" not in folders_result.message
 
 
 def test_query_quotes_values_and_sorts_newest_first():
-    from datetime import date
+    from datetime import date, timedelta
 
     query = mailbox.build_query(
         mailbox.SearchCriteria(
@@ -182,6 +261,14 @@ def test_query_quotes_values_and_sorts_newest_first():
 
     assert query == (
         'from "Bob \\"B\\"" and after 2026-11-01 and not flag seen order by date desc'
+    )
+
+    default_window = mailbox.build_query(mailbox.SearchCriteria(unread_only=True))
+    expected_cutoff = (
+        date.today() - timedelta(days=mailbox.DEFAULT_SEARCH_LOOKBACK_DAYS)
+    ).isoformat()
+    assert default_window == (
+        f"after {expected_cutoff} and not flag seen order by date desc"
     )
 
 
