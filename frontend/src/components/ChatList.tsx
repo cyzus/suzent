@@ -551,6 +551,8 @@ export const ChatList: React.FC<ChatListProps> = ({
     new Map<string, { chats: ChatSummary[]; totals: ChatKindCounts }>()
   );
   const projectChatRequestRef = useRef<string | null>(null);
+  // Which project projectChats holds; until it matches the open one, that project is still loading.
+  const [projectChatsFor, setProjectChatsFor] = useState<string | null>(null);
   const fetchProjectChats = useCallback(
     async (projectId: string, options?: { offset?: number; append?: boolean }) => {
       const offset = options?.offset ?? 0;
@@ -560,6 +562,7 @@ export const ChatList: React.FC<ChatListProps> = ({
         projectChatRequestRef.current = projectId;
         const cached = projectChatCacheRef.current.get(projectId);
         setLoadingProjectChats(!cached);
+        setProjectChatsFor(cached ? projectId : null);
         setProjectChats(cached?.chats ?? []);
         setProjectChatKindTotals(cached?.totals ?? { you: 0, scheduled: 0, all: 0 });
         setProjectChatOffset(0);
@@ -588,6 +591,7 @@ export const ChatList: React.FC<ChatListProps> = ({
         if (!append) projectChatCacheRef.current.set(projectId, { chats: nextChats, totals });
         setProjectChatKindTotals(totals);
         setProjectChatOffset(offset);
+        setProjectChatsFor(projectId);
         setProjectChats((prev) => {
           if (!append) return nextChats;
           const existingIds = new Set(prev.map((c) => c.id));
@@ -597,6 +601,7 @@ export const ChatList: React.FC<ChatListProps> = ({
       } catch (error) {
         console.error('Error fetching project chats:', error);
         if (!append && projectChatRequestRef.current === projectId) {
+          setProjectChatsFor(projectId);
           setProjectChats([]);
           setProjectChatKindTotals({ you: 0, scheduled: 0, all: 0 });
           setProjectChatOffset(0);
@@ -637,10 +642,14 @@ export const ChatList: React.FC<ChatListProps> = ({
     if (archivedOpen) void fetchArchivedChats();
   }, [archivedOpen, archivedCount, fetchArchivedChats]);
 
+  // The render that opens a project comes before the effect that fetches it, so
+  // it shows the cached list, or a skeleton, rather than the previous project's.
+  const projectListPending = filterId !== ALL_PROJECTS_FILTER && projectChatsFor !== filterId;
   const filteredChats = useMemo(() => {
     if (filterId === ALL_PROJECTS_FILTER) return chats;
+    if (projectChatsFor !== filterId) return projectChatCacheRef.current.get(filterId)?.chats ?? [];
     return projectChats;
-  }, [chats, filterId, projectChats]);
+  }, [chats, filterId, projectChats, projectChatsFor]);
 
   const getChatKind = (chat: ChatSummary): ChatKind => {
     const platform = (chat.platform || '').toLowerCase();
@@ -1874,7 +1883,9 @@ export const ChatList: React.FC<ChatListProps> = ({
 
                             {isOpen && (
                               <div>
-                                {loadingProjectChats ? (
+                                {loadingProjectChats ||
+                                (projectListPending &&
+                                  !projectChatCacheRef.current.has(project.id)) ? (
                                   renderListSkeleton()
                                 ) : visibleChats.length === 0 ? (
                                   <div className="px-4 py-6 text-center">
