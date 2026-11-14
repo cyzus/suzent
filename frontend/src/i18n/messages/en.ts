@@ -2379,6 +2379,11 @@ export const en = {
     dispatch: {
       sentTo: 'Sent to {target}',
       sentToMany: 'Sent to {count} chats',
+      peekExpand: 'Open full chat',
+      peekClose: 'Close',
+      peekLoading: 'Loading…',
+      peekError: 'Couldn’t load this chat',
+      peekRunning: 'Working',
     },
     trigger: {
       goal: 'Goal mode',

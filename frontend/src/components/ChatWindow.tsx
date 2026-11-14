@@ -89,6 +89,7 @@ import type { SubAgentStatus } from './chat/SubAgentCallBlock';
 import type { CitationSourcesMap } from './chat/Citations';
 import { OpenFileContext } from './chat/openFileContext';
 import { OpenChatContext } from './chat/openChatContext';
+import { ChatPeekPanel } from './chat/ChatPeekPanel';
 import { markOpenedFromRegent, unmarkOpenedFromRegent } from '../lib/regentReturn';
 import type {
   SubAgentSpawnedPayload,
@@ -2262,7 +2263,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   };
 
   // From Regent, the opened session's header offers the way back.
-  const handleOpenChat = useCallback(
+  const switchToChat = useCallback(
     async (chatId: string): Promise<boolean> => {
       const fromRegent = currentChatId === FOCAL_CHAT_ID;
       if (fromRegent) markOpenedFromRegent(chatId);
@@ -2275,6 +2276,30 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       }
     },
     [currentChatId, loadChat]
+  );
+
+  // Regent hands work to other chats; following one opens it beside Regent
+  // instead of leaving, and the panel's expand button still switches over.
+  const [peekChatId, setPeekChatId] = useState<string | null>(null);
+  useEffect(() => setPeekChatId(null), [currentChatId]);
+  const handleOpenChat = useCallback(
+    async (chatId: string): Promise<boolean> => {
+      if (currentChatId !== FOCAL_CHAT_ID) return switchToChat(chatId);
+      setPeekChatId(chatId);
+      return true;
+    },
+    [currentChatId, switchToChat]
+  );
+  const renderPeekMessages = useCallback(
+    (chatId: string, messages: Message[]) => (
+      <MessageListMemo
+        messages={messages}
+        streamingForCurrentChat={false}
+        chatId={chatId}
+        onImageClick={setViewingImage}
+      />
+    ),
+    []
   );
 
   const handleOpenForkOrigin = useCallback(
@@ -3838,6 +3863,21 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                 )}
               </div>
             </ChatImageGallery>
+
+            {peekChatId && (
+              <ChatPeekPanel
+                key="chat-peek"
+                chatId={peekChatId}
+                parentLabel={t('chatList.focal.name')}
+                knownTitle={
+                  [...pinnedChats, ...chats].find((chat) => chat.id === peekChatId)?.title
+                }
+                maxWidthPx={Math.max(360, Math.round((viewportWidthPx ?? 1280) * 0.6))}
+                onClose={() => setPeekChatId(null)}
+                onExpand={(chatId) => void switchToChat(chatId)}
+                renderMessages={renderPeekMessages}
+              />
+            )}
 
             {/* Right Sidebar */}
             <RightSidebar
