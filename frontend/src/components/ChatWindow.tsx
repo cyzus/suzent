@@ -5,7 +5,7 @@ import { parseModelWait, requestModelWaitExtension, type ModelWaitState } from '
 import { createSpeechJob, speechQueue } from '../lib/speechPlayback';
 import { parseToolResultEnvelope } from './chat/ToolCallBlock';
 import React, { useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo } from 'react';
-import { useChatStore } from '../hooks/useChatStore';
+import { ChatScopeProvider, useChatStore } from '../hooks/useChatStore';
 import { forgetReply, watchForReply } from '../lib/desktopNotifications';
 import { useAGUI, type AGUIPart, type ApprovalRememberScope } from '../hooks/useAGUI';
 import {
@@ -468,10 +468,6 @@ interface LiveTurn {
 
 const LIVE_ASSISTANT_MESSAGE: Message = { role: 'assistant', content: '' };
 
-const noop = (): void => {};
-const NO_SURFACES: A2UISurface[] = [];
-const NO_QUEUE: QueuedMessage[] = [];
-
 // Message list component: store messages, then the live turn. The live turn
 // takes the row its saved message will occupy (same key, same element tree),
 // so when the stream ends React updates that row in place instead of swapping
@@ -876,7 +872,25 @@ interface ChatWindowProps {
   rightSidebarWideDefaultWidthPx?: number;
   viewportWidthPx?: number;
   rightSidebarForceFullView?: boolean;
+  /**
+   * A second chat shown beside the current one (Regent's side panel), inside a
+   * ChatScopeProvider. It keeps its own composer draft and side panel, and
+   * leaves app-wide things -- the refresh seed, voice triggers, external sends
+   * -- to the main window.
+   */
+  embedded?: boolean;
 }
+
+const STREAM_SEEDS = {
+  save: _saveStreamSeed,
+  load: _loadStreamSeed,
+  clear: _clearStreamSeed,
+};
+const NO_STREAM_SEEDS: typeof STREAM_SEEDS = {
+  save: () => {},
+  load: () => null,
+  clear: () => {},
+};
 
 // An abandoned start rejects its own fetch; that is this client giving up on
 // it, not a failure to report.
@@ -892,7 +906,9 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   rightSidebarWideDefaultWidthPx,
   viewportWidthPx,
   rightSidebarForceFullView = false,
+  embedded = false,
 }) => {
+  const seeds = embedded ? NO_STREAM_SEEDS : STREAM_SEEDS;
   // Store hooks
   const {
     messages,
@@ -938,22 +954,30 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   const setHeartbeatRunning = useHeartbeatRunning((s) => s.setRunning);
 
   // Local state
-  const [input, setInputState] = useState(composerDraft.input);
-  const setInput = useCallback((value: React.SetStateAction<string>) => {
-    setInputState((current) => {
-      const next = typeof value === 'function' ? value(current) : value;
-      composerDraft.input = next;
-      return next;
-    });
-  }, []);
+  // The module draft survives the main window's remounts; a side panel's
+  // composer is a different conversation's and keeps its own.
+  const draft = useRef<typeof composerDraft>(
+    embedded ? { input: '', mentions: [] } : composerDraft
+  ).current;
+  const [input, setInputState] = useState(draft.input);
+  const setInput = useCallback(
+    (value: React.SetStateAction<string>) => {
+      setInputState((current) => {
+        const next = typeof value === 'function' ? value(current) : value;
+        draft.input = next;
+        return next;
+      });
+    },
+    [draft]
+  );
   // Messages held back until the running turn ends, keyed by chat.
   const [messageQueues, setMessageQueuesState] = useState(queuedMessageStore);
   const setMessageQueues = useCallback(
     (update: (prev: Record<string, QueuedMessage[]>) => Record<string, QueuedMessage[]>) => {
-      setMessageQueuesState((current) => {
-        queuedMessageStore = update(current);
-        return queuedMessageStore;
-      });
+      // Read the module store, not this window's copy: Regent's side panel runs
+      // a second window, and either may have changed it since.
+      queuedMessageStore = update(queuedMessageStore);
+      setMessageQueuesState(queuedMessageStore);
     },
     []
   );
@@ -990,16 +1014,17 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   // Bumped each time the user pops a chat surface out to the side panel.
   const [canvasRequestNonce, setCanvasRequestNonce] = useState(0);
   const [canvasExpandNonce, setCanvasExpandNonce] = useState(0);
-  const [fileMentions, setFileMentionsState] = useState<FileMentionSelection[]>(
-    composerDraft.mentions
+  const [fileMentions, setFileMentionsState] = useState<FileMentionSelection[]>(draft.mentions);
+  const setFileMentions = useCallback(
+    (value: React.SetStateAction<FileMentionSelection[]>) => {
+      setFileMentionsState((current) => {
+        const next = typeof value === 'function' ? value(current) : value;
+        draft.mentions = next;
+        return next;
+      });
+    },
+    [draft]
   );
-  const setFileMentions = useCallback((value: React.SetStateAction<FileMentionSelection[]>) => {
-    setFileMentionsState((current) => {
-      const next = typeof value === 'function' ? value(current) : value;
-      composerDraft.mentions = next;
-      return next;
-    });
-  }, []);
   const [cronModelSelection, setCronModelSelection] = useState<{
     jobId: number;
     model: string | null;
@@ -1324,7 +1349,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
             setCurrentUsage(null);
             setCurrentStreamDisplayRole('assistant');
           },
-          clearSeed: () => _clearStreamSeed(chatId),
+          clearSeed: () => seeds.clear(chatId),
         });
       if (!isLiveStreamRef.current && activeChatIdRef.current !== chatId) {
         heartbeatInFlightRef.current = false;
@@ -1345,7 +1370,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         setIsStreaming(false, chatId);
         streamingChatIdRef.current = null;
         clearParts();
-        _clearStreamSeed();
+        seeds.clear();
         setCurrentUsage(null);
         setCurrentStreamDisplayRole('assistant');
         // Reload chat from DB to reflect rolled-back state.
@@ -1592,7 +1617,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         }
       }
       clearParts();
-      _clearStreamSeed();
+      seeds.clear();
       setCurrentUsage(null);
       liveStreamPartsRef.current = [];
       setCurrentStreamDisplayRole('assistant');
@@ -1601,6 +1626,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
 
   // Listen for external message triggers (e.g. from Heartbeat "Run Now")
   useEffect(() => {
+    if (embedded) return;
     const handler = (e: any) => {
       const { body, options } = e.detail || {};
       const isHeartbeat = Boolean(body?.is_heartbeat);
@@ -1627,7 +1653,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     };
     window.addEventListener('agui:send-message', handler);
     return () => window.removeEventListener('agui:send-message', handler);
-  }, [sendAGUI, currentChatId, setHeartbeatRunning, setIsStreaming, retireStopAttempt]);
+  }, [embedded, sendAGUI, currentChatId, setHeartbeatRunning, setIsStreaming, retireStopAttempt]);
 
   // Save the current streaming parts to sessionStorage on page hide so they
   // can be used as a seed (or to detect a missed completion) after a refresh.
@@ -1637,7 +1663,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       if (!chatId) return;
       const parts = getStreamingParts();
       if (parts.length > 0) {
-        _saveStreamSeed(chatId, parts, resumeBasePartsRef.current.get(chatId));
+        seeds.save(chatId, parts, resumeBasePartsRef.current.get(chatId));
       }
     };
     document.addEventListener('visibilitychange', saveOnHide);
@@ -2217,7 +2243,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     if (configReady && !voice.active) voice.start(currentChatId ?? null);
   };
   const wakeWord = useWakeWord(
-    !!voiceTriggers?.wake_word && configReady && voice.supported && !voice.active,
+    !embedded && !!voiceTriggers?.wake_word && configReady && voice.supported && !voice.active,
     JSON.stringify([voiceTriggers?.wake_phrases, voiceTriggers?.wake_sensitivity]),
     () => {
       playNotificationSound('ping');
@@ -2232,7 +2258,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     phrase: voiceTriggers?.wake_phrases?.find((phrase) => phrase.trim()) ?? '',
     hotkey: voiceTriggers?.voice_hotkey ?? '',
   };
-  useVoiceHotkey(voiceTriggers?.voice_hotkey ?? '', () => {
+  useVoiceHotkey(embedded ? '' : (voiceTriggers?.voice_hotkey ?? ''), () => {
     if (voice.active) voice.stop();
     else startVoiceHandsFree();
   });
@@ -2300,25 +2326,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       return true;
     },
     [currentChatId, switchToChat]
-  );
-  const renderPeekMessages = useCallback(
-    // Read-only: its surfaces, files and images must not reach into Regent's
-    // canvas, preview or action handler, which all act for Regent's chat.
-    (chatId: string, messages: Message[]) => (
-      <InlineSurfaceProvider openInCanvas={noop} surfaces={NO_SURFACES} onAction={noop}>
-        <OpenFileContext.Provider value={null}>
-          <ChatImageGallery key={chatId}>
-            <MessageListMemo
-              messages={messages}
-              streamingForCurrentChat={false}
-              chatId={chatId}
-              onImageClick={setViewingImage}
-            />
-          </ChatImageGallery>
-        </OpenFileContext.Provider>
-      </InlineSurfaceProvider>
-    ),
-    []
   );
 
   const handleOpenForkOrigin = useCallback(
@@ -2484,9 +2491,9 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     // Restore stream seed saved before a page refresh so we can either:
     // (a) seed an in-progress reconnect with prior visual state, or
     // (b) detect that the stream completed while we were gone and reload from DB.
-    const savedSeed = _loadStreamSeed(chatIdAtMount);
+    const savedSeed = seeds.load(chatIdAtMount);
     if (savedSeed) {
-      _clearStreamSeed();
+      seeds.clear();
       if (savedSeed.parts.length > 0) {
         // Pre-populate the abandoned-parts map so tryConnect below can use it
         // as a visual seed — even if the snapshot hasn't arrived yet.
@@ -2659,7 +2666,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       // Stream finished cleanly — drop preserved reconnect state for this chat.
       streamStartByChatRef.current.delete(chatIdAtMount);
       abandonedPartsRef.current.delete(chatIdAtMount);
-      _clearStreamSeed();
+      seeds.clear();
 
       // Keep the completed stream visible while replacing it with the backend-authored
       // message. The backend attaches file_changes as the stream closes, so every chat
@@ -2723,7 +2730,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       setIsStreaming(false, chatIdAtMount);
       streamStartByChatRef.current.delete(chatIdAtMount);
       abandonedPartsRef.current.delete(chatIdAtMount);
-      _clearStreamSeed();
+      seeds.clear();
       clearParts();
       loadChat(chatIdAtMount, { force: true }).catch(() => {});
     };
@@ -3888,26 +3895,30 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                 key="chat-peek"
                 chatId={peekChatId}
                 parentLabel={t('chatList.focal.name')}
-                knownTitle={
-                  [...pinnedChats, ...chats].find((chat) => chat.id === peekChatId)?.title
-                }
-                maxWidthPx={Math.max(360, Math.round((viewportWidthPx ?? 1280) * 0.6))}
+                title={[...pinnedChats, ...chats].find((chat) => chat.id === peekChatId)?.title}
+                maxWidthPx={Math.max(400, Math.round((viewportWidthPx ?? 1280) * 0.6))}
                 onClose={() => setPeekChatId(null)}
                 onExpand={(chatId) => {
                   expandedPeek.current = chatId;
                   void switchToChat(chatId);
                 }}
-                renderMessages={renderPeekMessages}
-                backendConfig={safeBackendConfig}
-                voice={voice}
-                queue={messageQueues[peekChatId] ?? NO_QUEUE}
-                onQueueChange={(update) =>
-                  setMessageQueues((prev) => ({
-                    ...prev,
-                    [peekChatId]: update(prev[peekChatId] ?? []),
-                  }))
-                }
-                onImageClick={setViewingImage}
+                renderChat={(chatId, sidebar) => (
+                  <ChatScopeProvider
+                    key={chatId}
+                    chatId={chatId}
+                    fallback={(failed) => (
+                      <p className="w-full pt-6 text-center text-xs text-neutral-400 dark:text-neutral-500">
+                        {t(
+                          failed
+                            ? 'chatMessage.dispatch.peekError'
+                            : 'chatMessage.dispatch.peekLoading'
+                        )}
+                      </p>
+                    )}
+                  >
+                    <ChatWindow embedded rightSidebarForceFullView {...sidebar} />
+                  </ChatScopeProvider>
+                )}
               />
             )}
 
