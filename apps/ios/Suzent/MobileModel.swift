@@ -104,6 +104,17 @@ import SuzentCore
     var chats: [Chat] = []
     var projects: [Project] = []
     var scheduledTasks: [ScheduledTask] = []
+    var mailbox: MailboxPage = .empty
+    var mailboxChats: [String: Chat] = [:]
+    var mailboxSupported = false
+    var mailboxCategory = "all"
+    var mailboxLoading = false
+    var mailboxOffset = 0
+    var mailboxBusy = false
+    var mailboxError: String?
+    private var mailboxRevision = UUID()
+    private var mailboxMutation = UUID()
+
     var selectedModel: String?
     var sentVersion = 0
     var openedVersion = 0
@@ -539,6 +550,8 @@ import SuzentCore
             retiredClients = []
             client?.close()
             client = candidate
+            mailboxSupported = session.mailbox == 1
+            mailbox = .empty; mailboxLoading = false; mailboxOffset = 0; mailboxRevision = UUID()
             device = session.device
             attachmentsSupported = session.supportsAttachments
             voiceSupported = session.voice == 1
@@ -707,6 +720,12 @@ import SuzentCore
         do {
             let session = try await client.clientSession()
             let scopeChanged = device?.permissions.allChats != session.device.permissions.allChats || device?.permissions.chatIds != session.device.permissions.chatIds
+            guard current == generation else { return }
+            if scopeChanged { mailbox = .empty; mailboxLoading = false; mailboxOffset = 0; mailboxRevision = UUID() }
+            mailboxSupported = session.mailbox == 1
+            if !mailboxSupported { mailbox = .empty }
+            await refreshMailbox()
+            guard current == generation else { return }
             try await refreshNavigation(client, poll: poll && !scopeChanged)
             let taskList = session.supportsScheduledTasks ? try await client.scheduledTasks() : []
             guard generation == current else { return }
@@ -733,6 +752,67 @@ import SuzentCore
                 }
             }
         } catch { if generation == current { handle(error) } }
+    }
+
+    func refreshMailbox(targetOffset: Int? = nil) async {
+        guard let client, mailboxSupported, !mailboxBusy, !mailboxLoading else { return }
+        let current = generation
+        let revision = UUID()
+        mailboxRevision = revision
+        mailboxLoading = true
+        defer { if mailboxRevision == revision { mailboxLoading = false } }
+        let lastOffset = targetOffset ?? mailboxOffset
+        do {
+            let category = mailboxCategory
+            let page = try await mailboxWindow(lastOffset: lastOffset) { try await client.mailboxPage(category: category, offset: $0) }
+            let targets = try await client.chatStatuses(Array(Set(page.items.compactMap(\.chatId))))
+            guard current == generation, revision == mailboxRevision else { return }
+            mailbox = page; mailboxOffset = lastOffset; mailboxChats = Dictionary(targets.map { ($0.id, $0) }, uniquingKeysWith: { _, latest in latest }); mailboxError = nil
+        } catch {
+            guard current == generation, revision == mailboxRevision else { return }
+            mailboxError = String(localized: "Could not sync inbox. Pull to refresh and try again.")
+            if case ClientError.http(401) = error { handle(error) }
+        }
+    }
+
+    func loadMoreMailbox() async {
+        guard !mailboxBusy, !mailboxLoading, mailbox.hasMore else { return }
+        await refreshMailbox(targetOffset: mailboxOffset + 50)
+    }
+
+    func changeMailbox(category: String? = nil, offset: Int = 0) async {
+        mailboxRevision = UUID(); mailboxLoading = false
+        if let category { mailboxCategory = category }
+        mailboxOffset = max(0, offset)
+        mailbox = .empty
+        await refreshMailbox()
+    }
+
+    func readMailbox(_ ids: [Int]? = nil) async {
+        guard let client, mailboxSupported, !mailboxBusy else { return }
+        let current = generation
+        mailboxRevision = UUID()
+        mailboxLoading = false
+        let mutation = UUID()
+        mailboxMutation = mutation
+        mailboxBusy = true
+        defer { if mailboxMutation == mutation { mailboxBusy = false } }
+        do {
+            if let ids {
+                for start in stride(from: 0, to: ids.count, by: 100) {
+                    guard current == generation, mailboxMutation == mutation else { return }
+                    try await client.readMailbox(ids: Array(ids.dropFirst(start).prefix(100)), all: false)
+                }
+            } else { try await client.readMailbox(ids: nil, all: true) }
+            guard current == generation, mailboxMutation == mutation else { return }
+            mailboxBusy = false
+            await refreshMailbox()
+        } catch {
+            guard current == generation, mailboxMutation == mutation else { return }
+            mailboxBusy = false
+            mailboxError = String(localized: "Could not mark inbox messages read. Please try again.")
+            if case ClientError.http(401) = error { handle(error) }
+        }
     }
 
     func manageChat(_ chat: Chat, action: String, value: String? = nil) async {
@@ -1306,6 +1386,8 @@ import SuzentCore
         voice.stop()
         voiceSupported = false
         scheduledTasks = []
+        mailbox = .empty; mailboxLoading = false; mailboxChats = [:]; mailboxSupported = false; mailboxOffset = 0; mailboxCategory = "all"
+        mailboxBusy = false; mailboxError = nil; mailboxRevision = UUID(); mailboxMutation = UUID()
         projects = []; selectedModel = nil; drafts = [:]; discardAttachments(); attachmentsSupported = false; overviewSupported = false; surfacesSupported = false; steerSupported = false
         discardQueues()
         pendingApprovals = []; approvalChoices = [:]; approvalBusy = false

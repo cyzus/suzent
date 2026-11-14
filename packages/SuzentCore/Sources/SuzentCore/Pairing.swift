@@ -25,6 +25,7 @@ public struct ClientSession: Decodable, Sendable {
     public let pairingRepair: Int?
     public let attachments: Int?
     public let scheduledTasks: Int?
+    public var mailbox: Int? = nil
     public var chatPagination: Int? = nil
     public var voice: Int? = nil
     public var chatOverview: Int? = nil

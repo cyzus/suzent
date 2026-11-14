@@ -1815,7 +1815,18 @@ export interface MailboxDestination {
   project: string | null;
 }
 
+export interface MailboxPresentation {
+  threadKey: string;
+  title: string;
+  source: string;
+  context: string | null;
+  icon: string;
+  activity: string | null;
+  detail: string | null;
+}
+
 export interface MailboxItem {
+  presentation?: MailboxPresentation;
   id: number;
   source_kind: 'webhook' | 'email' | 'peer' | 'schedule' | string;
   source_name: string;

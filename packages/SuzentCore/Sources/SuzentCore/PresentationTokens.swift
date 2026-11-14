@@ -26,6 +26,10 @@ public enum PresentationTokens {
     public static let danger_dark: UInt32 = 0xFF6B6B
     public static let error_surface: UInt32 = 0xFFE1E1
     public static let error_surface_dark: UInt32 = 0x4A1D1D
+    public static let info: UInt32 = 0x0369A1
+    public static let info_dark: UInt32 = 0x7DD3FC
+    public static let warning: UInt32 = 0xB45309
+    public static let warning_dark: UInt32 = 0xFCD34D
     public static let borderWidth: Double = 2
     public static let shadowOffset: Double = 2
     public static let borderWidthHeavy: Double = 3

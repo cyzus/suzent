@@ -148,6 +148,12 @@ val suzentSelection: Color
 val suzentRowDivider: Color
     @Composable get() = Color(if (isSystemInDarkTheme()) PresentationTokens.selection_dark else PresentationTokens.selection_light)
 
+val suzentInfo: Color
+    @Composable get() = Color(if (isSystemInDarkTheme()) PresentationTokens.info_dark else PresentationTokens.info)
+
+val suzentWarning: Color
+    @Composable get() = Color(if (isSystemInDarkTheme()) PresentationTokens.warning_dark else PresentationTokens.warning)
+
 val suzentLink: Color
     @Composable get() = Color(if (isSystemInDarkTheme()) PresentationTokens.link_dark else PresentationTokens.blue)
 
