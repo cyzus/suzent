@@ -2877,6 +2877,7 @@ export const zhCN = {
     },
   },
   toolCallBlock: {
+    newFileLines: '新文件 · {total} 行',
     readFileRange: '第 {start}–{end} 行，共 {total} 行',
     openChat: '打开这个对话',
     openInPreview: '在文件预览中打开',

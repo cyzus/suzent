@@ -2943,6 +2943,7 @@ export const en = {
     },
   },
   toolCallBlock: {
+    newFileLines: 'New file · {total} lines',
     readFileRange: 'Lines {start}–{end} of {total}',
     openChat: 'Open this chat',
     openInPreview: 'Open in file preview',

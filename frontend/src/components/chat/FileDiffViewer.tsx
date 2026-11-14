@@ -1,6 +1,8 @@
 import React, { Suspense, lazy, useCallback, useMemo, useState } from 'react';
 import type { BeforeMount, DiffOnMount } from '@monaco-editor/react';
 import { useOpenFile } from './openFileContext';
+import { PlainFileView } from './PlainFileView';
+import { useI18n } from '../../i18n';
 import { countChangedLines, fileToolPath, metadataLineCounts } from '../../lib/fileToolPreview';
 import { SCHEME_COLORS, type Scheme, useTheme } from '../../hooks/useTheme';
 
@@ -358,6 +360,7 @@ export const FileDiffViewer: React.FC<FileDiffViewerProps> = ({
   metadata,
   output,
 }) => {
+  const { t } = useI18n();
   const openFile = useOpenFile();
   const { filePath, isDiff, original, modified, canPreview, addedLines, removedLines } =
     useMemo(() => {
@@ -407,6 +410,19 @@ export const FileDiffViewer: React.FC<FileDiffViewerProps> = ({
           {output || '(no preview available)'}
         </pre>
       </div>
+    );
+  }
+
+  // A new file has nothing to diff against; show it like a read.
+  if (!isDiff) {
+    const lineCount = modified.replace(/\n$/, '').split('\n').length;
+    return (
+      <PlainFileView
+        filePath={filePath}
+        label={t('toolCallBlock.newFileLines', { total: lineCount })}
+        gutter={Array.from({ length: lineCount }, (_, i) => i + 1).join('\n')}
+        text={modified.replace(/\n$/, '')}
+      />
     );
   }
 
