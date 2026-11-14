@@ -281,6 +281,7 @@
     ".releases/changes/save-canvas-as-file.json",
     ".releases/changes/scheduled-task-failures.json",
     ".releases/changes/send-file-tool.json",
+    ".releases/changes/sent-files-under-reply.json",
     ".releases/changes/serialize-sqlite-writers.json",
     ".releases/changes/settings-services-page.json",
     ".releases/changes/setup-window-native-controls.json",
