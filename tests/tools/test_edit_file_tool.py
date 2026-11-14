@@ -113,3 +113,15 @@ def test_reports_counts_even_when_file_is_too_large_for_inline_diff(tmp_path):
     assert result.success
     assert "old_content" not in result.metadata
     assert (result.metadata["added_lines"], result.metadata["removed_lines"]) == (1, 1)
+
+
+def test_counts_stay_exact_in_files_full_of_repeated_lines(tmp_path):
+    file_path = tmp_path / "repeated.txt"
+    file_path.write_text("same\n" * 250 + "target\n" + "same\n" * 249, encoding="utf-8")
+
+    result = EditFileTool().forward(
+        _ctx(tmp_path), str(file_path), "target", "changed", replace_all=False
+    )
+
+    assert result.success
+    assert (result.metadata["added_lines"], result.metadata["removed_lines"]) == (1, 1)
