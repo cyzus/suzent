@@ -117,6 +117,7 @@
     ".releases/changes/greeting-cube-visual-polish.json",
     ".releases/changes/header-title-gap.json",
     ".releases/changes/headless-run-command.json",
+    ".releases/changes/headless-run-fidelity.json",
     ".releases/changes/hover-tooltip-length.json",
     ".releases/changes/image-edit-support.json",
     ".releases/changes/image-viewer-slideshow.json",
