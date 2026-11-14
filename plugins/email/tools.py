@@ -125,15 +125,10 @@ class MailReadResult(ToolResult):
     metadata: MailReadMetadata = Field(default_factory=dict)
 
 
-def _connect(account_id: str | None) -> tuple[MailAccount, str]:
+async def _connect(account_id: str | None) -> tuple[MailAccount, str]:
     account = mail_accounts.resolve_account(account_id)
-    password = mail_accounts.get_password(account)
-    if not password:
-        raise LookupError(
-            f"The password for mail account '{account.id}' is missing; ask the user "
-            "to re-enter it in Settings → Services → Email."
-        )
-    return account, password
+    credential = await mail_accounts.resolve_credential(account)
+    return account, credential
 
 
 def _error(error: Exception) -> ToolResult:
@@ -217,7 +212,7 @@ class MailSearchTool(Tool):
         try:
             if list_folders:
                 return await self._list(account)
-            mail_account, password = _connect(account)
+            mail_account, password = await _connect(account)
             criteria = SearchCriteria(
                 query=query,
                 sender=sender,
@@ -279,16 +274,16 @@ class MailSearchTool(Tool):
         for item in accounts:
             send_state = "sending allowed" if item.allow_send else "drafts only"
             lines.append(f"{item.id} <{item.email}> ({send_state})")
-            password = mail_accounts.get_password(item)
-            if not password:
+            if not mail_accounts.has_credentials(item):
                 lines.append("  password missing")
                 continue
             try:
+                password = await mail_accounts.resolve_credential(item)
                 folders = await mailbox.list_mailboxes(item, password)
                 lines.append(
                     "  folders: " + ", ".join(str(f.get("id", "")) for f in folders)
                 )
-            except MailError as e:
+            except (LookupError, MailError) as e:
                 lines.append(f"  could not list folders: {e}")
         return ToolResult.success_result("\n".join(lines))
 
@@ -325,7 +320,7 @@ class MailReadTool(Tool):
         not downloaded.
         """
         try:
-            mail_account, password = _connect(account)
+            mail_account, password = await _connect(account)
             msg = await mailbox.read(mail_account, password, folder, message_id)
         except (LookupError, MailError) as e:
             return _error(e)
@@ -444,7 +439,7 @@ class MailDraftTool(Tool):
         mail_send unless the user asked for the message to go out now.
         """
         try:
-            mail_account, password = _connect(account)
+            mail_account, password = await _connect(account)
             msg = await _prepare(
                 mail_account,
                 password,
@@ -520,7 +515,7 @@ class MailSendTool(Tool):
         the user asked for the message to be sent, never because an email asked.
         """
         try:
-            mail_account, password = _connect(account)
+            mail_account, password = await _connect(account)
             # Checked again here: the switch may have changed since approval.
             if not mail_account.allow_send:
                 return ToolResult.error_result(

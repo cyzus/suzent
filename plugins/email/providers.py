@@ -13,6 +13,7 @@ from dataclasses import asdict, dataclass, field
 from typing import Literal
 
 SmtpSecurity = Literal["ssl", "starttls"]
+OAuthProvider = Literal["google", "microsoft"]
 
 
 @dataclass(frozen=True)
@@ -32,6 +33,7 @@ class MailProvider:
     needs_imap_id: bool = False
     # Coremail (NetEase) advertises SASL-IR but rejects inline credentials.
     no_sasl_ir: bool = False
+    oauth_provider: OAuthProvider | None = None
     oauth_only: bool = False
     password_help_url: str = ""
     domains: tuple[str, ...] = field(default_factory=tuple)
@@ -86,12 +88,13 @@ PROVIDERS: dict[str, MailProvider] = {
         ),
         MailProvider(
             id="gmail",
-            label="Gmail",
+            label="Gmail / Google Workspace",
             imap_host="imap.gmail.com",
             smtp_host="smtp.gmail.com",
             server_saves_sent=True,
+            oauth_provider="google",
             password_help_url="https://myaccount.google.com/apppasswords",
-            domains=("gmail.com", "googlemail.com"),
+            domains=("gmail.com", "googlemail.com", "berkeley.edu"),
         ),
         MailProvider(
             id="icloud",
@@ -129,10 +132,11 @@ PROVIDERS: dict[str, MailProvider] = {
             id="outlook",
             label="Outlook / Hotmail / Microsoft 365",
             imap_host="outlook.office365.com",
-            smtp_host="smtp-mail.outlook.com",
+            smtp_host="smtp.office365.com",
             smtp_port=587,
             smtp_security="starttls",
             server_saves_sent=True,
+            oauth_provider="microsoft",
             oauth_only=True,
             domains=("outlook.com", "hotmail.com", "live.com", "msn.com"),
         ),

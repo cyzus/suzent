@@ -14,6 +14,7 @@ def register(ctx: PluginContext) -> None:
     ctx.register_route("providers", routes.list_providers)
     ctx.register_route("accounts", routes.list_accounts)
     ctx.register_route("accounts", routes.add_account, methods=("POST",))
+    ctx.register_route("accounts/oauth/start", routes.start_oauth, methods=("POST",))
     ctx.register_route("accounts/update", routes.update_account, methods=("POST",))
     ctx.register_route("accounts/test", routes.test_account, methods=("POST",))
     ctx.register_route("accounts/remove", routes.remove_account, methods=("POST",))
