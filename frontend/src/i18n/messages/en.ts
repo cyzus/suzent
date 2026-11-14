@@ -2222,7 +2222,6 @@ export const en = {
     sendMessage: 'Send message',
     redirectAgent: 'Redirect the agent',
     placeholderRedirect: 'Enter to redirect · {queueKey} to queue',
-    placeholderRedirectOnly: 'Enter to redirect',
     queuedLabel: 'Queued messages',
     queuedCount: '{count} queued · sent when this turn ends',
     removeQueued: 'Cancel this message',

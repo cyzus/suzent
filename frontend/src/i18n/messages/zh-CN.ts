@@ -2163,7 +2163,6 @@ export const zhCN = {
     sendMessage: '发送消息',
     redirectAgent: '重定向助手',
     placeholderRedirect: 'Enter 重定向 · {queueKey} 排队',
-    placeholderRedirectOnly: 'Enter 重定向',
     queuedLabel: '排队中的消息',
     queuedCount: '{count} 条排队中 · 本轮结束后发送',
     removeQueued: '取消这条消息',

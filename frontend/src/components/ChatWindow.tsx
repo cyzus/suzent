@@ -470,6 +470,7 @@ const LIVE_ASSISTANT_MESSAGE: Message = { role: 'assistant', content: '' };
 
 const noop = (): void => {};
 const NO_SURFACES: A2UISurface[] = [];
+const NO_QUEUE: QueuedMessage[] = [];
 
 // Message list component: store messages, then the live turn. The live turn
 // takes the row its saved message will occupy (same key, same element tree),
@@ -3899,6 +3900,13 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                 renderMessages={renderPeekMessages}
                 backendConfig={safeBackendConfig}
                 voice={voice}
+                queue={messageQueues[peekChatId] ?? NO_QUEUE}
+                onQueueChange={(update) =>
+                  setMessageQueues((prev) => ({
+                    ...prev,
+                    [peekChatId]: update(prev[peekChatId] ?? []),
+                  }))
+                }
                 onImageClick={setViewingImage}
               />
             )}

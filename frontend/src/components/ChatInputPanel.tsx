@@ -707,9 +707,7 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
                 INPUT_TEXT_METRIC_CLASS
               }
             >
-              {t(queue ? 'chatInput.placeholderRedirect' : 'chatInput.placeholderRedirectOnly', {
-                queueKey,
-              })
+              {t('chatInput.placeholderRedirect', { queueKey })
                 .split(/(Ctrl\+Enter|⌘\+Enter|Enter)/)
                 .map((part, index) =>
                   part.endsWith('Enter') ? (
