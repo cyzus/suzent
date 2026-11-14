@@ -2163,6 +2163,7 @@ export const zhCN = {
     sendMessage: '发送消息',
     redirectAgent: '重定向助手',
     placeholderRedirect: 'Enter 重定向 · {queueKey} 排队',
+    placeholderRedirectOnly: 'Enter 重定向',
     queuedLabel: '排队中的消息',
     queuedCount: '{count} 条排队中 · 本轮结束后发送',
     removeQueued: '取消这条消息',
@@ -2320,10 +2321,6 @@ export const zhCN = {
       peekLoading: '加载中…',
       peekError: '无法加载这个对话',
       peekRunning: '进行中',
-      peekReply: '回复这个对话…',
-      peekSteer: '引导这个对话…',
-      peekSend: '发送',
-      peekSendFailed: '没发出去，再试一次。',
     },
     trigger: {
       goal: '目标模式',
