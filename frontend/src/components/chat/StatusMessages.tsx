@@ -11,6 +11,7 @@ import {
   ChatBubbleLeftRightIcon,
   ClockIcon,
   FlagIcon,
+  PaperAirplaneIcon,
 } from '@heroicons/react/24/outline';
 import {
   parseTrigger,
@@ -19,6 +20,8 @@ import {
   type TriggerEntry,
   type TriggerKind,
 } from '../../lib/triggerRows';
+import type { LinkedChat } from './chatToolLink';
+import { useOpenChat } from './openChatContext';
 import './CoreConnectionIndicator.css';
 
 /**
@@ -263,7 +266,7 @@ export const TriggerReference: React.FC<{ entries: TriggerEntry[]; className?: s
     <div className={`chat-trigger-reference w-full max-w-3xl ${className}`}>
       <button
         type="button"
-        className="flex max-w-full min-w-0 items-center gap-1.5 py-0.5 text-left text-[12px] text-neutral-400 hover:text-neutral-700 dark:text-neutral-500 dark:hover:text-neutral-200"
+        className="group/ref flex max-w-full min-w-0 items-center gap-1.5 py-0.5 text-left text-[12px] text-neutral-400 hover:text-neutral-700 dark:text-neutral-500 dark:hover:text-neutral-200"
         onClick={() => hasDetails && setExpanded((value) => !value)}
         aria-expanded={hasDetails ? expanded : undefined}
         title={t(`chatMessage.trigger.kind.${trigger.kind}`)}
@@ -279,10 +282,69 @@ export const TriggerReference: React.FC<{ entries: TriggerEntry[]; className?: s
           </span>
         )}
         {hasDetails && (
-          <DisclosureChevron expanded={expanded} className="h-3 w-3 transition-transform" />
+          <DisclosureChevron
+            expanded={expanded}
+            className={`h-3 w-3 transition-[transform,opacity] ${expanded ? '' : 'opacity-0 group-hover/ref:opacity-100 group-focus-visible/ref:opacity-100'}`}
+          />
         )}
       </button>
       {expanded && <TriggerDetails entries={entries} />}
+    </div>
+  );
+};
+
+/**
+ * The sessions a Regent reply handed work to, under the bubble: the outgoing
+ * counterpart of the TriggerReference above it. One target opens directly;
+ * several fold into a count that lists them.
+ */
+export const DispatchReference: React.FC<{ chats: LinkedChat[] }> = ({ chats }) => {
+  const { t } = useI18n();
+  const openChat = useOpenChat();
+  const [expanded, setExpanded] = React.useState(false);
+  if (!openChat || chats.length === 0) return null;
+
+  const single = chats.length === 1 ? chats[0] : null;
+  const label = single
+    ? t('chatMessage.dispatch.sentTo', { target: single.title ?? single.id })
+    : t('chatMessage.dispatch.sentToMany', { count: chats.length });
+  const rowClass =
+    'group/ref flex max-w-full min-w-0 items-center gap-1.5 py-0.5 text-left text-[12px] text-neutral-400 hover:text-neutral-700 dark:text-neutral-500 dark:hover:text-neutral-200';
+
+  return (
+    <div className="chat-dispatch-reference w-full max-w-3xl">
+      <button
+        type="button"
+        className={rowClass}
+        onClick={() => (single ? void openChat(single.id) : setExpanded((value) => !value))}
+        aria-expanded={single ? undefined : expanded}
+        title={single ? `${t('toolCallBlock.openChat')} · ${single.title ?? single.id}` : label}
+      >
+        <PaperAirplaneIcon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+        <span className="min-w-0 truncate">{label}</span>
+        {!single && (
+          <DisclosureChevron
+            expanded={expanded}
+            className={`h-3 w-3 transition-[transform,opacity] ${expanded ? '' : 'opacity-0 group-hover/ref:opacity-100 group-focus-visible/ref:opacity-100'}`}
+          />
+        )}
+      </button>
+      {expanded && !single && (
+        <div className="mt-0.5 max-h-60 overflow-y-auto border-l-2 border-neutral-200 pl-3 dark:border-zinc-700">
+          {chats.map((chat) => (
+            <button
+              key={chat.id}
+              type="button"
+              className={rowClass}
+              onClick={() => void openChat(chat.id)}
+              title={`${t('toolCallBlock.openChat')} · ${chat.title ?? chat.id}`}
+            >
+              <ChatBubbleLeftRightIcon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+              <span className="min-w-0 truncate">{chat.title ?? chat.id}</span>
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 };
