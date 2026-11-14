@@ -1,6 +1,6 @@
 # Mobile changelog
 
-## [mobile-v0.9.1] - 2026-11-13
+## [mobile-v0.9.1] - 2026-11-14
 
 ### Release notes
 - Fix mobile inline code wrapping and show previews for uploaded images.
