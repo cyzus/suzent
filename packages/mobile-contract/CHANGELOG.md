@@ -19,6 +19,7 @@
 - Display uploaded images outside user text bubbles and match desktop message colors in light and dark mode.
 - Unify Regent conversation bubbles and make its status panel available on mobile.
 - Show Regent’s cross-conversation work queue instead of a per-chat plan in the mobile status panel.
+- Files the agent sends you now appear together under its reply, as artifact cards on desktop and a clearer file row on the phone.
 - Unify inbox threads across desktop and mobile with backend-owned grouping for all event sources.
 
 ## [mobile-v0.9.0] - 2026-11-13
