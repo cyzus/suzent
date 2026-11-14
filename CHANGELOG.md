@@ -30,6 +30,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Writing a new file in chat now shows it as light plain text with line numbers, and read and write previews no longer show a second scrollbar beside the line numbers.
 - Projects in the sidebar open instantly the first time, because their chat lists load in the background.
 - Collapsing a project and opening it again no longer flashes the empty "New chat" button.
+- In Regent, a chat it handed work to opens in a side panel next to the conversation, with a button to open it full size.
 - In Regent, the dispatch and re-route steps now show the target chat's title, and clicking it opens that chat.
 - Regent can look through the Mailbox, read any event and send one on to a project or to you.
 - Show Regent’s cross-conversation work queue instead of a per-chat plan in the mobile status panel.

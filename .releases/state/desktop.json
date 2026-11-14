@@ -248,6 +248,7 @@
     ".releases/changes/regent-board-instant-resolve.json",
     ".releases/changes/regent-board.json",
     ".releases/changes/regent-breadcrumb.json",
+    ".releases/changes/regent-chat-side-panel.json",
     ".releases/changes/regent-conversation-polish.json",
     ".releases/changes/regent-conversation.json",
     ".releases/changes/regent-dispatch-chat-links.json",
