@@ -2375,6 +2375,10 @@ export const en = {
     regentReaction: 'Regent reacted {emoji}',
     quietReply: 'Nothing needed from you',
     sentByRegent: 'Sent by Regent',
+    dispatch: {
+      sentTo: 'Sent to {target}',
+      sentToMany: 'Sent to {count} chats',
+    },
     trigger: {
       goal: 'Goal mode',
       other: 'Background event',
@@ -2939,6 +2943,7 @@ export const en = {
   },
   toolCallBlock: {
     readFileRange: 'Lines {start}–{end} of {total}',
+    openChat: 'Open this chat',
     openInPreview: 'Open in file preview',
     failed: 'Failed',
     permissionRejectPlaceholder: 'Optional reason or safer direction',

@@ -149,6 +149,8 @@ async def test_regent_reroutes_one_event_to_a_project_without_a_rule(db):
     assert moved.reason.startswith("Re-routed by Regent")
     assert db.get_chat(moved.target_chat_id).project_id == project_id
     assert db.get_mailbox_rule_by_signature(item.signature) is None
+    assert result.metadata["agent_id"] == moved.target_chat_id
+    assert result.metadata["agent_title"] == db.get_chat(moved.target_chat_id).title
 
 
 async def test_reroute_to_the_user_notifies_them(db):
