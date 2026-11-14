@@ -44,6 +44,9 @@ import { isImeComposing } from '../lib/ime';
 import { SidebarRenameInput } from './sidebar/SidebarRenameInput';
 
 const ALL_PROJECTS_FILTER = '__all__';
+// Long enough for the backend to finish its start-up work first.
+const PROJECT_PREFETCH_DELAY_MS = 3_000;
+const PROJECT_PREFETCH_LIMIT = 30;
 const ORGANIZATION_STORAGE_KEY = 'suzent-chat-organization';
 const EMPTY_SELECTION: SelectionState = { selected: new Set(), anchor: null };
 type ChatKind = 'you' | 'subagent' | 'scheduled';
@@ -613,6 +616,40 @@ export const ChatList: React.FC<ChatListProps> = ({
     },
     []
   );
+
+  // Fill the cache in the background, one project at a time, so even the first
+  // open of a project shows its chats at once. Opening it still refreshes them.
+  const projectIdsKey = sortedProjects.map((project) => project.id).join(',');
+  useEffect(() => {
+    if (organization !== 'projects' || !projectIdsKey) return;
+    let cancelled = false;
+    const prefetch = async (): Promise<void> => {
+      for (const projectId of projectIdsKey.split(',').slice(0, PROJECT_PREFETCH_LIMIT)) {
+        if (cancelled) return;
+        if (projectChatCacheRef.current.has(projectId)) continue;
+        try {
+          const params = new URLSearchParams({ limit: '50', offset: '0', project_id: projectId });
+          const res = await fetch(`${getApiBase()}/chats?${params.toString()}`);
+          if (!res.ok) continue;
+          const data = await res.json();
+          // An open in the meantime cached a fresher list.
+          if (cancelled || projectChatCacheRef.current.has(projectId)) continue;
+          const chats: ChatSummary[] = data.chats || [];
+          projectChatCacheRef.current.set(projectId, {
+            chats,
+            totals: data.kindCounts ?? { you: 0, scheduled: 0, all: data.total ?? chats.length },
+          });
+        } catch {
+          // Prefetching is a convenience; opening the project fetches it anyway.
+        }
+      }
+    };
+    const timer = window.setTimeout(() => void prefetch(), PROJECT_PREFETCH_DELAY_MS);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [organization, projectIdsKey]);
 
   useEffect(() => {
     if (filterId === ALL_PROJECTS_FILTER) {
