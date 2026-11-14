@@ -99,12 +99,18 @@ interface ChatStreamingContextValue {
   messages: Message[];
   isStreaming: boolean;
   activeStreamingChatId: string | null;
+  /** Every cached chat's messages, keyed like the store's cache; read through `messagesForChat`. */
+  messagesByChat: Record<string, Message[]>;
+  configByChat: Record<string, ChatConfig>;
+  failedChatLoads: ReadonlySet<string>;
 }
 
 interface ChatCoreContextValue {
   config: ChatConfig;
   setConfig: (c: ChatConfig | ((prev: ChatConfig) => ChatConfig)) => void;
   setChatConfigForId: (chatId: string, config: ChatConfig) => Promise<void>;
+  /** Change one chat's config without touching the current chat's (a side panel's chat). */
+  setConfigForChat: (chatId: string, config: ChatConfig) => void;
   addMessage: (m: Message, chatId?: string | null) => void;
   updateLastUserMessageImages: (images: any[], chatId?: string | null) => void;
   updateAssistantStreaming: (delta: string, chatId?: string | null) => void;
@@ -140,6 +146,8 @@ interface ChatCoreContextValue {
       trusted?: boolean;
       throwOnError?: boolean;
       validateBeforeSwitch?: boolean;
+      /** Fetch into the cache without making it the current chat (a side panel's chat). */
+      background?: boolean;
     }
   ) => Promise<void>;
   saveCurrentChat: (skipRefresh?: boolean) => Promise<void>;
@@ -1114,6 +1122,16 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
     if (!res.ok) throw new Error(`Failed to save ACP chat config: ${res.status}`);
   }, []);
 
+  const setConfigForChat = useCallback(
+    (chatId: string, nextConfig: ChatConfig) => {
+      const key = keyForChat(chatId);
+      const previousConfig = configByChatRef.current[key];
+      setConfigByChat((prev) => ({ ...prev, [key]: nextConfig }));
+      if (!configsEqual(previousConfig, nextConfig)) scheduleSave(chatId, 1500);
+    },
+    [scheduleSave]
+  );
+
   const addMessage = useCallback(
     (message: Message, chatId: string | null = currentChatId) => {
       setMessagesForChat(chatId, (prev) => [...prev, message]);
@@ -1422,8 +1440,10 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
         trusted?: boolean;
         throwOnError?: boolean;
         validateBeforeSwitch?: boolean;
+        background?: boolean;
       }
     ) => {
+      const background = !!options?.background;
       // Task links can outlive their chat. Validate before changing the active conversation.
       let validatedResponse: Response | undefined;
       if (options?.validateBeforeSwitch) {
@@ -1446,7 +1466,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
       const authoritative = !!options?.authoritative;
       const serverWins = authoritative || !!options?.trusted;
       // Clear any pending saves for the previous chat before switching
-      if (currentChatId && currentChatId !== chatId) {
+      if (!background && currentChatId && currentChatId !== chatId) {
         clearScheduledSave(currentChatId);
       }
       // The optimistic append that is about to be discarded also scheduled a
@@ -1458,16 +1478,18 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
 
       const key = keyForChat(chatId);
       const cachedMessages = messagesByChatRef.current[key];
-      setCurrentChatId(chatId);
-      setShouldResetNext(false);
+      if (!background) {
+        setCurrentChatId(chatId);
+        setShouldResetNext(false);
+      }
 
       const summary = chats.find((c) => c.id === chatId);
-      if (summary) {
+      if (summary && !background) {
         setCurrentChatTitle(summary.title);
       }
 
       const cachedConfig = configByChat[key];
-      if (cachedConfig) {
+      if (cachedConfig && !background) {
         setConfigState(cachedConfig);
         // Save reusable preferences for the next new chat without chat-scoped state.
         try {
@@ -1487,7 +1509,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
           const chat: Chat = await res.json();
           markChatLoad(chatId, false);
           setLoadedChatProjects((previous) => ({ ...previous, [chatId]: chat.projectId ?? null }));
-          setCurrentChatTitle(chat.title);
+          if (!background) setCurrentChatTitle(chat.title);
 
           if (chat.contextUsage || chat.contextTokens) {
             const contextUsageStore = useContextUsageStore.getState();
@@ -1522,7 +1544,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
             computeDefaultConfig()
           );
           setConfigByChat((prev) => ({ ...prev, [key]: loadedConfig }));
-          setConfigState(loadedConfig);
+          if (!background) setConfigState(loadedConfig);
           // The backend config listing is fetched once on mount, so a backend that
           // restarted (or gained a model) since then leaves this window holding a
           // listing that can't size the chat's model — which is how the context
@@ -1540,13 +1562,15 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
             void fetchConfigWithRetry(1, 5, false);
           }
           // Save reusable preferences for the next new chat without chat-scoped state.
-          try {
-            localStorage.setItem(
-              LAST_CONFIG_KEY,
-              JSON.stringify(stripReusableConfig(loadedConfig))
-            );
-          } catch (e) {
-            console.warn('Failed to save config to localStorage:', e);
+          if (!background) {
+            try {
+              localStorage.setItem(
+                LAST_CONFIG_KEY,
+                JSON.stringify(stripReusableConfig(loadedConfig))
+              );
+            } catch (e) {
+              console.warn('Failed to save config to localStorage:', e);
+            }
           }
           setMessagesByChat((prev) => {
             const rollbackExpected = rollbackExpectedChatIdsRef.current.has(chatId);
@@ -1685,7 +1709,6 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
             if (currentAssistant) {
               mappedMessages.push(currentAssistant as Message);
             }
-
             if (serverWins) {
               rollbackExpectedChatIdsRef.current.delete(chatId);
               return { ...prev, [key]: mappedMessages };
@@ -1826,7 +1849,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
             rollbackExpectedChatIdsRef.current.delete(chatId);
             return { ...prev, [key]: mappedMessages };
           });
-          setShouldResetNext(false);
+          if (!background) setShouldResetNext(false);
         } else {
           console.error('Failed to load chat:', res.status, res.statusText);
           markChatLoad(chatId, true);
@@ -1944,6 +1967,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
       config,
       setConfig: optimizedSetConfig,
       setChatConfigForId,
+      setConfigForChat,
       addMessage,
       updateLastUserMessageImages,
       updateAssistantStreaming,
@@ -1993,6 +2017,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
       config,
       optimizedSetConfig,
       setChatConfigForId,
+      setConfigForChat,
       addMessage,
       updateLastUserMessageImages,
       updateAssistantStreaming,
@@ -2045,8 +2070,11 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
       messages,
       isStreaming,
       activeStreamingChatId,
+      messagesByChat,
+      configByChat,
+      failedChatLoads,
     }),
-    [messages, isStreaming, activeStreamingChatId]
+    [messages, isStreaming, activeStreamingChatId, messagesByChat, configByChat, failedChatLoads]
   );
 
   return (
@@ -2074,4 +2102,100 @@ export const useChatStore = (): ChatContextValue => {
   const core = useChatCoreStore();
   const streaming = useChatStreamingStore();
   return useMemo(() => ({ ...core, ...streaming }), [core, streaming]);
+};
+
+const NO_MESSAGES: Message[] = [];
+
+/**
+ * Runs a ChatWindow on a chat other than the current one (Regent's side panel).
+ * The store keeps one "current chat" with one config and one streaming flag;
+ * inside this provider those read and write `chatId` instead, so the window
+ * works as it would on the chat itself while the app's current chat stays put.
+ * Renders nothing until the chat's messages and config are cached.
+ */
+export const ChatScopeProvider: React.FC<{
+  chatId: string;
+  children: React.ReactNode;
+  /** Shown until the chat is cached, given whether loading it failed. */
+  fallback?: (failed: boolean) => React.ReactNode;
+}> = ({ chatId, children, fallback }) => {
+  const core = useChatCoreStore();
+  const streaming = useChatStreamingStore();
+  const [scopeStreaming, setScopeStreaming] = useState(false);
+  const key = keyForChat(chatId);
+  const scopedConfig = streaming.configByChat[key];
+  const messages = streaming.messagesByChat[key] ?? NO_MESSAGES;
+  const loaded = key in streaming.messagesByChat && !!scopedConfig;
+  const { loadChat, setConfigForChat } = core;
+
+  // Once per chat: loadChat changes identity whenever the chat list or any
+  // config does, and a reload mid-turn would throw away the streaming bubble.
+  const loadChatRef = useRef(loadChat);
+  loadChatRef.current = loadChat;
+  useEffect(() => {
+    void loadChatRef.current(chatId, { background: true, force: true });
+  }, [chatId]);
+
+  const coreValue = useMemo<ChatCoreContextValue | null>(() => {
+    if (!scopedConfig) return null;
+    const scoped = <T,>(id: T | undefined): T | string => (id === undefined ? chatId : id);
+    const summary = [...core.pinnedChats, ...core.chats].find((chat) => chat.id === chatId);
+    return {
+      ...core,
+      currentChatId: chatId,
+      currentChatMessagesLoaded: key in streaming.messagesByChat,
+      currentChatLoadFailed: streaming.failedChatLoads.has(chatId),
+      currentChatProjectId: summary?.projectId ?? null,
+      config: scopedConfig,
+      setConfig: (next) =>
+        setConfigForChat(chatId, typeof next === 'function' ? next(scopedConfig) : next),
+      shouldResetNext: false,
+      consumeResetFlag: () => {},
+      setIsStreaming: (value, id) => {
+        if (scoped(id) === chatId) setScopeStreaming(value);
+      },
+      loadChat: (id, options) =>
+        loadChat(id, id === chatId ? { ...options, background: true } : options),
+      saveCurrentChat: () => core.forceSaveNow(chatId),
+      finalSave: (id) => core.finalSave(scoped(id)),
+      forceSaveNow: (id) => core.forceSaveNow(scoped(id)),
+      addMessage: (message, id) => core.addMessage(message, scoped(id)),
+      updateLastUserMessageImages: (images, id) =>
+        core.updateLastUserMessageImages(images, scoped(id)),
+      updateAssistantStreaming: (delta, id) => core.updateAssistantStreaming(delta, scoped(id)),
+      newAssistantMessage: (id) => core.newAssistantMessage(scoped(id)),
+      removeEmptyAssistantMessage: (id) => core.removeEmptyAssistantMessage(scoped(id)),
+      updateMessage: (index, update, id) => core.updateMessage(index, update, scoped(id)),
+      truncateMessagesFrom: (index, id) => core.truncateMessagesFrom(index, scoped(id)),
+      markChatRollbackExpected: (id) => core.markChatRollbackExpected(scoped(id)),
+    };
+  }, [
+    core,
+    chatId,
+    key,
+    scopedConfig,
+    streaming.messagesByChat,
+    streaming.failedChatLoads,
+    loadChat,
+    setConfigForChat,
+  ]);
+
+  const streamingValue = useMemo<ChatStreamingContextValue>(
+    () => ({
+      ...streaming,
+      messages,
+      isStreaming: scopeStreaming,
+      activeStreamingChatId: scopeStreaming ? chatId : null,
+    }),
+    [streaming, messages, scopeStreaming, chatId]
+  );
+
+  if (!loaded || !coreValue) return <>{fallback?.(streaming.failedChatLoads.has(chatId))}</>;
+  return (
+    <ChatCoreContext.Provider value={coreValue}>
+      <ChatStreamingContext.Provider value={streamingValue}>
+        {children}
+      </ChatStreamingContext.Provider>
+    </ChatCoreContext.Provider>
+  );
 };

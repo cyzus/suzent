@@ -2315,6 +2315,12 @@ export const zhCN = {
     dispatch: {
       sentTo: '交给 {target}',
       sentToMany: '交给 {count} 个对话',
+      peekExpand: '展开为完整对话',
+      peekClose: '关闭',
+      peekLoading: '加载中…',
+      peekError: '无法加载这个对话',
+      peekRunning: '进行中',
+      peekSidebar: '对话详情',
     },
     trigger: {
       goal: '目标模式',
