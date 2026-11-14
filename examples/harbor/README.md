@@ -17,7 +17,9 @@ For each trial an agent:
 1. Installs `uv`, fetches Suzent from GitHub and runs `uv sync` in the task
    container.
 2. Runs the task with `suzent run --json --permission-mode full_access` in the
-   container's working folder, with the Docker sandbox off.
+   container's working folder, with the Docker sandbox off and with
+   `--keep-background-processes`, so a server the task asks for is still running
+   when the verifier checks.
 3. Reports input, output and cached token counts to the runner.
 
 ## Usage
@@ -53,8 +55,11 @@ this for an installed agent in two ways, and the Pier agent uses both:
 
 ## Models
 
-Pass the model with `-m`. Every `*_API_KEY` and `*_BASE_URL` variable in the
-environment the runner uses is forwarded to the container.
+Pass the model with `-m`. Only the selected provider's credential variables
+are forwarded to the container: `FIREWORKS_API_KEY` for `fireworks_ai/`, and for
+other providers the names in `config/providers.json` (for example
+`GOOGLE_API_KEY` or `GEMINI_API_KEY` for `gemini/`) plus `<PROVIDER>_BASE_URL`.
+Nothing else in the runner's environment reaches the task container.
 
 | `-m` value | How Suzent runs it | Per-call usage log |
 |---|---|---|
@@ -132,11 +137,11 @@ being measured.
 
 ## Limits
 
-- Neither agent has run a task inside a real Harbor or Pier installation yet.
-  The Harbor agent loads and constructs under Harbor 0.25.0; the Pier agent
-  follows `BaseInstalledAgent` on Pier's `main` branch and has not been loaded
-  by Pier. FrontierHarness Eval pins Harbor 0.22.0 and Pier 0.3.1, which may
-  differ.
+- Both agents have run real tasks: the Harbor agent on Harbor 0.25.0 with
+  Runta as the environment (Terminal-Bench), and the Pier agent on Pier 0.3.1
+  with local Docker (DeepSWE). FrontierHarness Eval pins Harbor 0.22.0, which
+  has not been tried, and neither agent has run inside the evaluation's own
+  Runta checkpoints.
 - The proxy reaches the provider with Python's default certificate store. A
   runtime that intercepts TLS, as Runta does to inject the provider key, has
   to make its certificate authority trusted inside the task container.
