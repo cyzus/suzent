@@ -1,0 +1,5 @@
+{
+  "products": {"desktop": "none"},
+  "summary": "Let the Harbor and Pier agents pin Suzent at an abbreviated commit hash.",
+  "reason": "Only the benchmark examples change; no shipped desktop behavior is affected."
+}

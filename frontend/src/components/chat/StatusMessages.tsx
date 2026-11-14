@@ -57,43 +57,88 @@ export const DragOverlay: React.FC = () => {
   );
 };
 
+const KLOTSKI_VERTICES: ReadonlyArray<readonly [number, number, number]> = [
+  [-1, -1, -1],
+  [1, -1, -1],
+  [1, 1, -1],
+  [-1, 1, -1],
+  [-1, -1, 1],
+  [1, -1, 1],
+  [1, 1, 1],
+  [-1, 1, 1],
+];
+
+const KLOTSKI_NEIGHBORS: ReadonlyArray<readonly number[]> = KLOTSKI_VERTICES.map((c) =>
+  KLOTSKI_VERTICES.reduce<number[]>((acc, o, j) => {
+    if (Math.abs(c[0] - o[0]) + Math.abs(c[1] - o[1]) + Math.abs(c[2] - o[2]) === 2) {
+      acc.push(j);
+    }
+    return acc;
+  }, [])
+);
+
 export const LoadingIndicator: React.FC = () => {
   const { t } = useI18n();
+  const [slots, setSlots] = React.useState<number[]>(() => [0, 1, 2, 3, 4, 5, 7]);
+  const emptyRef = React.useRef<{ current: number; prev: number }>({ current: 6, prev: -1 });
+
+  React.useEffect(() => {
+    const timer = window.setInterval(() => {
+      if (
+        document.documentElement.dataset.motion === 'reduced' ||
+        window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+      ) {
+        return;
+      }
+      const { current: emptySlot, prev: prevEmpty } = emptyRef.current;
+      const candidates = KLOTSKI_NEIGHBORS[emptySlot].filter((n) => n !== prevEmpty);
+      const pickedSlot = candidates[Math.floor(Math.random() * candidates.length)];
+      emptyRef.current = { current: pickedSlot, prev: emptySlot };
+      setSlots((prev) => prev.map((s) => (s === pickedSlot ? emptySlot : s)));
+    }, 165);
+    return () => window.clearInterval(timer);
+  }, []);
+
   return (
     <div className="flex flex-col items-center justify-center gap-4 px-4 py-8" role="status">
       <div className="core-connection-scene" aria-hidden="true">
         <div className="core-connection-cluster">
-          {Array.from({ length: 8 }, (_, index) => (
-            <div
-              key={index}
-              className="core-connection-part"
-              style={
-                {
-                  '--x': index % 2 ? 1 : -1,
-                  '--y': Math.floor(index / 2) % 2 ? 1 : -1,
-                  '--z': Math.floor(index / 4) % 2 ? 1 : -1,
-                } as React.CSSProperties
-              }
-            >
-              <div className="core-connection-cube">
-                {[
-                  '',
-                  'rotateY(180deg)',
-                  'rotateY(90deg)',
-                  'rotateY(-90deg)',
-                  'rotateX(90deg)',
-                  'rotateX(-90deg)',
-                ].map((rotation) => (
-                  <div
-                    key={rotation}
-                    className="core-connection-face"
-                    style={{ transform: `${rotation} translateZ(11px)` }}
-                  />
-                ))}
+          {slots.map((slotIndex, index) => {
+            const [x, y, z] = KLOTSKI_VERTICES[slotIndex];
+            const isAccent = index === 5;
+            return (
+              <div
+                key={index}
+                className={`core-connection-part${isAccent ? ' core-connection-part-accent' : ''}`}
+                style={
+                  {
+                    '--x': x,
+                    '--y': y,
+                    '--z': z,
+                  } as React.CSSProperties
+                }
+              >
+                <div className="core-connection-cube">
+                  {[
+                    '',
+                    'rotateY(180deg)',
+                    'rotateY(90deg)',
+                    'rotateY(-90deg)',
+                    'rotateX(90deg)',
+                    'rotateX(-90deg)',
+                  ].map((rotation) => (
+                    <div
+                      key={rotation}
+                      className="core-connection-face"
+                      style={{ transform: `${rotation} translateZ(11px)` }}
+                    />
+                  ))}
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
+        <div className="core-connection-shadow" />
       </div>
       <span className="text-xs font-medium tracking-wide text-neutral-500 dark:text-neutral-400">
         {t('chatWindow.connecting')}
