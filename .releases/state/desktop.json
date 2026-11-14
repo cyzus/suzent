@@ -1,6 +1,7 @@
 {
   "version": "0.27.0",
   "consumed": [
+    ".releases/changes/3d-loading-redesign.json",
     ".releases/changes/about-install-identity.json",
     ".releases/changes/acp-auth-streaming.json",
     ".releases/changes/acp-discovery-guidance.json",
@@ -9,6 +10,7 @@
     ".releases/changes/acp-system-reminder-triggers.json",
     ".releases/changes/activity-rail-agent-tools.json",
     ".releases/changes/activity-rail-disclosure.json",
+    ".releases/changes/adapter-short-commit.json",
     ".releases/changes/add-provider-redesign.json",
     ".releases/changes/agent-activity-presentation.json",
     ".releases/changes/agent-desktop-1-2.json",
