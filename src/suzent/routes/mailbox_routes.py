@@ -19,6 +19,7 @@ from suzent.core.mailbox import (
     route_or_override_mailbox_item,
 )
 from suzent.core.webhooks import webhook_path
+from suzent.core.mailbox_threads import mailbox_presentation
 from suzent.database import MailboxItemModel, MailboxRuleModel, get_database
 
 
@@ -44,6 +45,7 @@ def _item_to_dict(item: MailboxItemModel, *, preview: bool = False) -> dict:
         headers = {}
     return {
         "id": item.id,
+        "presentation": mailbox_presentation(item).model_dump(),
         "source_kind": item.source_kind,
         "source_name": item.source_name,
         "event_type": item.event_type,

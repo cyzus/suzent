@@ -108,6 +108,8 @@ class BackendClient(val backend: Backend, private val token: String, probeOnly: 
     override var supportsAttachments = false
         private set
 
+    override var supportsMailbox = false
+        private set
     override var supportsScheduledTasks = false
         private set
 
@@ -139,6 +141,7 @@ class BackendClient(val backend: Backend, private val token: String, probeOnly: 
         val value = json("mobile/client/session")
         validateMobileCapabilities(value)
         supportsAttachments = value.optInt("attachments") == 1
+        supportsMailbox = value.optInt("mailbox") == 1
         supportsScheduledTasks = value.optInt("scheduled_tasks") == 1
         supportsPagination = value.optInt("chat_pagination") == 1
         supportsVoice = value.optInt("voice") == 1
@@ -187,6 +190,11 @@ class BackendClient(val backend: Backend, private val token: String, probeOnly: 
     override suspend fun chats(): List<Chat> {
         val array = json("mobile/client/chats").getJSONArray("chats")
         return (0 until array.length()).map { Chat.parse(array.getJSONObject(it)) }
+    }
+    override suspend fun mailboxPage(category: String, offset: Int): MailboxPage = MailboxPage.parse(
+        json("mobile/client/mailbox/page", JSONObject().put("category", category).put("offset", offset).put("limit", 50), readOnly = true))
+    override suspend fun readMailbox(ids: List<Int>?, all: Boolean) {
+        json("mobile/client/mailbox/read", JSONObject().put("ids", org.json.JSONArray(ids ?: emptyList<Int>())).put("all", all))
     }
     override suspend fun scheduledTasks(): List<ScheduledTask> {
         if (!supportsScheduledTasks) return emptyList()

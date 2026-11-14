@@ -1,0 +1,198 @@
+[
+  {
+    "input": {
+      "id": 1,
+      "source_kind": "webhook",
+      "source_name": "buildkite",
+      "signature": "buildkite:started",
+      "event_type": "build.started",
+      "summary": "Event",
+      "payload": "{\"thread_id\": \"build-123\", \"subject\": \"Release build\", \"context\": \"Production\"}"
+    },
+    "presentation": {
+      "threadKey": "99f1b87b377ee3d12d3cbcc6a4689d560f9e3ae07ff8394c7686803b26a0d5a9",
+      "title": "Release build",
+      "source": "buildkite",
+      "context": "Production",
+      "icon": "inbox",
+      "activity": null,
+      "detail": null
+    }
+  },
+  {
+    "input": {
+      "id": 2,
+      "source_kind": "webhook",
+      "source_name": "buildkite",
+      "signature": "buildkite:finished",
+      "event_type": "build.finished",
+      "summary": "Event",
+      "payload": "{\"thread_id\": \"build-123\", \"subject\": \"Release build complete\"}"
+    },
+    "presentation": {
+      "threadKey": "99f1b87b377ee3d12d3cbcc6a4689d560f9e3ae07ff8394c7686803b26a0d5a9",
+      "title": "Release build complete",
+      "source": "buildkite",
+      "context": null,
+      "icon": "inbox",
+      "activity": null,
+      "detail": null
+    }
+  },
+  {
+    "input": {
+      "id": 3,
+      "source_kind": "webhook",
+      "source_name": "calendar",
+      "signature": "calendar:meeting",
+      "event_type": "event",
+      "summary": "Meeting changed"
+    },
+    "presentation": {
+      "threadKey": "8b734bfec81b2fb2b1b177c0aa0d45c351d0dc53b9aed7194b77c641da3026fb",
+      "title": "Meeting changed",
+      "source": "calendar",
+      "context": null,
+      "icon": "inbox",
+      "activity": null,
+      "detail": null
+    }
+  },
+  {
+    "input": {
+      "id": 4,
+      "source_kind": "email",
+      "source_name": "inbox",
+      "signature": "email:thread-123",
+      "event_type": "event",
+      "summary": "Re: Hello"
+    },
+    "presentation": {
+      "threadKey": "fb662bc0ae892352256f4fd7c25de53ac207b5c695d80d02c4fbbce663db013f",
+      "title": "Re: Hello",
+      "source": "inbox",
+      "context": null,
+      "icon": "inbox",
+      "activity": null,
+      "detail": null
+    }
+  },
+  {
+    "input": {
+      "id": 5,
+      "source_kind": "schedule",
+      "source_name": "daily-report",
+      "signature": "schedule:daily-report",
+      "event_type": "event",
+      "summary": "Daily report complete"
+    },
+    "presentation": {
+      "threadKey": "e6763c5edd6b73d35416cf6d3f09a07c969186ec85b5ac2b624c431918a9634f",
+      "title": "Daily report complete",
+      "source": "daily-report",
+      "context": null,
+      "icon": "inbox",
+      "activity": null,
+      "detail": null
+    }
+  },
+  {
+    "input": {
+      "id": 6,
+      "source_kind": "peer",
+      "source_name": "workstation",
+      "signature": "peer:status",
+      "event_type": "event",
+      "summary": "Peer ready"
+    },
+    "presentation": {
+      "threadKey": "a57a8a39bae24c75008bdb3397a949a4e38c6fa0d50d4223ff0e33471a377b09",
+      "title": "Peer ready",
+      "source": "workstation",
+      "context": null,
+      "icon": "inbox",
+      "activity": null,
+      "detail": null
+    }
+  },
+  {
+    "input": {
+      "id": 7,
+      "source_kind": "agent_inbox",
+      "source_name": "Project",
+      "signature": "agent:reply",
+      "event_type": "event",
+      "summary": "Done",
+      "headers_json": "{\"from\":\"project-chat\"}",
+      "target_chat_id": "focal-suzent"
+    },
+    "presentation": {
+      "threadKey": "587ccda17a90dc54b537d8a32a108e7c7997dfeb7ac306f03dfaf8a5a43dc703",
+      "title": "Done",
+      "source": "Project",
+      "context": null,
+      "icon": "inbox",
+      "activity": null,
+      "detail": null
+    }
+  },
+  {
+    "input": {
+      "id": 8,
+      "source_kind": "webhook",
+      "source_name": "github",
+      "signature": "github:pull_request.labeled:owner/repo",
+      "event_type": "pull_request.labeled",
+      "summary": "owner/repo — #12 Fix build (labeled)",
+      "payload": "{\"label\": {\"name\": \"dependencies\"}, \"repository\": {\"full_name\": \"owner/repo\"}, \"pull_request\": {\"number\": 12, \"title\": \"Fix build\"}}"
+    },
+    "presentation": {
+      "threadKey": "39c716956dbbe62850e1433e1be5795a2c4079ce1aad73256c584b75978a7328",
+      "title": "Fix build",
+      "source": "GitHub",
+      "context": "owner/repo · #12",
+      "icon": "code",
+      "activity": "label_added",
+      "detail": "dependencies"
+    }
+  },
+  {
+    "input": {
+      "id": 9,
+      "source_kind": "webhook",
+      "source_name": "github",
+      "signature": "github:pull_request.closed:owner/repo",
+      "event_type": "pull_request.closed",
+      "summary": "owner/repo — #12 Fix build (closed)"
+    },
+    "presentation": {
+      "threadKey": "39c716956dbbe62850e1433e1be5795a2c4079ce1aad73256c584b75978a7328",
+      "title": "Fix build",
+      "source": "GitHub",
+      "context": "owner/repo · #12",
+      "icon": "code",
+      "activity": "closed",
+      "detail": null
+    }
+  },
+  {
+    "input": {
+      "id": 10,
+      "source_kind": "webhook",
+      "source_name": "unknown",
+      "signature": "unknown:event",
+      "event_type": "event",
+      "summary": "Unparsed body",
+      "payload": "not json"
+    },
+    "presentation": {
+      "threadKey": "394324b056c61a20f6aecf421e3eff4f82f77b05e66dd60cd9f9993c0c54053c",
+      "title": "Unparsed body",
+      "source": "unknown",
+      "context": null,
+      "icon": "inbox",
+      "activity": null,
+      "detail": null
+    }
+  }
+]

@@ -9,6 +9,8 @@ public protocol MobileClient: Sendable {
     func navigationMetadata() async throws -> NavigationMetadata
     func chatStatuses(_ ids: [String]) async throws -> [Chat]
     func projects() async throws -> [Project]
+    func mailboxPage(category: String, offset: Int) async throws -> MailboxPage
+    func readMailbox(ids: [Int]?, all: Bool) async throws
     func scheduledTasks() async throws -> [ScheduledTask]
     func composer() async throws -> Chat
     func createChat(title: String, projectID: String?) async throws -> Chat
@@ -31,6 +33,9 @@ public protocol MobileClient: Sendable {
 }
 
 public extension MobileClient {
+    func mailboxPage(category: String, offset: Int) async throws -> MailboxPage { .empty }
+    func readMailbox(ids: [Int]?, all: Bool) async throws { throw ClientError.invalidResponse }
+
     func media(_ chatID: String, mediaID: String, to destination: URL) async throws { throw ClientError.invalidResponse }
 }
 
