@@ -901,6 +901,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     setIsStreaming,
     currentChatId,
     currentChatMessagesLoaded,
+    currentChatLoadFailed,
     createNewChat,
     loadChat,
     isStreaming,
@@ -2401,9 +2402,11 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   const isProbablyLoadingChatMessages =
     !!currentChatId &&
     !currentChatMessagesLoaded &&
+    !currentChatLoadFailed &&
     !showTransientAssistant &&
     safeMessages.length === 0 &&
-    (currentChatSummary?.messageCount ?? 0) > 0;
+    // Regent has no sidebar summary to count from, and its greeting flashed while its history loaded.
+    (currentChatId === FOCAL_CHAT_ID || (currentChatSummary?.messageCount ?? 0) > 0);
   const showConnectionOverlay = !configReady || isProbablyLoadingChatMessages;
   const isBackgroundChat = !!currentChatSummary?.platform || !!currentChatSummary?.heartbeatEnabled;
   // Keep useEventBus subscribed so the singleton EventSource stays open.

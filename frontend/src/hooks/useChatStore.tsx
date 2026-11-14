@@ -119,6 +119,8 @@ interface ChatCoreContextValue {
   currentChatId: string | null;
   /** True once the current chat's messages have been fetched (or created locally). */
   currentChatMessagesLoaded: boolean;
+  /** True when the last attempt to fetch the current chat's messages failed. */
+  currentChatLoadFailed: boolean;
   chats: ChatSummary[];
   pinnedChats: ChatSummary[];
   /** Archived chats are left out of `chats`; this counts them for the sidebar. */
@@ -605,6 +607,17 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
     [getMessagesForChat, currentChatId]
   );
   const currentChatMessagesLoaded = keyForChat(currentChatId) in messagesByChat;
+  const [failedChatLoads, setFailedChatLoads] = useState<ReadonlySet<string>>(new Set());
+  const currentChatLoadFailed = !!currentChatId && failedChatLoads.has(currentChatId);
+  const markChatLoad = useCallback((chatId: string, failed: boolean) => {
+    setFailedChatLoads((prev) => {
+      if (prev.has(chatId) === failed) return prev;
+      const next = new Set(prev);
+      if (failed) next.add(chatId);
+      else next.delete(chatId);
+      return next;
+    });
+  }, []);
 
   // Fetch backend config with retry logic.
   //
@@ -1472,6 +1485,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
         const res = validatedResponse ?? (await fetch(`${getApiBase()}/chats/${chatId}`));
         if (res.ok) {
           const chat: Chat = await res.json();
+          markChatLoad(chatId, false);
           setLoadedChatProjects((previous) => ({ ...previous, [chatId]: chat.projectId ?? null }));
           setCurrentChatTitle(chat.title);
 
@@ -1815,14 +1829,16 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
           setShouldResetNext(false);
         } else {
           console.error('Failed to load chat:', res.status, res.statusText);
+          markChatLoad(chatId, true);
           if (options?.throwOnError) throw new Error(`Failed to load chat: HTTP ${res.status}`);
         }
       } catch (error) {
         console.error('Error loading chat:', error);
+        markChatLoad(chatId, true);
         if (options?.throwOnError) throw error;
       }
     },
-    [chats, configByChat, currentChatId, clearScheduledSave]
+    [chats, configByChat, currentChatId, clearScheduledSave, markChatLoad]
   );
 
   const deleteChat = useCallback(
@@ -1941,6 +1957,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
       removeEmptyAssistantMessage,
       currentChatId,
       currentChatMessagesLoaded,
+      currentChatLoadFailed,
       chats,
       pinnedChats,
       archivedCount,
@@ -1989,6 +2006,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
       removeEmptyAssistantMessage,
       currentChatId,
       currentChatMessagesLoaded,
+      currentChatLoadFailed,
       chats,
       pinnedChats,
       archivedCount,
