@@ -422,7 +422,7 @@ export function MailboxView({
 
       let fromLabel = compactEventLabel(latest.source_name, latest.event_type);
       let primaryChatId = latest.target_chat_id;
-      let targetLabel = shortParticipantLabel(latest.target_label || 'Regent');
+      const targetLabel = shortParticipantLabel(latest.target_label || 'Regent');
 
       if (isAgent) {
         const senders = new Set(group.map((g) => shortParticipantLabel(g.source_name)));
