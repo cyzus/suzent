@@ -88,21 +88,79 @@ only the desktop that returned it. Node tokens and remembered model choices stay
 per connection. The pure list logic lives in `Desktops.kt` and
 `SuzentCore/SavedDesktops.swift`, with unit tests on both platforms.
 
-Phones show a bottom bar with Chats, Tasks and Settings. It's hidden while a
+Phones show a bottom bar with Chats, Inbox and Settings. It's hidden while a
 conversation is open. The desktop card at the top of Settings opens the Desktops
 page (switch, swipe to forget, pair another). Tablets keep the split view with
 the settings button in the sidebar. The Chats list shows one of Recent (pinned,
 then the recent page) or Projects at a time, picked with a segmented switch under
 the search field; iOS keeps the choice in `@AppStorage("homeListMode")`, Android in
-saved state. On iPad the switch adds Tasks, which replaces the scheduled section,
-and the sidebar can be hidden from its header and shown again from the detail
-toolbar. Android tablets keep the scheduled section below the list.
+saved state. The sidebar can be hidden on iPad from its header and shown again from the detail
+toolbar. Scheduled tasks on both platforms live in Inbox → Tasks.
 
 On phones a header search icon (beside the New conversation icon) opens a separate search page
 (iOS: a `Route.search` pushed under the conversation; Android: a `searching`
 flag that replaces the tab home). Its query survives opening a result, so back
 from that chat returns to the results; Cancel or back from the page clears it.
 Tablets keep the inline sidebar field.
+
+### Inbox and shared read state
+
+Both clients offer an Inbox with Notifications, Tasks and All events sections, paged
+lists, expandable details, shared unread counts, read actions and links to target
+conversations. Phones use the Inbox tab; iPad opens it from the sidebar toolbar,
+and Android tablets use the sidebar's Inbox button. English and Chinese labels
+are included. Tasks reuses the scheduled task list, including run state, next run
+time, conversation links and expandable child sessions. It remains available on
+older backends without the mailbox capability. Only notifications contribute to
+the Inbox badge or the Mark all read action. Inbox pages resolve their target
+chat ids through the existing scoped chat-status API, so destination cards show
+actual conversation titles and project names rather than the event summary.
+Targets missing from that response have a disabled unavailable state.
+
+The conversation list and Inbox share each platform’s `SuzentSegmentedTabs`
+component. It owns sizing, colors, selection animation, disabled state and
+accessibility; pages supply typed options, localized labels and selection
+callbacks. Inbox filtering and task loading remain page responsibilities.
+
+`core/mailbox_threads.py` owns the shared `presentation` contract returned by both
+mailbox APIs: `threadKey`, `title`, `source`, `context`, `icon`, `activity`, and
+`detail`. Keys are opaque hashes of source-scoped identities. Webhooks can supply
+`thread_id` and `subject` (plus optional `context`, semantic `activity`, and
+`detail`) in their JSON body. Without an explicit subject, source kind/name and
+routing signature form the thread. Agent messages use their participant pair.
+The GitHub adapter resolves repository/PR/issue identity and label details only
+on the backend; legacy stored summaries are supported there too.
+
+Desktop, Android and iOS only group by the returned key. They never infer thread
+identity or parse a provider payload. Missing presentation from older backends
+falls back to one row per item. Semantic activity codes are localized by each UI.
+`mailbox-thread-fixtures.json` verifies the same contract across clients and Python.
+Source-specific regression cases live in the backend tests.
+
+`MailboxEventCard` renders normal and compact history rows on each native platform.
+Newest IDs sort first and duplicate IDs are removed. Opening a thread sends all
+its loaded unread IDs to the existing read endpoint in batches of at most 100.
+Authorization filters rows before presentation; no hidden thread counts or routing
+metadata are exposed. Counts cover loaded events rather than full server history.
+Load more extends the window by 50 without clearing expansion state. Refresh
+fetches the loaded window from offset zero and replaces it atomically on success,
+so shared read changes and removed events propagate.
+
+The `/mobile/client/mailbox/page` and `/mobile/client/mailbox/read` endpoints
+reuse paired-device authentication and chat grants. Full-chat grants see global
+events; limited grants see only events linked to permitted target chats. The same
+scope is applied before pagination, counting and marking all read. Read-only
+access is sufficient to mark messages read. The desktop's existing
+`mailbox_items.read_at` is the shared source of truth; the background notification
+drain is not used. Session capability `mailbox: 1` gates the feature on older
+backends. See the [wire contract](../../../packages/mobile-contract/README.md#mobile-inbox).
+
+Inbox refresh uses the existing ten-second foreground navigation poll, plus
+opening the view, resuming and manual refresh. The desktop inbox also refreshes
+while visible. Neither listing nor polling marks messages read; expanding a
+notification or explicitly choosing a read action does. Device switches clear
+state and ignore stale responses. Failed writes remain unread until a successful
+refresh confirms the server state. No APNs/FCM or push gateway is involved.
 
 ### iOS
 

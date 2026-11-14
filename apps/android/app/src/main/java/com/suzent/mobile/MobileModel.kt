@@ -42,6 +42,17 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
         private set
     private var reconnectJob: Job? = null
     private var pairingJob: Job? = null
+    var mailbox by mutableStateOf(MailboxPage())
+    var mailboxChats by mutableStateOf<Map<String, Chat>>(emptyMap())
+    var mailboxSupported by mutableStateOf(false)
+    var mailboxCategory by mutableStateOf("notifications")
+    var mailboxLoading by mutableStateOf(false)
+        private set
+    var mailboxOffset by mutableStateOf(0)
+    var mailboxBusy by mutableStateOf(false)
+    var mailboxError by mutableStateOf<String?>(null)
+    private var mailboxRevision = 0
+    private var mailboxMutation = 0
     var scheduledTasks by mutableStateOf<List<ScheduledTask>>(emptyList())
         private set
     var projects by mutableStateOf<List<Project>>(emptyList())
@@ -520,6 +531,8 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
             persist(updated); origin = saved.origin; canReconnect = true
             client?.close()
             client = candidate
+            mailboxSupported = candidate.supportsMailbox
+            mailbox = MailboxPage(); mailboxLoading = false; mailboxOffset = 0; mailboxRevision++
             device = session
             attachmentsSupported = candidate.supportsAttachments
             applyNavigation(navigation)
@@ -616,12 +629,78 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
 
     fun refresh(): Job = viewModelScope.launch { refreshNow() }
 
+    fun refreshMailbox(): Job = viewModelScope.launch { refreshMailboxNow() }
+
+    private suspend fun refreshMailboxNow(targetOffset: Int = mailboxOffset) {
+        val api = client ?: return
+        if (!mailboxSupported || mailboxBusy || mailboxLoading) return
+        val current = generation
+        val revision = ++mailboxRevision
+        mailboxLoading = true
+        try {
+            val category = mailboxCategory
+            val page = mailboxWindow(targetOffset) { api.mailboxPage(category, it) }
+            val targets = api.chatStatuses(page.items.mapNotNull { it.chatId }.distinct()).associateBy { it.id }
+            if (current != generation || revision != mailboxRevision) return
+            mailbox = page; mailboxOffset = targetOffset; mailboxChats = targets; mailboxError = null
+        } catch (failure: CancellationException) { throw failure }
+        catch (failure: Exception) {
+            if (current != generation || revision != mailboxRevision) return
+            mailboxError = text(R.string.mailbox_sync_error)
+            if (failure is BackendClient.HttpFailure && failure.code == 401) handle(failure)
+        } finally { if (revision == mailboxRevision) mailboxLoading = false }
+    }
+
+    fun loadMoreMailbox() {
+        if (mailboxBusy || mailboxLoading || !mailbox.hasMore) return
+        viewModelScope.launch { refreshMailboxNow(mailboxOffset + 50) }
+    }
+
+    fun changeMailbox(category: String = mailboxCategory, offset: Int = 0) {
+        mailboxRevision++; mailboxLoading = false
+        mailboxCategory = category; mailboxOffset = offset.coerceAtLeast(0)
+        mailbox = MailboxPage()
+        refreshMailbox()
+    }
+
+    fun readMailbox(ids: List<Int>? = null) {
+        val api = client ?: return
+        if (!mailboxSupported || mailboxBusy) return
+        val current = generation
+        mailboxRevision++; mailboxLoading = false; mailboxBusy = true
+        val mutation = ++mailboxMutation
+        viewModelScope.launch {
+            try {
+                if (ids == null) api.readMailbox(null, true)
+                else for (batch in ids.chunked(100)) {
+                    if (current != generation) return@launch
+                    api.readMailbox(batch, false)
+                }
+                if (current != generation) return@launch
+                mailboxBusy = false
+                refreshMailboxNow()
+            } catch (failure: CancellationException) { throw failure }
+            catch (failure: Exception) {
+                if (current == generation) {
+                    mailboxError = text(R.string.mailbox_read_error)
+                    if (failure is BackendClient.HttpFailure && failure.code == 401) handle(failure)
+                }
+            } finally { if (mailboxMutation == mutation) mailboxBusy = false }
+        }
+    }
+
     private suspend fun refreshNow(poll: Boolean = false) {
         val api = client ?: return
         val current = generation
         try {
             val session = api.session()
             val scopeChanged = device?.permissions?.allChats != session.permissions.allChats || device?.permissions?.chatIds != session.permissions.chatIds
+            if (current != generation) return
+            if (scopeChanged) { mailbox = MailboxPage(); mailboxLoading = false; mailboxOffset = 0; mailboxRevision++ }
+            mailboxSupported = api.supportsMailbox
+            if (!mailboxSupported) mailbox = MailboxPage()
+            refreshMailboxNow()
+            if (current != generation) return
             refreshNavigation(api, poll && !scopeChanged)
             val taskList = api.scheduledTasks()
             if (current != generation) return
@@ -1261,6 +1340,8 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
         retiredClients.clear()
         voice.stop()
         scheduledTasks = emptyList()
+        mailbox = MailboxPage(); mailboxLoading = false; mailboxChats = emptyMap(); mailboxSupported = false; mailboxOffset = 0; mailboxCategory = "notifications"
+        mailboxBusy = false; mailboxError = null; mailboxRevision++; mailboxMutation++
         projects = emptyList(); selectedModel = null; drafts.clear(); discardAttachments(); discardQueues(); attachmentsSupported = false
         pendingApprovals = emptyList(); approvalChoices = emptyMap(); approvalBusy = false
         generation++

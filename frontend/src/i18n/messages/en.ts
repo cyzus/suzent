@@ -81,6 +81,19 @@ export const en = {
   },
   workspaceView: { fullscreen: 'Fullscreen', shrink: 'Shrink' },
   mailboxView: {
+    activity: {
+      created: 'Created',
+      closed: 'Closed',
+      reopened: 'Reopened',
+      updated: 'Updated',
+      edited: 'Edited',
+      label_added: 'Label added',
+      label_removed: 'Label removed',
+      assigned: 'Assigned',
+      unassigned: 'Unassigned',
+      review_ready: 'Ready for review',
+      draft: 'Draft',
+    },
     messages: 'Messages',
     empty: 'Nothing here yet',
     filter: {

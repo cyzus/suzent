@@ -80,6 +80,19 @@ export const zhCN = {
   },
   workspaceView: { fullscreen: '全屏', shrink: '缩小' },
   mailboxView: {
+    activity: {
+      created: '已创建',
+      closed: '已关闭',
+      reopened: '已重新打开',
+      updated: '已更新',
+      edited: '已编辑',
+      label_added: '已添加标签',
+      label_removed: '已移除标签',
+      assigned: '已分配',
+      unassigned: '已取消分配',
+      review_ready: '待审阅',
+      draft: '已转为草稿',
+    },
     messages: '消息',
     empty: '这里还没有消息',
     filter: {

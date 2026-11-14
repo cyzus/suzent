@@ -154,3 +154,38 @@ With a decision model, the row's reason says when it wasn't sure enough.
 service can reach it; a service on the internet needs a
 [relay or tunnel](./automation.md#webhooks). If you issued a new address, update
 the service.
+
+## On your phone
+
+Open **Inbox** in the iOS or Android app to see notifications from the connected
+desktop. Switch to **Tasks** to check scheduled tasks, their next run and current
+status. Choose **All events** for other mailbox activity, expand an item to
+read its details, or tap the **Related conversation** card. The card shows the
+conversation title and project before you open it; unavailable conversations
+cannot be opened.
+
+Events appear as compact rows with a source, time and readable title. Use
+**Load more** at the bottom to add older events without leaving the list. Related updates are grouped into threads using the same rules on desktop and
+mobile. GitHub updates group by pull request or issue; other sources group by
+their topic or event rule. Expand a thread to see
+its activity, then select an event for its related conversation and **Original
+content**. Label changes show the specific label when available. Opening a thread
+marks its unread notifications read together.
+On iPad, use the Inbox button above the sidebar; on an Android tablet, use the
+Inbox button in the sidebar.
+
+Opening a notification marks it read. **Mark all read** clears unread
+notifications you have access to, including those on other pages. Simply opening
+the inbox does not clear unread messages. Task counts do not contribute to the
+unread badge, and marking notifications read does not change task status.
+Read status is shared with the desktop
+and your other paired phones; while the apps are open, allow a few seconds for
+changes to appear, or pull down to refresh.
+
+Your phone only sees events linked to conversations shared with it. To also see
+global notifications without a linked conversation, the desktop must grant it
+access to all conversations. If the app asks you to update the desktop, update
+Suzent on that desktop before using the inbox.
+
+This inbox refreshes while the app is open and connected. It does not yet send
+system push notifications while the phone app is closed.

@@ -13,6 +13,7 @@ from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
+    StrictBool,
     StrictInt,
     ValidationError,
     model_validator,
@@ -31,10 +32,32 @@ from starlette.websockets import WebSocket
 from suzent.auth_boundary import extract_token
 from suzent.core.focal_agent import FOCAL_CHAT_ID, FOCAL_TITLE, focal_status
 from suzent.database import get_database
+from suzent.core.mailbox_threads import mailbox_presentation
 from suzent.mobile.attachments import attachment_registry
 from suzent.mobile.media import find_media, with_media
 from suzent.mobile.pairing import ClientGrant, PairingStore
 from suzent.routes.mobile_routes import get_mobile_store, reply
+
+
+class MailboxPageRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    offset: Annotated[StrictInt, Field(ge=0)] = 0
+    limit: Annotated[StrictInt, Field(ge=1, le=100)] = 50
+    category: Literal["notifications", "all"] = "notifications"
+
+
+class MailboxReadRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    ids: list[Annotated[StrictInt, Field(gt=0)]] = Field(
+        default_factory=list, max_length=100
+    )
+    all: StrictBool = False
+
+    @model_validator(mode="after")
+    def explicit_selection(self) -> MailboxReadRequest:
+        if self.all == bool(self.ids):
+            raise ValueError("Choose explicit ids or all")
+        return self
 
 
 class CreateRequest(BaseModel):
@@ -188,6 +211,7 @@ async def session(request: Request) -> JSONResponse:
             "stream_protocols": [1],
             "attachments": 1,
             "scheduled_tasks": 1,
+            "mailbox": 1,
             "chat_pagination": 1,
             "chat_overview": 1,
             "surfaces": 1,
@@ -550,6 +574,72 @@ async def overview(request: Request) -> JSONResponse:
                 for task in tasks
             ],
             "context": context_summary(stored_chat),
+        }
+    )
+
+
+def mailbox_scope(grant: ClientGrant) -> list[str] | None:
+    permissions = grant.permissions
+    return (
+        None
+        if permissions.all_chats
+        else [
+            chat_id
+            for chat_id in permissions.chat_ids
+            if permissions.permits_chat(chat_id)
+        ]
+    )
+
+
+async def mailbox_page(request: Request) -> JSONResponse:
+    body = await parse(request, MailboxPageRequest)
+    grant = authorize(request)
+    db = get_database()
+    scope = mailbox_scope(grant)
+    rows = db.list_mailbox_items(
+        limit=body.limit + 1,
+        offset=body.offset,
+        chat_ids=scope,
+        route_status="notified" if body.category == "notifications" else None,
+    )
+    # Routing metadata and webhook headers are host-only; expose just the inbox content.
+    return reply(
+        {
+            "items": [
+                {
+                    "id": item.id,
+                    "source": item.source_name,
+                    "eventType": item.event_type,
+                    "presentation": mailbox_presentation(item).model_dump(),
+                    "summary": item.summary,
+                    "payload": item.payload,
+                    "status": item.route_status,
+                    "chatId": item.target_chat_id,
+                    "createdAt": item.created_at.astimezone().isoformat(),
+                    "readAt": item.read_at.astimezone().isoformat()
+                    if item.read_at
+                    else None,
+                }
+                for item in rows[: body.limit]
+            ],
+            "unread": db.count_unread_mailbox_notifications(chat_ids=scope),
+            "hasMore": len(rows) > body.limit,
+        }
+    )
+
+
+async def mailbox_read(request: Request) -> JSONResponse:
+    body = await parse(request, MailboxReadRequest)
+    grant = authorize(request)
+    db = get_database()
+    scope = mailbox_scope(grant)
+    marked = db.mark_mailbox_notifications_read(
+        None if body.all else body.ids, chat_ids=scope
+    )
+    return reply(
+        {
+            "marked": marked,
+            "unread": db.count_unread_mailbox_notifications(chat_ids=scope),
         }
     )
 
@@ -1032,6 +1122,8 @@ async def forget_pairing(request: Request) -> JSONResponse:
 
 
 client_routes = [
+    Route("/mobile/client/mailbox/page", mailbox_page, methods=["POST"]),
+    Route("/mobile/client/mailbox/read", mailbox_read, methods=["POST"]),
     WebSocketRoute("/mobile/client/voice", voice),
     Route("/mobile/client/pairing/confirm", confirm_pairing, methods=["POST"]),
     Route("/mobile/client/pairing/forget", forget_pairing, methods=["POST"]),

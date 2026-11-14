@@ -270,6 +270,21 @@ public final class SuzentClient: Sendable {
         try JSONDecoder().decode(ChatOverview.self, from: await data("mobile/client/chats/\(id)/overview"))
     }
 
+    public func mailboxPage(category: String, offset: Int) async throws -> MailboxPage {
+        var request = try request("mobile/client/mailbox/page", body: [:])
+        request.httpBody = try JSONSerialization.data(withJSONObject: ["category": category, "offset": offset, "limit": 50])
+        let (data, response) = try await session.data(for: request)
+        try validate(response)
+        return try JSONDecoder().decode(MailboxPage.self, from: data)
+    }
+
+    public func readMailbox(ids: [Int]?, all: Bool) async throws {
+        var request = try request("mobile/client/mailbox/read", body: [:])
+        request.httpBody = try JSONSerialization.data(withJSONObject: ["ids": ids ?? [], "all": all])
+        let (_, response) = try await session.data(for: request)
+        try validate(response)
+    }
+
     public func scheduledTasks() async throws -> [ScheduledTask] {
         struct Listing: Decodable { let tasks: [ScheduledTask] }
         return try JSONDecoder().decode(Listing.self, from: await data("mobile/client/scheduled-tasks")).tasks
