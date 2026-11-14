@@ -1,6 +1,8 @@
 import React, { Suspense, lazy, useCallback, useMemo, useState } from 'react';
 import type { BeforeMount, DiffOnMount } from '@monaco-editor/react';
 import { useOpenFile } from './openFileContext';
+import { PlainFileView } from './PlainFileView';
+import { useI18n } from '../../i18n';
 import { countChangedLines, fileToolPath, metadataLineCounts } from '../../lib/fileToolPreview';
 import { SCHEME_COLORS, type Scheme, useTheme } from '../../hooks/useTheme';
 
@@ -358,6 +360,7 @@ export const FileDiffViewer: React.FC<FileDiffViewerProps> = ({
   metadata,
   output,
 }) => {
+  const { t } = useI18n();
   const openFile = useOpenFile();
   const { filePath, isDiff, original, modified, canPreview, addedLines, removedLines } =
     useMemo(() => {
@@ -407,6 +410,25 @@ export const FileDiffViewer: React.FC<FileDiffViewerProps> = ({
           {output || '(no preview available)'}
         </pre>
       </div>
+    );
+  }
+
+  // Without an original to diff against, show the content like a read.
+  if (!isDiff) {
+    const lineCount = modified.replace(/\n$/, '').split('\n').length;
+    return (
+      <PlainFileView
+        filePath={filePath}
+        // Only a result that says it created the file gets "new file": an
+        // overwrite of a file too large to snapshot also arrives without
+        // old_content, as do pending calls and no-op writes.
+        label={t(
+          metadata?.action === 'create' ? 'toolCallBlock.newFileLines' : 'toolCallBlock.fileLines',
+          { total: lineCount }
+        )}
+        gutter={Array.from({ length: lineCount }, (_, i) => i + 1).join('\n')}
+        text={modified.replace(/\n$/, '')}
+      />
     );
   }
 
