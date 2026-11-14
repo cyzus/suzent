@@ -95,6 +95,7 @@
     ".releases/changes/doc-convert-parity.json",
     ".releases/changes/dream-regent-send.json",
     ".releases/changes/drop-markitdown.json",
+    ".releases/changes/email-oauth2.json",
     ".releases/changes/email-plugin.json",
     ".releases/changes/ember-theme.json",
     ".releases/changes/expanded-rail-tool-thumbnails.json",
