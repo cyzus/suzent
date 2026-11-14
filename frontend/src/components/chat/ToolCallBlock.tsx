@@ -8,6 +8,9 @@ import { pickToolRunningSurfaceClass, ToolGroupIcon } from './toolGroupIcon';
 import { getToolSummary, normalizeToolName, toolCallFailed } from './toolSummary';
 import type { ToolTense } from './toolSummary';
 import { FileDiffViewer } from './FileDiffViewer';
+import { countChangedLines, fileToolPath, metadataLineCounts } from '../../lib/fileToolPreview';
+import { useOpenFile } from './openFileContext';
+import { ReadFileRenderer } from './ReadFileRenderer';
 import { BashCommandRenderer, BashOutputRenderer } from './BashRenderer';
 import type { ApprovalRememberScope } from '../../hooks/useAGUI';
 import type {
@@ -44,10 +47,12 @@ const ARGS_RENDERERS: Record<string, React.FC<ToolRendererProps> | undefined> = 
 const OUTPUT_RENDERERS: Record<string, React.FC<ToolRendererProps> | undefined> = {
   run_command: BashOutputRenderer,
   start_command: BashOutputRenderer,
-  read_file: FileDiffViewer,
+  read_file: ReadFileRenderer,
   analyze_image: MediaToolRenderer,
   analyze_visual: MediaToolRenderer,
 };
+
+const FILE_PREVIEW_TOOLS = new Set(['read_file', 'edit_file', 'write_file']);
 
 export type ApprovalState = 'pending' | 'approved' | 'denied' | undefined;
 
@@ -435,67 +440,36 @@ const ToolCallBlockComponent: React.FC<ToolCallBlockProps> = ({
     [toolName, parsedToolArgs, t, tense]
   );
 
+  // The file name in the header opens the file preview for file tools, so
+  // checking a file the agent touched no longer means expanding the block.
+  const openFile = useOpenFile();
+  const openableFilePath =
+    openFile && FILE_PREVIEW_TOOLS.has(canonicalToolName) && !isDenied
+      ? fileToolPath(parsedToolArgs, rendererMetadata) || null
+      : null;
+
   const { addedLines, removedLines } = React.useMemo(() => {
-    let added = 0;
-    let removed = 0;
-    const isEditOrWrite = toolName === 'edit_file' || toolName === 'write_file';
-    if (!isEditOrWrite) return { addedLines: 0, removedLines: 0 };
+    const none = { addedLines: 0, removedLines: 0 };
+    if (toolName !== 'edit_file' && toolName !== 'write_file') return none;
+    const fromBackend = metadataLineCounts(rendererMetadata);
+    if (fromBackend) return fromBackend;
 
-    try {
-      const original =
-        typeof rendererMetadata?.old_content === 'string'
-          ? rendererMetadata.old_content
-          : typeof parsedToolArgs?.old_string === 'string'
-            ? parsedToolArgs.old_string
+    const original =
+      typeof rendererMetadata?.old_content === 'string'
+        ? rendererMetadata.old_content
+        : typeof parsedToolArgs?.old_string === 'string'
+          ? parsedToolArgs.old_string
+          : '';
+    const modified =
+      typeof rendererMetadata?.new_content === 'string'
+        ? rendererMetadata.new_content
+        : typeof parsedToolArgs?.new_string === 'string'
+          ? parsedToolArgs.new_string
+          : typeof parsedToolArgs?.content === 'string'
+            ? parsedToolArgs.content
             : '';
-      const modified =
-        typeof rendererMetadata?.new_content === 'string'
-          ? rendererMetadata.new_content
-          : typeof parsedToolArgs?.new_string === 'string'
-            ? parsedToolArgs.new_string
-            : typeof parsedToolArgs?.content === 'string'
-              ? parsedToolArgs.content
-              : '';
-
-      if (!original && !modified) return { addedLines: 0, removedLines: 0 };
-
-      const originalLines = original.split('\n');
-      const modifiedLines = modified.split('\n');
-      const lengths = Array.from({ length: originalLines.length + 1 }, () =>
-        Array<number>(modifiedLines.length + 1).fill(0)
-      );
-
-      for (let i = originalLines.length - 1; i >= 0; i -= 1) {
-        for (let j = modifiedLines.length - 1; j >= 0; j -= 1) {
-          lengths[i][j] =
-            originalLines[i] === modifiedLines[j]
-              ? lengths[i + 1][j + 1] + 1
-              : Math.max(lengths[i + 1][j], lengths[i][j + 1]);
-        }
-      }
-
-      let i = 0;
-      let j = 0;
-
-      while (i < originalLines.length && j < modifiedLines.length) {
-        if (originalLines[i] === modifiedLines[j]) {
-          i += 1;
-          j += 1;
-        } else if (lengths[i + 1][j] >= lengths[i][j + 1]) {
-          removed += 1;
-          i += 1;
-        } else {
-          added += 1;
-          j += 1;
-        }
-      }
-
-      removed += originalLines.length - i;
-      added += modifiedLines.length - j;
-    } catch {
-      // pass
-    }
-    return { addedLines: added, removedLines: removed };
+    if (!original && !modified) return none;
+    return countChangedLines(original, modified) ?? none;
   }, [toolName, parsedToolArgs, rendererMetadata]);
 
   const toolResultMessage = typeof parsedOutput?.message === 'string' ? parsedOutput.message : null;
@@ -671,11 +645,29 @@ const ToolCallBlockComponent: React.FC<ToolCallBlockProps> = ({
             action stays readable longest. */}
           <span className="flex min-w-0 items-center gap-1.5">
             <span className="truncate min-w-0">{summary.verb}</span>
-            {summary.detail && (
-              <span className="truncate min-w-0 shrink-[3] max-w-[320px] font-normal normal-case tracking-normal opacity-80">
-                {summary.detail}
-              </span>
-            )}
+            {summary.detail &&
+              (openableFilePath ? (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    openFile?.(
+                      openableFilePath,
+                      openableFilePath.split(/[/\\]/).filter(Boolean).pop() ?? openableFilePath,
+                      e.shiftKey
+                    );
+                  }}
+                  onKeyDown={(e) => e.stopPropagation()}
+                  title={`${t('toolCallBlock.openInPreview')} · ${openableFilePath}`}
+                  className="truncate min-w-0 shrink-[3] max-w-[320px] cursor-pointer text-left font-normal normal-case tracking-normal opacity-80 decoration-1 underline-offset-2 hover:underline hover:opacity-100"
+                >
+                  {summary.detail}
+                </button>
+              ) : (
+                <span className="truncate min-w-0 shrink-[3] max-w-[320px] font-normal normal-case tracking-normal opacity-80">
+                  {summary.detail}
+                </span>
+              ))}
 
             {/* Diff lines if available */}
             {(addedLines > 0 || removedLines > 0) && (
