@@ -55,17 +55,19 @@ def _server(scheme: str, host: str, port: int) -> str:
 
 
 def config_toml(account: MailAccount, python: str = sys.executable) -> str:
-    password_command = [python, "-c", _PRINT_SECRET]
+    secret_command = [python, "-c", _PRINT_SECRET]
     smtp_scheme = "smtps" if account.smtp_security == "ssl" else "smtp"
+    auth_mechanism = "xoauth2" if account.auth_type == "xoauth2" else "plain"
+    secret_field = "token" if account.auth_type == "xoauth2" else "password"
     settings: list[tuple[str, Any]] = [
         ("default", True),
         ("email", account.email),
         ("imap.server", _server("imaps", account.imap_host, account.imap_port)),
-        ("imap.sasl.plain.username", account.login),
-        ("imap.sasl.plain.password.command", password_command),
+        (f"imap.sasl.{auth_mechanism}.username", account.login),
+        (f"imap.sasl.{auth_mechanism}.{secret_field}.command", secret_command),
         ("smtp.server", _server(smtp_scheme, account.smtp_host, account.smtp_port)),
-        ("smtp.sasl.plain.username", account.login),
-        ("smtp.sasl.plain.password.command", password_command),
+        (f"smtp.sasl.{auth_mechanism}.username", account.login),
+        (f"smtp.sasl.{auth_mechanism}.{secret_field}.command", secret_command),
     ]
     if account.display_name:
         settings.append(("display-name", account.display_name))

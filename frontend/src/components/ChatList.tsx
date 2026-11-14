@@ -44,6 +44,9 @@ import { isImeComposing } from '../lib/ime';
 import { SidebarRenameInput } from './sidebar/SidebarRenameInput';
 
 const ALL_PROJECTS_FILTER = '__all__';
+// Long enough for the backend to finish its start-up work first.
+const PROJECT_PREFETCH_DELAY_MS = 3_000;
+const PROJECT_PREFETCH_LIMIT = 30;
 const ORGANIZATION_STORAGE_KEY = 'suzent-chat-organization';
 const EMPTY_SELECTION: SelectionState = { selected: new Set(), anchor: null };
 type ChatKind = 'you' | 'subagent' | 'scheduled';
@@ -551,6 +554,8 @@ export const ChatList: React.FC<ChatListProps> = ({
     new Map<string, { chats: ChatSummary[]; totals: ChatKindCounts }>()
   );
   const projectChatRequestRef = useRef<string | null>(null);
+  // Which project projectChats holds; until it matches the open one, that project is still loading.
+  const [projectChatsFor, setProjectChatsFor] = useState<string | null>(null);
   const fetchProjectChats = useCallback(
     async (projectId: string, options?: { offset?: number; append?: boolean }) => {
       const offset = options?.offset ?? 0;
@@ -560,6 +565,7 @@ export const ChatList: React.FC<ChatListProps> = ({
         projectChatRequestRef.current = projectId;
         const cached = projectChatCacheRef.current.get(projectId);
         setLoadingProjectChats(!cached);
+        setProjectChatsFor(cached ? projectId : null);
         setProjectChats(cached?.chats ?? []);
         setProjectChatKindTotals(cached?.totals ?? { you: 0, scheduled: 0, all: 0 });
         setProjectChatOffset(0);
@@ -588,6 +594,7 @@ export const ChatList: React.FC<ChatListProps> = ({
         if (!append) projectChatCacheRef.current.set(projectId, { chats: nextChats, totals });
         setProjectChatKindTotals(totals);
         setProjectChatOffset(offset);
+        setProjectChatsFor(projectId);
         setProjectChats((prev) => {
           if (!append) return nextChats;
           const existingIds = new Set(prev.map((c) => c.id));
@@ -597,6 +604,7 @@ export const ChatList: React.FC<ChatListProps> = ({
       } catch (error) {
         console.error('Error fetching project chats:', error);
         if (!append && projectChatRequestRef.current === projectId) {
+          setProjectChatsFor(projectId);
           setProjectChats([]);
           setProjectChatKindTotals({ you: 0, scheduled: 0, all: 0 });
           setProjectChatOffset(0);
@@ -608,6 +616,40 @@ export const ChatList: React.FC<ChatListProps> = ({
     },
     []
   );
+
+  // Fill the cache in the background, one project at a time, so even the first
+  // open of a project shows its chats at once. Opening it still refreshes them.
+  const projectIdsKey = sortedProjects.map((project) => project.id).join(',');
+  useEffect(() => {
+    if (organization !== 'projects' || !projectIdsKey) return;
+    let cancelled = false;
+    const prefetch = async (): Promise<void> => {
+      for (const projectId of projectIdsKey.split(',').slice(0, PROJECT_PREFETCH_LIMIT)) {
+        if (cancelled) return;
+        if (projectChatCacheRef.current.has(projectId)) continue;
+        try {
+          const params = new URLSearchParams({ limit: '50', offset: '0', project_id: projectId });
+          const res = await fetch(`${getApiBase()}/chats?${params.toString()}`);
+          if (!res.ok) continue;
+          const data = await res.json();
+          // An open in the meantime cached a fresher list.
+          if (cancelled || projectChatCacheRef.current.has(projectId)) continue;
+          const chats: ChatSummary[] = data.chats || [];
+          projectChatCacheRef.current.set(projectId, {
+            chats,
+            totals: data.kindCounts ?? { you: 0, scheduled: 0, all: data.total ?? chats.length },
+          });
+        } catch {
+          // Prefetching is a convenience; opening the project fetches it anyway.
+        }
+      }
+    };
+    const timer = window.setTimeout(() => void prefetch(), PROJECT_PREFETCH_DELAY_MS);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [organization, projectIdsKey]);
 
   useEffect(() => {
     if (filterId === ALL_PROJECTS_FILTER) {
@@ -637,10 +679,14 @@ export const ChatList: React.FC<ChatListProps> = ({
     if (archivedOpen) void fetchArchivedChats();
   }, [archivedOpen, archivedCount, fetchArchivedChats]);
 
+  // The render that opens a project comes before the effect that fetches it, so
+  // it shows the cached list, or a skeleton, rather than the previous project's.
+  const projectListPending = filterId !== ALL_PROJECTS_FILTER && projectChatsFor !== filterId;
   const filteredChats = useMemo(() => {
     if (filterId === ALL_PROJECTS_FILTER) return chats;
+    if (projectChatsFor !== filterId) return projectChatCacheRef.current.get(filterId)?.chats ?? [];
     return projectChats;
-  }, [chats, filterId, projectChats]);
+  }, [chats, filterId, projectChats, projectChatsFor]);
 
   const getChatKind = (chat: ChatSummary): ChatKind => {
     const platform = (chat.platform || '').toLowerCase();
@@ -1874,7 +1920,9 @@ export const ChatList: React.FC<ChatListProps> = ({
 
                             {isOpen && (
                               <div>
-                                {loadingProjectChats ? (
+                                {loadingProjectChats ||
+                                (projectListPending &&
+                                  !projectChatCacheRef.current.has(project.id)) ? (
                                   renderListSkeleton()
                                 ) : visibleChats.length === 0 ? (
                                   <div className="px-4 py-6 text-center">

@@ -189,3 +189,25 @@ def test_upload_index_rule_rides_a_reminder_only_when_files_are_attached():
     assert "first time you read an uploaded file" not in build_execution_mode_section(
         sandbox_enabled=True
     )
+
+
+def test_a_chat_with_its_own_working_folder_is_told_to_work_there():
+    text = build_execution_mode_section(
+        sandbox_enabled=False,
+        workspace_root="/project",
+        project_dir="/project",
+        working_dir="/app",
+    )
+
+    assert "This chat works in `/app`" in text
+    assert "your default working directory" not in text
+    assert "scratch/` folder." in text
+
+
+def test_a_chat_without_one_keeps_scratch_as_the_default_directory():
+    text = build_execution_mode_section(
+        sandbox_enabled=False, workspace_root="/project", project_dir="/project"
+    )
+
+    assert "your default working directory" in text
+    assert "This chat works in" not in text

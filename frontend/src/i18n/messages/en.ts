@@ -1114,7 +1114,12 @@ export const en = {
       getPassword: 'How to get an app password',
       imapHost: 'IMAP server',
       smtpHost: 'SMTP server',
-      oauthOnly: 'Needs Microsoft sign-in, which is not supported yet.',
+      oauthOnly: 'Sign in with your browser to connect this mailbox.',
+      signInBrowser: 'Sign in with browser',
+      useAppPassword: 'Use app password instead',
+      useBrowserSignIn: 'Use browser sign-in (OAuth)',
+      waitingForBrowser: 'Complete sign-in in your browser…',
+      reSignIn: 'Sign in again',
       add: 'Add mailbox',
       allowSend: 'Allow sending',
       watchInbox: 'Watch inbox',
@@ -2934,6 +2939,8 @@ export const en = {
     },
   },
   toolCallBlock: {
+    readFileRange: 'Lines {start}–{end} of {total}',
+    openInPreview: 'Open in file preview',
     failed: 'Failed',
     permissionRejectPlaceholder: 'Optional reason or safer direction',
     permissionContractUnavailable:

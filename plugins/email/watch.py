@@ -85,8 +85,11 @@ async def _search_back_to(
 
 
 async def _check_account(ctx: PluginContext, account: MailAccount) -> None:
-    password = accounts.get_password(account)
-    if not password:
+    if not accounts.has_credentials(account):
+        return
+    try:
+        password = await accounts.resolve_credential(account)
+    except Exception:
         return
     seen: list[str] | None = ctx.state.get(_seen_key(account))
     known = set(seen or [])

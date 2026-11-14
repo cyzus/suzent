@@ -87,3 +87,41 @@ def test_normalizes_inserted_newlines_to_crlf(tmp_path):
     assert "Replaced 1 occurrence(s)" in result.message
     with open(file_path, "r", encoding="utf-8", newline="") as handle:
         assert handle.read() == "a\r\nb\r\nend\r\n"
+
+
+def test_reports_changed_line_counts(tmp_path):
+    file_path = tmp_path / "sample.txt"
+    file_path.write_text("a\nb\nc\n", encoding="utf-8")
+
+    result = EditFileTool().forward(
+        _ctx(tmp_path), str(file_path), "b\n", "B1\nB2\n", replace_all=False
+    )
+
+    assert result.success
+    assert result.metadata["added_lines"] == 2
+    assert result.metadata["removed_lines"] == 1
+
+
+def test_reports_counts_even_when_file_is_too_large_for_inline_diff(tmp_path):
+    file_path = tmp_path / "big.txt"
+    file_path.write_text("x" * 300 * 1024 + "\nold\n", encoding="utf-8")
+
+    result = EditFileTool().forward(
+        _ctx(tmp_path), str(file_path), "old", "new", replace_all=False
+    )
+
+    assert result.success
+    assert "old_content" not in result.metadata
+    assert (result.metadata["added_lines"], result.metadata["removed_lines"]) == (1, 1)
+
+
+def test_counts_stay_exact_in_files_full_of_repeated_lines(tmp_path):
+    file_path = tmp_path / "repeated.txt"
+    file_path.write_text("same\n" * 250 + "target\n" + "same\n" * 249, encoding="utf-8")
+
+    result = EditFileTool().forward(
+        _ctx(tmp_path), str(file_path), "target", "changed", replace_all=False
+    )
+
+    assert result.success
+    assert (result.metadata["added_lines"], result.metadata["removed_lines"]) == (1, 1)

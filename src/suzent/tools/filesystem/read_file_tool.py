@@ -38,6 +38,8 @@ class ReadFileMetadata(TypedDict, total=False):
     format: str
     """The extension of a converted document, such as '.pdf'."""
     content_length: int
+    abs_path: str
+    """The resolved file, so the chat UI can open it in the file preview."""
 
 
 class ReadFileResult(ToolResult):
@@ -57,6 +59,7 @@ class ReadFileTool(Tool):
 
     name = "ReadFileTool"
     tool_name = "read_file"
+    model_excluded_metadata = frozenset({"abs_path"})
     group = ToolGroup.FILESYSTEM
     builtin = True
     session_guidance = (
@@ -169,13 +172,15 @@ class ReadFileTool(Tool):
                 ".env",
             }
 
-            if ext in text_extensions:
-                return self._read_text_file(resolved_path, offset, limit)
-            if ext in doc_convert.CONVERTERS:
-                return self._convert_file(resolved_path, offset, limit)
-            # Anything else (source code in other languages, dotfiles, ...)
-            # is read as text when it is text; binary files get a clear error.
-            return self._read_text_file(resolved_path, offset, limit)
+            if ext in doc_convert.CONVERTERS and ext not in text_extensions:
+                result = self._convert_file(resolved_path, offset, limit)
+            else:
+                # Anything else (source code in other languages, dotfiles, ...)
+                # is read as text when it is text; binary files get a clear error.
+                result = self._read_text_file(resolved_path, offset, limit)
+            if result.success:
+                result.metadata["abs_path"] = str(resolved_path)
+            return result
 
         except ValueError as e:
             return ReadFileResult.error_result(
