@@ -64,7 +64,17 @@ public struct MediaItem: Decodable, Sendable, Equatable, Hashable, Identifiable 
     }
 }
 
+/// Media the turn's tools made or looked at. What send_file handed over is the turn's deliverable, shown under the reply instead.
 public func mediaItems(_ parts: [MessagePart]) -> [MediaItem] {
+    uniqueMedia(parts.filter { $0.toolName != "send_file" })
+}
+
+/// Files the agent handed over with send_file, shown together under the reply.
+public func sentMediaItems(_ parts: [MessagePart]) -> [MediaItem] {
+    uniqueMedia(parts.filter { $0.toolName == "send_file" })
+}
+
+private func uniqueMedia(_ parts: [MessagePart]) -> [MediaItem] {
     var seen = Set<String>()
     return parts.flatMap { $0.media ?? [] }.filter { $0.isValid && seen.insert($0.id).inserted }
 }

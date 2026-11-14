@@ -25,6 +25,11 @@ extension Color {
     static let suzentInfo = Color(uiColor: .suzentAdaptive(light: PresentationTokens.info, dark: PresentationTokens.info_dark))
     static let suzentWarning = Color(uiColor: .suzentAdaptive(light: PresentationTokens.warning, dark: PresentationTokens.warning_dark))
     static let suzentErrorSurface = Color(uiColor: .suzentAdaptive(light: PresentationTokens.error_surface, dark: PresentationTokens.error_surface_dark))
+    /// The desktop artifact covers' colours for a file extension.
+    static func suzentFileCover(_ ext: String) -> Color {
+        let cover = PresentationTokens.fileCovers[ext] ?? PresentationTokens.fileCovers["default"]!
+        return Color(uiColor: .suzentAdaptive(light: cover.light, dark: cover.dark))
+    }
     /// Segmented tabs, as the desktop's BrutalSegmentedTabs: grey track, black block (yellow in dark).
     static let suzentTabTrack = Color(uiColor: .suzentAdaptive(light: PresentationTokens.code_bg, dark: PresentationTokens.code_header_dark))
     static let suzentTabBlock = Color(uiColor: .suzentAdaptive(light: PresentationTokens.black, dark: PresentationTokens.yellow_dark))
