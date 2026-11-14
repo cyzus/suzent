@@ -17,19 +17,20 @@ describe('CubeLoadingIndicator', () => {
     expect(html.match(/class="cube-loading-unit"/g)).toHaveLength(3);
   });
 
-  it('renders 4 hopping cube units for skills loading', () => {
+  it('renders 4 conveyor cube units and belt track for skills loading', () => {
     const html = renderToStaticMarkup(
       <CubeLoadingIndicator variant="skills" label="Loading skills..." />
     );
 
     expect(html).toContain('cube-loading-skills');
+    expect(html).toContain('cube-loading-belt');
     expect(html).toContain('Loading skills...');
     expect(html.match(/class="cube-loading-unit"/g)).toHaveLength(4);
   });
 });
 
 describe('LoadingIndicator', () => {
-  it('renders the 8-part 3D core connection cube cluster', () => {
+  it('renders the 7-part 3D sliding puzzle cluster with 1 open slot', () => {
     const html = renderToStaticMarkup(
       <I18nProvider>
         <LoadingIndicator />
@@ -37,6 +38,8 @@ describe('LoadingIndicator', () => {
     );
 
     expect(html).toContain('core-connection-cluster');
-    expect(html.match(/class="core-connection-part"/g)).toHaveLength(8);
+    expect(html).toContain('core-connection-part-accent');
+    expect(html.match(/core-connection-part/g)?.length).toBeGreaterThanOrEqual(7);
+    expect(html.match(/class="core-connection-cube"/g)).toHaveLength(7);
   });
 });

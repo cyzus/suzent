@@ -1,0 +1,6 @@
+{
+  "products": {
+    "desktop": "patch"
+  },
+  "summary": "Redesign the 3D cube loading animations in ChatWindow (3D Klotski sliding puzzle), SkillsView (full-track tumbling conveyor), and SettingsModal (collision-free 3D card shuffle) with 6-face accent shading and reduced-motion support."
+}
