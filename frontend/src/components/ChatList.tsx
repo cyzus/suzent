@@ -772,6 +772,20 @@ export const ChatList: React.FC<ChatListProps> = ({
       ? currentChatSummary
       : null;
 
+  // The kept chat's subagents stay reachable through its own expand toggle.
+  const keptRows = useMemo(
+    () =>
+      keptChat
+        ? [
+            keptChat,
+            ...(expandedSubagentParents.has(keptChat.id)
+              ? (subagentsByParent.get(keptChat.id) ?? [])
+              : []),
+          ]
+        : [],
+    [expandedSubagentParents, keptChat, subagentsByParent]
+  );
+
   // Range selection follows the order rows appear on screen.
   const selectableOrder = useMemo(() => {
     if (localSearchQuery.trim()) return chats.map((chat) => chat.id);
@@ -780,11 +794,7 @@ export const ChatList: React.FC<ChatListProps> = ({
       organization === 'list'
         ? openRows
         : sortedProjects.flatMap((project) =>
-            project.id === filterId
-              ? openRows
-              : keptChat?.projectId === project.id
-                ? [keptChat]
-                : []
+            project.id === filterId ? openRows : keptChat?.projectId === project.id ? keptRows : []
           );
     const archived = archivedOpen ? archivedChats : [];
     return [...new Set([...pinnedChats, ...listed, ...archived].map((chat) => chat.id))];
@@ -794,6 +804,7 @@ export const ChatList: React.FC<ChatListProps> = ({
     chats,
     filterId,
     keptChat,
+    keptRows,
     localSearchQuery,
     organization,
     pinnedChats,
@@ -1967,7 +1978,7 @@ export const ChatList: React.FC<ChatListProps> = ({
                               </div>
                             )}
                             {keptChat?.projectId === project.id &&
-                              renderChatRow(keptChat, false, true)}
+                              keptRows.map((chat) => renderChatRow(chat, false, true))}
                           </div>
                         );
                       })}
