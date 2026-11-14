@@ -299,6 +299,27 @@ def test_other_providers_credentials_stay_out_of_the_container(
         assert name not in seen
 
 
+@pytest.mark.parametrize(
+    ("model", "variable"),
+    [
+        ("gemini/gemini-3-pro", "GOOGLE_API_KEY"),
+        ("zai/glm-5.2", "ZHIPUAI_API_KEY"),
+        ("zhipuai/glm-5.2", "ZAI_API_KEY"),
+    ],
+)
+def test_provider_credential_aliases_are_forwarded(
+    kit, agent_module, monkeypatch, model, variable
+):
+    monkeypatch.setenv(variable, "alias-stub")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "another-service")
+
+    kit.run(agent_module, model, "Do the task")
+
+    seen = kit.seen_env()
+    assert seen[variable] == "alias-stub"
+    assert "ANTHROPIC_API_KEY" not in seen
+
+
 def test_fireworks_route_does_not_leak_an_unrelated_openai_key(
     kit, agent_module, monkeypatch
 ):

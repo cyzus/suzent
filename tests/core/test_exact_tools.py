@@ -58,3 +58,10 @@ def test_exact_tools_drops_the_floor_and_the_searchable_pool():
 
     assert loaded == {"read_file", "run_command"}
     assert deferred == set()
+
+
+def test_exact_tools_leaves_mcp_servers_out():
+    with patch("suzent.core.mcp_store.as_agent_config") as saved:
+        assert am._build_mcp_servers({"exact_tools": True}) == []
+
+    saved.assert_not_called()

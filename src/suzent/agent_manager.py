@@ -73,7 +73,8 @@ def _build_mcp_servers(config: Dict[str, Any]) -> List:
 
     Returns MCP toolsets that can be passed to a pydantic-ai Agent.
     """
-    if config.get("mcp_disabled"):
+    # An exact-tools run gets only the tools it named, MCP tools included.
+    if config.get("mcp_disabled") or config.get("exact_tools"):
         return []
     from suzent.core import mcp_store as _mcp_store
 

@@ -4,6 +4,7 @@ Standard library only: Harbor and Pier import their agents inside their own
 isolated environments, where Suzent's dependencies are not installed.
 """
 
+import functools
 import json
 import shlex
 from collections.abc import Mapping
@@ -39,6 +40,35 @@ ROOT_INSTALL_COMMAND = (
     " elif command -v yum >/dev/null 2>&1; then yum install -y curl git;"
     " fi"
 )
+
+
+_PROVIDERS_FILE = Path(__file__).resolve().parents[2] / "config" / "providers.json"
+
+
+@functools.cache
+def _credential_names() -> dict[str, tuple[str, ...]]:
+    """Variable names Suzent reads a provider's credentials from, by provider id
+    and alias (`zai` and `zhipuai` share one list). Empty outside a checkout."""
+    try:
+        catalog = json.loads(_PROVIDERS_FILE.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    providers = catalog.get("providers", catalog)
+    entries = providers if isinstance(providers, list) else []
+    names: dict[str, tuple[str, ...]] = {}
+    for entry in entries:
+        keys = tuple(entry.get("env_keys") or ())
+        for name in (entry.get("id"), *entry.get("aliases", ())):
+            if name and keys:
+                names[name] = keys
+    return names
+
+
+def provider_env_names(provider: str) -> tuple[str, ...]:
+    """The runner's variables a provider needs, and no others."""
+    default = provider.upper().replace("-", "_")
+    keys = _credential_names().get(provider) or (f"{default}_API_KEY",)
+    return tuple(dict.fromkeys((*keys, f"{default}_BASE_URL")))
 
 
 @dataclass(frozen=True)
@@ -102,10 +132,8 @@ def resolve_model(model_name: str | None, environ: Mapping[str, str]) -> ModelRo
                 forwarded_env=("OPENAI_API_KEY",),
             )
         case _:
-            name = provider.upper().replace("-", "_")
             return ModelRoute(
-                model=model_name,
-                forwarded_env=(f"{name}_API_KEY", f"{name}_BASE_URL"),
+                model=model_name, forwarded_env=provider_env_names(provider)
             )
 
 
