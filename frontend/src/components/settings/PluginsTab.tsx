@@ -333,12 +333,17 @@ export function BinaryRow({
   return (
     <div className="space-y-2 border-t-2 border-dashed border-neutral-300 pt-3 dark:border-white/15">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
           <span className="text-sm font-bold">{binary.name}</span>
           {binary.installed ? (
             <Badge tone="green">{t('settings.plugins.binaryReady', params)}</Badge>
           ) : (
             <Badge tone="amber">{t('settings.plugins.statusMissing')}</Badge>
+          )}
+          {binary.installed && binary.path && (
+            <span className="truncate font-mono text-[11px] text-neutral-500 dark:text-neutral-400">
+              {binary.path}
+            </span>
           )}
         </div>
         {!binary.installed && binary.supported && (
@@ -347,11 +352,6 @@ export function BinaryRow({
           </SettingsListAction>
         )}
       </div>
-      {binary.installed && binary.path && (
-        <p className="break-all font-mono text-xs text-neutral-600 dark:text-neutral-400">
-          {binary.path}
-        </p>
-      )}
       {!binary.installed && (
         <p className="text-xs text-neutral-600 dark:text-neutral-400">
           {binary.supported
@@ -474,71 +474,73 @@ export function PluginsTab({
         <div className="space-y-3">
           {shown.map((plugin) => (
             <SettingsListItem key={plugin.id}>
-              <div className="flex flex-col gap-3 p-4 sm:flex-row sm:items-start sm:justify-between">
-                <div className="flex min-w-0 flex-1 gap-3">
-                  <PluginIcon plugin={plugin} />
-                  <div className="min-w-0 flex-1 space-y-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="font-black">{plugin.name}</span>
-                      <StatusBadge plugin={plugin} t={t} />
-                      {plugin.source === 'builtin' && (
-                        <Badge tone="blue">{t('settings.plugins.builtin')}</Badge>
+              <div className="p-4 space-y-3">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="flex min-w-0 flex-1 gap-3">
+                    <PluginIcon plugin={plugin} />
+                    <div className="min-w-0 flex-1 space-y-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-black">{plugin.name}</span>
+                        <StatusBadge plugin={plugin} t={t} />
+                        {plugin.source === 'builtin' && (
+                          <Badge tone="blue">{t('settings.plugins.builtin')}</Badge>
+                        )}
+                      </div>
+                      {plugin.description && (
+                        <p className="text-sm text-neutral-600 dark:text-neutral-400">
+                          {plugin.description}
+                        </p>
+                      )}
+                      {plugin.error && (
+                        <p className="text-xs text-red-700 dark:text-red-300">{plugin.error}</p>
+                      )}
+                      {plugin.missing.length > 0 && (
+                        <p className="text-xs text-amber-700 dark:text-amber-300">
+                          {t('settings.plugins.missing')} {plugin.missing.join(', ')}
+                        </p>
+                      )}
+                      {plugin.enabled && plugin.restartRequired && (
+                        <p className="text-xs text-amber-700 dark:text-amber-300">
+                          {t('settings.plugins.restartHint')}
+                        </p>
                       )}
                     </div>
-                    {plugin.description && (
-                      <p className="text-sm text-neutral-600 dark:text-neutral-400">
-                        {plugin.description}
-                      </p>
-                    )}
-                    {plugin.error && (
-                      <p className="text-xs text-red-700 dark:text-red-300">{plugin.error}</p>
-                    )}
-                    {plugin.missing.length > 0 && (
-                      <p className="text-xs text-amber-700 dark:text-amber-300">
-                        {t('settings.plugins.missing')} {plugin.missing.join(', ')}
-                      </p>
-                    )}
-                    {plugin.enabled && plugin.restartRequired && (
-                      <p className="text-xs text-amber-700 dark:text-amber-300">
-                        {t('settings.plugins.restartHint')}
-                      </p>
-                    )}
-                    {plugin.enabled &&
-                      plugin.binaries?.map((binary) => (
-                        <BinaryRow
-                          key={binary.name}
-                          pluginId={plugin.id}
-                          binary={binary}
-                          onChange={refresh}
-                          t={t}
-                        />
-                      ))}
-                    {plugin.enabled &&
-                      plugin.integrations?.map((integration) => (
-                        <IntegrationRow
-                          key={integration.id}
-                          pluginId={plugin.id}
-                          integration={integration}
-                          onChange={refresh}
-                          t={t}
-                        />
-                      ))}
-                    {plugin.status === 'loaded' &&
-                      (plugin.binaries ?? []).every((binary) => binary.installed) &&
-                      PLUGIN_SETTINGS[plugin.id] &&
-                      React.createElement(PLUGIN_SETTINGS[plugin.id], {
-                        openLink: (url: string) => void openExternal(url, null),
-                      })}
                   </div>
+                  <PluginAction
+                    plugin={plugin}
+                    busy={busy === plugin.id}
+                    disabled={busy !== null || plugin.status === 'error'}
+                    onClick={() => void toggle(plugin)}
+                    t={t}
+                    installLabel={t(`${prefix}.install`)}
+                  />
                 </div>
-                <PluginAction
-                  plugin={plugin}
-                  busy={busy === plugin.id}
-                  disabled={busy !== null || plugin.status === 'error'}
-                  onClick={() => void toggle(plugin)}
-                  t={t}
-                  installLabel={t(`${prefix}.install`)}
-                />
+                {plugin.enabled &&
+                  plugin.binaries?.map((binary) => (
+                    <BinaryRow
+                      key={binary.name}
+                      pluginId={plugin.id}
+                      binary={binary}
+                      onChange={refresh}
+                      t={t}
+                    />
+                  ))}
+                {plugin.enabled &&
+                  plugin.integrations?.map((integration) => (
+                    <IntegrationRow
+                      key={integration.id}
+                      pluginId={plugin.id}
+                      integration={integration}
+                      onChange={refresh}
+                      t={t}
+                    />
+                  ))}
+                {plugin.status === 'loaded' &&
+                  (plugin.binaries ?? []).every((binary) => binary.installed) &&
+                  PLUGIN_SETTINGS[plugin.id] &&
+                  React.createElement(PLUGIN_SETTINGS[plugin.id], {
+                    openLink: (url: string) => void openExternal(url, null),
+                  })}
               </div>
             </SettingsListItem>
           ))}

@@ -16,6 +16,7 @@ from .message import MessageDetail, parse
 logger = get_logger(__name__)
 
 MAX_MESSAGE_BYTES = 30 * 1024 * 1024
+DEFAULT_SEARCH_LOOKBACK_DAYS = 30
 
 # himalaya reports special-use roles for JMAP, Gmail and Graph but only the
 # inbox for IMAP, so the usual folder names stand in for the rest.
@@ -67,6 +68,12 @@ def build_query(criteria: SearchCriteria) -> str:
     if criteria.since:
         # himalaya's `after` excludes the day itself.
         clauses.append(f"after {(criteria.since - timedelta(days=1)).isoformat()}")
+    elif not (criteria.query or criteria.sender or criteria.subject):
+        # Unbounded IMAP searches (or `not flag seen` alone) scan every message
+        # in large mailboxes (e.g. 40k+ messages) and time out; default to the
+        # recent window when no text or date filter was given.
+        cutoff = date.today() - timedelta(days=DEFAULT_SEARCH_LOOKBACK_DAYS)
+        clauses.append(f"after {cutoff.isoformat()}")
     if criteria.unread_only:
         clauses.append("not flag seen")
     where = " and ".join(clauses)

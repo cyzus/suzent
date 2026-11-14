@@ -7,7 +7,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 
 from . import accounts as mail_accounts
-from . import mailbox
+from . import mailbox, oauth
 from .accounts import MailAccount, MailAccountInput
 from .himalaya import MailError
 from .providers import PROVIDERS
@@ -15,7 +15,7 @@ from .providers import PROVIDERS
 
 def _public(account: MailAccount) -> dict:
     data = account.model_dump()
-    data["has_password"] = bool(mail_accounts.get_password(account))
+    data["has_password"] = mail_accounts.has_credentials(account)
     return data
 
 
@@ -32,8 +32,12 @@ async def list_providers(request: Request) -> JSONResponse:
 
 
 async def list_accounts(request: Request) -> JSONResponse:
+    session = oauth.current_status()
     return JSONResponse(
-        {"accounts": [_public(a) for a in mail_accounts.list_accounts()]}
+        {
+            "accounts": [_public(a) for a in mail_accounts.list_accounts()],
+            "oauthSignIn": session.to_dict() if session else None,
+        }
     )
 
 
@@ -58,6 +62,17 @@ async def add_account(request: Request) -> JSONResponse:
     return JSONResponse({"success": True, "account": _public(account), "probe": probe})
 
 
+async def start_oauth(request: Request) -> JSONResponse:
+    try:
+        payload = await _body(request)
+        payload["auth_type"] = "xoauth2"
+        data = MailAccountInput.model_validate(payload)
+        session = await oauth.start_oauth_sign_in(data)
+    except (ValidationError, ValueError, MailError) as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    return JSONResponse({"success": True, "oauthSignIn": session.to_dict()})
+
+
 async def update_account(request: Request) -> JSONResponse:
     data = await _body(request)
     account_id = data.pop("id", None)
@@ -77,12 +92,10 @@ async def test_account(request: Request) -> JSONResponse:
     account = mail_accounts.get_account(str(data.get("id") or ""))
     if account is None:
         return JSONResponse({"error": "Account not found"}, status_code=404)
-    password = mail_accounts.get_password(account)
-    if not password:
-        return JSONResponse({"ok": False, "error": "Password is missing"})
     try:
-        return JSONResponse(await mailbox.check(account, password))
-    except MailError as e:
+        credential = await mail_accounts.resolve_credential(account)
+        return JSONResponse(await mailbox.check(account, credential))
+    except (LookupError, MailError) as e:
         return JSONResponse({"ok": False, "error": str(e)})
 
 
