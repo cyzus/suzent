@@ -3037,6 +3037,7 @@ export const zhCN = {
   sandbox: {
     selectChat: '请选择一个对话',
     back: '返回',
+    closePreview: '关闭预览',
     maximize: '最大化（全屏）',
     openInExplorer: '在文件管理器中打开',
     uploadFile: '上传文件',

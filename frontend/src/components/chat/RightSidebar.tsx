@@ -541,6 +541,15 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
     };
 
     const { nextTab, shouldOpen, shouldClose } = evaluateSidebarAutoOpen(prev, flags);
+    if (prev.chatId !== flags.chatId) {
+      externalFileReturn.current = null;
+    } else if (nextTab === 'files') {
+      // Remember where the sidebar was before the first external file preview took over,
+      // so closing the preview returns to the previous tab or collapses the sidebar.
+      externalFileReturn.current ??= { open: isOpen, tab: activeTab };
+    } else if (nextTab) {
+      externalFileReturn.current = null;
+    }
     // Regent's board needs the full panel; any other plan is status, so it unfolds in place.
     if (nextTab === 'plan' && currentChatId !== FOCAL_CHAT_ID) {
       setActiveTab('overview');
@@ -587,6 +596,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
       const targetTab = tabs.find((tab) => tab.id === tabId);
       if (!targetTab || !targetTab.hasContent || isTabLocked(tabId)) return;
 
+      externalFileReturn.current = null;
       if (isOpen && activeTab === tabId) {
         onClose();
       } else {
@@ -609,18 +619,25 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
     2
   );
   const contextStats = useContextUsageStats(currentChatId);
-  // The Files panel takes over once the file is confirmed to exist; going back
-  // from that file returns to the tab it was opened from.
-  const artifactReturn = useRef<{ path: string; tab: TabId } | null>(null);
+  // The Files panel takes over once an external file is confirmed to exist;
+  // closing that preview restores the sidebar state it interrupted.
+  const externalFileReturn = useRef<{ open: boolean; tab: TabId } | null>(null);
   const openArtifact = (path: string, name: string): void => {
-    artifactReturn.current = { path, tab: activeTab };
+    externalFileReturn.current ??= { open: isOpen, tab: activeTab };
     onOpenFile?.(path, name);
   };
-  const handleExternalFileClosed = (path: string): void => {
-    const target = artifactReturn.current;
-    artifactReturn.current = null;
+  const handleExternalFileClosed = (): void => {
+    const target = externalFileReturn.current;
+    externalFileReturn.current = null;
     onClearFileToPreview?.();
-    if (target?.path === path) setActiveTab(target.tab);
+    if (!target) return;
+    if (target.open) {
+      setActiveTab(target.tab);
+    } else {
+      setCoveringChat(false);
+      setCoverWidth(null);
+      onClose();
+    }
   };
   const overviewContent: Partial<
     Record<TabId, Pick<OverviewSection, 'summary' | 'detail' | 'preview' | 'body' | 'fullView'>>
@@ -813,6 +830,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
   const contextOpenInOverview =
     isOpen && !isNewChat && activeTab === 'overview' && expandedSections.has('context');
   const openContextSection = (): void => {
+    externalFileReturn.current = null;
     if (contextOpenInOverview) {
       onClose();
       return;

@@ -3664,17 +3664,15 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
           setViewingFile({ path, name });
         } else {
           // Normal click: Open in right sidebar (bump nonce so re-clicking the same
-          // file after going back re-opens it).
+          // file after going back re-opens it). RightSidebar auto-opens on the
+          // fileToPreview rise and remembers whether it was already open.
           setSidebarFilePreview((prev) => ({ path, name, nonce: (prev?.nonce ?? 0) + 1 }));
-          if (!isRightSidebarOpen) {
-            onRightSidebarToggle(true);
-          }
         }
       } catch {
         // Error checking file - do nothing (animation already played)
       }
     },
-    [currentChatId, config.sandbox_volumes, embedded, isRightSidebarOpen, onRightSidebarToggle]
+    [currentChatId, config.sandbox_volumes, embedded]
   );
 
   const handleInlineAction = useCallback(
