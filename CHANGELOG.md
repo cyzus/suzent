@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [v0.27.0] - 2026-11-14
+## [v0.27.0] - 2026-11-15
 
 ### Release notes
 - Redesign the 3D cube loading animations in ChatWindow (3D Klotski sliding puzzle), SkillsView (full-track tumbling conveyor), and SettingsModal (collision-free 3D card shuffle) with 6-face accent shading and reduced-motion support.
@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Email plugin: sign in with your browser (OAuth2) to connect Outlook, Hotmail, Microsoft 365, and Google Workspace school or work mailboxes.
 - Mailbox, Artifacts and project lists in the sidebar open faster, and the app no longer slows down the longer scheduled tasks run.
 - A one-shot `suzent run` now works in the folder it was given instead of the project scratch folder, and `--tools` gives the agent exactly the tools listed.
+- Remove the static runtime identity header from historical assistant messages and prevent closed file/image previews from re-opening when switching chats.
 - A chat kept under a collapsed project can expand its subagents again.
 - File reads in chat show plain text with the file's real line numbers, edits show only the changed lines, long chats with many edits open faster, and clicking a file name in a read or edit step opens it in the file preview.
 - Email can feed the Mailbox: switch on Watch inbox for a mailbox and new mail arrives there, sorted by the same rules as webhooks. Plugins can now run watchers and send events to the Mailbox.

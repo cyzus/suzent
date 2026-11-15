@@ -121,6 +121,7 @@
     ".releases/changes/header-title-gap.json",
     ".releases/changes/headless-run-command.json",
     ".releases/changes/headless-run-fidelity.json",
+    ".releases/changes/history-header-and-file-preview-reset.json",
     ".releases/changes/hover-tooltip-length.json",
     ".releases/changes/image-edit-support.json",
     ".releases/changes/image-viewer-slideshow.json",
