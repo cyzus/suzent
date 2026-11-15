@@ -1,0 +1,6 @@
+{
+  "products": {
+    "desktop": "patch"
+  },
+  "summary": "Remove the static runtime identity header from historical assistant messages and prevent closed file/image previews from re-opening when switching chats."
+}

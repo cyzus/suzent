@@ -10,7 +10,7 @@ import {
   formatMessageTime,
   hasStreamedOutput,
 } from '../../lib/chatUtils';
-import { ThinkingAnimation, AgentBadge, RobotIcon } from './ThinkingAnimation';
+import { ThinkingAnimation, AgentBadge } from './ThinkingAnimation';
 import { MarkdownRenderer } from './MarkdownRenderer';
 import {
   ImageResultGallery,
@@ -1026,9 +1026,9 @@ const AssistantMessageComponent: React.FC<AssistantMessageProps> = ({
   //    long reply scrolls past — you always see what the agent is doing. It's
   //    wide (320×108) only while thinking, so the assembly-line / conveyor
   //    animation has room; otherwise the compact 90×40 single-robot card.
-  //  • History (finished, previous turns): a small, static "Suzent" pill in
-  //    normal flow — no animation, not sticky — so old turns stay quiet and we
-  //    never show two animated/sticky badges at once.
+  //  • History (finished, previous turns): no top identity/runtime block — old
+  //    turns render directly into their activity rail and content so the thread
+  //    stays clean and we never show two animated/sticky badges at once.
   const isHistory = !isLastMessage && !isPendingApproval;
 
   // Keep overflow clipping on the chat scroller and message contents, not the
@@ -1045,31 +1045,7 @@ const AssistantMessageComponent: React.FC<AssistantMessageProps> = ({
         </span>
       )}
     </div>
-  ) : isHistory ? (
-    <div className="mb-2 mt-1 flex flex-col gap-0.5">
-      <div className="flex items-center gap-1.5 text-neutral-400 dark:text-neutral-500">
-        {/* An ACP turn was produced by an external agent, so it is signed with
-            that agent's mark rather than with Suzent's robot. */}
-        {isAcp ? (
-          <AcpAgentIcon id={acpAgent} className="w-4 h-4 shrink-0" />
-        ) : regent ? (
-          <RegentMark size={16} />
-        ) : (
-          <RobotIcon className="w-4 h-4" />
-        )}
-        <span className="text-[10px] font-mono font-bold uppercase tracking-wider">
-          {isAcp ? acpAgent : regent ? t('chatList.focal.name') : 'Suzent'}
-        </span>
-      </div>
-      {!conversational && (
-        <div className="text-[9px] font-mono text-neutral-400 uppercase tracking-widest">
-          {isAcp
-            ? t('chatMessage.runtime.external', { agent: acpAgent })
-            : t('chatMessage.runtime.suzent', { model: signature || 'model' })}
-        </div>
-      )}
-    </div>
-  ) : (
+  ) : isHistory ? null : (
     <div
       className={`
       sticky top-2 z-20 isolate transform-gpu ml-0 mr-auto mb-3 overflow-hidden
