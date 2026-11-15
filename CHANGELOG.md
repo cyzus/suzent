@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Canvas pages use Suzent's scrollbar and fit on screen in chat, exiting fullscreen returns a canvas to its chat message, and the sidebar overview no longer shows a scrollbar.
 - Messages from other chats, scheduled tasks and goal mode now show as one quiet line in the chat; repeats with no reply merge, and a reply notes what it answers.
 - Tidy the chat composer: attachments, working folders, slash commands and mentions now live under one + menu, with mounted folders shown as a small chip beside it.
+- Make conversation rewind context-only and add a multi-repository Git status indicator to the status bar.
 - Optional decision models (OpenAI or Gemini Decisions) in Model Roles route new kinds of Mailbox events in a fraction of a second, falling back to the Decision model when unsure.
 - Each event in a grouped Mailbox thread can be expanded to show its original content, failure reason, Replay and Delete.
 - Email plugin: sign in with your browser (OAuth2) to connect Outlook, Hotmail, Microsoft 365, and Google Workspace school or work mailboxes.
