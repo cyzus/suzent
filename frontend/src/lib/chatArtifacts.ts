@@ -6,7 +6,7 @@ import { parseToolResultEnvelope } from '../components/chat/ToolCallBlock';
 export type ChatArtifactKind = 'image' | 'video' | 'audio' | 'file';
 
 export interface ChatArtifact {
-  /** Path as the tool or snapshot reported it; the serve route resolves it. */
+  /** Path as the tool reported it; the serve route resolves it. */
   path: string;
   /** Workspace-relative path for display. */
   displayPath: string;
@@ -21,6 +21,7 @@ export interface ChatArtifact {
  * handed to the user with `send_file`. Not files it only looked at.
  */
 const OUTPUT_TOOLS = new Set(['generate_image', 'edit_image', 'check_video', 'speak', 'send_file']);
+const FILE_WRITE_TOOLS = new Set(['write_file', 'edit_file']);
 
 /** The project library's deliverables folder, which the prompts point the agent at. */
 const LIBRARY_ARTIFACTS = /\/(?:sandbox\/projects\/[^/]+|workspace)\/artifacts\//;
@@ -58,12 +59,25 @@ export function displayPathOf(path: string): string {
 }
 
 export function savedPaths(toolName: string | undefined, output: string | undefined): string[] {
-  if (!toolName || !OUTPUT_TOOLS.has(toolName)) return [];
+  if (!toolName || (!OUTPUT_TOOLS.has(toolName) && !FILE_WRITE_TOOLS.has(toolName))) return [];
   const envelope = parseToolResultEnvelope(output);
   if (!envelope) return [];
   // A send_file that a chat app refused still names files that exist on this computer.
   if (envelope.success === false && toolName !== 'send_file') return [];
-  const metadata = envelope.metadata as { saved_paths?: unknown } | undefined;
+  const metadata = envelope.metadata as
+    { saved_paths?: unknown; abs_path?: unknown; file_path?: unknown } | undefined;
+  if (FILE_WRITE_TOOLS.has(toolName)) {
+    const rawPath =
+      typeof metadata?.abs_path === 'string' && metadata.abs_path.trim()
+        ? metadata.abs_path.trim()
+        : typeof metadata?.file_path === 'string' && metadata.file_path.trim()
+          ? metadata.file_path.trim()
+          : '';
+    if (rawPath && LIBRARY_ARTIFACTS.test(rawPath.replace(/\\/g, '/'))) {
+      return [rawPath];
+    }
+    return [];
+  }
   const paths = metadata?.saved_paths;
   return Array.isArray(paths)
     ? paths.filter((path): path is string => typeof path === 'string' && !!path.trim())
@@ -88,8 +102,7 @@ function legacyPaths(content: string): string[] {
  * Files the agent produced in this conversation, newest first, one entry per path.
  *
  * Counts what generation tools and `send_file` saved, and files the agent wrote
- * into the project library's `artifacts/`. Other edits are working changes, shown
- * on each turn's changed-files card, and files it only read are not outputs.
+ * into the project library's `artifacts/`.
  */
 export function collectChatArtifacts(messages: Message[]): ChatArtifact[] {
   const byPath = new Map<string, ChatArtifact>();
@@ -113,11 +126,6 @@ export function collectChatArtifacts(messages: Message[]): ChatArtifact[] {
         ? legacyPaths(message.content)
         : [];
     for (const path of paths) add(path, index);
-    if (message.file_changes_undone) return;
-    for (const change of message.file_changes ?? []) {
-      if (change.after_exists === false) byPath.delete(change.path);
-      else if (LIBRARY_ARTIFACTS.test(change.path.replace(/\\/g, '/'))) add(change.path, index);
-    }
   });
 
   return [...byPath.values()].reverse();

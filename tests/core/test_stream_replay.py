@@ -166,7 +166,6 @@ async def test_persistence_failure_is_propagated_to_job_and_completion(monkeypat
         ),
         agent=SimpleNamespace(_model_id="test", _tool_names=[]),
         postprocess_job_id="job",
-        file_snapshot=[],
     )
     assert result is False
     db.update_job_step_status.assert_any_call(

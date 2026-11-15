@@ -1991,45 +1991,41 @@ export async function markChatRead(chatId: string): Promise<void> {
   }
 }
 
-export interface FileChangeSummaryItem {
+export interface GitRepositoryFileStatus {
   path: string;
-  diff: string;
-  additions: number;
-  deletions: number;
+  status: string;
 }
 
-export interface FileChangeSummaryResponse {
-  files: FileChangeSummaryItem[];
+export interface GitRepositoryStatus {
+  name: string;
+  path: string;
+  primary: boolean;
+  branch: string;
+  commit: string;
+  detached: boolean;
+  ahead: number;
+  behind: number;
+  staged: number;
+  modified: number;
+  untracked: number;
+  conflicted: number;
   additions: number;
   deletions: number;
+  clean: boolean;
+  total_changed: number;
+  files: GitRepositoryFileStatus[];
 }
 
-export async function fetchChatFileChanges(chatId: string): Promise<FileChangeSummaryResponse> {
+export interface ChatGitStatusResponse {
+  repositories: GitRepositoryStatus[];
+}
+
+export async function fetchChatGitStatus(chatId: string): Promise<ChatGitStatusResponse> {
   const response = await fetch(
-    `${getApiBase()}/api/chats/${encodeURIComponent(chatId)}/file-changes`
+    `${getApiBase()}/api/chats/${encodeURIComponent(chatId)}/git-status`
   );
-  if (!response.ok) throw new Error('Failed to load file changes');
+  if (!response.ok) throw new Error('Failed to load git status');
   return response.json();
-}
-
-export async function undoChatFiles(
-  chatId: string,
-  messageIndex: number
-): Promise<{ changed_files: string[] }> {
-  const response = await fetch(`${getApiBase()}/api/chats/${encodeURIComponent(chatId)}/undo`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ message_index: messageIndex }),
-  });
-  const body = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    const error = new Error(body.error || 'Failed to undo file changes') as Error & {
-      conflicts?: string[];
-    };
-    error.conflicts = body.conflicts;
-    throw error;
-  }
-  return body;
 }
 
 export interface ForkChatResponse {

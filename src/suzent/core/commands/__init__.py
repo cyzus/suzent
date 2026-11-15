@@ -9,7 +9,6 @@ from suzent.core.commands.sess import new_command, sess_command
 from suzent.core.commands.system import handle_status, handle_clear
 from suzent.core.commands.node import handle_node
 from suzent.core.commands.goal import handle_goal, handle_subgoal
-from suzent.core.commands.undo import handle_undo
 from suzent.core.commands.fork import handle_fork
 from suzent.core.commands.skill import handle_skill
 
@@ -29,7 +28,6 @@ __all__ = [
     "handle_node",
     "handle_goal",
     "handle_subgoal",
-    "handle_undo",
     "handle_fork",
     "handle_skill",
 ]
