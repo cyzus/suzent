@@ -19,7 +19,7 @@ import {
   type ThinkingEffort,
 } from '../types/api';
 import { getApiBase } from '../lib/api';
-import { hideStreamingDrafts } from '../lib/streamingDrafts';
+import { hideStreamingDrafts, isStreamingDraftMessage } from '../lib/streamingDrafts';
 import { collectRunTimings } from '../lib/runTiming';
 import { hasToolContinuation } from '../lib/toolContinuation';
 import { stripDenyApprovalPolicies } from '../lib/approvalPolicy';
@@ -1629,7 +1629,17 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
                     raw_message_end_index: serverMessageIndex + 1,
                   };
                   awaitingToolContinuation = false;
-                } else if (awaitingToolContinuation) {
+                } else if (
+                  // The live rail replaces a draft independently of settled history.
+                  !isStreamingDraftMessage(msg) &&
+                  (awaitingToolContinuation ||
+                    currentAssistant.parts?.some(
+                      (part) =>
+                        part.type === 'tool' &&
+                        part.toolCallId &&
+                        msg._resumed_tool_call_ids?.includes(part.toolCallId)
+                    ))
+                ) {
                   // This assistant message is the final-text continuation of the
                   // preceding tool-call turn — merge it into the same bubble.
                   if (msg.content) {

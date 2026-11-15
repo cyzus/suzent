@@ -20,7 +20,10 @@ import { stripDenyApprovalPolicies } from '../lib/approvalPolicy';
 import { hideLiveTriggerRows, hideStreamingDrafts } from '../lib/streamingDrafts';
 import { StreamRecoveryError } from '../lib/recoverableStream';
 import { completeDirectStream } from './chat/completeDirectStream';
-import { reconcileToolCallMessages } from '../lib/toolCallReconciliation';
+import {
+  mergeLiveToolContinuation,
+  reconcileToolCallMessages,
+} from '../lib/toolCallReconciliation';
 import type { Message, FileAttachment } from '../types/api';
 import { conversationTimeLabel, type ContentBlock } from '../lib/chatUtils';
 import { requestStopTurn } from '../lib/stopStream';
@@ -1991,21 +1994,28 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     pendingFirstMessage && pendingFirstMessage.chatId === currentChatId
       ? pendingFirstMessage.message
       : null;
-  const reconciledMessages = useMemo(
-    () =>
-      reconcileToolCallMessages(
-        hideLiveTriggerRows(
-          hideStreamingDrafts(
-            pendingFirstMessageHere
-              ? [...(messages || []), pendingFirstMessageHere]
-              : messages || [],
-            showTransientAssistant && streamingParts.length > 0
-          ),
-          showTransientAssistant ? streamingParts : []
-        ),
-        showTransientAssistant ? streamingParts : []
+  const livePresentation = useMemo(() => {
+    const parts = showTransientAssistant ? streamingParts : [];
+    const history = hideLiveTriggerRows(
+      hideStreamingDrafts(
+        pendingFirstMessageHere ? [...messages, pendingFirstMessageHere] : messages,
+        parts.length > 0
       ),
-    [messages, pendingFirstMessageHere, showTransientAssistant, streamingParts]
+      parts
+    );
+    return streamDisplayRole === 'assistant'
+      ? mergeLiveToolContinuation(history, parts)
+      : { messages: history, parts };
+  }, [
+    messages,
+    pendingFirstMessageHere,
+    showTransientAssistant,
+    streamDisplayRole,
+    streamingParts,
+  ]);
+  const reconciledMessages = useMemo(
+    () => reconcileToolCallMessages(livePresentation.messages, livePresentation.parts),
+    [livePresentation]
   );
   // `reconcileToolCallMessages` rebuilds the array on every streaming chunk,
   // and a token delta never touches a settled message. Handing a fresh identity
@@ -2056,7 +2066,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         }
       }
     };
-    for (const m of safeMessages) addParts(m.parts);
+    for (const m of messages) addParts(m.parts);
     if (showTransientAssistant) addParts(streamingParts);
     // This map is a React context value read by every MarkdownRenderer. A fresh
     // identity re-renders all of them, and their `components` map is keyed into
@@ -2069,7 +2079,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     }
     citationSourcesRef.current = map;
     return map;
-  }, [safeMessages, streamingParts, showTransientAssistant]);
+  }, [messages, streamingParts, showTransientAssistant]);
   // The Agents tab is disabled unless the chat "has" sub-agents, and that was
   // read only from `subAgentTasks` -- live SSE state, cleared on every chat
   // switch. So reopening a chat with a long sub-agent history left the tab
@@ -2140,7 +2150,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         streamDisplayRole === 'notice'
           ? aguiPartsToStoreMessage(streamingParts, currentUsage, 'notice')
           : LIVE_ASSISTANT_MESSAGE,
-      parts: streamingParts,
+      parts: livePresentation.parts,
       isStreaming: streamingForCurrentChat,
       startedAtMs: liveStartedAtMs,
       usage: currentUsage,
@@ -2150,6 +2160,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     showTransientAssistant,
     streamDisplayRole,
     streamingParts,
+    livePresentation.parts,
     currentUsage,
     streamingForCurrentChat,
     liveStartedAtMs,

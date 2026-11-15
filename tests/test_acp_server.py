@@ -1,8 +1,8 @@
 """Tests for serving Suzent as an ACP agent (``suzent acp``).
 
 The backend is faked so these exercise the protocol translation itself: the
-handshake, cwd binding, SSE-to-session/update mapping, the approval round trip
-that gates a tool call, and cancellation.
+handshake, cwd binding, SSE-to-session/update mapping, headless approval,
+and cancellation.
 """
 
 from __future__ import annotations
@@ -18,7 +18,6 @@ from suzent.acp.server import (
     SESSION_MARKER,
     WORKSPACE_MOUNT,
     TurnTranslator,
-    _permission_options,
     _prompt_text,
     tool_kind,
 )
@@ -68,12 +67,9 @@ class Wire:
 
     def __init__(self):
         self.sent: list[dict[str, Any]] = []
-        self.responder = None
 
     async def __call__(self, message: dict[str, Any]) -> None:
         self.sent.append(message)
-        if self.responder and message.get("method") and message.get("id") is not None:
-            await self.responder(message)
 
     def updates(self) -> list[dict[str, Any]]:
         return [
@@ -353,29 +349,18 @@ def suspended_then_finished() -> list[list[bytes]]:
     ]
 
 
-@pytest.mark.asyncio
-async def test_approval_becomes_a_client_permission_request(tmp_path):
+@pytest.mark.parametrize(
+    ("mode", "expected"),
+    [("default", "auto"), ("auto", "auto"), ("full_access", "full_access")],
+)
+async def test_legacy_approval_is_denied_without_asking_the_client(
+    tmp_path, mode, expected
+):
     backend = FakeBackend(suspended_then_finished())
     wire = Wire()
-
-    async def answer(message: dict[str, Any]) -> None:
-        assert message["method"] == "session/request_permission"
-        assert message["params"]["toolCall"]["rawInput"] == {"content": "git status"}
-        await server.dispatch(
-            {
-                "jsonrpc": "2.0",
-                "id": message["id"],
-                "result": {
-                    "outcome": {"outcome": "selected", "optionId": "allow_global"}
-                },
-            }
-        )
-
-    wire.responder = answer
-    server = ACPAgentServer(backend, wire)
+    server = ACPAgentServer(backend, wire, permission_mode=mode)
     await server.dispatch(request(1, "initialize", {}))
     await server.dispatch(request(2, "session/new", {"cwd": str(tmp_path)}))
-
     await server.dispatch(
         request(
             3,
@@ -386,81 +371,19 @@ async def test_approval_becomes_a_client_permission_request(tmp_path):
     await server.drain()
 
     assert wire.result(3) == {"stopReason": "end_turn"}
-    # The decision resumes the same turn, carrying the backend's own action id
-    # so "always allow" persists the rule the option promised.
-    resume = backend.payloads[1]["resume_approvals"]
-    assert resume == [
+    assert all(msg.get("method") != "session/request_permission" for msg in wire.sent)
+    assert backend.payloads[0]["config"]["permission_mode"] == expected
+    assert backend.payloads[0]["config"]["interaction_profile"] == "headless"
+    resume = backend.payloads[1]
+    assert resume["message"] == ""
+    assert resume["resume_approvals"] == [
         {
             "request_id": "a1",
             "tool_call_id": "t1",
-            "approved": True,
-            "action_id": "allow_global",
+            "approved": False,
+            "feedback": "The ACP turn runs without human approval.",
         }
     ]
-    assert backend.payloads[1]["message"] == ""
-
-
-@pytest.mark.asyncio
-async def test_rejected_permission_resumes_as_a_denial(tmp_path):
-    backend = FakeBackend(suspended_then_finished())
-    wire = Wire()
-
-    async def answer(message: dict[str, Any]) -> None:
-        await server.dispatch(
-            {
-                "jsonrpc": "2.0",
-                "id": message["id"],
-                "result": {"outcome": {"outcome": "selected", "optionId": "reject"}},
-            }
-        )
-
-    wire.responder = answer
-    server = ACPAgentServer(backend, wire)
-    await server.dispatch(request(1, "initialize", {}))
-    await server.dispatch(request(2, "session/new", {"cwd": str(tmp_path)}))
-
-    await server.dispatch(
-        request(
-            3,
-            "session/prompt",
-            {"sessionId": "chat-1", "prompt": [{"type": "text", "text": "status"}]},
-        )
-    )
-    await server.drain()
-
-    assert backend.payloads[1]["resume_approvals"][0]["approved"] is False
-
-
-@pytest.mark.asyncio
-async def test_cancelled_permission_stops_the_turn(tmp_path):
-    backend = FakeBackend(suspended_then_finished())
-    wire = Wire()
-
-    async def answer(message: dict[str, Any]) -> None:
-        await server.dispatch(
-            {
-                "jsonrpc": "2.0",
-                "id": message["id"],
-                "result": {"outcome": {"outcome": "cancelled"}},
-            }
-        )
-
-    wire.responder = answer
-    server = ACPAgentServer(backend, wire)
-    await server.dispatch(request(1, "initialize", {}))
-    await server.dispatch(request(2, "session/new", {"cwd": str(tmp_path)}))
-
-    await server.dispatch(
-        request(
-            3,
-            "session/prompt",
-            {"sessionId": "chat-1", "prompt": [{"type": "text", "text": "status"}]},
-        )
-    )
-    await server.drain()
-
-    assert wire.result(3) == {"stopReason": "cancelled"}
-    assert backend.stopped == ["chat-1"]
 
 
 # ── cancellation ──────────────────────────────────────────────────────────────
@@ -555,19 +478,6 @@ def test_prompt_text_flattens_content_blocks():
     assert text == "fix\n\n@file:///a.py\n\nfile:///b.py\nx = 1"
 
 
-def test_permission_options_derive_kinds_from_backend_scope():
-    options = _permission_options(APPROVAL_EVENT["value"]["decision"])
-    assert options == [
-        {"optionId": "allow_once", "name": "Allow", "kind": "allow_once"},
-        {
-            "optionId": "allow_global",
-            "name": "Always allow all git …",
-            "kind": "allow_always",
-        },
-        {"optionId": "reject", "name": "Reject", "kind": "reject_once"},
-    ]
-
-
 def test_tool_kinds_cover_the_common_tools():
     assert tool_kind("read_file") == "read"
     assert tool_kind("edit_file") == "edit"
@@ -649,22 +559,6 @@ async def test_citations_survive_approval_resume(tmp_path):
     wire = Wire()
     server = ACPAgentServer(FakeBackend(turns), wire)
 
-    async def answer(message: dict[str, Any]) -> None:
-        assert not any(
-            "Sources:" in update.get("content", {}).get("text", "")
-            for update in wire.updates()
-        )
-        await server.dispatch(
-            {
-                "jsonrpc": "2.0",
-                "id": message["id"],
-                "result": {
-                    "outcome": {"outcome": "selected", "optionId": "allow_once"}
-                },
-            }
-        )
-
-    wire.responder = answer
     await server.dispatch(request(1, "initialize", {}))
     await server.dispatch(request(2, "session/new", {"cwd": str(tmp_path)}))
     await server.dispatch(

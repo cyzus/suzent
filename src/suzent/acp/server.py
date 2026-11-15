@@ -10,7 +10,6 @@ workspace::
     client -> agent:  session/new       (cwd = the client's workspace)
     client -> agent:  session/prompt
     agent  -> client: session/update    (message chunks, thoughts, tool calls)
-    agent  -> client: session/request_permission
     client -> agent:  session/cancel
 
 The process is a translator, not a second agent. Every turn runs on the
@@ -231,7 +230,6 @@ class TurnTranslator:
             citations if citations is not None else CitationStreamRenderer()
         )
         self._buffer = ""
-        self._tool_names: dict[str, str] = {}
         self._tool_args: dict[str, str] = {}
         self._announced: set[str] = set()
 
@@ -317,7 +315,6 @@ class TurnTranslator:
             if not tool_call_id:
                 return
             name = str(event.get("toolCallName") or "tool")
-            self._tool_names[tool_call_id] = name
             self._tool_args[tool_call_id] = ""
             if tool_call_id in self._announced:
                 # Resuming after an approval replays the start for a call the
@@ -412,9 +409,6 @@ class TurnTranslator:
             return None
         return parsed if isinstance(parsed, dict) else None
 
-    def tool_name(self, tool_call_id: str) -> str:
-        return self._tool_names.get(tool_call_id, "tool")
-
 
 # ── Sessions ──────────────────────────────────────────────────────────────────
 
@@ -431,43 +425,6 @@ class Session:
     seen_tool_calls: set[str] = field(default_factory=set)
 
 
-def _permission_options(decision: dict[str, Any]) -> list[dict[str, Any]]:
-    """Turn the backend's offered approval actions into ACP options.
-
-    The backend decides what may be remembered and how widely (a shell command
-    prefix, a whole tool, session or global), so the options a client sees are
-    exactly the authority Suzent is willing to grant — never a scope the client
-    invented.
-    """
-    options: list[dict[str, Any]] = []
-    for action in decision.get("actions") or []:
-        if not isinstance(action, dict):
-            continue
-        action_id = str(action.get("id") or "")
-        if not action_id:
-            continue
-        if action.get("behavior") == "deny":
-            kind = "reject_once"
-        elif action.get("scope") in ("session", "global"):
-            kind = "allow_always"
-        else:
-            kind = "allow_once"
-        options.append(
-            {
-                "optionId": action_id,
-                "name": str(action.get("label") or action_id),
-                "kind": kind,
-            }
-        )
-    return options
-
-
-_LEGACY_OPTIONS = [
-    {"optionId": "allow_once", "name": "Allow", "kind": "allow_once"},
-    {"optionId": "reject", "name": "Reject", "kind": "reject_once"},
-]
-
-
 class ACPAgentServer:
     """Dispatch ACP JSON-RPC messages against a Suzent backend.
 
@@ -481,22 +438,22 @@ class ACPAgentServer:
         backend: SuzentBackend,
         send: Any,
         *,
-        permission_mode: str = "default",
+        permission_mode: str = "auto",
         require_auth: bool = False,
         token_loader: Callable[[str], str] | None = None,
     ):
         self._backend = backend
         self._send = send
-        self._permission_mode = permission_mode
+        self._permission_mode = (
+            "full_access" if permission_mode == "full_access" else "auto"
+        )
         self._require_auth = require_auth
         self._token_loader = token_loader
         self._token = ""
         self._grant_id = ""
         self._client_name = "ACP client"
         self._sessions: dict[str, Session] = {}
-        self._pending: dict[int, asyncio.Future] = {}
         self._tasks: set[asyncio.Task] = set()
-        self._next_id = 1
         self._client_capabilities: dict[str, Any] = {}
         self._sandbox: bool | None = None
 
@@ -506,7 +463,6 @@ class ACPAgentServer:
         """Handle one decoded JSON-RPC message from the client."""
         method = message.get("method")
         if method is None:
-            self._resolve_response(message)
             return
 
         params = message.get("params")
@@ -773,12 +729,7 @@ class ACPAgentServer:
                 await asyncio.gather(turn, watcher, return_exceptions=True)
 
     async def _run_turn(self, session: Session, text: str) -> str:
-        """Stream turns until the backend stops asking for approvals.
-
-        A suspended tool call ends the SSE stream; the turn continues by posting
-        the client's decisions back as ``resume_approvals``. That loop is what
-        makes an ACP permission request a real gate rather than a notification.
-        """
+        """Stream a headless turn, declining any legacy approval requests."""
         message = text
         resume_approvals: list[dict[str, Any]] = []
         failure: str | None = None
@@ -794,7 +745,11 @@ class ACPAgentServer:
                 "message": message,
                 "chat_id": session.chat_id,
                 "stream": True,
-                "config": session.config,
+                "config": {
+                    **session.config,
+                    "permission_mode": self._permission_mode,
+                    "interaction_profile": "headless",
+                },
                 "protocol": 1,
                 "client_run_token": uuid.uuid4().hex,
                 "origin": {"kind": "acp", "client": self._client_name},
@@ -825,67 +780,19 @@ class ACPAgentServer:
                     await self._update(session.chat_id, item.payload)
                 return "end_turn"
 
-            resume_approvals = []
-            for request in pending:
-                decision = await self._ask_permission(session, request, translator)
-                if decision is None:
-                    return "cancelled"
-                resume_approvals.append(decision)
+            resume_approvals = [
+                {
+                    "request_id": request.get("approvalId")
+                    or request.get("toolCallId"),
+                    "tool_call_id": request.get("toolCallId")
+                    or request.get("approvalId"),
+                    "approved": False,
+                    "feedback": "The ACP turn runs without human approval.",
+                }
+                for request in pending
+            ]
             # Resuming carries decisions, not a new user message.
             message = ""
-
-    async def _ask_permission(
-        self,
-        session: Session,
-        request: dict[str, Any],
-        translator: TurnTranslator,
-    ) -> dict[str, Any] | None:
-        """Ask the client to decide one tool call. ``None`` means cancelled."""
-        approval_id = str(request.get("approvalId") or "")
-        tool_call_id = str(request.get("toolCallId") or approval_id)
-        tool_name = str(request.get("toolName") or translator.tool_name(tool_call_id))
-        decision = request.get("decision")
-        decision = decision if isinstance(decision, dict) else {}
-        options = _permission_options(decision) or list(_LEGACY_OPTIONS)
-
-        tool_call: dict[str, Any] = {
-            "toolCallId": tool_call_id,
-            "title": tool_name,
-            "kind": tool_kind(tool_name),
-            "status": "pending",
-        }
-        if isinstance(request.get("args"), dict):
-            tool_call["rawInput"] = request["args"]
-
-        result = await self._call(
-            "session/request_permission",
-            {
-                "sessionId": session.chat_id,
-                "toolCall": tool_call,
-                "options": options,
-            },
-        )
-        await self._authorize(session)
-        outcome = (result or {}).get("outcome") or {}
-        if outcome.get("outcome") != "selected":
-            await self._backend.stop_turn(session.chat_id)
-            return None
-
-        option_id = str(outcome.get("optionId") or "")
-        chosen = next((o for o in options if o["optionId"] == option_id), None)
-        if chosen is None:
-            raise ACPServerError(f"the client selected unknown option '{option_id}'")
-
-        resolution: dict[str, Any] = {
-            "request_id": approval_id or tool_call_id,
-            "tool_call_id": tool_call_id,
-            "approved": chosen["kind"] != "reject_once",
-        }
-        if decision.get("actions"):
-            # Let the backend resolve the offered action, so "always allow"
-            # persists the rule it promised in the option label.
-            resolution["action_id"] = option_id
-        return resolution
 
     # ── config ───────────────────────────────────────────────────────────────
 
@@ -931,39 +838,6 @@ class ACPAgentServer:
             }
         )
 
-    async def _call(self, method: str, params: dict[str, Any]) -> dict[str, Any]:
-        """Send a request to the client and await its response."""
-        request_id = self._next_id
-        self._next_id += 1
-        future: asyncio.Future = asyncio.get_running_loop().create_future()
-        self._pending[request_id] = future
-        await self._send(
-            {
-                "jsonrpc": "2.0",
-                "id": request_id,
-                "method": method,
-                "params": params,
-            }
-        )
-        try:
-            return await future
-        finally:
-            self._pending.pop(request_id, None)
-
-    def _resolve_response(self, message: dict[str, Any]) -> None:
-        raw_id = message.get("id")
-        future = self._pending.get(raw_id if isinstance(raw_id, int) else -1)
-        if future is None or future.done():
-            logger.debug(f"[acp-server] unmatched response id {raw_id!r}")
-            return
-        if error := message.get("error"):
-            future.set_exception(
-                ACPServerError(f"the client refused the request: {_stringify(error)}")
-            )
-        else:
-            result = message.get("result")
-            future.set_result(result if isinstance(result, dict) else {})
-
     async def _reply(self, message_id: Any, result: Any) -> None:
         await self._send({"jsonrpc": "2.0", "id": message_id, "result": result})
 
@@ -983,9 +857,6 @@ class ACPAgentServer:
 
     async def drain(self) -> None:
         """Await in-flight turns so a closing client does not truncate one."""
-        for future in list(self._pending.values()):
-            if not future.done():
-                future.set_exception(ACPServerError("the client disconnected"))
         if self._tasks:
             await asyncio.gather(*list(self._tasks), return_exceptions=True)
 
@@ -1084,7 +955,7 @@ def redirect_logs_to_stderr(level: str = "WARNING") -> None:
 async def serve_stdio(
     *,
     base_url: str | None = None,
-    permission_mode: str = "default",
+    permission_mode: str = "auto",
     require_auth: bool = True,
 ) -> int:
     """Run the ACP agent over stdin/stdout until the client closes the pipe."""
