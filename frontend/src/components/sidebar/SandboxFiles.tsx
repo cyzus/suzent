@@ -361,6 +361,10 @@ export const SandboxFiles: React.FC<SandboxFilesProps> = ({
 
   // The external path while its preview is still the one shown; cleared once the user picks a file here.
   const externallyOpened = useRef<string | null>(null);
+  const lastHandledExternalRef = useRef<{
+    path: string | null | undefined;
+    nonce: number | null | undefined;
+  }>({ path: null, nonce: null });
 
   const handleSelectFile = useCallback(
     (path: string) => {
@@ -386,10 +390,19 @@ export const SandboxFiles: React.FC<SandboxFilesProps> = ({
   };
 
   useEffect(() => {
-    if (externalFilePath && externalFileName) {
-      handleSelectFile(externalFilePath);
-      externallyOpened.current = externalFilePath;
+    if (!externalFilePath || !externalFileName) {
+      lastHandledExternalRef.current = { path: null, nonce: null };
+      return;
     }
+    if (
+      lastHandledExternalRef.current.path === externalFilePath &&
+      lastHandledExternalRef.current.nonce === externalFileNonce
+    ) {
+      return;
+    }
+    lastHandledExternalRef.current = { path: externalFilePath, nonce: externalFileNonce };
+    handleSelectFile(externalFilePath);
+    externallyOpened.current = externalFilePath;
     // externalFileNonce is included so re-clicking the same file (which keeps
     // path/name identical) still re-opens it after a "back".
   }, [externalFilePath, externalFileName, externalFileNonce, handleSelectFile]);
