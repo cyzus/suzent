@@ -3104,6 +3104,7 @@ export const en = {
   sandbox: {
     selectChat: 'Select a chat',
     back: 'Back',
+    closePreview: 'Close preview',
     maximize: 'Maximize (full screen)',
     openInExplorer: 'Open in Explorer',
     uploadFile: 'Upload file',

@@ -1,0 +1,6 @@
+{
+  "products": {
+    "desktop": "patch"
+  },
+  "summary": "Unify file preview header controls by using a trailing close button, removing the filename box frame when docked, and restoring the previous sidebar state when closing an externally opened file."
+}
