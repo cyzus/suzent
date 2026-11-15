@@ -40,6 +40,7 @@ export interface Message {
   parts?: AGUIPart[]; // Structured assistant display parts; content remains as fallback.
   _streaming_draft?: boolean; // Backend recovery snapshot for in-progress streams.
   _streaming_run_id?: string;
+  _resumed_tool_call_ids?: string[];
   images?: ImageAttachment[]; // Optional image attachments
   files?: FileAttachment[]; // Optional file attachments
   raw_message_end_index?: number; // End-exclusive backend boundary for this rendered message
