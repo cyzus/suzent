@@ -44,6 +44,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Files the agent sends you now appear together under its reply, as artifact cards on desktop and a clearer file row on the phone.
 - Unify inbox threads across desktop and mobile with backend-owned grouping for all event sources.
 - Renaming a chat, task or project now edits the name in place in the sidebar (Enter or click away saves, Esc cancels), and archived chats are tucked behind the sidebar's more menu.
+- Replace the static runtime header and streaming robot box with the 120Hz SuzentBotMark physics character engine and semantic 24x24 SVG tool-icon choreography.
 - New Mailbox: one place for webhooks, scheduled runs, peer devices and agent messages, with a router that learns where each kind of event should go.
 - Drop shadows now use three consistent sizes for controls, menus and dialogs, with one shadow colour per theme.
 
