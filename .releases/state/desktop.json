@@ -263,6 +263,7 @@
     ".releases/changes/regent-quiet-wakes.json",
     ".releases/changes/regent-return-order.json",
     ".releases/changes/regent-side-panel-everywhere.json",
+    ".releases/changes/regent-side-panel-layout.json",
     ".releases/changes/regent-sidebar-compact.json",
     ".releases/changes/regent-sidebar-queue.json",
     ".releases/changes/regent-single-identity.json",
