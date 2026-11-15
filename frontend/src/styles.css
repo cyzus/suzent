@@ -68,17 +68,6 @@
   }
 }
 
-@container chat-composer (max-width: 420px) {
-  .chat-composer-model {
-    order: -1;
-    flex-basis: 100%;
-  }
-
-  .chat-composer-model > div {
-    max-width: none;
-  }
-}
-
 @media (max-height: 650px) {
   .new-chat-view {
     padding-block: 0.75rem;
@@ -2060,6 +2049,9 @@ code {
   padding: inherit;
   color: rgb(163 163 163); /* neutral-400 */
   font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   pointer-events: none;
 }
 .dark .mention-editor.is-empty::before {

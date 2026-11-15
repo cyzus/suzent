@@ -887,8 +887,6 @@ interface ChatWindowProps {
    * -- to the main window.
    */
   embedded?: boolean;
-  /** The width the chat open beside this one takes, 0 when none, so the window can make room. */
-  onSidePanelWidthChange?: (widthPx: number) => void;
 }
 
 /** The plan and task data of the chat a ChatScopeProvider points at. */
@@ -930,26 +928,23 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   viewportWidthPx,
   rightSidebarForceFullView = false,
   embedded = false,
-  onSidePanelWidthChange,
 }) => {
   const seeds = embedded ? NO_STREAM_SEEDS : STREAM_SEEDS;
   // A chat in Regent's side panel has no sidebar; what would open there opens
   // as a popup instead (peekPopup), and files in the file viewer.
+  const requestRightSidebarRef = useRef(requestRightSidebar);
+  useEffect(() => {
+    requestRightSidebarRef.current = requestRightSidebar;
+  });
   const onRightSidebarToggle = useCallback(
     (isOpen: boolean) => {
-      if (!embedded) requestRightSidebar(isOpen);
+      if (embedded) return;
+      if (isOpen) setPeekChatId(null);
+      requestRightSidebarRef.current(isOpen);
     },
-    [embedded, requestRightSidebar]
+    [embedded]
   );
   const [peekPopup, setPeekPopup] = useState<PeekPopupContent | null>(null);
-  const [sidebarWidthPx, setSidebarWidthPx] = useState(0);
-  const reportSidebarWidth = useCallback(
-    (width: number | null) => {
-      setSidebarWidthPx(width ?? 0);
-      onRightSidebarWidthChange?.(width);
-    },
-    [onRightSidebarWidthChange]
-  );
   const [rowWidthPx, setRowWidthPx] = useState(0);
   const rowObserver = useRef<ResizeObserver | null>(null);
   const attachRow = useCallback((element: HTMLDivElement | null) => {
@@ -2369,31 +2364,36 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
 
   // Regent hands work to other chats; following one opens it beside Regent
   // instead of leaving, and the panel's expand button still switches over.
+  // The side panel and the right sidebar share the right slot -- opening one
+  // closes the other.
   const [peekChatId, setPeekChatId] = useState<string | null>(null);
+  const openPeekChat = useCallback((chatId: string | null) => {
+    if (chatId) requestRightSidebarRef.current(false);
+    setPeekChatId(chatId);
+  }, []);
   // Coming back to Regent from a chat expanded out of the panel puts it back
   // in the panel, so the way back lands where you left.
   const expandedPeek = useRef<string | null>(null);
   useEffect(() => {
     const reopen = currentChatId === FOCAL_CHAT_ID ? expandedPeek.current : null;
     if (currentChatId !== expandedPeek.current) expandedPeek.current = null;
-    setPeekChatId(reopen);
-  }, [currentChatId]);
+    openPeekChat(reopen);
+  }, [currentChatId, openPeekChat]);
   const showsRegent = !embedded && currentChatId === FOCAL_CHAT_ID;
   useEffect(() => {
     if (!showsRegent) return;
-    setRegentSidePanelOpener(setPeekChatId);
+    setRegentSidePanelOpener(openPeekChat);
     return () => setRegentSidePanelOpener(null);
-  }, [showsRegent]);
-  const peekRoomPx =
-    (rowWidthPx || viewportWidthPx || 1280) - (isRightSidebarOpen ? sidebarWidthPx : 0);
+  }, [showsRegent, openPeekChat]);
+  const peekRoomPx = rowWidthPx || viewportWidthPx || 1280;
   const peekMaxWidthPx = Math.max(400, Math.min(Math.round(peekRoomPx * 0.6), peekRoomPx - 360));
   const handleOpenChat = useCallback(
     async (chatId: string): Promise<boolean> => {
       if (!showsRegent) return switchToChat(chatId);
-      setPeekChatId(chatId);
+      openPeekChat(chatId);
       return true;
     },
-    [showsRegent, switchToChat]
+    [showsRegent, switchToChat, openPeekChat]
   );
 
   const handleOpenForkOrigin = useCallback(
@@ -3969,7 +3969,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                   [...pinnedChats, ...chats].find((chat) => chat.id === peekChatId)?.projectName
                 }
                 maxWidthPx={peekMaxWidthPx}
-                onShownWidthChange={onSidePanelWidthChange}
                 onClose={() => setPeekChatId(null)}
                 onExpand={(chatId) => {
                   expandedPeek.current = chatId;
@@ -4000,11 +3999,11 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
             {/* Right Sidebar */}
             {!embedded && (
               <RightSidebar
-                isOpen={isRightSidebarOpen}
+                isOpen={isRightSidebarOpen && !peekChatId}
                 headerSlot={rightSidebarHeaderSlot}
                 onClose={() => onRightSidebarToggle(false)}
                 onOpen={() => onRightSidebarToggle(true)}
-                onWidthChange={reportSidebarWidth}
+                onWidthChange={onRightSidebarWidthChange}
                 maxWidthPx={rightSidebarMaxWidthPx}
                 wideContentDefaultWidthPx={rightSidebarWideDefaultWidthPx}
                 viewportWidthPx={viewportWidthPx}

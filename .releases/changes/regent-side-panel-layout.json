@@ -1,0 +1,1 @@
+{"products": {"desktop": "patch"}, "summary": "In Regent, the chat side panel and right sidebar now share the right slot instead of opening together, side-by-side composers stay the same height when empty, and opening right panes no longer collapses Regent's left sidebar."}
