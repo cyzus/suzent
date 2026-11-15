@@ -47,6 +47,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Replace the static runtime header and streaming robot box with the 120Hz SuzentBotMark physics character engine and semantic 24x24 SVG tool-icon choreography.
 - New Mailbox: one place for webhooks, scheduled runs, peer devices and agent messages, with a router that learns where each kind of event should go.
 - Drop shadows now use three consistent sizes for controls, menus and dialogs, with one shadow colour per theme.
+- Unify file preview header controls by using a trailing close button, removing the filename box frame when docked, and restoring the previous sidebar state when closing an externally opened file.
 
 ## [v0.26.0] - 2026-11-13
 

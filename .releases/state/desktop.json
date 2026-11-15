@@ -340,6 +340,7 @@
     ".releases/changes/unified-mailbox.json",
     ".releases/changes/unified-refresh-button.json",
     ".releases/changes/unify-brutal-shadows.json",
+    ".releases/changes/unify-file-preview-close-ux.json",
     ".releases/changes/updater-background-prefetch.json",
     ".releases/changes/updater-recovery-interface.json",
     ".releases/changes/usage-proxy-egress-tunnel.json",
