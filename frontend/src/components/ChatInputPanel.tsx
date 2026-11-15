@@ -928,7 +928,7 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
         </div>
 
         {/* Button row */}
-        <div className="chat-composer-toolbar flex flex-wrap items-center gap-2 px-1 pb-0.5">
+        <div className="chat-composer-toolbar flex items-center gap-2 px-1 pb-0.5">
           {/* Left: one "+" menu for attachments and the working directory. The
               Focal Agent works through project sessions, which carry their own folders. */}
           <input
