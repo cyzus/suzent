@@ -23,7 +23,7 @@ import { FocalAgentCardView } from './FocalAgentCard';
 import { RegentQueue } from './sidebar/RegentQueue';
 import { refreshFocalStatus, useFocalStatus } from '../hooks/useFocalStatus';
 import { FOCAL_CHAT_ID } from '../lib/focalAgent';
-import { markOpenedFromRegent } from '../lib/regentReturn';
+import { markOpenedFromRegent, openBesideRegent } from '../lib/regentReturn';
 import { useI18n } from '../i18n';
 import { getApiBase, markChatRead, fetchMailboxUnread, MAILBOX_UNREAD_EVENT } from '../lib/api';
 import { detectDesktopPlatform } from '../lib/titleBarPlatform';
@@ -1384,6 +1384,7 @@ export const ChatList: React.FC<ChatListProps> = ({
           }
           clearSelection();
           markRead(chat.id);
+          if (regentConsole && openBesideRegent(chat.id)) return;
           pickedInSidebarRef.current = chat.id;
           loadChat(chat.id, { authoritative: !isChatRunning(chat.id, chat.isRunning) });
           if (switchToView) switchToView('chat');
@@ -1692,6 +1693,7 @@ export const ChatList: React.FC<ChatListProps> = ({
                 <>
                   <RegentQueue
                     onOpenChat={(chatId) => {
+                      if (openBesideRegent(chatId)) return;
                       // Marked before the switch, so the header offers the way back.
                       markOpenedFromRegent(chatId);
                       openChatById(chatId);

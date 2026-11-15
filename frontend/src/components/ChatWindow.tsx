@@ -91,7 +91,12 @@ import type { CitationSourcesMap } from './chat/Citations';
 import { OpenFileContext } from './chat/openFileContext';
 import { OpenChatContext } from './chat/openChatContext';
 import { ChatPeekPanel } from './chat/ChatPeekPanel';
-import { markOpenedFromRegent, unmarkOpenedFromRegent } from '../lib/regentReturn';
+import {
+  markOpenedFromRegent,
+  openBesideRegent,
+  setRegentSidePanelOpener,
+  unmarkOpenedFromRegent,
+} from '../lib/regentReturn';
 import type {
   SubAgentSpawnedPayload,
   SubAgentCompletedPayload,
@@ -2352,6 +2357,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   const handleOpenTask = async (task: import('../types/api').Task): Promise<boolean> => {
     setTaskNavigationError(null);
     if (!task.chatId?.trim()) return false;
+    if (openBesideRegent(task.chatId)) return true;
     try {
       await loadChat(task.chatId, { throwOnError: true, validateBeforeSwitch: true });
       return true;
@@ -2389,8 +2395,14 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     setPeekChatId(reopen);
   }, [currentChatId]);
   useEffect(() => {
-    setSidebarOwner(peekChatId ? 'peek' : 'own');
+    if (!peekChatId) setSidebarOwner('own');
   }, [peekChatId]);
+  const showsRegent = !embedded && currentChatId === FOCAL_CHAT_ID;
+  useEffect(() => {
+    if (!showsRegent) return;
+    setRegentSidePanelOpener(setPeekChatId);
+    return () => setRegentSidePanelOpener(null);
+  }, [showsRegent]);
   const peekOwnsSidebar = peekChatId !== null && sidebarOwner === 'peek';
   const peekRoomPx =
     (rowWidthPx || viewportWidthPx || 1280) - (isRightSidebarOpen ? sidebarWidthPx : 0);
@@ -2405,11 +2417,11 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   );
   const handleOpenChat = useCallback(
     async (chatId: string): Promise<boolean> => {
-      if (currentChatId !== FOCAL_CHAT_ID) return switchToChat(chatId);
+      if (!showsRegent) return switchToChat(chatId);
       setPeekChatId(chatId);
       return true;
     },
-    [currentChatId, switchToChat]
+    [showsRegent, switchToChat]
   );
 
   const handleOpenForkOrigin = useCallback(
@@ -4060,6 +4072,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                 onDismissTaskError={() => setTaskNavigationError(null)}
                 onTaskChat={async (chatId) => {
                   setTaskNavigationError(null);
+                  if (openBesideRegent(chatId)) return true;
                   try {
                     await loadChat(chatId, { throwOnError: true, validateBeforeSwitch: true });
                     return true;
