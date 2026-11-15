@@ -26,6 +26,7 @@ import { parseSubAgentResult } from './subAgentResult';
 import { AcpPermissionPrompt } from './AcpPermissionPrompt';
 import { AcpAgentIcon } from '../AcpAgentIcon';
 import { RegentMark } from '../regent/RegentMark';
+import { SuzentBotMark } from './SuzentBotMark';
 import { DispatchReference } from './StatusMessages';
 import { linkedChatsFromTools } from './chatToolLink';
 import { AcpSessionResetNotice } from './AcpSessionResetNotice';
@@ -190,6 +191,7 @@ function filterBlocks(blocks: ContentBlock[]): ContentBlock[] {
 const AGUIPartsContent: React.FC<{
   parts: AGUIPart[];
   conversational?: boolean;
+  showSuzentBot?: boolean;
   identity?: React.ReactNode;
   messageIndex: number;
   workedDurationSeconds?: number;
@@ -220,6 +222,7 @@ const AGUIPartsContent: React.FC<{
 }> = ({
   parts,
   conversational = false,
+  showSuzentBot = false,
   identity,
   workedDurationSeconds,
   streamStartedAtMs,
@@ -305,6 +308,7 @@ const AGUIPartsContent: React.FC<{
                 }
                 hasPending={hasAguiPendingApproval(group.chunks)}
                 currentLabel={getAguiActivityLabel(group.chunks, isCurrentGroup)}
+                showSuzentBot={showSuzentBot}
               >
                 {group.chunks.map(({ chunk, index: ci }) => {
                   if (chunk.type === 'reasoning') {
@@ -1027,6 +1031,44 @@ const AssistantMessageComponent: React.FC<AssistantMessageProps> = ({
   //    stays clean and we never show two animated/sticky badges at once.
   const isHistory = !isLastMessage && !isPendingApproval;
 
+  const hasActivityRail = Boolean(
+    effectiveParts?.some((p) => p.type === 'tool' || (p.type === 'reasoning' && p.text?.trim())) ||
+    legacyBlocks.some((b) => b.type === 'toolCall' || b.type === 'reasoning')
+  );
+
+  const isTrailingProse = useMemo(() => {
+    if (effectiveParts && effectiveParts.length > 0) {
+      for (let i = effectiveParts.length - 1; i >= 0; i -= 1) {
+        const p = effectiveParts[i];
+        if (p.type === 'citation-sources' || p.type === 'incoming-message') continue;
+        if (p.type === 'text') {
+          if (p.text?.trim()) return true;
+          continue;
+        }
+        return false;
+      }
+      return false;
+    }
+    if (legacyBlocks.length > 0) {
+      const last = legacyBlocks[legacyBlocks.length - 1];
+      return last.type === 'markdown' || last.type === 'code' || last.type === 'log';
+    }
+    return Boolean(message.content?.trim());
+  }, [effectiveParts, legacyBlocks, message.content]);
+
+  // Show SuzentBotMark at the bottom of the message once the final prose is
+  // streaming or when the turn finishes on the latest message. While the agent
+  // is actively working inside an ActivityRail (and hasn't started streaming
+  // trailing prose yet), the bot lives inside the collapsed ActivityRail header!
+  const showBottomSuzentBot =
+    !regent &&
+    !isAcp &&
+    !isHistory &&
+    !isThinking &&
+    (!isStreamingThis || isTrailingProse || !hasActivityRail);
+
+  const showRailSuzentBot = !regent && !isAcp && isStreamingThis && !showBottomSuzentBot;
+
   // Keep overflow clipping on the chat scroller and message contents, not the
   // sticky badge ancestor: WebKit can jitter sticky layers inside overflow: clip.
   const badgeContainer = regent ? (
@@ -1041,7 +1083,7 @@ const AssistantMessageComponent: React.FC<AssistantMessageProps> = ({
         </span>
       )}
     </div>
-  ) : isHistory ? null : (
+  ) : isHistory ? null : isAcp ? (
     <div
       className={`
       sticky top-2 z-20 isolate transform-gpu ml-0 mr-auto mb-3 overflow-hidden
@@ -1058,36 +1100,45 @@ const AssistantMessageComponent: React.FC<AssistantMessageProps> = ({
           currentToolName={currentToolName}
           errorCount={errorCount}
           isPendingApproval={isPendingApproval}
-          icon={
-            isAcp ? (
-              <AcpAgentIcon id={acpAgent} className="w-6 h-6 shrink-0" />
-            ) : regent ? (
-              <RegentMark size={20} state={isThinking || isStreamingThis ? 'working' : 'idle'} />
-            ) : undefined
-          }
+          icon={<AcpAgentIcon id={acpAgent} className="w-6 h-6 shrink-0" />}
         />
-        {isAcp && (
-          // The badge box is only 90px wide, so keep this to a marker and let
-          // the signature under the message carry the agent name.
-          <div
-            className="absolute top-1 left-1 bg-white border border-brutal-black px-1 text-[8px] font-bold uppercase"
-            title={t('chatMessage.runtime.external', { agent: acpAgent })}
-          >
-            ACP
-          </div>
-        )}
+        <div
+          className="absolute top-1 left-1 bg-white border border-brutal-black px-1 text-[8px] font-bold uppercase"
+          title={t('chatMessage.runtime.external', { agent: acpAgent })}
+        >
+          ACP
+        </div>
       </div>
     </div>
-  );
+  ) : isThinking ? (
+    <div className="sticky top-2 z-20 isolate transform-gpu ml-0 mr-auto mb-3 w-[320px] max-w-full h-[108px] overflow-hidden bg-white dark:bg-zinc-800 border-3 border-brutal-black shadow-brutal-lg">
+      <ThinkingAnimation isThinking={isThinking} />
+    </div>
+  ) : null;
+
+  const bottomSuzentBot = showBottomSuzentBot ? (
+    <SuzentBotMark
+      isThinking={false}
+      isStreaming={isStreamingThis || isPendingApproval}
+      isActive={isLastMessage || isStreamingThis || isPendingApproval}
+      hasPending={isPendingApproval}
+      errorCount={errorCount}
+      toolName={isStreamingThis ? (isTrailingProse ? 'write_file' : currentToolName) : undefined}
+      size={28}
+      className="mr-1"
+    />
+  ) : null;
 
   const messageFooter = conversational ? (
-    !isThinking && citationSourcesList.length > 0 ? (
+    !isThinking && (bottomSuzentBot || citationSourcesList.length > 0) ? (
       <div className="conversation-message-actions flex min-w-0 flex-wrap items-center gap-2">
-        <SourcesPanel sources={citationSourcesList} />
+        {bottomSuzentBot}
+        {citationSourcesList.length > 0 && <SourcesPanel sources={citationSourcesList} />}
       </div>
     ) : null
   ) : (
-    <div className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1 px-1 pt-0.5 pb-1 text-[10px] leading-5">
+    <div className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1 px-1 pt-0.5 pb-1 text-[10px] leading-5 overflow-visible">
+      {bottomSuzentBot}
       <div className="flex shrink-0 items-center gap-0.5 [&>button]:h-6 [&>button]:w-6 [&>button]:text-neutral-500 [&>button:hover]:bg-neutral-200/60 [&>button:focus-visible]:outline [&>button:focus-visible]:outline-2 [&>button:focus-visible]:outline-neutral-500 dark:[&>button]:text-neutral-400 dark:[&>button:hover]:bg-white/10">
         {fullMessageText && !isThinking && (
           <CopyButton text={fullMessageText} className="relative" />
@@ -1161,6 +1212,7 @@ const AssistantMessageComponent: React.FC<AssistantMessageProps> = ({
                 <AGUIPartsContent
                   parts={response}
                   conversational={conversational}
+                  showSuzentBot={showRailSuzentBot}
                   identity={regent ? badgeContainer : undefined}
                   messageIndex={messageIndex}
                   workedDurationSeconds={workedDurationSeconds}
@@ -1337,6 +1389,7 @@ const AssistantMessageComponent: React.FC<AssistantMessageProps> = ({
                         }
                         hasPending={hasLegacyPendingApproval(group.chunks)}
                         currentLabel={getLegacyActivityLabel(group.chunks, isCurrentGroup)}
+                        showSuzentBot={showRailSuzentBot}
                       >
                         {group.chunks.map(({ chunk, index: idx }) => {
                           if (chunk.type === 'reasoning') {

@@ -5,6 +5,7 @@ export { ToolCallBlock, type ApprovalState } from './ToolCallBlock';
 export { CodeBlockComponent } from './CodeBlockComponent';
 export { MarkdownRenderer } from './MarkdownRenderer';
 export { ThinkingAnimation, RobotIcon, AgentBadge } from './ThinkingAnimation';
+export { SuzentBotMark } from './SuzentBotMark';
 export { UserMessage } from './UserMessage';
 export { AssistantMessage } from './AssistantMessage';
 export { RightSidebar } from './RightSidebar';

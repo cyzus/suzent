@@ -1,0 +1,6 @@
+{
+  "products": {
+    "desktop": "patch"
+  },
+  "summary": "Replace the static runtime header and streaming robot box with the 120Hz SuzentBotMark physics character engine and semantic 24x24 SVG tool-icon choreography."
+}
