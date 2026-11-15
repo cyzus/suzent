@@ -561,7 +561,6 @@ function ActiveChatTitle() {
  * Returns null on a new, unsaved chat, where the header keeps the brand title.
  */
 export function ConversationIdentity(): React.ReactElement | null {
-  const { t } = useI18n();
   const { currentChatId, chats, loadChat } = useChatCoreStore();
   const openedFromRegent = useOpenedFromRegent();
   useEffect(() => {
@@ -569,13 +568,43 @@ export function ConversationIdentity(): React.ReactElement | null {
   }, [currentChatId]);
   if (!currentChatId) return null;
   if (currentChatId === FOCAL_CHAT_ID) return <LiveRegentIdentity />;
-  const chat = chats.find((item) => item.id === currentChatId);
-  const title = chat?.title?.trim();
-  const backToRegent = openedFromRegent === currentChatId && (
+  return (
+    <ChatIdentity
+      chatId={currentChatId}
+      title={chats.find((item) => item.id === currentChatId)?.title}
+      projectName={chats.find((item) => item.id === currentChatId)?.projectName}
+      onBackToRegent={
+        openedFromRegent === currentChatId ? () => void loadChat(FOCAL_CHAT_ID) : undefined
+      }
+    />
+  );
+}
+
+interface ChatIdentityProps {
+  chatId: string;
+  title?: string | null;
+  projectName?: string | null;
+  /** Given for a chat reached from Regent: the way back, and the resolve box. */
+  onBackToRegent?: () => void;
+}
+
+/**
+ * A chat's title line: `Regent / title PROJECT [resolve]` when it was reached
+ * from Regent, used by the app header and Regent's side panel alike.
+ */
+export function ChatIdentity({
+  chatId,
+  title: rawTitle,
+  projectName,
+  onBackToRegent,
+}: ChatIdentityProps): React.ReactElement | null {
+  const { t } = useI18n();
+  const title = rawTitle?.trim();
+  const backToRegent = onBackToRegent && (
     <span className="flex shrink-0 items-center gap-1.5 self-center">
       <button
         type="button"
-        onClick={() => void loadChat(FOCAL_CHAT_ID)}
+        onClick={onBackToRegent}
         title={t('chatList.focal.back')}
         aria-label={t('chatList.focal.back')}
         className="regent-back -ml-1 inline-flex items-center gap-1.5 px-1 py-0.5 text-sm font-bold text-neutral-500 transition-colors hover:bg-brutal-yellow hover:text-brutal-black dark:text-neutral-400 dark:hover:text-brutal-black focus-visible:outline focus-visible:outline-2 focus-visible:outline-brutal-blue"
@@ -599,12 +628,12 @@ export function ConversationIdentity(): React.ReactElement | null {
       >
         {title}
       </span>
-      {chat?.projectName && (
+      {projectName && (
         <span className="hidden shrink-0 truncate font-mono text-[10px] font-bold uppercase tracking-wider text-neutral-500 sm:inline dark:text-neutral-400">
-          {chat.projectName}
+          {projectName}
         </span>
       )}
-      {openedFromRegent === currentChatId && <ResolveChatButton chatId={currentChatId} />}
+      {onBackToRegent && <ResolveChatButton chatId={chatId} />}
     </div>
   );
 }
