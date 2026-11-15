@@ -1627,9 +1627,6 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
                     ...msg,
                     content: msg.content || '',
                     raw_message_end_index: serverMessageIndex + 1,
-                    file_change_message_index: msg.file_changes?.length
-                      ? serverMessageIndex
-                      : undefined,
                   };
                   awaitingToolContinuation = false;
                 } else if (awaitingToolContinuation) {
@@ -1646,11 +1643,6 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
                       ...msg.parts,
                     ];
                   }
-                  if (Array.isArray(msg.file_changes) && msg.file_changes.length > 0) {
-                    currentAssistant.file_changes = msg.file_changes;
-                    currentAssistant.file_changes_undone = msg.file_changes_undone === true;
-                    currentAssistant.file_change_message_index = serverMessageIndex;
-                  }
                   currentAssistant.raw_message_end_index = serverMessageIndex + 1;
                   awaitingToolContinuation = false;
                 } else {
@@ -1660,9 +1652,6 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
                     ...msg,
                     content: msg.content || '',
                     raw_message_end_index: serverMessageIndex + 1,
-                    file_change_message_index: msg.file_changes?.length
-                      ? serverMessageIndex
-                      : undefined,
                   };
                   awaitingToolContinuation = false;
                 }

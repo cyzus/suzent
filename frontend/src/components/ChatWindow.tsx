@@ -655,8 +655,6 @@ const MessageList: React.FC<{
             content: groupedBlocksToAssistantContent(group.mergedBlocks),
             timestamp: m.timestamp,
             model: m.model,
-            file_changes: m.file_changes,
-            file_change_message_index: m.file_change_message_index,
           };
           return withDate(
             <div
@@ -684,7 +682,6 @@ const MessageList: React.FC<{
                   onOpenSubAgentSidebar={onOpenSubAgentSidebar}
                   onStopSubAgent={onStopSubAgent}
                   onForceWebContext={onForceWebContext}
-                  fileChangeChatId={m.file_changes?.length ? chatId : undefined}
                   replyContext={replyContext}
                   chatCitationSources={chatCitationSources}
                   fallbackModel={fallbackModel}
@@ -818,7 +815,6 @@ const MessageList: React.FC<{
                         ? getForkHandler(m.raw_message_end_index)
                         : undefined
                     }
-                    fileChangeChatId={m.file_changes?.length ? chatId : undefined}
                     replyContext={replyContext}
                     chatCitationSources={chatCitationSources}
                     fallbackModel={fallbackModel}
@@ -2737,9 +2733,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       seeds.clear();
 
       // Keep the completed stream visible while replacing it with the backend-authored
-      // message. The backend attaches file_changes as the stream closes, so every chat
-      // must reload here; limiting this sync to social chats left desktop diffs hidden
-      // until the user manually refreshed.
+      // message once persistence is confirmed.
       try {
         // Same contract as the direct path: sendAGUI only resolves truthy once the
         // stream ended with persistence confirmed, so this snapshot supersedes

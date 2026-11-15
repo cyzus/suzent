@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { artifactKind, collectChatArtifacts } from './chatArtifacts';
-import type { Message, MessageFileChange } from '../types/api';
+import type { Message } from '../types/api';
 
 const toolResult = (savedPaths: string[], success = true): string =>
   JSON.stringify({ success, message: 'ok', metadata: { saved_paths: savedPaths } });
+
+const writeResult = (absPath: string, success = true): string =>
+  JSON.stringify({ success, message: 'ok', metadata: { abs_path: absPath, file_path: absPath } });
 
 const assistant = (overrides: Partial<Message>): Message => ({
   role: 'assistant',
@@ -12,15 +15,6 @@ const assistant = (overrides: Partial<Message>): Message => ({
 });
 
 const PROJECT = '/home/u/.suzent/sandbox/projects/p1';
-
-const change = (path: string, overrides: Partial<MessageFileChange> = {}): MessageFileChange => ({
-  path,
-  display_path: path.split('/').pop(),
-  diff: `--- a/x\n+++ b/x\n@@ -0,0 +1 @@\n+x`,
-  additions: 1,
-  deletions: 0,
-  ...overrides,
-});
 
 describe('collectChatArtifacts', () => {
   it('lists media, sent files and library files, newest first', () => {
@@ -50,8 +44,13 @@ describe('collectChatArtifacts', () => {
             state: 'completed',
             output: toolResult(['/repo/dist/report.pdf']),
           },
+          {
+            type: 'tool',
+            toolName: 'write_file',
+            state: 'completed',
+            output: writeResult(`${PROJECT}/artifacts/docs/brief.md`),
+          },
         ],
-        file_changes: [change(`${PROJECT}/artifacts/docs/brief.md`)],
       }),
     ];
 
@@ -87,14 +86,36 @@ describe('collectChatArtifacts', () => {
     ]);
   });
 
-  it('leaves working edits outside artifacts/ on the changed-files card', () => {
+  it('ignores working edits outside artifacts/', () => {
     const messages: Message[] = [
       assistant({
-        file_changes: [
-          change(`${PROJECT}/notes/plan.md`),
-          change('/home/u/code/app/src/main.py'),
-          change('/home/u/code/app/build/artifacts/out.bin'),
-          change('C:\\Users\\u\\.suzent\\sandbox\\projects\\p1\\artifacts\\report.md'),
+        parts: [
+          {
+            type: 'tool',
+            toolName: 'write_file',
+            state: 'completed',
+            output: writeResult(`${PROJECT}/notes/plan.md`),
+          },
+          {
+            type: 'tool',
+            toolName: 'edit_file',
+            state: 'completed',
+            output: writeResult('/home/u/code/app/src/main.py'),
+          },
+          {
+            type: 'tool',
+            toolName: 'write_file',
+            state: 'completed',
+            output: writeResult('/home/u/code/app/build/artifacts/out.bin'),
+          },
+          {
+            type: 'tool',
+            toolName: 'write_file',
+            state: 'completed',
+            output: writeResult(
+              'C:\\Users\\u\\.suzent\\sandbox\\projects\\p1\\artifacts\\report.md'
+            ),
+          },
         ],
       }),
     ];
@@ -121,7 +142,7 @@ describe('collectChatArtifacts', () => {
     expect(collectChatArtifacts(messages).map((artifact) => artifact.name)).toEqual(['report.pdf']);
   });
 
-  it('skips inputs, failures, undone turns and deleted files', () => {
+  it('skips inputs and failed tool calls', () => {
     const messages: Message[] = [
       assistant({
         parts: [
@@ -143,17 +164,13 @@ describe('collectChatArtifacts', () => {
             state: 'error',
             output: toolResult(['/workspace/denied.png']),
           },
+          {
+            type: 'tool',
+            toolName: 'write_file',
+            state: 'completed',
+            output: writeResult(`${PROJECT}/artifacts/failed.txt`, false),
+          },
         ],
-        file_changes: [change(`${PROJECT}/artifacts/a.txt`)],
-      }),
-      assistant({
-        file_changes: [
-          change(`${PROJECT}/artifacts/a.txt`, { additions: 0, deletions: 1, after_exists: false }),
-        ],
-      }),
-      assistant({
-        file_changes_undone: true,
-        file_changes: [change(`${PROJECT}/artifacts/b.txt`)],
       }),
     ];
 
@@ -161,11 +178,39 @@ describe('collectChatArtifacts', () => {
   });
 
   it('keeps one entry per path at its latest turn', () => {
-    const plan = change(`${PROJECT}/artifacts/plan.md`);
+    const planPath = `${PROJECT}/artifacts/plan.md`;
+    const otherPath = `${PROJECT}/artifacts/other.md`;
     const messages: Message[] = [
-      assistant({ file_changes: [plan] }),
-      assistant({ file_changes: [change(`${PROJECT}/artifacts/other.md`)] }),
-      assistant({ file_changes: [plan] }),
+      assistant({
+        parts: [
+          {
+            type: 'tool',
+            toolName: 'write_file',
+            state: 'completed',
+            output: writeResult(planPath),
+          },
+        ],
+      }),
+      assistant({
+        parts: [
+          {
+            type: 'tool',
+            toolName: 'write_file',
+            state: 'completed',
+            output: writeResult(otherPath),
+          },
+        ],
+      }),
+      assistant({
+        parts: [
+          {
+            type: 'tool',
+            toolName: 'edit_file',
+            state: 'completed',
+            output: writeResult(planPath),
+          },
+        ],
+      }),
     ];
 
     expect(

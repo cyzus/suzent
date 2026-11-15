@@ -125,9 +125,6 @@ class AgentDeps:
     context_breakdown: dict[str, Any] | None = None
     context_overhead_estimate: int = 0
 
-    # --- File change tracker (for lightweight retry checkpoints) ---
-    file_tracker: Any = None  # FileTracker instance; set by build_agent_deps
-
     @property
     def shell_type(self) -> str:
         import os

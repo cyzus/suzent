@@ -250,10 +250,6 @@ def build_agent_deps(
         - {"", chat_id}
     )
 
-    from suzent.core.file_tracker import FileTracker
-
-    file_tracker = FileTracker(chat_id)
-
     base_tool_names = frozenset(_get_config_value(config, "tools", []) or [])
     call_allowed_tools = _get_config_value(config, "call_allowed_tools", None)
 
@@ -288,5 +284,4 @@ def build_agent_deps(
         a2ui_queue=asyncio.Queue(),
         ui_event_queue=asyncio.Queue(),
         inline_a2ui_surfaces={},
-        file_tracker=file_tracker,
     )
