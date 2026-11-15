@@ -4073,6 +4073,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                 // switch and re-expands once the transcript lands.
                 isNewChat={!currentChatId && safeMessages.length === 0 && !showTransientAssistant}
                 fileToPreview={sidebarFilePreview}
+                onClearFileToPreview={() => setSidebarFilePreview(null)}
                 onMaximizeFile={handleMaximizeFile}
                 canvas={canvas}
                 onCanvasDispatch={handleCanvasDispatch}

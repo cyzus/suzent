@@ -191,6 +191,7 @@ interface RightSidebarProps {
   onDismissTaskError?: () => void;
   onTaskChat?: (chatId: string) => Promise<boolean>;
   fileToPreview?: { path: string; name: string; nonce?: number } | null;
+  onClearFileToPreview?: () => void;
   onMaximizeFile?: (filePath: string, fileName: string, anchor?: DOMRect) => void;
   canvas?: CanvasState;
   onCanvasDispatch?: (action: string, context: Record<string, unknown>, surfaceId: string) => void;
@@ -245,6 +246,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
   onDismissTaskError,
   onOpenTask,
   fileToPreview,
+  onClearFileToPreview,
   onMaximizeFile,
   canvas,
   onCanvasDispatch,
@@ -617,6 +619,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
   const handleExternalFileClosed = (path: string): void => {
     const target = artifactReturn.current;
     artifactReturn.current = null;
+    onClearFileToPreview?.();
     if (target?.path === path) setActiveTab(target.tab);
   };
   const overviewContent: Partial<

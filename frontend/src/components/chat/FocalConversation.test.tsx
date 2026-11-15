@@ -107,7 +107,7 @@ describe('Focal conversation controls', () => {
       expect(html).not.toContain('\ue202');
     }
   );
-  it('keeps Regent named on a desktop message and names a different agent', () => {
+  it('keeps Regent named on a desktop message and drops history identity header on regular turns', () => {
     const regent = renderToStaticMarkup(
       <AssistantMessage
         conversational
@@ -130,7 +130,8 @@ describe('Focal conversation controls', () => {
     );
     expect(agent).toContain('codex');
     expect(agent).not.toContain('regent-identity');
-    expect(response(false)).toContain('Suzent');
+    expect(agent).not.toContain('chatMessage.runtime.external');
+    expect(response(false)).not.toContain('chatMessage.runtime.suzent');
   });
   it('hides message actions and empty footers only for focal', () => {
     const focal = response(true);
