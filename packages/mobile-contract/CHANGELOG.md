@@ -1,6 +1,6 @@
 # Mobile changelog
 
-## [mobile-v0.10.0] - 2026-11-14
+## [mobile-v0.10.0] - 2026-11-15
 
 ### Release notes
 - Show the specific GitHub label added or removed in inbox events.
