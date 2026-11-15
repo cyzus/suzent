@@ -269,7 +269,7 @@ Pair other computers and phones, and let devices use each other. See
 
 | Command | What it does | Key options |
 |---|---|---|
-| `suzent acp` | Let an editor that supports the Agent Client Protocol, such as Zed, use Suzent as its agent. Your editor runs this command; you don't run it yourself. | `--permission-mode` (`default`, `auto`, or `full_access`) |
+| `suzent acp` | Let an editor that supports the Agent Client Protocol, such as Zed, use Suzent as its agent. Your editor runs this command; you don't run it yourself. | `--permission-mode` (defaults to `auto`, with `default` accepted as an alias. `full_access` skips classification.) |
 | `suzent acp --login` | Request editor access, approve the matching code under Settings → ACP Agents → Editor connections, then reconnect your editor. | `--client-name`, `--server-url` |
 
 Editor pairing is required by default. Use `--client-name` matching your editor's

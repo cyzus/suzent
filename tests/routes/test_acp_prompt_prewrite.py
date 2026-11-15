@@ -135,3 +135,33 @@ async def test_a_prompt_with_no_origin_is_left_to_its_sender(route):
     )
 
     assert written == []
+
+
+@pytest.mark.parametrize(
+    ("mode", "expected"),
+    [("default", "auto"), ("auto", "auto"), ("full_access", "full_access")],
+)
+async def test_acp_origin_sets_headless_permissions(monkeypatch, mode, expected):
+    from suzent.core.chat_processor import ChatProcessor
+
+    async def process_turn(self, *, config_override, **kwargs):
+        assert config_override["permission_mode"] == expected
+        assert config_override["interaction_profile"] == "headless"
+        yield "data: {}\n\n"
+
+    monkeypatch.setattr(ChatProcessor, "process_turn", process_turn)
+    monkeypatch.setattr(chat_routes, "_resolve_chat_runtime", lambda *_: "native")
+    response = await chat_routes.chat(
+        _post(
+            {
+                "chat_id": "chat-1",
+                "message": "hello",
+                "origin": {"kind": "acp", "client": "Zed"},
+                "config": {
+                    "permission_mode": mode,
+                    "interaction_profile": "interactive",
+                },
+            }
+        )
+    )
+    assert [chunk async for chunk in response.body_iterator] == ["data: {}\n\n"]

@@ -200,6 +200,19 @@ class PermissionEngine:
         )
         if ask_rule is None:
             return None
+        if (
+            context.mode == PermissionMode.AUTO
+            and context.interaction_profile != "interactive"
+        ):
+            return _decision(
+                CommandDecision.DENY,
+                ask_rule.description
+                or "A permission rule requires approval in a headless run",
+                "normalized_rule_ask",
+                PermissionRisk.HIGH,
+                source=PermissionDecisionSource.RULE,
+                metadata={"rule_id": ask_rule.id},
+            )
         return build_approval_decision(
             request.tool_name,
             request.args,
