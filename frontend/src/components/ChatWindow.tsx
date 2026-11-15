@@ -5,7 +5,6 @@ import { parseModelWait, requestModelWaitExtension, type ModelWaitState } from '
 import { createSpeechJob, speechQueue } from '../lib/speechPlayback';
 import { parseToolResultEnvelope } from './chat/ToolCallBlock';
 import React, { useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo } from 'react';
-import { createPortal } from 'react-dom';
 import { ChatScopeProvider, useChatStore } from '../hooks/useChatStore';
 import { forgetReply, watchForReply } from '../lib/desktopNotifications';
 import { useAGUI, type AGUIPart, type ApprovalRememberScope } from '../hooks/useAGUI';
@@ -91,6 +90,7 @@ import type { CitationSourcesMap } from './chat/Citations';
 import { OpenFileContext } from './chat/openFileContext';
 import { OpenChatContext } from './chat/openChatContext';
 import { ChatPeekPanel } from './chat/ChatPeekPanel';
+import { ChatPeekPopup, type PeekPopupContent } from './chat/ChatPeekPopup';
 import {
   markOpenedFromRegent,
   openBesideRegent,
@@ -887,12 +887,6 @@ interface ChatWindowProps {
    * -- to the main window.
    */
   embedded?: boolean;
-  /**
-   * Where an embedded chat's side panel goes: the host window's sidebar spot,
-   * so the window keeps one right sidebar at its edge. Null while that spot
-   * mounts.
-   */
-  rightSidebarHost?: HTMLElement | null;
   /** The width the chat open beside this one takes, 0 when none, so the window can make room. */
   onSidePanelWidthChange?: (widthPx: number) => void;
 }
@@ -908,14 +902,6 @@ const ScopedGoalTasks: React.FC<{ chatId: string; children: React.ReactNode }> =
       {children}
     </ChatGoalTasksScope>
   );
-};
-
-const SidebarSpot: React.FC<{ host?: HTMLElement | null; children: React.ReactNode }> = ({
-  host,
-  children,
-}) => {
-  if (host === undefined) return <>{children}</>;
-  return host ? createPortal(children, host) : null;
 };
 
 const STREAM_SEEDS = {
@@ -944,20 +930,18 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   viewportWidthPx,
   rightSidebarForceFullView = false,
   embedded = false,
-  rightSidebarHost,
   onSidePanelWidthChange,
 }) => {
   const seeds = embedded ? NO_STREAM_SEEDS : STREAM_SEEDS;
-  // A chat open beside this one shares the window's one right sidebar, which
-  // shows whichever of the two last asked for it.
-  const [sidebarOwner, setSidebarOwner] = useState<'own' | 'peek'>('own');
+  // A chat in Regent's side panel has no sidebar; what would open there opens
+  // as a popup instead (peekPopup), and files in the file viewer.
   const onRightSidebarToggle = useCallback(
     (isOpen: boolean) => {
-      if (isOpen) setSidebarOwner('own');
-      requestRightSidebar(isOpen);
+      if (!embedded) requestRightSidebar(isOpen);
     },
-    [requestRightSidebar]
+    [embedded, requestRightSidebar]
   );
+  const [peekPopup, setPeekPopup] = useState<PeekPopupContent | null>(null);
   const [sidebarWidthPx, setSidebarWidthPx] = useState(0);
   const reportSidebarWidth = useCallback(
     (width: number | null) => {
@@ -2301,11 +2285,10 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   const handleForceWebContext = useCallback(
     (contextId: string) => {
       setForcedWebContextId(contextId);
-      if (!isRightSidebarOpen) {
-        onRightSidebarToggle(true);
-      }
+      if (embedded) setPeekPopup({ kind: 'web', contextId });
+      else if (!isRightSidebarOpen) onRightSidebarToggle(true);
     },
-    [isRightSidebarOpen, onRightSidebarToggle]
+    [embedded, isRightSidebarOpen, onRightSidebarToggle]
   );
 
   const configReady = !!(safeBackendConfig && safeConfig.model && safeConfig.agent);
@@ -2340,9 +2323,10 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   const handleOpenSubAgentSidebar = useCallback(
     (taskId: string) => {
       setViewingSubAgentTaskId(taskId);
-      onRightSidebarToggle(true);
+      if (embedded) setPeekPopup({ kind: 'subagent', taskId });
+      else onRightSidebarToggle(true);
     },
-    [onRightSidebarToggle]
+    [embedded, onRightSidebarToggle]
   );
 
   // Turns saved before the runtime stamped a per-message model fall back to
@@ -2394,27 +2378,15 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     if (currentChatId !== expandedPeek.current) expandedPeek.current = null;
     setPeekChatId(reopen);
   }, [currentChatId]);
-  useEffect(() => {
-    if (!peekChatId) setSidebarOwner('own');
-  }, [peekChatId]);
   const showsRegent = !embedded && currentChatId === FOCAL_CHAT_ID;
   useEffect(() => {
     if (!showsRegent) return;
     setRegentSidePanelOpener(setPeekChatId);
     return () => setRegentSidePanelOpener(null);
   }, [showsRegent]);
-  const peekOwnsSidebar = peekChatId !== null && sidebarOwner === 'peek';
   const peekRoomPx =
     (rowWidthPx || viewportWidthPx || 1280) - (isRightSidebarOpen ? sidebarWidthPx : 0);
   const peekMaxWidthPx = Math.max(400, Math.min(Math.round(peekRoomPx * 0.6), peekRoomPx - 360));
-  const [peekSidebarHost, setPeekSidebarHost] = useState<HTMLDivElement | null>(null);
-  const openPeekSidebar = useCallback(
-    (isOpen: boolean) => {
-      if (isOpen) setSidebarOwner('peek');
-      requestRightSidebar(isOpen);
-    },
-    [requestRightSidebar]
-  );
   const handleOpenChat = useCallback(
     async (chatId: string): Promise<boolean> => {
       if (!showsRegent) return switchToChat(chatId);
@@ -3682,7 +3654,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
           return;
         }
 
-        if (shiftKey) {
+        if (shiftKey || embedded) {
           // Shift+Click: Open full-screen modal directly
           setViewingFile({ path, name });
         } else {
@@ -3697,7 +3669,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         // Error checking file - do nothing (animation already played)
       }
     },
-    [currentChatId, config.sandbox_volumes, isRightSidebarOpen, onRightSidebarToggle]
+    [currentChatId, config.sandbox_volumes, embedded, isRightSidebarOpen, onRightSidebarToggle]
   );
 
   const handleInlineAction = useCallback(
@@ -3714,8 +3686,9 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       setCanvasSurface({ ...surface, target: 'canvas' }, currentChatId);
       setActiveCanvasSurface(surface.id);
       setCanvasRequestNonce((n) => n + 1);
+      if (embedded) setPeekPopup({ kind: 'canvas' });
     },
-    [setCanvasSurface, setActiveCanvasSurface, currentChatId]
+    [setCanvasSurface, setActiveCanvasSurface, currentChatId, embedded]
   );
 
   // Handle maximize button from sidebar
@@ -3991,11 +3964,11 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
               <ChatPeekPanel
                 key="chat-peek"
                 chatId={peekChatId}
-                parentLabel={t('chatList.focal.name')}
                 title={[...pinnedChats, ...chats].find((chat) => chat.id === peekChatId)?.title}
+                projectName={
+                  [...pinnedChats, ...chats].find((chat) => chat.id === peekChatId)?.projectName
+                }
                 maxWidthPx={peekMaxWidthPx}
-                sidebarOpen={isRightSidebarOpen && peekOwnsSidebar}
-                onSidebarToggle={() => openPeekSidebar(!(isRightSidebarOpen && peekOwnsSidebar))}
                 onShownWidthChange={onSidePanelWidthChange}
                 onClose={() => setPeekChatId(null)}
                 onExpand={(chatId) => {
@@ -4017,18 +3990,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                     )}
                   >
                     <ScopedGoalTasks chatId={chatId}>
-                      <ChatWindow
-                        embedded
-                        rightSidebarHost={peekSidebarHost}
-                        isRightSidebarOpen={isRightSidebarOpen && peekOwnsSidebar}
-                        onRightSidebarToggle={openPeekSidebar}
-                        onRightSidebarWidthChange={peekOwnsSidebar ? reportSidebarWidth : undefined}
-                        rightSidebarHeaderSlot={peekOwnsSidebar ? rightSidebarHeaderSlot : null}
-                        rightSidebarMaxWidthPx={rightSidebarMaxWidthPx}
-                        rightSidebarWideDefaultWidthPx={rightSidebarWideDefaultWidthPx}
-                        viewportWidthPx={viewportWidthPx}
-                        rightSidebarForceFullView={rightSidebarForceFullView}
-                      />
+                      <ChatWindow embedded />
                     </ScopedGoalTasks>
                   </ChatScopeProvider>
                 )}
@@ -4036,13 +3998,13 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
             )}
 
             {/* Right Sidebar */}
-            <SidebarSpot host={rightSidebarHost}>
+            {!embedded && (
               <RightSidebar
-                isOpen={isRightSidebarOpen && !peekOwnsSidebar}
-                headerSlot={peekOwnsSidebar ? null : rightSidebarHeaderSlot}
+                isOpen={isRightSidebarOpen}
+                headerSlot={rightSidebarHeaderSlot}
                 onClose={() => onRightSidebarToggle(false)}
                 onOpen={() => onRightSidebarToggle(true)}
-                onWidthChange={peekOwnsSidebar ? undefined : reportSidebarWidth}
+                onWidthChange={reportSidebarWidth}
                 maxWidthPx={rightSidebarMaxWidthPx}
                 wideContentDefaultWidthPx={rightSidebarWideDefaultWidthPx}
                 viewportWidthPx={viewportWidthPx}
@@ -4107,8 +4069,16 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                 canvasExpandNonce={canvasExpandNonce}
                 onClearForcedWebContext={() => setForcedWebContextId(null)}
               />
-            </SidebarSpot>
-            {peekChatId && <div ref={setPeekSidebarHost} className="contents" />}
+            )}
+            {embedded && (
+              <ChatPeekPopup
+                content={peekPopup}
+                onClose={() => setPeekPopup(null)}
+                canvas={canvas}
+                onCanvasDispatch={handleCanvasDispatch}
+                messages={safeMessages}
+              />
+            )}
 
             <ImageViewer src={viewingImage} onClose={() => setViewingImage(null)} />
 

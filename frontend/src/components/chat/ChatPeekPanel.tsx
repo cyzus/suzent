@@ -1,9 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { ArrowsPointingOutIcon, ChevronRightIcon, XMarkIcon } from '@heroicons/react/24/outline';
+import { ArrowsPointingOutIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import { useEventBus } from '../../hooks/useEventBus';
 import { useI18n } from '../../i18n';
 import { PanelResizeHandle } from '../PanelResizeHandle';
-import { SidebarToggleIcon } from '../SidebarToggleIcon';
+import { ChatIdentity } from '../StatusBar';
 
 const WIDTH_KEY = 'suzent.chatPeekWidth';
 const MIN_WIDTH_PX = 400;
@@ -20,13 +20,9 @@ function storedWidth(): number {
 
 interface ChatPeekPanelProps {
   chatId: string;
-  /** What the breadcrumb leads with: the chat the panel was opened from. */
-  parentLabel: string;
   title?: string;
+  projectName?: string | null;
   maxWidthPx: number;
-  /** Whether the window's right sidebar is showing this chat's details. */
-  sidebarOpen: boolean;
-  onSidebarToggle: () => void;
   /** Reports the width the panel takes, and 0 once it closes, so the window can make room. */
   onShownWidthChange?: (widthPx: number) => void;
   onClose: () => void;
@@ -36,18 +32,15 @@ interface ChatPeekPanelProps {
 }
 
 /**
- * A chat opened beside the one you are in, so following a hand-off does not
- * mean leaving it. The panel is only the frame -- breadcrumb, expand, close,
- * width; inside is the chat's own window. Its details open in the window's
- * one right sidebar, beside this column.
+ * A chat opened beside Regent, so following a hand-off does not mean leaving
+ * it. The panel is only the frame -- the chat's own `Regent / title` line with
+ * its resolve box, expand, close, width; inside is the chat's own window.
  */
 export const ChatPeekPanel: React.FC<ChatPeekPanelProps> = ({
   chatId,
-  parentLabel,
   title,
+  projectName,
   maxWidthPx,
-  sidebarOpen,
-  onSidebarToggle,
   onShownWidthChange,
   onClose,
   onExpand,
@@ -94,39 +87,21 @@ export const ChatPeekPanel: React.FC<ChatPeekPanelProps> = ({
         onWidthChange={changeWidth}
       />
       <header className="flex h-11 shrink-0 items-center gap-1 border-b border-neutral-200 pl-4 pr-2 dark:border-zinc-800">
-        <div className="flex min-w-0 flex-1 items-center gap-1 text-[13px]">
-          <button
-            type="button"
-            onClick={onClose}
-            className="shrink-0 text-neutral-400 hover:text-neutral-700 dark:text-neutral-500 dark:hover:text-neutral-200"
-          >
-            {parentLabel}
-          </button>
-          <ChevronRightIcon
-            className="h-3 w-3 shrink-0 text-neutral-300 dark:text-zinc-600"
-            aria-hidden="true"
+        <div className="flex min-w-0 flex-1 items-center gap-2">
+          <ChatIdentity
+            chatId={chatId}
+            title={label}
+            projectName={projectName}
+            onBackToRegent={onClose}
           />
-          <span className="min-w-0 truncate text-neutral-700 dark:text-neutral-200" title={label}>
-            {label}
-          </span>
           {running && (
             <span
-              className="ml-1 h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-brutal-yellow"
+              className="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-brutal-yellow"
               title={t('chatMessage.dispatch.peekRunning')}
               aria-label={t('chatMessage.dispatch.peekRunning')}
             />
           )}
         </div>
-        <button
-          type="button"
-          className={iconButton}
-          onClick={onSidebarToggle}
-          title={t('chatMessage.dispatch.peekSidebar')}
-          aria-label={t('chatMessage.dispatch.peekSidebar')}
-          aria-pressed={sidebarOpen}
-        >
-          <SidebarToggleIcon side="right" open={sidebarOpen} className="h-4 w-4" />
-        </button>
         <button
           type="button"
           className={iconButton}

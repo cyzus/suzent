@@ -2383,7 +2383,6 @@ export const en = {
       peekLoading: 'Loading…',
       peekError: 'Couldn’t load this chat',
       peekRunning: 'Working',
-      peekSidebar: 'Chat details',
     },
     trigger: {
       goal: 'Goal mode',
