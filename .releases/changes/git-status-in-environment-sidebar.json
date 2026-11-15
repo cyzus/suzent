@@ -1,0 +1,6 @@
+{
+  "products": {
+    "desktop": "patch"
+  },
+  "summary": "Move the multi-repository Git status indicator into the right sidebar's Environment section."
+}
