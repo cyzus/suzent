@@ -670,39 +670,6 @@ class ChatOperationsMixin:
             )
         return True
 
-    def record_turn_file_changes(
-        self, chat_id: str, file_snapshot: List[Dict[str, Any]]
-    ) -> None:
-        """Attach a finished turn's file changes to its checkpoint and its answer."""
-        checkpoint = self.get_retry_checkpoint(chat_id)
-        events: List[tuple[str, Any]] = []
-        if checkpoint is not None:
-            fields = {"file_snapshot": file_snapshot, "has_file_snapshot": True}
-            events.append(("checkpoint.update", {"id": checkpoint.id, "set": fields}))
-        with self._session() as session:
-            chat = session.get(ChatModel, chat_id)
-            if chat is not None and file_snapshot:
-                display_messages = list(chat.messages or [])
-                assistant_index = next(
-                    (
-                        index
-                        for index in range(len(display_messages) - 1, -1, -1)
-                        if isinstance(display_messages[index], dict)
-                        and display_messages[index].get("role") == "assistant"
-                    ),
-                    None,
-                )
-                if assistant_index is not None:
-                    assistant = dict(display_messages[assistant_index])
-                    assistant["file_changes"] = file_snapshot
-                    display_messages[assistant_index] = assistant
-                    chat.messages = display_messages
-                    flag_modified(chat, "messages")
-                    session.add(chat)
-            self.commit_chat_changes(
-                session, [chat_id], checkpoint_events={chat_id: events}
-            )
-
     def chat_log_differences(self, chat_log: ChatEventLog) -> dict[str, list[str]]:
         """Fold every log in *chat_log* and compare it with the stored row.
 

@@ -162,14 +162,6 @@ class WriteFileTool(Tool):
                         f"No changes: {file_path} already has the requested content"
                     )
 
-            # Back up the original file before mutating (idempotent).
-            try:
-                ft = getattr(ctx.deps, "file_tracker", None)
-                if ft is not None:
-                    ft.track_edit(str(resolved_path))
-            except Exception as _ft_err:
-                logger.debug(f"[FileTracker] track_edit skipped: {_ft_err}")
-
             # Create parent directories if needed
             resolved_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -192,6 +184,7 @@ class WriteFileTool(Tool):
             metadata = {
                 "action": "overwrite" if existed else "create",
                 "bytes_written": size,
+                "file_path": file_path,
                 "abs_path": str(resolved_path),
             }
             metadata["added_lines"], metadata["removed_lines"] = count_changed_lines(

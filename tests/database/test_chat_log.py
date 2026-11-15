@@ -501,7 +501,6 @@ def test_checkpoints_survive_a_rebuild(temp_db, monkeypatch) -> None:
     chat_id = db.create_chat(title="Retry", config={})
     monkeypatch.setattr("suzent.database.get_database", lambda: db)
     checkpoint_id = save_retry_checkpoint(chat_id, b"other", [], "question", [], {})
-    db.record_turn_file_changes(chat_id, [{"path": "/a.txt"}])
 
     db.engine.dispose()
     db.db_path.unlink()
@@ -511,7 +510,6 @@ def test_checkpoints_survive_a_rebuild(temp_db, monkeypatch) -> None:
 
     assert checkpoint.id == checkpoint_id
     assert checkpoint.agent_state_before == b"other"
-    assert checkpoint.file_snapshot == [{"path": "/a.txt"}]
     rebuilt.engine.dispose()
 
 

@@ -22,6 +22,7 @@ logger = get_logger(__name__)
 type ArtifactKind = Literal["image", "video", "audio", "file"]
 
 OUTPUT_TOOLS = {"generate_image", "edit_image", "check_video", "speak", "send_file"}
+FILE_WRITE_TOOLS = {"write_file", "edit_file"}
 MAX_FILES_PER_PROJECT = 2000
 
 _KINDS: dict[str, ArtifactKind] = {
@@ -62,7 +63,10 @@ def artifact_kind(path: str) -> ArtifactKind:
 
 
 def _tool_paths(part: dict[str, Any]) -> list[str]:
-    if part.get("type") != "tool" or part.get("toolName") not in OUTPUT_TOOLS:
+    tool_name = part.get("toolName")
+    if part.get("type") != "tool" or (
+        tool_name not in OUTPUT_TOOLS and tool_name not in FILE_WRITE_TOOLS
+    ):
         return []
     if part.get("state") == "error" or part.get("outcome"):
         return []
@@ -73,9 +77,17 @@ def _tool_paths(part: dict[str, Any]) -> list[str]:
     if not isinstance(result, dict):
         return []
     # A send_file a chat app refused still names files that exist here.
-    if result.get("success") is False and part.get("toolName") != "send_file":
+    if result.get("success") is False and tool_name != "send_file":
         return []
-    paths = (result.get("metadata") or {}).get("saved_paths")
+    meta = result.get("metadata") or {}
+    if tool_name in FILE_WRITE_TOOLS:
+        path = meta.get("abs_path") or meta.get("file_path")
+        if isinstance(path, str) and f"/{ARTIFACTS_DIRNAME}/" in path.replace(
+            "\\", "/"
+        ):
+            return [path]
+        return []
+    paths = meta.get("saved_paths")
     return (
         [p for p in paths if isinstance(p, str) and p]
         if isinstance(paths, list)
@@ -92,15 +104,6 @@ def transcript_outputs(messages: list[Any]) -> list[str]:
         for part in message.get("parts") or []:
             if isinstance(part, dict):
                 found.extend(_tool_paths(part))
-        if message.get("file_changes_undone"):
-            continue
-        for change in message.get("file_changes") or []:
-            if isinstance(change, dict) and change.get("after_exists") is not False:
-                path = change.get("path")
-                if isinstance(path, str) and f"/{ARTIFACTS_DIRNAME}/" in path.replace(
-                    "\\", "/"
-                ):
-                    found.append(path)
     return found
 
 

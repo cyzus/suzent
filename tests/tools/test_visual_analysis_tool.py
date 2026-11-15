@@ -86,7 +86,6 @@ def mock_ctx():
     class MockDeps:
         def __init__(self):
             self.sandbox = MockSandbox(Path("/tmp/mock_workspace"))
-            self.file_tracker = None
 
     ctx = MagicMock()
     ctx.deps = MockDeps()

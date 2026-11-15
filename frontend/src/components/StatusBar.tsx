@@ -8,10 +8,12 @@ import { useSubAgentStatus } from '../hooks/useSubAgentStatus';
 import { useDreamStatus } from '../hooks/useDreamStatus';
 import { useEventBus } from '../hooks/useEventBus';
 import {
+  fetchChatGitStatus,
   fetchHeartbeatMd,
   fetchServiceRuntimeStatus,
   saveHeartbeatMd,
   setHeartbeatInterval,
+  type GitRepositoryStatus,
   type ServiceRuntimeStatus,
 } from '../lib/api';
 import { BrutalOnOff } from './BrutalOnOff';
@@ -26,6 +28,7 @@ import { forgetRegentReturnUnless, useOpenedFromRegent } from '../lib/regentRetu
 import { hoverText } from '../lib/hoverText';
 
 const SERVICE_STATUS_POLL_MS = 8_000;
+const GIT_STATUS_POLL_MS = 10_000;
 
 const HEARTBEAT_INTERVAL_PRESETS = [5, 15, 30, 60, 120] as const;
 
@@ -638,6 +641,210 @@ export function ChatIdentity({
   );
 }
 
+function GitStatusWidget() {
+  const { currentChatId, config } = useChatCoreStore();
+  const [repositories, setRepositories] = useState<GitRepositoryStatus[]>([]);
+  const { handleBlur, open, openPopover, rootRef, closePopoverWithDelay } = useStatusHoverPopover();
+  const volumesKey = (config?.sandbox_volumes || []).join('|');
+
+  useEffect(() => {
+    if (!currentChatId || currentChatId === FOCAL_CHAT_ID) {
+      setRepositories([]);
+      return;
+    }
+
+    let active = true;
+    const refresh = async () => {
+      try {
+        const res = await fetchChatGitStatus(currentChatId);
+        if (!active) return;
+        setRepositories(res.repositories || []);
+      } catch {
+        if (!active) return;
+        setRepositories([]);
+      }
+    };
+
+    void refresh();
+    const interval = window.setInterval(refresh, GIT_STATUS_POLL_MS);
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+    };
+  }, [currentChatId, volumesKey]);
+
+  if (!repositories.length) return null;
+
+  const primary = repositories[0];
+  const extraCount = repositories.length - 1;
+  const totalAdditions = repositories.reduce((sum, r) => sum + r.additions, 0);
+  const totalDeletions = repositories.reduce((sum, r) => sum + r.deletions, 0);
+  const totalChanged = repositories.reduce((sum, r) => sum + r.total_changed, 0);
+  const dirtyRepoCount = repositories.filter((r) => !r.clean).length;
+
+  return (
+    <div
+      ref={rootRef}
+      className="relative ml-3 flex-shrink-0"
+      onBlur={handleBlur}
+      onMouseEnter={openPopover}
+      onMouseLeave={closePopoverWithDelay}
+    >
+      <button
+        type="button"
+        onClick={openPopover}
+        onFocus={openPopover}
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        aria-label={`Git status: ${primary.name} (${primary.branch})`}
+        className={`flex items-center gap-1.5 px-1.5 py-0.5 font-mono text-[10px] font-bold tracking-normal transition-colors border ${
+          totalChanged > 0
+            ? 'border-brutal-black bg-white text-brutal-black dark:border-neutral-400 dark:bg-zinc-800 dark:text-white'
+            : 'border-transparent text-neutral-600 hover:border-neutral-400 dark:text-neutral-300'
+        }`}
+      >
+        <span aria-hidden="true" className="text-[11px] leading-none">
+          ⎇
+        </span>
+        {repositories.length > 1 && (
+          <span className="max-w-[90px] truncate text-neutral-500 dark:text-neutral-400">
+            {primary.name}:
+          </span>
+        )}
+        <span className="max-w-[110px] truncate">{primary.branch}</span>
+        {(totalAdditions > 0 || totalDeletions > 0) && (
+          <span className="hidden md:inline-flex items-center gap-1">
+            {totalAdditions > 0 && (
+              <span className="text-emerald-700 dark:text-emerald-400">+{totalAdditions}</span>
+            )}
+            {totalDeletions > 0 && (
+              <span className="text-rose-700 dark:text-rose-400">-{totalDeletions}</span>
+            )}
+          </span>
+        )}
+        {totalChanged > 0 && totalAdditions === 0 && totalDeletions === 0 && (
+          <span className="text-amber-700 dark:text-amber-300">●{totalChanged}</span>
+        )}
+        {extraCount > 0 && (
+          <span
+            className={`px-1 text-[9px] border ${
+              dirtyRepoCount > 1
+                ? 'border-brutal-black bg-brutal-yellow text-brutal-black'
+                : 'border-neutral-400 bg-neutral-100 text-neutral-600 dark:border-neutral-600 dark:bg-zinc-700 dark:text-neutral-200'
+            }`}
+          >
+            +{extraCount}
+          </span>
+        )}
+      </button>
+
+      {open && (
+        <InformationPopover
+          role="dialog"
+          aria-label="Git repositories status"
+          className="absolute top-full right-0 z-50 w-80 max-h-96 overflow-y-auto space-y-2.5 normal-case tracking-normal"
+        >
+          <div className="flex items-center justify-between border-b border-neutral-300 pb-1 dark:border-zinc-700">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-neutral-500 dark:text-neutral-400">
+              Git Status ({repositories.length} {repositories.length === 1 ? 'repo' : 'repos'})
+            </span>
+            {dirtyRepoCount > 0 ? (
+              <span className="text-[10px] font-mono text-amber-700 dark:text-amber-300">
+                {dirtyRepoCount} modified
+              </span>
+            ) : (
+              <span className="text-[10px] font-mono text-emerald-700 dark:text-emerald-400">
+                all clean
+              </span>
+            )}
+          </div>
+
+          <div className="space-y-2.5">
+            {repositories.map((repo) => (
+              <div
+                key={repo.path}
+                className="border border-neutral-300 bg-neutral-50/70 p-2 text-[11px] dark:border-zinc-700 dark:bg-zinc-900/60"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex min-w-0 items-center gap-1.5 font-bold text-brutal-black dark:text-white">
+                    <span className="truncate">{repo.name}</span>
+                    {repo.primary && repositories.length > 1 && (
+                      <span className="border border-brutal-black px-1 text-[8px] uppercase dark:border-neutral-400">
+                        cwd
+                      </span>
+                    )}
+                  </div>
+                  <span className="shrink-0 font-mono text-[10px] text-neutral-600 dark:text-neutral-300">
+                    ⎇ {repo.branch}
+                    {repo.ahead > 0 ? ` ↑${repo.ahead}` : ''}
+                    {repo.behind > 0 ? ` ↓${repo.behind}` : ''}
+                  </span>
+                </div>
+
+                <div
+                  className="mt-0.5 truncate font-mono text-[9px] text-neutral-400 dark:text-neutral-500"
+                  title={repo.path}
+                >
+                  {repo.path}
+                </div>
+
+                {repo.clean ? (
+                  <div className="mt-1 font-mono text-[10px] text-emerald-700 dark:text-emerald-400">
+                    ✓ Working tree clean
+                  </div>
+                ) : (
+                  <div className="mt-1.5 space-y-1">
+                    <div className="flex flex-wrap items-center gap-2 font-mono text-[10px]">
+                      {(repo.additions > 0 || repo.deletions > 0) && (
+                        <span>
+                          <span className="text-emerald-700 dark:text-emerald-400">
+                            +{repo.additions}
+                          </span>{' '}
+                          <span className="text-rose-700 dark:text-rose-400">
+                            -{repo.deletions}
+                          </span>
+                        </span>
+                      )}
+                      {repo.staged > 0 && <span>staged: {repo.staged}</span>}
+                      {repo.modified > 0 && <span>modified: {repo.modified}</span>}
+                      {repo.untracked > 0 && <span>untracked: {repo.untracked}</span>}
+                      {repo.conflicted > 0 && (
+                        <span className="text-rose-700 dark:text-rose-400">
+                          conflicted: {repo.conflicted}
+                        </span>
+                      )}
+                    </div>
+
+                    {repo.files.length > 0 && (
+                      <div className="max-h-28 overflow-y-auto border-t border-neutral-200 pt-1 font-mono text-[10px] space-y-0.5 dark:border-zinc-800">
+                        {repo.files.map((file) => (
+                          <div key={file.path} className="flex items-center gap-1.5 truncate">
+                            <span className="w-3 shrink-0 text-center font-bold text-neutral-500 dark:text-neutral-400">
+                              {file.status}
+                            </span>
+                            <span className="truncate text-neutral-700 dark:text-neutral-300" title={file.path}>
+                              {file.path}
+                            </span>
+                          </div>
+                        ))}
+                        {repo.total_changed > repo.files.length && (
+                          <div className="text-[9px] text-neutral-400">
+                            …and {repo.total_changed - repo.files.length} more
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </InformationPopover>
+      )}
+    </div>
+  );
+}
+
 interface StatusBarProps {
   onOpenMemorySettings?: () => void;
   showActiveChatTitle?: boolean;
@@ -654,6 +861,7 @@ export const StatusBar: React.FC<StatusBarProps> = ({
     return (
       <div className="hidden sm:flex min-w-0 items-center font-mono text-[10px] font-bold uppercase tracking-wider text-neutral-500 dark:text-neutral-400">
         <BackendServiceWidget />
+        <GitStatusWidget />
         <DreamWidget onOpenMemorySettings={onOpenMemorySettings} />
         <HeartbeatWidget />
       </div>
@@ -682,6 +890,7 @@ export const StatusBar: React.FC<StatusBarProps> = ({
 
       {/* Right: context usage + sub-agent indicator + heartbeat */}
       <div className="flex flex-shrink-0 items-center justify-end">
+        <GitStatusWidget />
         <SubAgentWidget />
         <DreamWidget onOpenMemorySettings={onOpenMemorySettings} />
         <HeartbeatWidget />
