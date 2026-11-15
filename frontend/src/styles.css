@@ -753,56 +753,45 @@ code {
 
 .tool-group-icon > svg {
   transform-origin: center;
+}
+
+.tool-group-icon > svg:not([data-tool-svg]) {
   will-change: transform, opacity;
 }
 
-.tool-icon-anim-pending > svg {
+.tool-icon-anim-pending > svg:not([data-tool-svg]) {
   animation: tool-icon-pending-tick 1.4s cubic-bezier(0.4, 0, 0.2, 1) infinite;
 }
 
-.tool-icon-anim-terminal > svg {
+.tool-icon-anim-terminal > svg:not([data-tool-svg]) {
   animation: tool-icon-terminal-blink 1s ease-in-out infinite;
 }
 
 .tool-icon-anim-scan {
-  overflow: hidden;
+  overflow: visible;
 }
 
-.tool-icon-anim-scan::after {
-  content: '';
-  position: absolute;
-  top: 50%;
-  left: 1px;
-  right: 1px;
-  height: 1.5px;
-  border-radius: 9999px;
-  background: currentColor;
-  box-shadow: 0 0 3px currentColor;
-  animation: tool-icon-scan-sweep 1.25s cubic-bezier(0.4, 0, 0.2, 1) infinite;
-  pointer-events: none;
-}
-
-.tool-icon-anim-typewriter > svg {
+.tool-icon-anim-typewriter > svg:not([data-tool-svg]) {
   animation: tool-icon-typewriter-strike 0.75s cubic-bezier(0.36, 0.07, 0.19, 0.97) infinite;
 }
 
-.tool-icon-anim-radar > svg {
+.tool-icon-anim-radar > svg:not([data-tool-svg]) {
   animation: tool-icon-radar-lock 1.3s ease-in-out infinite;
 }
 
-.tool-icon-anim-signal > svg {
+.tool-icon-anim-signal > svg:not([data-tool-svg]) {
   animation: tool-icon-signal-pulse 1s ease-in-out infinite;
 }
 
-.tool-icon-anim-memory > svg {
+.tool-icon-anim-memory > svg:not([data-tool-svg]) {
   animation: tool-icon-memory-hdd 1.2s ease-in-out infinite;
 }
 
-.tool-icon-anim-snap > svg {
+.tool-icon-anim-snap > svg:not([data-tool-svg]) {
   animation: tool-icon-snap-lock 1s cubic-bezier(0.34, 1.56, 0.64, 1) infinite;
 }
 
-.tool-icon-anim-cursor > svg {
+.tool-icon-anim-cursor > svg:not([data-tool-svg]) {
   animation: tool-icon-cursor-hop 1.15s cubic-bezier(0.4, 0, 0.2, 1) infinite;
 }
 
@@ -814,10 +803,31 @@ code {
 }
 
 /* Assistant internal activity timeline */
+.suzent-bot-svg {
+  --fg: #000000;
+  --bg: #ffffff;
+  display: block;
+  overflow: visible;
+}
+
+.dark .suzent-bot-svg {
+  --fg: #f4f4f5;
+  --bg: #18181b;
+}
+
+.suzent-bot-svg[data-pending='true'] {
+  --fg: #000000;
+  --bg: #ffe666;
+}
+
+.suzent-bot-svg .eye-path {
+  transform-origin: 0 0;
+}
+
 .activity-rail-shell {
   width: calc(100% - 0.25rem);
   max-width: 100%;
-  overflow: hidden;
+  overflow: visible;
   background: transparent;
 }
 
@@ -836,6 +846,7 @@ code {
   padding: 0.45rem 0.25rem;
   border-bottom: 2px solid #e5e5e5;
   color: #525252;
+  overflow: visible;
   font-family:
     Consolas, 'JetBrains Mono', 'Fira Code', 'SFMono-Regular', Menlo, Monaco, 'Liberation Mono',
     'Ubuntu Mono', 'DejaVu Sans Mono', 'Segoe UI Symbol', 'Courier New', monospace;
@@ -854,7 +865,7 @@ code {
 
 .activity-rail-header-active {
   position: relative;
-  overflow: hidden;
+  overflow: visible;
   color: #111;
   background-image:
     linear-gradient(
@@ -883,7 +894,7 @@ code {
 
 .activity-rail-header-pending {
   position: relative;
-  overflow: hidden;
+  overflow: visible;
   color: #111;
   background: var(--suzent-yellow);
   box-shadow: inset 0 -3px 0 #111;
