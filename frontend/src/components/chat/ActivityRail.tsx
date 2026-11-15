@@ -15,6 +15,7 @@ import { AgentAvatar } from '../sidebar/subAgentDisplay';
 import { useSubAgentStatus, watchSubAgentTask } from '../../hooks/useSubAgentStatus';
 import { parseSubAgentResult } from './subAgentResult';
 import { isSubAgentActive, isSubAgentTerminal } from './subAgentStatus';
+import { SuzentBotMark } from './SuzentBotMark';
 
 export type AguiChunkType =
   'tool' | 'reasoning' | 'text' | 'a2ui' | 'acp-permission' | 'acp-notice' | 'incoming-message';
@@ -546,6 +547,8 @@ export const ActivityRail: React.FC<{
   isThinking?: boolean;
   hasPending?: boolean;
   currentLabel?: string;
+  /** Render the spring-physics SuzentBotMark inside the live collapsed rail header (Scheme B). */
+  showSuzentBot?: boolean;
 }> = ({
   children,
   itemCount,
@@ -557,6 +560,7 @@ export const ActivityRail: React.FC<{
   isThinking = false,
   hasPending = false,
   currentLabel,
+  showSuzentBot = false,
 }) => {
   const { t } = useI18n();
   const bodyId = React.useId();
@@ -606,14 +610,14 @@ export const ActivityRail: React.FC<{
     if (!agentTaskId || isSubAgentTerminal(agentStatus)) return;
     return watchSubAgentTask(agentTaskId);
   }, [agentTaskId, agentStatus]);
-  const runningTool =
+  const activeTool =
     isCurrent &&
     !thinking &&
-    !visible &&
     !hasPending &&
     (agentResult ? isSubAgentActive(agentStatus) : latestTool?.running && !latestTool.failed)
       ? latestTool?.toolName
       : undefined;
+  const runningTool = !visible ? activeTool : undefined;
   const headerLabel =
     (isCurrent && !visible ? currentLabel : summary) ?? currentLabel ?? t('activityRail.activity');
 
@@ -642,7 +646,17 @@ export const ActivityRail: React.FC<{
                 : ''
           }`}
         >
-          {thinking ? null : isCurrent && !visible && agentResult ? (
+          {showSuzentBot && isCurrent && (!visible || hasPending) ? (
+            <SuzentBotMark
+              isThinking={thinking}
+              isStreaming={isCurrent || hasPending}
+              isActive={isCurrent || hasPending}
+              hasPending={hasPending}
+              errorCount={(summaryTools ?? []).filter((t) => t.failed).length}
+              toolName={activeTool ?? latestTool?.toolName}
+              size={28}
+            />
+          ) : thinking ? null : isCurrent && !visible && agentResult ? (
             <AgentAvatar
               model={agentTask?.model_override ?? agentResult.model}
               status={agentStatus}
