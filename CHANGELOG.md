@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Each event in a grouped Mailbox thread can be expanded to show its original content, failure reason, Replay and Delete.
 - Email plugin: sign in with your browser (OAuth2) to connect Outlook, Hotmail, Microsoft 365, and Google Workspace school or work mailboxes.
 - Mailbox, Artifacts and project lists in the sidebar open faster, and the app no longer slows down the longer scheduled tasks run.
+- Move the multi-repository Git status indicator into the right sidebar's Environment section.
 - A one-shot `suzent run` now works in the folder it was given instead of the project scratch folder, and `--tools` gives the agent exactly the tools listed.
 - Remove the static runtime identity header from historical assistant messages and prevent closed file/image previews from re-opening when switching chats.
 - A chat kept under a collapsed project can expand its subagents again.

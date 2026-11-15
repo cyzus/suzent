@@ -116,6 +116,7 @@
     ".releases/changes/focal-session-request-visible.json",
     ".releases/changes/focal-tools-package.json",
     ".releases/changes/full-viewport-image-canvas.json",
+    ".releases/changes/git-status-in-environment-sidebar.json",
     ".releases/changes/github-sync-merge-disjoint-changes.json",
     ".releases/changes/github-sync-pull-keeps-local-edits.json",
     ".releases/changes/global-artifacts-page.json",
