@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from 'react';
+import { FOCAL_CHAT_ID } from './focalAgent';
 
 // The chat last opened from Regent's board, so its header can offer the way
 // back. Module state because the board and the header sit in separate trees.
@@ -23,6 +24,21 @@ export function unmarkOpenedFromRegent(chatId: string): void {
 /** Forget the way back once the user has moved on to some other chat. */
 export function forgetRegentReturnUnless(chatId: string | null): void {
   if (openedFromRegent && openedFromRegent !== chatId) set(null);
+}
+
+// While Regent is on screen, it opens chats in its side panel. Module state so
+// the chat list, which sits outside the chat window, can reach it too.
+let besideRegent: ((chatId: string) => void) | null = null;
+
+export function setRegentSidePanelOpener(open: ((chatId: string) => void) | null): void {
+  besideRegent = open;
+}
+
+/** Opens the chat beside Regent when Regent is on screen; false when it is not. */
+export function openBesideRegent(chatId: string): boolean {
+  if (!besideRegent || chatId === FOCAL_CHAT_ID) return false;
+  besideRegent(chatId);
+  return true;
 }
 
 export function getOpenedFromRegent(): string | null {
