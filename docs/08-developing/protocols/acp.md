@@ -105,7 +105,6 @@ client -> agent:  initialize
 client -> agent:  session/new       (cwd = the client's workspace)
 client -> agent:  session/prompt
 agent  -> client: session/update    (message chunks, thoughts, tool calls)
-agent  -> client: session/request_permission
 client -> agent:  session/cancel
 ```
 
@@ -161,7 +160,6 @@ into ACP:
 | `THINKING_TEXT_MESSAGE_CONTENT` | `agent_thought_chunk` |
 | `TOOL_CALL_START` / `_ARGS` / `_END` | `tool_call`, then `tool_call_update` with `rawInput` |
 | `TOOL_CALL_RESULT` | `tool_call_update` (`completed`) |
-| `tool_approval_request` | `session/request_permission` |
 | `RUN_ERROR` | JSON-RPC error on the prompt turn |
 
 That indirection is the point. One process owns the database, so an ACP session
@@ -195,34 +193,23 @@ Because edits land on the real files through a bind mount, a client that tracks
 workspace changes — enoxian's proposal engine, an editor's diff view — sees them
 as ordinary file writes.
 
-## 4. Approvals stay yours
+## 4. Tool permissions
 
-By default an ACP session runs in `default` permission mode, so a tool call that
-needs approval becomes a `session/request_permission` request and the turn
-blocks on the client's answer. The options offered are built from the backend's
-own decision contract, so a client sees exactly the authority Suzent is willing
-to grant:
+ACP turns default to headless Auto mode. Suzent applies permission rules and
+classifies calls that still need a decision. It denies calls flagged as high
+risk, calls the classifier cannot assess, and calls that require a person to
+approve them. The agent receives the denial and can continue the turn.
 
-| Suzent action | ACP option kind |
-|---|---|
-| `allow_once` | `allow_once` |
-| `allow_session` / `allow_global` | `allow_always` |
-| `reject` | `reject_once` |
-
-Choosing an `allow_always` option persists the rule the label promised (a
-command prefix such as `git log …`, or a whole tool), because the selected
-option id is handed back to the backend as the action to resolve. A cancelled
-outcome stops the turn.
-
-To skip prompting entirely — for an unattended client — start the agent with
-`--permission-mode auto` or `--permission-mode full_access`.
+`--permission-mode full_access` is an explicit opt-in to Full Access and skips
+classification. Older configurations that pass `--permission-mode default`
+use Auto.
 
 ## 5. Flags
 
 | Flag | Default | Purpose |
 |---|---|---|
 | `--server-url` | the running local backend | Bridge to a specific backend URL |
-| `--permission-mode` | `default` | `default`, `auto`, or `full_access` |
+| `--permission-mode` | `auto` | `auto`, `default` (alias for `auto`), or `full_access` |
 | `--log-level` | `WARNING` | Diagnostics level on **stderr** |
 
 `stdout` carries protocol traffic only. Logging is forced to stderr before

@@ -37,11 +37,12 @@ def register_acp_command(app: typer.Typer) -> None:
             help="Backend URL to bridge to (default: the running local backend)",
         ),
         permission_mode: str = typer.Option(
-            "default",
+            "auto",
             "--permission-mode",
             help=(
-                "Permission mode for ACP sessions: 'default' asks the client to "
-                "approve tool calls, 'auto' and 'full_access' never ask"
+                "Permission mode for ACP sessions: 'auto' classifies tool calls "
+                "without prompting, 'default' is an alias for 'auto', and "
+                "'full_access' skips classification"
             ),
         ),
         log_level: str = typer.Option(

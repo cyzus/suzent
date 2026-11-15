@@ -248,6 +248,13 @@ async def chat(request: Request) -> StreamingResponse:
         processor = ChatProcessor()
         config_override = build_agent_config(config, require_social_tool=False)
         effective_runtime = _resolve_chat_runtime(chat_id, config)
+        if origin is not None:
+            config_override["permission_mode"] = (
+                "full_access"
+                if config.get("permission_mode") == "full_access"
+                else "auto"
+            )
+            config_override["interaction_profile"] = "headless"
 
         # When the frontend initiates a heartbeat SSE stream, claim the pending slot and
         # update heartbeat_last_run_at so the backend deferred fallback doesn't double-run.

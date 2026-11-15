@@ -496,6 +496,37 @@ async def test_ask_rule_cannot_bypass_plan_mode_write_denial(
     assert decision.reason_code == "plan_mode_readonly"
 
 
+@pytest.mark.parametrize(
+    ("profile", "behavior"),
+    [("interactive", CommandDecision.ASK), ("headless", CommandDecision.DENY)],
+)
+async def test_auto_mode_honors_a_rule_requiring_human_approval(
+    tmp_path: Path, profile: str, behavior: CommandDecision
+) -> None:
+    decision = await PermissionEngine(
+        classifier=Classifier(should_block=False)
+    ).evaluate(
+        ToolPermissionRequest("write_file", {"file_path": "src/app.py"}),
+        context(
+            tmp_path,
+            mode=PermissionMode.AUTO,
+            interaction_profile=profile,
+            permission_rules=[
+                {
+                    "tool": "write_file",
+                    "behavior": "ask",
+                    "matcher": {"type": "all"},
+                }
+            ],
+        ),
+    )
+
+    assert decision.behavior == behavior
+    assert decision.source == PermissionDecisionSource.RULE
+    if profile == "headless":
+        assert not decision.actions
+
+
 async def _delegated_task_seen(
     tmp_path: Path, db, monkeypatch, delegators: frozenset[str]
 ) -> str:
