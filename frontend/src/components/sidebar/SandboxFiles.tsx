@@ -19,7 +19,6 @@ import {
   FolderIcon,
   FolderOpenIcon,
   DocumentIcon,
-  ChevronLeftIcon,
   ChevronRightIcon,
   ChevronDownIcon,
   DocumentTextIcon,
@@ -29,6 +28,7 @@ import {
   ArrowTopRightOnSquareIcon,
   CheckIcon,
   ClipboardDocumentIcon,
+  XMarkIcon,
 } from '@heroicons/react/24/outline';
 
 interface FileItem {
@@ -201,6 +201,68 @@ const FileTreeNode: React.FC<FileTreeNodeProps> = ({
   );
 };
 
+export interface FilePreviewHeaderProps {
+  filename: string;
+  expanded?: boolean;
+  copied?: boolean;
+  canMaximize?: boolean;
+  onClose: () => void;
+  onReveal: () => void;
+  onCopyLocation: () => void;
+  onMaximize?: React.MouseEventHandler<HTMLButtonElement>;
+}
+
+export const FilePreviewHeader: React.FC<FilePreviewHeaderProps> = ({
+  filename,
+  expanded = false,
+  copied = false,
+  canMaximize = false,
+  onClose,
+  onReveal,
+  onCopyLocation,
+  onMaximize,
+}) => {
+  const { t } = useI18n();
+  return (
+    <div className="flex items-start gap-3 px-3 py-2 border-b-2 border-brutal-black bg-white dark:bg-zinc-800 shrink-0 sticky top-0 z-20">
+      <div className="flex-1 min-w-0 flex min-h-8 items-center px-1">
+        <span className="font-semibold text-xs truncate block font-mono text-neutral-700 dark:text-zinc-200">
+          {filename}
+        </span>
+      </div>
+      <BrutalIconButton
+        type="button"
+        onClick={onReveal}
+        label={t('sandbox.contextMenu.reveal')}
+        className="shrink-0 self-start"
+      >
+        <FolderOpenIcon className="h-4 w-4 stroke-2" />
+      </BrutalIconButton>
+      <BrutalIconButton
+        type="button"
+        onClick={onCopyLocation}
+        label={t(copied ? 'sandbox.locationCopied' : 'sandbox.copyLocation')}
+        className="shrink-0 self-start"
+      >
+        {copied ? (
+          <CheckIcon className="h-4 w-4 stroke-2" />
+        ) : (
+          <ClipboardDocumentIcon className="h-4 w-4 stroke-2" />
+        )}
+      </BrutalIconButton>
+      {canMaximize && onMaximize && <FullscreenButton expanded={expanded} onClick={onMaximize} />}
+      <BrutalIconButton
+        type="button"
+        onClick={onClose}
+        label={t('sandbox.closePreview')}
+        className="shrink-0 self-start"
+      >
+        <XMarkIcon className="h-4 w-4 stroke-2" />
+      </BrutalIconButton>
+    </div>
+  );
+};
+
 export const SandboxFiles: React.FC<SandboxFilesProps> = ({
   onViewModeChange,
   externalFilePath,
@@ -366,9 +428,9 @@ export const SandboxFiles: React.FC<SandboxFilesProps> = ({
     nonce: number | null | undefined;
   }>({ path: null, nonce: null });
 
-  const handleSelectFile = useCallback(
-    (path: string) => {
-      externallyOpened.current = null;
+  const openFilePreview = useCallback(
+    (path: string, fromExternal = false) => {
+      externallyOpened.current = fromExternal ? path : null;
       setSelectedFile(path);
       setError(null);
       setFileContent(null);
@@ -377,6 +439,13 @@ export const SandboxFiles: React.FC<SandboxFilesProps> = ({
       onViewModeChange?.(!isImageFile(path));
     },
     [onViewModeChange]
+  );
+
+  const handleSelectFile = useCallback(
+    (path: string) => {
+      openFilePreview(path, false);
+    },
+    [openFilePreview]
   );
 
   const handleBack = () => {
@@ -401,11 +470,10 @@ export const SandboxFiles: React.FC<SandboxFilesProps> = ({
       return;
     }
     lastHandledExternalRef.current = { path: externalFilePath, nonce: externalFileNonce };
-    handleSelectFile(externalFilePath);
-    externallyOpened.current = externalFilePath;
+    openFilePreview(externalFilePath, true);
     // externalFileNonce is included so re-clicking the same file (which keeps
     // path/name identical) still re-opens it after a "back".
-  }, [externalFilePath, externalFileName, externalFileNonce, handleSelectFile]);
+  }, [externalFilePath, externalFileName, externalFileNonce, openFilePreview]);
 
   /** Asks the backend to show a path in the system file manager; returns an error, if any. */
   const revealPath = useCallback(
@@ -610,64 +678,20 @@ export const SandboxFiles: React.FC<SandboxFilesProps> = ({
 
     return (
       <div className="flex flex-col h-full bg-white dark:bg-zinc-900">
-        <div className="flex items-start gap-3 px-3 py-2 border-b-2 border-brutal-black bg-white dark:bg-zinc-800 shrink-0 sticky top-0 z-20">
-          <BrutalButton onClick={handleBack} title={t('sandbox.back')} size="icon">
-            <ChevronLeftIcon className="w-5 h-5 stroke-2" />
-          </BrutalButton>
-          <div
-            className={
-              sidebarExpansion?.expanded
-                ? 'flex-1 min-w-0 flex min-h-8 items-center px-1'
-                : 'bg-white dark:bg-zinc-700 border-2 border-brutal-black px-3 py-1.5 flex-1 min-w-0 shadow-brutal-sm'
-            }
-          >
-            <span
-              className={
-                sidebarExpansion?.expanded
-                  ? 'font-semibold text-xs truncate block font-mono text-neutral-700 dark:text-zinc-200'
-                  : 'font-bold text-xs truncate block font-mono uppercase tracking-wider dark:text-white'
-              }
-            >
-              {filename}
-            </span>
-          </div>
-          <BrutalIconButton
-            type="button"
-            onClick={() => void revealPreviewedFile(selectedFile)}
-            label={t('sandbox.contextMenu.reveal')}
-            className="shrink-0 self-start"
-          >
-            <FolderOpenIcon className="h-4 w-4 stroke-2" />
-          </BrutalIconButton>
-          <BrutalIconButton
-            type="button"
-            onClick={() => void copyFileLocation(selectedFile)}
-            label={t(
-              previewAction?.kind === 'copied' ? 'sandbox.locationCopied' : 'sandbox.copyLocation'
-            )}
-            className="shrink-0 self-start"
-          >
-            {previewAction?.kind === 'copied' ? (
-              <CheckIcon className="h-4 w-4 stroke-2" />
-            ) : (
-              <ClipboardDocumentIcon className="h-4 w-4 stroke-2" />
-            )}
-          </BrutalIconButton>
-          {(onMaximize || sidebarExpansion) && (
-            <FullscreenButton
-              expanded={sidebarExpansion?.expanded}
-              onClick={(event) =>
-                sidebarExpansion
-                  ? sidebarExpansion.toggle()
-                  : onMaximize?.(
-                      selectedFile,
-                      filename,
-                      event.currentTarget.getBoundingClientRect()
-                    )
-              }
-            />
-          )}
-        </div>
+        <FilePreviewHeader
+          filename={filename}
+          expanded={sidebarExpansion?.expanded}
+          copied={previewAction?.kind === 'copied'}
+          canMaximize={Boolean(onMaximize || sidebarExpansion)}
+          onClose={handleBack}
+          onReveal={() => void revealPreviewedFile(selectedFile)}
+          onCopyLocation={() => void copyFileLocation(selectedFile)}
+          onMaximize={(event) =>
+            sidebarExpansion
+              ? sidebarExpansion.toggle()
+              : onMaximize?.(selectedFile, filename, event.currentTarget.getBoundingClientRect())
+          }
+        />
 
         {previewAction?.kind === 'failed' && (
           <p role="alert" className="shrink-0 px-3 py-1.5 text-xs text-red-700 dark:text-red-400">
