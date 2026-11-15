@@ -154,6 +154,7 @@ def inspect_git_repository(
     modified = 0
     untracked = 0
     conflicted = 0
+    total_changed = 0
     files: list[dict[str, str]] = []
 
     for raw_line in status_out.splitlines():
@@ -197,17 +198,20 @@ def inspect_git_repository(
                 staged += 1
             if worktree_status != ".":
                 modified += 1
+            total_changed += 1
             if len(files) < _MAX_FILES_PER_REPO:
                 status_code = index_status if index_status != "." else worktree_status
                 files.append({"path": path, "status": status_code})
         elif line.startswith("u "):
             conflicted += 1
+            total_changed += 1
             fields = line.split(" ", 10)
             path = fields[-1]
             if len(files) < _MAX_FILES_PER_REPO:
                 files.append({"path": path, "status": "U"})
         elif line.startswith("? "):
             untracked += 1
+            total_changed += 1
             path = line[2:]
             if len(files) < _MAX_FILES_PER_REPO:
                 files.append({"path": path, "status": "?"})
@@ -229,8 +233,7 @@ def inspect_git_repository(
         else:
             additions, deletions = _parse_shortstat(shortstat)
 
-    clean = staged == 0 and modified == 0 and untracked == 0 and conflicted == 0
-    total_changed = staged + modified + untracked + conflicted
+    clean = total_changed == 0
 
     return {
         "name": name or repo_root.name or str(repo_root),

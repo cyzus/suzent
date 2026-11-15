@@ -112,7 +112,9 @@ describe('collectChatArtifacts', () => {
             type: 'tool',
             toolName: 'write_file',
             state: 'completed',
-            output: writeResult('C:\\Users\\u\\.suzent\\sandbox\\projects\\p1\\artifacts\\report.md'),
+            output: writeResult(
+              'C:\\Users\\u\\.suzent\\sandbox\\projects\\p1\\artifacts\\report.md'
+            ),
           },
         ],
       }),
@@ -180,13 +182,34 @@ describe('collectChatArtifacts', () => {
     const otherPath = `${PROJECT}/artifacts/other.md`;
     const messages: Message[] = [
       assistant({
-        parts: [{ type: 'tool', toolName: 'write_file', state: 'completed', output: writeResult(planPath) }],
+        parts: [
+          {
+            type: 'tool',
+            toolName: 'write_file',
+            state: 'completed',
+            output: writeResult(planPath),
+          },
+        ],
       }),
       assistant({
-        parts: [{ type: 'tool', toolName: 'write_file', state: 'completed', output: writeResult(otherPath) }],
+        parts: [
+          {
+            type: 'tool',
+            toolName: 'write_file',
+            state: 'completed',
+            output: writeResult(otherPath),
+          },
+        ],
       }),
       assistant({
-        parts: [{ type: 'tool', toolName: 'edit_file', state: 'completed', output: writeResult(planPath) }],
+        parts: [
+          {
+            type: 'tool',
+            toolName: 'edit_file',
+            state: 'completed',
+            output: writeResult(planPath),
+          },
+        ],
       }),
     ];
 

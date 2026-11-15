@@ -643,6 +643,7 @@ export function ChatIdentity({
 
 function GitStatusWidget() {
   const { currentChatId, config } = useChatCoreStore();
+  const { t } = useI18n();
   const [repositories, setRepositories] = useState<GitRepositoryStatus[]>([]);
   const { handleBlur, open, openPopover, rootRef, closePopoverWithDelay } = useStatusHoverPopover();
   const volumesKey = (config?.sandbox_volumes || []).join('|');
@@ -696,7 +697,7 @@ function GitStatusWidget() {
         onFocus={openPopover}
         aria-haspopup="dialog"
         aria-expanded={open}
-        aria-label={`Git status: ${primary.name} (${primary.branch})`}
+        aria-label={t('status.gitAriaLabel', { name: primary.name, branch: primary.branch })}
         className={`flex items-center gap-1.5 px-1.5 py-0.5 font-mono text-[10px] font-bold tracking-normal transition-colors border ${
           totalChanged > 0
             ? 'border-brutal-black bg-white text-brutal-black dark:border-neutral-400 dark:bg-zinc-800 dark:text-white'
@@ -741,20 +742,22 @@ function GitStatusWidget() {
       {open && (
         <InformationPopover
           role="dialog"
-          aria-label="Git repositories status"
+          aria-label={t('status.gitDialogLabel')}
           className="absolute top-full right-0 z-50 w-80 max-h-96 overflow-y-auto space-y-2.5 normal-case tracking-normal"
         >
           <div className="flex items-center justify-between border-b border-neutral-300 pb-1 dark:border-zinc-700">
             <span className="text-[10px] font-bold uppercase tracking-wider text-neutral-500 dark:text-neutral-400">
-              Git Status ({repositories.length} {repositories.length === 1 ? 'repo' : 'repos'})
+              {t(repositories.length === 1 ? 'status.gitHeaderOne' : 'status.gitHeaderMany', {
+                count: String(repositories.length),
+              })}
             </span>
             {dirtyRepoCount > 0 ? (
               <span className="text-[10px] font-mono text-amber-700 dark:text-amber-300">
-                {dirtyRepoCount} modified
+                {t('status.gitDirtyCount', { count: String(dirtyRepoCount) })}
               </span>
             ) : (
               <span className="text-[10px] font-mono text-emerald-700 dark:text-emerald-400">
-                all clean
+                {t('status.gitAllClean')}
               </span>
             )}
           </div>
@@ -770,7 +773,7 @@ function GitStatusWidget() {
                     <span className="truncate">{repo.name}</span>
                     {repo.primary && repositories.length > 1 && (
                       <span className="border border-brutal-black px-1 text-[8px] uppercase dark:border-neutral-400">
-                        cwd
+                        {t('status.gitPrimaryCwd')}
                       </span>
                     )}
                   </div>
@@ -790,7 +793,7 @@ function GitStatusWidget() {
 
                 {repo.clean ? (
                   <div className="mt-1 font-mono text-[10px] text-emerald-700 dark:text-emerald-400">
-                    ✓ Working tree clean
+                    {t('status.gitWorkingTreeClean')}
                   </div>
                 ) : (
                   <div className="mt-1.5 space-y-1">
@@ -805,12 +808,22 @@ function GitStatusWidget() {
                           </span>
                         </span>
                       )}
-                      {repo.staged > 0 && <span>staged: {repo.staged}</span>}
-                      {repo.modified > 0 && <span>modified: {repo.modified}</span>}
-                      {repo.untracked > 0 && <span>untracked: {repo.untracked}</span>}
+                      {repo.staged > 0 && (
+                        <span>{t('status.gitStagedCount', { count: String(repo.staged) })}</span>
+                      )}
+                      {repo.modified > 0 && (
+                        <span>
+                          {t('status.gitModifiedCount', { count: String(repo.modified) })}
+                        </span>
+                      )}
+                      {repo.untracked > 0 && (
+                        <span>
+                          {t('status.gitUntrackedCount', { count: String(repo.untracked) })}
+                        </span>
+                      )}
                       {repo.conflicted > 0 && (
                         <span className="text-rose-700 dark:text-rose-400">
-                          conflicted: {repo.conflicted}
+                          {t('status.gitConflictedCount', { count: String(repo.conflicted) })}
                         </span>
                       )}
                     </div>
@@ -822,14 +835,19 @@ function GitStatusWidget() {
                             <span className="w-3 shrink-0 text-center font-bold text-neutral-500 dark:text-neutral-400">
                               {file.status}
                             </span>
-                            <span className="truncate text-neutral-700 dark:text-neutral-300" title={file.path}>
+                            <span
+                              className="truncate text-neutral-700 dark:text-neutral-300"
+                              title={file.path}
+                            >
                               {file.path}
                             </span>
                           </div>
                         ))}
                         {repo.total_changed > repo.files.length && (
                           <div className="text-[9px] text-neutral-400">
-                            …and {repo.total_changed - repo.files.length} more
+                            {t('status.gitMoreFiles', {
+                              count: String(repo.total_changed - repo.files.length),
+                            })}
                           </div>
                         )}
                       </div>

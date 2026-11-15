@@ -44,7 +44,6 @@ async def test_postprocess_keeps_streamed_reply_without_duplicating_or_resolving
         deps=SimpleNamespace(is_suspended=suspended, inline_a2ui_surfaces={}),
         agent=SimpleNamespace(_model_id="test", _tool_names=[]),
         postprocess_job_id="job",
-        file_snapshot=[],
     )
     saved = persist.call_args.kwargs["messages"]
     responses = [message for message in saved if isinstance(message, ModelResponse)]

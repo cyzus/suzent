@@ -65,8 +65,7 @@ export function savedPaths(toolName: string | undefined, output: string | undefi
   // A send_file that a chat app refused still names files that exist on this computer.
   if (envelope.success === false && toolName !== 'send_file') return [];
   const metadata = envelope.metadata as
-    | { saved_paths?: unknown; abs_path?: unknown; file_path?: unknown }
-    | undefined;
+    { saved_paths?: unknown; abs_path?: unknown; file_path?: unknown } | undefined;
   if (FILE_WRITE_TOOLS.has(toolName)) {
     const rawPath =
       typeof metadata?.abs_path === 'string' && metadata.abs_path.trim()

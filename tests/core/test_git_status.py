@@ -63,6 +63,22 @@ def test_inspect_git_repository_tracks_clean_and_dirty_states(tmp_path: Path) ->
     paths = {item["path"]: item["status"] for item in dirty["files"]}
     assert paths == {"hello.txt": "M", "new_file.py": "?"}
 
+    # Stage hello.txt and modify it again so it has both staged and unstaged changes (MM).
+    # total_changed must still count hello.txt only once.
+    subprocess.run(
+        ["git", "add", "hello.txt"], cwd=repo, check=True, capture_output=True
+    )
+    tracked.write_text(
+        "line1\nline2-modified\nline3\nline4-unstaged\n", encoding="utf-8"
+    )
+    both_staged_and_modified = inspect_git_repository(repo, primary=True)
+    assert both_staged_and_modified is not None
+    assert both_staged_and_modified["staged"] == 1
+    assert both_staged_and_modified["modified"] == 1
+    assert both_staged_and_modified["untracked"] == 1
+    assert both_staged_and_modified["total_changed"] == 2
+    assert len(both_staged_and_modified["files"]) == 2
+
 
 def test_multi_repo_discovery_deduplicates_and_orders_primary_first(
     tmp_path: Path, monkeypatch
