@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import shutil
-from pathlib import Path
 from typing import Any
 
 
@@ -217,7 +215,6 @@ def fork_chat(
     message_index: int | None = None,
 ) -> tuple[str, list[str]]:
     """Create an independent conversation branch without changing workspace files."""
-    from suzent.config import CONFIG
     from suzent.database import get_database
 
     db = get_database()
@@ -251,12 +248,6 @@ def fork_chat(
         }
     )
     db.update_chat(new_chat_id, config=branch_config)
-
-    history_root = Path(CONFIG.sandbox_data_path) / "file-history"
-    source_history = history_root / source_chat_id
-    new_history = history_root / new_chat_id
-    if source_history.exists():
-        shutil.copytree(source_history, new_history, dirs_exist_ok=True)
 
     if message_index is not None:
         branch = db.get_chat(new_chat_id)

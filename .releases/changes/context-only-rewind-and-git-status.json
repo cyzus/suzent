@@ -1,0 +1,6 @@
+{
+  "products": {
+    "desktop": "minor"
+  },
+  "summary": "Make conversation rewind context-only and add a multi-repository Git status indicator to the status bar."
+}

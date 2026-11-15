@@ -20,6 +20,21 @@ def _assistant(*parts: dict, **extra) -> dict:
     return {"role": "assistant", "content": "", "parts": list(parts), **extra}
 
 
+def _write_tool(name: str, abs_path: str, success: bool = True) -> dict:
+    return {
+        "type": "tool",
+        "toolName": name,
+        "state": "completed",
+        "output": json.dumps(
+            {
+                "success": success,
+                "message": "ok",
+                "metadata": {"abs_path": abs_path, "file_path": abs_path},
+            }
+        ),
+    }
+
+
 def test_transcript_outputs_keeps_deliverables_only() -> None:
     messages = [
         {"role": "user", "content": "hi"},
@@ -28,13 +43,10 @@ def test_transcript_outputs_keeps_deliverables_only() -> None:
             _tool("analyze_visual", ["/workspace/photo.png"]),
             _tool("edit_image", ["/workspace/failed.png"], success=False),
             _tool("send_file", ["/repo/report.pdf"], success=False),
-            file_changes=[
-                {"path": "/p/artifacts/brief.md"},
-                {"path": "/p/notes.md"},
-                {"path": "/p/artifacts/gone.md", "after_exists": False},
-            ],
+            _write_tool("write_file", "/p/artifacts/brief.md"),
+            _write_tool("write_file", "/p/notes.md"),
+            _write_tool("edit_file", "/p/artifacts/failed.md", success=False),
         ),
-        _assistant(file_changes_undone=True, file_changes=[{"path": "/p/artifacts/x"}]),
     ]
 
     assert artifact_index.transcript_outputs(messages) == [

@@ -35,7 +35,6 @@ import type { SubAgentStatus } from './SubAgentCallBlock';
 import { CopyButton } from './CopyButton';
 import { MessageActionMenu } from './MessageActionMenu';
 import { copyMessageText, openOwnedMenu, type MessageMenuAction } from './messageMenuActions';
-import { FileChangeSummary } from './FileChangeSummary';
 import { InlineSurface } from '../a2ui/InlineSurface';
 import type { A2UISurface } from '../../types/a2ui';
 import { StaticContent, StepPills, StreamingContent, ToolSequenceGroup } from './AssistantContent';
@@ -159,8 +158,6 @@ interface AssistantMessageProps {
   chatCitationSources?: CitationSourcesMap;
   /** Chat config model fallback for older messages without per-message metadata. */
   fallbackModel?: string;
-  /** Chat containing this message's persisted file snapshot. */
-  fileChangeChatId?: string;
   /** What this reply answers, shown above the badge. */
   replyContext?: React.ReactNode;
 }
@@ -834,7 +831,6 @@ const AssistantMessageComponent: React.FC<AssistantMessageProps> = ({
   onFork,
   chatCitationSources,
   fallbackModel,
-  fileChangeChatId,
   replyContext,
 }) => {
   const { t } = useI18n();
@@ -1084,19 +1080,6 @@ const AssistantMessageComponent: React.FC<AssistantMessageProps> = ({
     </div>
   );
 
-  const fileChangeSummary =
-    fileChangeChatId && message.file_changes ? (
-      <div className="px-1 pt-1">
-        <FileChangeSummary
-          chatId={fileChangeChatId}
-          messageIndex={message.file_change_message_index ?? messageIndex}
-          files={message.file_changes}
-          initiallyUndone={message.file_changes_undone === true}
-          onFileClick={onFileClick}
-        />
-      </div>
-    ) : null;
-
   const messageFooter = conversational ? (
     !isThinking && citationSourcesList.length > 0 ? (
       <div className="conversation-message-actions flex min-w-0 flex-wrap items-center gap-2">
@@ -1202,7 +1185,6 @@ const AssistantMessageComponent: React.FC<AssistantMessageProps> = ({
                 />
               )}
               {dispatchedChats.length > 0 && <DispatchReference chats={dispatchedChats} />}
-              {fileChangeSummary}
               {messageFooter}
             </div>
           </div>
@@ -1573,7 +1555,6 @@ const AssistantMessageComponent: React.FC<AssistantMessageProps> = ({
               )}
               onFileClick={onFileClick}
             />
-            {fileChangeSummary}
             {messageFooter}
           </div>
         </div>

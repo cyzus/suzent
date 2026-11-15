@@ -1509,7 +1509,6 @@ class ChatProcessor:
         # 8. Stream Response
         full_response = ""
         stream_failed = False
-        file_snapshot_json: list[dict] = []
 
         try:
             async for chunk in stream_agent_responses(
@@ -1541,29 +1540,6 @@ class ChatProcessor:
 
                 yield chunk
         finally:
-            # Finalise file-level change tracking and persist into the existing
-            # checkpoint so the next /retry can restore this turn's file edits.
-            try:
-                ft = getattr(deps, "file_tracker", None)
-                if ft is not None:
-                    snap = ft.make_snapshot()
-                    if snap:
-                        from suzent.core.file_tracker import FileTracker as _FT
-                        from suzent.database import get_database as _get_db
-
-                        file_snapshot_json = _changed_file_snapshot(
-                            _FT.snapshot_to_json(snap)
-                        )
-                        await asyncio.to_thread(
-                            _get_db().record_turn_file_changes,
-                            chat_id,
-                            file_snapshot_json,
-                        )
-            except Exception as _ft_fin_err:
-                logger.debug(
-                    f"[FileTracker] make_snapshot on turn end skipped: {_ft_fin_err}"
-                )
-
             # Persist a lightweight state snapshot immediately so a fast-following
             # turn can restore recent history even before heavy post-processing ends.
             #
@@ -1656,7 +1632,6 @@ class ChatProcessor:
                     deps=deps,
                     agent=agent,
                     postprocess_job_id=postprocess_job_id,
-                    file_snapshot=file_snapshot_json,
                 )
 
             task_id = f"post_process_{chat_id}_{postprocess_job_id}"
@@ -1752,7 +1727,6 @@ class ChatProcessor:
         deps: Any,
         agent: Any,
         postprocess_job_id: str,
-        file_snapshot: list[dict],
     ) -> bool:
         """Background post-processing for a completed turn.
 
@@ -1823,7 +1797,6 @@ class ChatProcessor:
                     expected_revision=snapshot_revision,
                     postprocess_job_id=postprocess_job_id,
                     inline_a2ui_surfaces=getattr(deps, "inline_a2ui_surfaces", None),
-                    file_snapshot=file_snapshot,
                     display_run_id=getattr(deps, "display_run_id", None),
                     streamed_message=getattr(deps, "streamed_message", None),
                 )
@@ -2328,7 +2301,6 @@ class ChatProcessor:
         expected_revision: Optional[int] = None,
         postprocess_job_id: Optional[str] = None,
         inline_a2ui_surfaces: Optional[dict] = None,
-        file_snapshot: Optional[list[dict]] = None,
         display_run_id: Optional[str] = None,
         streamed_message: Optional[dict[str, Any]] = None,
     ) -> bool:
@@ -2370,9 +2342,6 @@ class ChatProcessor:
                         target_messages = merge_streamed_message(
                             target_messages, streamed_message
                         )
-                        target_messages = _attach_latest_file_changes(
-                            target_messages, file_snapshot
-                        )
                 else:
                     # 100% Backend Authored: rebuild the complete display log from the full agent history
                     # so chat.messages is always a faithful log of all exchanges, including tools and reasoning.
@@ -2412,13 +2381,9 @@ class ChatProcessor:
                             chat_messages, rebuilt
                         )
                     else:
-                        rebuilt = _preserve_file_change_metadata(rebuilt, chat_messages)
                         target_messages = rebuilt or chat_messages
                     target_messages = _coalesce_unanswered_cron_triggers(
                         target_messages
-                    )
-                    target_messages = _attach_latest_file_changes(
-                        target_messages, file_snapshot
                     )
 
                 if expected_revision is not None:
@@ -3166,62 +3131,6 @@ def _preserve_client_message_ids(rebuilt: list, existing: list | None) -> list:
         if isinstance(client_message_id, str) and client_message_id:
             message["_client_message_id"] = client_message_id
     return rebuilt
-
-
-def _preserve_file_change_metadata(rebuilt: list, existing: list | None) -> list:
-    """Carry immutable per-turn file snapshots into rebuilt assistant rows."""
-    existing_snapshots = [
-        message.get("file_changes")
-        for message in existing or []
-        if isinstance(message, dict) and message.get("role") == "assistant"
-    ]
-    assistant_messages = [
-        message
-        for message in rebuilt
-        if isinstance(message, dict) and message.get("role") == "assistant"
-    ]
-    for message, snapshot in zip(assistant_messages, existing_snapshots):
-        if isinstance(snapshot, list) and snapshot:
-            message["file_changes"] = snapshot
-    return rebuilt
-
-
-def _changed_file_snapshot(snapshot: list[dict]) -> list[dict]:
-    """Drop tracked-but-unchanged entries while retaining binary changes."""
-    return [
-        entry
-        for entry in snapshot
-        if entry.get("diff")
-        or entry.get("additions")
-        or entry.get("deletions")
-        or entry.get("after_hash") is not None
-        or entry.get("after_exists") is False
-    ]
-
-
-def _attach_latest_file_changes(messages: list, snapshot: Optional[list[dict]]) -> list:
-    """Attach this turn's snapshot to its final assistant display row."""
-    changed_snapshot = _changed_file_snapshot(snapshot or [])
-    if not changed_snapshot:
-        return messages
-    for message in messages:
-        if (
-            isinstance(message, dict)
-            and message.get("role") == "assistant"
-            and message.get("file_changes") == changed_snapshot
-        ):
-            message.pop("file_changes", None)
-    target = next(
-        (
-            message
-            for message in reversed(messages)
-            if isinstance(message, dict) and message.get("role") == "assistant"
-        ),
-        None,
-    )
-    if target is not None:
-        target["file_changes"] = changed_snapshot
-    return messages
 
 
 _SOURCE_TURN_RE = re.compile(r"^t(\d+)_src_\d+$")

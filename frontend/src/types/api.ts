@@ -22,16 +22,6 @@ export interface FileAttachment {
   preview_data?: string;
 }
 
-export interface MessageFileChange {
-  path: string;
-  display_path?: string;
-  diff: string;
-  additions: number;
-  deletions: number;
-  /** False when the turn deleted the file. */
-  after_exists?: boolean;
-}
-
 export interface RunTiming {
   run_id: string;
   started_at: string;
@@ -52,9 +42,6 @@ export interface Message {
   _streaming_run_id?: string;
   images?: ImageAttachment[]; // Optional image attachments
   files?: FileAttachment[]; // Optional file attachments
-  file_changes?: MessageFileChange[]; // Persisted file snapshot for this assistant turn
-  file_changes_undone?: boolean; // Whether this message-scoped snapshot was restored
-  file_change_message_index?: number; // Raw backend index used for message-scoped undo
   raw_message_end_index?: number; // End-exclusive backend boundary for this rendered message
   // Latest timestamp of any server row folded into this bubble (tool results and
   // merged follow-up responses). `timestamp` marks when the turn's first model

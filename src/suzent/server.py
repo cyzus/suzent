@@ -51,7 +51,7 @@ from suzent.routes.chat_routes import (
     deactivate_tool,
     delete_chat,
     get_chat,
-    get_chat_file_changes,
+    get_chat_git_status_route,
     get_chats,
     delete_focal_wakeup,
     get_chat_states,
@@ -69,7 +69,6 @@ from suzent.routes.chat_routes import (
     stop_chat,
     extend_model_wait,
     update_chat,
-    undo_chat_files,
 )
 from suzent.routes.compact_routes import compact_chat
 from suzent.routes.suggestion_routes import (
@@ -1290,11 +1289,10 @@ app = Starlette(
         Route("/chat/input-suggestion", get_saved_input_suggestion, methods=["GET"]),
         Route("/chat/retry", retry_chat, methods=["POST"]),
         Route(
-            "/api/chats/{chat_id}/file-changes",
-            get_chat_file_changes,
+            "/api/chats/{chat_id}/git-status",
+            get_chat_git_status_route,
             methods=["GET"],
         ),
-        Route("/api/chats/{chat_id}/undo", undo_chat_files, methods=["POST"]),
         Route("/api/chats/{chat_id}/fork", fork_chat_route, methods=["POST"]),
         Route("/commands", get_commands, methods=["GET"]),
         Route("/chats", get_chats, methods=["GET"]),
