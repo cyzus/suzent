@@ -277,7 +277,11 @@ export function resolveSuzentStage(options: {
     case 'schedule_cron':
       return 'tasks';
     default:
-      if (canonical.includes('search') || canonical.includes('grep') || canonical.includes('glob')) {
+      if (
+        canonical.includes('search') ||
+        canonical.includes('grep') ||
+        canonical.includes('glob')
+      ) {
         return 'searching';
       }
       if (canonical.includes('read') || canonical.includes('fetch')) return 'reading';

@@ -343,7 +343,8 @@ export class SuzentParticleSystem {
         const orbit = p.orbit;
         if (isSpinning) {
           orbit.carry = this.angularVelocity * orbit.follow;
-          orbit.angle += this.angularVelocity * delta * orbit.follow + orbit.angularVelocity * delta;
+          orbit.angle +=
+            this.angularVelocity * delta * orbit.follow + orbit.angularVelocity * delta;
         } else {
           orbit.angle += (orbit.carry + orbit.angularVelocity) * delta;
           orbit.carry *= Math.exp(-2.6 * delta);
@@ -358,7 +359,12 @@ export class SuzentParticleSystem {
         const enter = Math.min(p.life / 0.34, 1);
         const smoothEnter = enter * enter * (3 - 2 * enter);
         const width = Math.max(
-          p.radius * depthScale * 1.7 * this.sizeScale * smoothEnter * (1 - 0.72 * p.returnAmount ** 2),
+          p.radius *
+            depthScale *
+            1.7 *
+            this.sizeScale *
+            smoothEnter *
+            (1 - 0.72 * p.returnAmount ** 2),
           0.5
         );
 

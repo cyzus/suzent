@@ -47,12 +47,7 @@ import {
   stepSpring,
 } from './suzentBotPhysics';
 import { SuzentParticleSystem } from './suzentBotParticles';
-import {
-  STAGE_SPECS,
-  SuzentBotStageId,
-  SuzentMorphId,
-  evaluateFullBodyAct,
-} from './suzentBotActs';
+import { STAGE_SPECS, SuzentBotStageId, SuzentMorphId, evaluateFullBodyAct } from './suzentBotActs';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
@@ -710,10 +705,7 @@ export class SuzentBotEngine {
         this.expressionCursor =
           (this.expressionCursor + 1 + Math.floor(random(0, Math.max(pool.length - 1, 1)))) %
           pool.length;
-        this.setExpression(
-          pool[this.expressionCursor],
-          spec.baseState === 'searching' ? 10 : 6
-        );
+        this.setExpression(pool[this.expressionCursor], spec.baseState === 'searching' ? 10 : 6);
       }
       this.expressionNext = now + random(1100, 2000) * ENGINE_TEMPO;
     }
@@ -824,10 +816,7 @@ export class SuzentBotEngine {
     const spec = STAGE_SPECS[this.stage] ?? STAGE_SPECS.idle;
     const baseState = spec.baseState;
     const out = this.emptyGesture();
-    if (
-      ['idle', 'curious', 'playful'].includes(baseState) &&
-      now >= this.winkNext
-    ) {
+    if (['idle', 'curious', 'playful'].includes(baseState) && now >= this.winkNext) {
       this.winkAt = now;
       this.winkEye = Math.random() < 0.5 ? 0 : 1;
       this.winkNext = now + random(4500, 10000);
@@ -926,8 +915,7 @@ export class SuzentBotEngine {
       angle = -0.5 + (speed * t * t) / 0.6;
     } else if (cycle < 2.54) angle = -0.5 + speed * (0.15 + cycle - 0.54);
     else if (cycle < 3.79) {
-      angle =
-        -0.5 + speed * 2.15 + (1.25 * speed * (1 - (1 - (cycle - 2.54) / 1.25) ** 4)) / 4;
+      angle = -0.5 + speed * 2.15 + (1.25 * speed * (1 - (1 - (cycle - 2.54) / 1.25) ** 4)) / 4;
     } else angle = turns * Math.PI * 2;
     out.turn = angle * dir;
 
@@ -1020,16 +1008,11 @@ export class SuzentBotEngine {
 
     const spec = STAGE_SPECS[this.stage] ?? STAGE_SPECS.idle;
     const baseRot = ((this.rotation.x * 180) / Math.PI) * SUZENT_TILT_SCALE + this.directRotation;
-    const actPose = evaluateFullBodyAct(
-      spec.act,
-      (now - this.stageStartedAt) / 1000,
-      morphAmount,
-      {
-        x: this.headX.x + this.directX,
-        y: this.headY.x + this.directY,
-        rot: baseRot,
-      }
-    );
+    const actPose = evaluateFullBodyAct(spec.act, (now - this.stageStartedAt) / 1000, morphAmount, {
+      x: this.headX.x + this.directX,
+      y: this.headY.x + this.directY,
+      rot: baseRot,
+    });
     if (actPose.gazeX || actPose.gazeY) {
       this.directGazeX += actPose.gazeX;
       this.directGazeY += actPose.gazeY;
@@ -1042,7 +1025,8 @@ export class SuzentBotEngine {
     const translateY = (this.headY.x + this.directY + actPose.y) * normal + effectPose.y;
     const rotation = (baseRot + actPose.rot) * normal + effectPose.rotation;
     const scaleX = actPose.sx * normal + morphScale * effectPose.scale * morphAmount;
-    const scaleY = this.scaleY.x * actPose.sy * normal + morphScale * effectPose.scale * morphAmount;
+    const scaleY =
+      this.scaleY.x * actPose.sy * normal + morphScale * effectPose.scale * morphAmount;
 
     this.transformGroup.setAttribute(
       'transform',
@@ -1136,8 +1120,7 @@ export class SuzentBotEngine {
       }
 
       const pulse = 1 + 0.07 * Math.sin(amount * Math.PI);
-      let driftX =
-        1.4 * Math.sin(0.00042 * now + index) + 0.5 * Math.sin(0.001 * now + 2 * index);
+      let driftX = 1.4 * Math.sin(0.00042 * now + index) + 0.5 * Math.sin(0.001 * now + 2 * index);
       let driftY = 0.9 * Math.sin(0.00058 * now + index);
       const autoGazeWeight = config.pointer !== false && this.pointer.active ? 0.2 : 1;
       driftX += this.pointer.x + this.aimX.x * autoGazeWeight + this.directGazeX;
@@ -1154,7 +1137,11 @@ export class SuzentBotEngine {
         const phase = (now - this.winkAt) / 320;
         winkScale = Math.max(phase < 0.42 ? 1 - phase / 0.42 : (phase - 0.42) / 0.58, 0.04);
       }
-      const scaleY = clamp(Math.max(this.eyeOpen.x * winkScale, 0.04) * eyeScale * pulse, 0.02, 2.4);
+      const scaleY = clamp(
+        Math.max(this.eyeOpen.x * winkScale, 0.04) * eyeScale * pulse,
+        0.02,
+        2.4
+      );
       el.style.display = visible && morphAmount < 0.5 ? '' : 'none';
 
       const halfHeight = EYE_HALF * scaleY + 2;
@@ -1172,7 +1159,8 @@ export class SuzentBotEngine {
         minRight = Math.min(minRight, right - scaledX);
       }
       const desired = localCenter + offsetX + driftX;
-      const bounded = maxLeft <= minRight ? clamp(desired, maxLeft, minRight) : (maxLeft + minRight) / 2;
+      const bounded =
+        maxLeft <= minRight ? clamp(desired, maxLeft, minRight) : (maxLeft + minRight) / 2;
       let finalX = bounded + (desired - bounded) * (1 - perspectiveFade);
       let finalY = y;
 
@@ -1276,7 +1264,9 @@ export class SuzentBotEngine {
       switch (eff) {
         case 'dots': {
           this.renderDots(amount, now);
-          const dist = Math.abs(((((now - this.morphStartedAt) / 1400 + 0.119) % 1) + 1) % 1 - 1 / 3);
+          const dist = Math.abs(
+            (((((now - this.morphStartedAt) / 1400 + 0.119) % 1) + 1) % 1) - 1 / 3
+          );
           const pulseDist = Math.min(dist, 1 - dist);
           const pulse = isReducedMotion() ? 1 : Math.exp(-(pulseDist ** 2) / 0.045);
           const pop = isReducedMotion() ? 1 : 0.84 + 0.22 * pulse;
@@ -1315,7 +1305,7 @@ export class SuzentBotEngine {
         }
         case 'receive': {
           this.renderReceive(amount, now);
-          const phase = clamp((((elapsed / 1700) % 1 + 1) % 1 - 0.58) / 0.34, 0, 1);
+          const phase = clamp((((((elapsed / 1700) % 1) + 1) % 1) - 0.58) / 0.34, 0, 1);
           pose.scale *= 1 + 0.11 * Math.sin(phase * Math.PI) * amount;
           break;
         }
@@ -1348,7 +1338,7 @@ export class SuzentBotEngine {
       const grow = cubicOut(phase);
       const enter = backOut(phase);
       const pulseDist = Math.abs(
-        ((((now - this.morphStartedAt) / 1400 + 0.119) % 1) + 1) % 1 - (i * 2) / 3
+        (((((now - this.morphStartedAt) / 1400 + 0.119) % 1) + 1) % 1) - (i * 2) / 3
       );
       const dist = Math.min(pulseDist, 1 - pulseDist);
       const pulse = isReducedMotion() ? 1 : Math.exp(-(dist ** 2) / 0.045);
@@ -1376,7 +1366,10 @@ export class SuzentBotEngine {
       el.setAttribute('cx', (HEAD_C + radius * Math.sin(phase)).toFixed(1));
       el.setAttribute('cy', (HEAD_C - 0.42 * radius * Math.cos(phase)).toFixed(1));
       el.setAttribute('r', Math.max(20 * depth * cubicOut(amount), 0.5).toFixed(2));
-      el.setAttribute('opacity', (clamp((cosine + 0.4) / 0.6, 0.18, 1) * cubicOut(amount)).toFixed(3));
+      el.setAttribute(
+        'opacity',
+        (clamp((cosine + 0.4) / 0.6, 0.18, 1) * cubicOut(amount)).toFixed(3)
+      );
     }
   }
 

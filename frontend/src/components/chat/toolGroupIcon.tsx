@@ -2,7 +2,12 @@ import React, { useEffect, useRef } from 'react';
 import type { ApprovalState } from './ToolCallBlock';
 import { normalizeToolName } from './toolSummary';
 import { clamp } from '../../lib/suzentBot/suzentBotGeometry';
-import { cubicInOut, cubicOut, springValue, stepSpring } from '../../lib/suzentBot/suzentBotPhysics';
+import {
+  cubicInOut,
+  cubicOut,
+  springValue,
+  stepSpring,
+} from '../../lib/suzentBot/suzentBotPhysics';
 import {
   ArrowDownOnSquareIcon,
   BoltIcon,
@@ -341,10 +346,7 @@ export type ToolSvgGlyphKind =
   | 'signal'
   | 'pending';
 
-function pickToolSvgGlyphKind(
-  toolName: string,
-  animKind: ToolIconAnimationKind
-): ToolSvgGlyphKind {
+function pickToolSvgGlyphKind(toolName: string, animKind: ToolIconAnimationKind): ToolSvgGlyphKind {
   if (animKind === 'pending') return 'pending';
   const canonical = normalizeToolName(toolName);
   switch (canonical) {
@@ -667,7 +669,7 @@ const AnimatedToolGlyphSvg: React.FC<{ kind: ToolSvgGlyphKind }> = React.memo(({
         // Signal broadcast waves radiating outward sequentially
         const waves = svg.querySelectorAll('.tg-sig-wave');
         waves.forEach((w, idx) => {
-          const phase = ((t * 1.6 - idx * 0.28) % 1 + 1) % 1;
+          const phase = (((t * 1.6 - idx * 0.28) % 1) + 1) % 1;
           const op = Math.sin(phase * Math.PI);
           w.setAttribute('opacity', clamp(op, 0.2, 1).toFixed(2));
         });
@@ -749,7 +751,14 @@ const AnimatedToolGlyphSvg: React.FC<{ kind: ToolSvgGlyphKind }> = React.memo(({
           <line x1="3.4" y1="9" x2="20.6" y2="9" strokeWidth={1.8} />
           <line x1="3.4" y1="15" x2="20.6" y2="15" strokeWidth={1.8} />
           <ellipse className="tg-globe-meridian" cx="12" cy="12" rx="4.2" ry="9" />
-          <circle className="tg-globe-sat" cx="20.5" cy="12" r="1.5" fill="currentColor" stroke="none" />
+          <circle
+            className="tg-globe-sat"
+            cx="20.5"
+            cy="12"
+            r="1.5"
+            fill="currentColor"
+            stroke="none"
+          />
         </>
       )}
       {kind === 'folder' && (
@@ -766,13 +775,28 @@ const AnimatedToolGlyphSvg: React.FC<{ kind: ToolSvgGlyphKind }> = React.memo(({
         <>
           <rect x="2.5" y="4" width="19" height="16" rx="2.5" />
           <path className="tg-term-chev" d="M6.8 9.5L10.3 12L6.8 14.5" />
-          <line className="tg-term-cursor" x1="12.5" y1="14.8" x2="17.2" y2="14.8" strokeWidth={2.6} />
+          <line
+            className="tg-term-cursor"
+            x1="12.5"
+            y1="14.8"
+            x2="17.2"
+            y2="14.8"
+            strokeWidth={2.6}
+          />
         </>
       )}
       {kind === 'memory' && (
         <>
           <rect x="6" y="6" width="12" height="12" rx="2" />
-          <rect className="tg-mem-core" x="9.5" y="9.5" width="5" height="5" rx="0.8" fill="currentColor" />
+          <rect
+            className="tg-mem-core"
+            x="9.5"
+            y="9.5"
+            width="5"
+            height="5"
+            rx="0.8"
+            fill="currentColor"
+          />
           <line className="tg-mem-pin" x1="9" y1="2.5" x2="9" y2="6" />
           <line className="tg-mem-pin" x1="15" y1="2.5" x2="15" y2="6" />
           <line className="tg-mem-pin" x1="9" y1="18" x2="9" y2="21.5" />
@@ -799,8 +823,22 @@ const AnimatedToolGlyphSvg: React.FC<{ kind: ToolSvgGlyphKind }> = React.memo(({
       {kind === 'bolt' && (
         <>
           <path className="tg-bolt-main" d="M13 2L4.5 13.5h6.5L10 22l9.5-12h-6.5L13 2z" />
-          <circle className="tg-bolt-spark" cx="4.5" cy="5.5" r="1.2" fill="currentColor" stroke="none" />
-          <circle className="tg-bolt-spark" cx="19.5" cy="18.5" r="1.2" fill="currentColor" stroke="none" />
+          <circle
+            className="tg-bolt-spark"
+            cx="4.5"
+            cy="5.5"
+            r="1.2"
+            fill="currentColor"
+            stroke="none"
+          />
+          <circle
+            className="tg-bolt-spark"
+            cx="19.5"
+            cy="18.5"
+            r="1.2"
+            fill="currentColor"
+            stroke="none"
+          />
         </>
       )}
       {kind === 'cursor' && (

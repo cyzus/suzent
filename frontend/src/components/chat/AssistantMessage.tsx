@@ -1033,7 +1033,7 @@ const AssistantMessageComponent: React.FC<AssistantMessageProps> = ({
 
   const hasActivityRail = Boolean(
     effectiveParts?.some((p) => p.type === 'tool' || (p.type === 'reasoning' && p.text?.trim())) ||
-      legacyBlocks.some((b) => b.type === 'toolCall' || b.type === 'reasoning')
+    legacyBlocks.some((b) => b.type === 'toolCall' || b.type === 'reasoning')
   );
 
   const isTrailingProse = useMemo(() => {

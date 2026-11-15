@@ -286,13 +286,7 @@ export const SuzentBotMark: React.FC<SuzentBotMarkProps> = React.memo(
                 />
               </g>
             </g>
-            <circle
-              id="notify-badge"
-              cx="198"
-              cy="40"
-              r="0"
-              style={{ display: 'none' }}
-            />
+            <circle id="notify-badge" cx="198" cy="40" r="0" style={{ display: 'none' }} />
           </g>
           <g className="suzent-act-front" />
           <g id="particles-front" />
