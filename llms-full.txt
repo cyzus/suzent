@@ -388,7 +388,7 @@ More answers are in [FAQ & troubleshooting](https://suzent.com/docs/reference/fa
 
 ## Next Steps
 
-- [Working with your agent](https://suzent.com/docs/using/conversations): hand it tasks, steer it, and undo what went wrong
+- [Working with your agent](https://suzent.com/docs/using/conversations): hand it tasks, steer it, and retry what went wrong
 - [Making it yours](https://suzent.com/docs/using/make-it-yours): what to set up next
 - [Desktop, phone, and browser](https://suzent.com/docs/getting-started/platforms): reach your agent from your phone or another computer
 - [Models & Providers](https://suzent.com/docs/models): add more models and choose which one does what
@@ -554,8 +554,10 @@ reports into a one-page brief in `brief.md`" gets better results than
   group related chats into a [project](https://suzent.com/docs/using/projects).
 - **Archive what's finished.** Right-click a chat (or a selection of chats)
   and choose **Archive chat** to clear it out of the sidebar without deleting
-  it. Archived chats collect under **Archived** at the bottom of the sidebar
-  and still show up in search; choose **Unarchive chat** to bring one back.
+  it. Archived chats still show up in search. To list them, choose **Show
+  archived chats** from the **…** menu next to **Projects**; they collect under
+  **Archived** at the bottom of the sidebar, where **Unarchive chat** brings one
+  back.
   The mobile app doesn't list archived chats.
 - **Tell it what you know.** Mention constraints, preferences, and where things
   are. What it learns about you is kept in [memory](https://suzent.com/docs/features/memory),
@@ -576,10 +578,10 @@ The agent only sees what you give it.
 
 | You want it to use | Do this |
 |---|---|
-| A document or image you have | Attach it, or paste the image into the message. It's kept in the project's folder. |
+| A document or image you have | Attach it with **+ → Attach files**, or paste the image into the message. It's kept in the project's folder. |
 | A file it can already reach | Type `@` and part of the file name to point at it exactly. |
 | Another conversation | Type `@`, choose **Chats**, and select a conversation. Suzent receives its title and reference, then reads its messages only when needed. |
-| A folder on your computer | Open it with **Working Dir** for this chat. |
+| A folder on your computer | Open it with **+ → Working Dir** for this chat. |
 | Something on the web | Just ask. It searches and reads pages on its own, and can use [a browser](https://suzent.com/docs/features/tools/browser). |
 
 See [Workspace & sandbox](https://suzent.com/docs/features/filesystem) for what the agent can
@@ -632,9 +634,9 @@ and clicking a file opens it under **Files**. Above a file open there, the
 folder button shows it in Finder or File Explorer, and the clipboard button
 copies where it is saved on your computer.
 
-Ordinary edits, such as code or notes it changed while working, stay on the
-**Edited files** card under each reply instead. Files it only read are not
-listed, and neither are changes you undid. The **Overview** shows how many
+Ordinary edits, such as code or notes it changed while working, aren't listed
+here; the file tool blocks in the reply show them, and the Git status in the
+status bar counts them when the folder is a repository. The **Overview** shows how many
 artifacts there are and the latest few images.
 
 To see everything it has made across all your chats, click **Artifacts** in the
@@ -686,14 +688,15 @@ Under **Settings → Voice & audio → Hands-free start**:
 
 | What happened | What to do |
 |---|---|
-| The answer missed the point | Edit your last message and resend it, or **Retry**. The turn is rolled back, file edits included, and runs again. |
-| The answer is fine but the file edits aren't | **Undo** on the "Edited files" card, or type `/undo`. Files go back; the conversation stays. |
+| The answer missed the point | Edit your last message and resend it, or **Retry**. The conversation is rolled back to before that turn and runs again. Files the agent changed stay as they are. |
+| The file edits are wrong | Ask the agent to put them back, or restore them yourself, for example with Git. Retry doesn't undo file changes. |
 | You want to try another direction and keep this one | **Branch from here** under any reply starts an independent copy from that point. |
 | The chat has drifted too far | Start a new chat. Memory and the project folder carry over. |
 
-Only the most recent turn can be retried or edited. Undo never overwrites a
-file you've changed yourself since. See
-[Undoing the last turn](https://suzent.com/docs/features/filesystem#undoing-the-last-turn-retry).
+Only the most recent turn can be retried or edited. If the chat's folder is a
+Git repository, the status bar at the bottom shows its branch and how many
+files have changed; click it to see which. See
+[Retrying the last turn](https://suzent.com/docs/features/filesystem#undoing-the-last-turn-retry).
 
 ## Bring in another coding agent
 
@@ -766,7 +769,13 @@ also moves them to a new computer. API keys are never synced.
 ## Look and language
 
 **Settings → Appearance** switches between English and 简体中文, light or dark
-theme, and the accent colors.
+theme, and the accent colors. It also sets how chats read:
+
+- **Interface font** and **Reply font**, including any font installed on your
+  computer (**Choose from device…**).
+- **Chat history text size** and **Chat history width**, each **Small** /
+  **Narrow**, **Medium**, or **Large** / **Wide**.
+- **Motion**: **Follow system**, or **Reduced** to calm the animations.
 
 
 ---
@@ -1488,9 +1497,10 @@ The agent cannot read outside these folders. Paths such as `/etc/passwd`,
 
 To let the agent work on a folder from your computer, mount it.
 
-The quickest way is the **Working Dir** button in the chat box: choose a folder,
-or pick one from **Recent folders**, and it's mounted for that conversation.
-Click it again to see or remove what's mounted.
+The quickest way is the **+** button in the chat box: open **Working Dir**,
+then choose a folder with **Choose a different folder...** or pick one from
+**Recent folders**, and it's mounted for that conversation. Mounted folders
+show as a small chip next to **+**; click it to see or remove what's mounted.
 
 To mount a folder for every conversation, add a line per folder to
 `~/.suzent/config/local.yaml` (settings in that file stay on this computer), in the form
@@ -1545,21 +1555,22 @@ To use the `suzent-sandbox` image, build it once from your Suzent folder with
 
 </details>
 
-## Undoing the last turn (Retry)
+<a id="undoing-the-last-turn-retry"></a>
+
+## Retrying the last turn
 
 Not happy with an answer? Click the retry icon (↺) under the agent's last
-reply, or send `/retry` in a chat app. Suzent rolls back everything that turn
-did and runs your message again:
-
-- the conversation itself,
-- files the agent created or edited with its file tools, wherever they are.
+reply, or send `/retry` in a chat app. Suzent rolls the conversation back to
+before that turn, so the agent forgets it, and runs your message again.
 
 Two limits to know:
 
 - **Only the last turn** can be retried. There is no multi-step undo.
-- **Changes made by shell commands are not undone**, such as installed
-  packages or files a script wrote. Keep your own backups (or Git) for
-  anything important.
+- **Files are not rolled back.** Anything the agent wrote, edited, or changed
+  with commands stays as it is. Keep your work in Git, or keep backups, for
+  anything important. When a chat's folders are Git repositories, the status
+  bar at the bottom of the window shows each one's branch and how many files
+  have changed; click it to see the files.
 
 ## Troubleshooting
 
@@ -2970,7 +2981,7 @@ on a computer you own: that is what makes it a
 | [MCP servers](https://suzent.com/docs/features/tools/mcp) | Adding tools from any MCP server. |
 | [Skills](https://suzent.com/docs/features/skills) | Teaching it new know-how with `SKILL.md` packages. |
 | [Plugins](https://suzent.com/docs/features/plugins) | Adding chat apps, tools, slash commands and skills, and keeping them across upgrades. |
-| [Workspace & sandbox](https://suzent.com/docs/features/filesystem) | Which folders it can reach, running code in a sandbox, and undoing a turn. |
+| [Workspace & sandbox](https://suzent.com/docs/features/filesystem) | Which folders it can reach, running code in a sandbox, and retrying a turn. |
 
 ## It keeps working
 
@@ -3607,10 +3618,10 @@ with **Working Dir**.
 
 ## Undoing changes
 
-File changes made with **Write File** and **Edit File** are rolled back when
-you retry the agent's last turn. See
-[Undoing the last turn](https://suzent.com/docs/features/filesystem#undoing-the-last-turn-retry). Files
-changed by shell commands are not covered; see [Commands](https://suzent.com/docs/features/tools/shell).
+Retrying the agent's last turn rolls back the conversation, not the files:
+changes made with **Write File** and **Edit File** stay. Keep Git or backups
+for anything important. See
+[Retrying the last turn](https://suzent.com/docs/features/filesystem#undoing-the-last-turn-retry).
 
 
 ---
@@ -3652,17 +3663,18 @@ the agent is told why so it doesn't simply try the same thing again.
 
 ## Answering a request
 
-When the agent needs approval, it pauses and asks above the message box. You can:
+When the agent needs approval, it pauses and asks above the message box,
+"May I …?", usually with the reason it is asking. You can:
 
 | Answer | What it does |
 |---|---|
-| **Yes** | Allow it this once. |
-| **Yes, and always allow for session** | Allow this tool for the rest of this chat. |
-| **Yes, and always allow globally** | Allow this tool in every chat from now on. |
-| **No** | Refuse. To tell the agent what to do instead, type in **No, and tell Suzent what to do differently** and click **Submit**. |
+| **Allow** | Allow it this once. **Ctrl+Enter** does the same. |
+| **Allow** menu (the arrow next to it) | Pick how long to remember: **Just once**, **Always allow for session** (the rest of this chat), or **Always allow globally** (every chat from now on). The button then shows your choice; click it to answer. |
+| **Decline** | Refuse. To tell the agent why, or what to do instead, type in the box first and click **Decline & send**. |
 
 For shell commands, the remember options name the command, for example
-**Yes, allow all git log … for this session** or **Yes, always allow all git log …**.
+**This command · this chat** and **This command · always**, or
+**Allow all git log … for session** and **Always allow all git log …**.
 That remembers that command, or that command prefix, not every command. Inline
 scripts can only be allowed once. A pending request survives a page refresh, so
 you can come back to it later.
@@ -4092,9 +4104,9 @@ remembered exactly as written.
 ## Undo
 
 Changes made by commands, such as installed packages or files a script wrote,
-are not rolled back by [Retry](https://suzent.com/docs/features/filesystem#undoing-the-last-turn-retry).
-Use [Files](https://suzent.com/docs/features/tools/files) tools for edits you may want to undo, and keep Git or
-backups for anything important.
+are not rolled back by [Retry](https://suzent.com/docs/features/filesystem#undoing-the-last-turn-retry),
+which only rewinds the conversation. Keep Git or backups for anything
+important.
 
 
 ---
@@ -6077,18 +6089,21 @@ your computer, turn on the sandbox for this chat (requires Docker). See
 
 > Read the README and the tests, then fix the failing test in `parser.py`.
 
-Review each request as it comes in. Answering
-**Yes, allow … for this session** saves you from approving the same command
-again in this chat.
+Review each request as it comes in. Choosing **This command · this chat** (or
+**Allow all … for session**) from the arrow next to **Allow** saves you from
+approving the same command again in this chat.
 
 ## 4. Take it back if you don't like it
 
-Click the retry icon (↺) under the agent's last reply. Suzent restores the
-files the agent edited in that turn and runs your message again. See
-[Undoing the last turn](https://suzent.com/docs/features/filesystem#undoing-the-last-turn-retry).
+Retry doesn't touch files, so keep the folder in Git. To undo the agent's
+edits, run `git restore .` (or `git checkout -- .`) in the folder, or ask the
+agent to revert them. The status bar at the bottom shows how many files have
+changed in the folder's repository; click it to see which.
 
-Retry only covers the last turn and only files the agent changed with its file
-tools, so for real projects keep using Git as well.
+To have the agent try again, click the retry icon (↺) under its last reply.
+Suzent rolls the conversation back to before that turn and runs your message
+again. See
+[Retrying the last turn](https://suzent.com/docs/features/filesystem#undoing-the-last-turn-retry).
 
 
 ---
@@ -6733,9 +6748,11 @@ The agent only reaches its project library, the shared folder, and folders you m
 
 ### How do I undo what the agent just did?
 
-Click the retry icon under its last reply, or type `/retry`. That rolls back
-the last turn, including file edits, and runs your message again. `/undo` only
-reverts the file edits. See [Slash commands](https://suzent.com/docs/reference/slash-commands#undo-and-retry).
+To undo its file changes, use Git (for example `git restore .` in the folder)
+or ask the agent to revert them; Suzent doesn't roll files back. To have it try
+again, click the retry icon under its last reply, or type `/retry`: that rewinds
+the conversation to before the last turn and runs your message again. See
+[Slash commands](https://suzent.com/docs/reference/slash-commands#retry).
 
 ### Can I stop the agent asking for permission all the time?
 
@@ -6830,7 +6847,7 @@ Open **Settings** from the bottom of the left sidebar. Pages are grouped into
 | **Devices** | Pair your phone and connect other devices. | [Devices & other agents](https://suzent.com/docs/features/nodes) |
 | **Mesh** | Make this computer reachable on your network, and work with other agents. | [Devices & other agents](https://suzent.com/docs/features/nodes) |
 | **Notifications** | Choose when a finished task notifies you (**Always**, **Only in background**, or **Never**) and which sound plays. Pop-up notifications only appear in the desktop app. | [Below](#notifications) |
-| **Appearance** | Theme, color scheme, and language. | [Making it yours](https://suzent.com/docs/using/make-it-yours#look-and-language) |
+| **Appearance** | Theme, color scheme, language, fonts, chat text size and width, and motion. | [Making it yours](https://suzent.com/docs/using/make-it-yours#look-and-language) |
 | **Background Service** | Keep Suzent running after you quit, start it at sign-in, and choose what closing the window does. | [Automation](https://suzent.com/docs/features/automation#keep-suzent-running-in-the-background) |
 | **Security** | Turn the sandbox on for every chat, and create host tokens for remote administration. | [Workspace & sandbox](https://suzent.com/docs/features/filesystem), [Permissions & approvals](https://suzent.com/docs/features/tools/human-in-the-loop) |
 | **Data & Sync** | Sync your settings, skills, and memory through GitHub. | [GitHub Sync](https://suzent.com/docs/features/github-sync) |
@@ -6913,16 +6930,14 @@ turn. The agent gets the whole skill right away instead of deciding whether to
 read it. Using the same skill again sends it again, so any edits you made to it
 since are picked up. See [Skills](https://suzent.com/docs/features/skills).
 
-## Undo and retry
+## Retry
 
 | Command | What it does | Works in |
 |---|---|---|
-| `/retry` | Roll back the last turn, including files the agent changed, and run your message again. The retry button under the agent's reply does the same. | Everywhere |
+| `/retry` | Roll the conversation back to before the last turn and run your message again. Files the agent changed stay as they are. The retry button under the agent's reply does the same. | Everywhere |
 | `/retry-edit <text>` | Like `/retry`, but runs `<text>` instead of your original message. Editing your last message in the desktop app does this. | Everywhere |
-| `/undo` | Undo the file changes from the agent's last turn, without rerunning it. It stops if a file was changed again since then. | Everywhere |
 
-Only the last turn can be undone. Changes made by shell commands aren't rolled
-back. See [Undoing the last turn](https://suzent.com/docs/features/filesystem#undoing-the-last-turn-retry).
+Only the last turn can be retried, and file changes aren't rolled back. See [Retrying the last turn](https://suzent.com/docs/features/filesystem#undoing-the-last-turn-retry).
 
 ## Goals
 
