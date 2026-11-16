@@ -49,7 +49,9 @@ def test_shell_is_not_told_twice_to_leave_files_alone():
 def test_verification_policy_is_defined_in_static_instructions():
     """The global verification requirement belongs to the static prompt."""
     assert _layers_mentioning("Verify implementation changes") == {"static"}
-    assert _layers_mentioning("3+ file edits") == set()
+    assert _layers_mentioning("3+ file edits", "3+ files") == set()
+    assert "3+ files" not in (AgentTool.forward.__doc__ or "")
+    assert "Available subagent_type profiles" not in (AgentTool.forward.__doc__ or "")
 
 
 def test_when_to_use_a_skill_is_stated_once():

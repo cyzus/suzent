@@ -125,22 +125,35 @@ def build_agent_deps(
 
     # Skills are loaded from their canonical source directories. Reuse an
     # existing workspace/custom mount when it covers the source and add a
-    # dedicated mount only for an otherwise inaccessible library.
+    # dedicated mount only for an otherwise inaccessible library. When a run
+    # restricts its toolset (exact_tools or call_allowed_tools) and excludes
+    # SkillTool, omit skill_manager so the run does not advertise or mount
+    # skills it cannot load.
     from suzent.core.repository_context import (
         discover_agent_files,
         resolve_repository_context,
     )
-    from suzent.skills.manager import get_skill_manager_for_chat
 
-    skill_manager = get_skill_manager_for_chat(
-        chat_id,
-        cwd,
-        custom_volumes=custom_volumes,
-        sandbox_enabled=sandbox_enabled,
+    base_tool_names = frozenset(_get_config_value(config, "tools", []) or [])
+    call_allowed_tools = _get_config_value(config, "call_allowed_tools", None)
+    exact_tools = bool(_get_config_value(config, "exact_tools", False))
+    skill_tool_enabled = (not exact_tools or "SkillTool" in base_tool_names) and (
+        call_allowed_tools is None or "SkillTool" in call_allowed_tools
     )
-    for volume in skill_manager.required_mounts:
-        if volume not in custom_volumes:
-            custom_volumes.append(volume)
+
+    skill_manager = None
+    if skill_tool_enabled:
+        from suzent.skills.manager import get_skill_manager_for_chat
+
+        skill_manager = get_skill_manager_for_chat(
+            chat_id,
+            cwd,
+            custom_volumes=custom_volumes,
+            sandbox_enabled=sandbox_enabled,
+        )
+        for volume in skill_manager.required_mounts:
+            if volume not in custom_volumes:
+                custom_volumes.append(volume)
     repository_agent_files = discover_agent_files(
         resolve_repository_context(chat_id, cwd, custom_volumes=custom_volumes)
     )
@@ -249,9 +262,6 @@ def build_agent_deps(
         }
         - {"", chat_id}
     )
-
-    base_tool_names = frozenset(_get_config_value(config, "tools", []) or [])
-    call_allowed_tools = _get_config_value(config, "call_allowed_tools", None)
 
     return AgentDeps(
         chat_id=chat_id,
