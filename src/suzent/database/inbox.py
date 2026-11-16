@@ -198,6 +198,25 @@ class AgentInboxOperationsMixin:
             session.commit()
             return True
 
+    def renew_agent_message_lease(
+        self, message_id: str, *, worker_id: str, lease_seconds: int
+    ) -> bool:
+        """Extend the caller's lease on a message it is still delivering."""
+        now = _utcnow()
+        with self._session() as session:
+            message = session.get(AgentInboxMessageModel, message_id)
+            if (
+                message is None
+                or message.status != "processing"
+                or message.lease_owner != worker_id
+            ):
+                return False
+            message.lease_until = now + timedelta(seconds=lease_seconds)
+            message.updated_at = now
+            session.add(message)
+            session.commit()
+            return True
+
     def retry_agent_message(
         self,
         message_id: str,
