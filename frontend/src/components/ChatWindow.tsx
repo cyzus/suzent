@@ -3660,41 +3660,18 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
 
   // Handle file click from chat messages
   const handleFileClick = useCallback(
-    async (path: string, name: string, shiftKey?: boolean) => {
-      // Let the click animation finish first
-      await new Promise((resolve) => setTimeout(resolve, 150));
-
-      // The serve endpoint's resolver handles both virtual paths ("/workspace/x",
-      // "/mnt/notebook/x") and absolute host paths under a mount ("C:/Users/.../x"),
-      // so we pass the path straight through — no client-side mapping needed.
-      try {
-        const queryParams = getSandboxParams(currentChatId || '', path, config.sandbox_volumes);
-        // no-store: an <img> or <audio> that already loaded this URL leaves a cached
-        // response without CORS headers, which would make this HEAD fail.
-        const response = await fetch(`${getApiBase()}/sandbox/serve?${queryParams}`, {
-          method: 'HEAD',
-          cache: 'no-store',
-        });
-
-        if (!response.ok) {
-          // File doesn't exist / not under a mount - do nothing (animation already played)
-          return;
-        }
-
-        if (shiftKey || embedded) {
-          // Shift+Click: Open full-screen modal directly
-          setViewingFile({ path, name });
-        } else {
-          // Normal click: Open in right sidebar (bump nonce so re-clicking the same
-          // file after going back re-opens it). RightSidebar auto-opens on the
-          // fileToPreview rise and remembers whether it was already open.
-          setSidebarFilePreview((prev) => ({ path, name, nonce: (prev?.nonce ?? 0) + 1 }));
-        }
-      } catch {
-        // Error checking file - do nothing (animation already played)
+    (path: string, name: string, shiftKey?: boolean) => {
+      if (shiftKey || embedded) {
+        // Shift+Click: Open full-screen modal directly
+        setViewingFile({ path, name });
+      } else {
+        // Normal click: Open in right sidebar immediately (bump nonce so re-clicking
+        // the same file after going back re-opens it). RightSidebar auto-opens on the
+        // fileToPreview rise and remembers whether it was already open.
+        setSidebarFilePreview((prev) => ({ path, name, nonce: (prev?.nonce ?? 0) + 1 }));
       }
     },
-    [currentChatId, config.sandbox_volumes, embedded]
+    [embedded]
   );
 
   const handleInlineAction = useCallback(

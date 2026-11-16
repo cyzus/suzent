@@ -107,6 +107,17 @@ def transcript_outputs(messages: list[Any]) -> list[str]:
     return found
 
 
+def _is_virtual_or_relative(path: str) -> bool:
+    normalized = path.replace("\\", "/")
+    if normalized.startswith(
+        ("/workspace/", "/shared/", "/mnt/", "/persistence/", "/uploads/")
+    ):
+        return True
+    if len(path) >= 2 and path[1] == ":":
+        return False
+    return not Path(path).is_absolute()
+
+
 def _to_host(
     path: str, project_dir: Path, resolve: Callable[[str], Path]
 ) -> Path | None:
@@ -115,7 +126,9 @@ def _to_host(
         candidate = project_dir / normalized.removeprefix("/workspace/")
     else:
         candidate = Path(path)
-        if not candidate.is_absolute() or not candidate.exists():
+        if not candidate.exists():
+            if not _is_virtual_or_relative(path):
+                return None
             try:
                 candidate = resolve(path)
             except Exception:
@@ -158,6 +171,7 @@ def _library_files(project_dir: Path) -> list[Path]:
 
 
 _outputs_cache: dict[str, tuple[int, list[str]]] = {}
+_resolved_cache: dict[tuple[str, str], tuple[int, list[Path]]] = {}
 _outputs_lock = Lock()
 
 
@@ -210,16 +224,34 @@ def build_artifact_index() -> ArtifactIndex:
     # Archived chats still exist, so they can serve a library whose chats are all archived.
     serve_chat: dict[str, str] = db.project_chat_ids(list(project_dirs))
     delivered: dict[Path, str] = {}
-    for chat_id, title, project_id, _seq in revisions:
+    for chat_id, title, project_id, seq in revisions:
         serve_chat[project_id] = chat_id
         outputs = chat_outputs.get(chat_id)
         if not outputs:
             continue
-        resolver = _lazy_resolver(chat_id)
-        for raw in outputs:
-            host = _to_host(raw, project_dirs[project_id], resolver)
-            if host is None:
-                continue
+        project_dir = project_dirs[project_id]
+        cache_key = (chat_id, str(project_dir))
+        with _outputs_lock:
+            cached_hosts = (
+                _resolved_cache[cache_key][1]
+                if seq is not None
+                and cache_key in _resolved_cache
+                and _resolved_cache[cache_key][0] == seq
+                else None
+            )
+        if cached_hosts is None:
+            resolver = _lazy_resolver(chat_id)
+            hosts = [
+                host
+                for raw in outputs
+                if (host := _to_host(raw, project_dir, resolver)) is not None
+            ]
+            if seq is not None:
+                with _outputs_lock:
+                    _resolved_cache[cache_key] = (seq, hosts)
+        else:
+            hosts = [host for host in cached_hosts if host.is_file()]
+        for host in hosts:
             origin[host] = (chat_id, title)
             delivered.setdefault(host, project_id)
 

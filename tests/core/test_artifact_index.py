@@ -159,3 +159,31 @@ def test_index_rereads_only_changed_transcripts(temp_db, tmp_path, monkeypatch) 
         "cat.png": chat_id,
         "dog.png": chat_id,
     }
+
+
+def test_missing_absolute_host_path_does_not_build_resolver(
+    temp_db, tmp_path, monkeypatch
+) -> None:
+    monkeypatch.setattr(CONFIG, "sandbox_data_path", str(tmp_path / "sandbox"))
+    monkeypatch.setattr("suzent.database.get_database", lambda: temp_db)
+    project_id = temp_db.create_project("Poster", "poster")
+    missing_abs = str((tmp_path / "deleted-report.pdf").resolve())
+    temp_db.create_chat(
+        "Old deliverable",
+        {},
+        messages=[_assistant(_tool("send_file", [missing_abs]))],
+        project_id=project_id,
+    )
+
+    def _unexpected_resolver(_chat_id: str):
+        raise AssertionError(
+            "Resolver should not be invoked for missing absolute paths"
+        )
+
+    monkeypatch.setattr(
+        "suzent.routes.sandbox_routes._get_resolver_for_request",
+        _unexpected_resolver,
+    )
+
+    index = artifact_index.build_artifact_index()
+    assert index.items == []

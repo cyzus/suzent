@@ -402,13 +402,24 @@ def get_skill_manager_for_chat(
         from suzent.database import get_database
 
         database = get_database()
-        chat = database.get_chat(chat_id)
+        get_access = getattr(database, "get_chat_access_info", None)
+        chat = (
+            get_access(chat_id) if callable(get_access) else database.get_chat(chat_id)
+        )
         if chat:
+            chat_config = (
+                chat.get("config")
+                if isinstance(chat, dict)
+                else getattr(chat, "config", None)
+            ) or {}
+            chat_project_id = (
+                chat.get("project_id")
+                if isinstance(chat, dict)
+                else getattr(chat, "project_id", None)
+            )
             if configured_volumes is None:
-                configured_volumes = list(
-                    (chat.config or {}).get("sandbox_volumes") or []
-                )
-            if getattr(chat, "project_id", None):
+                configured_volumes = list(chat_config.get("sandbox_volumes") or [])
+            if chat_project_id:
                 configured_volumes = database.with_project_folders(
                     chat, configured_volumes
                 )
