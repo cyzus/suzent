@@ -581,3 +581,58 @@ async def test_a_wedged_skill_path_does_not_stall_the_loop() -> None:
 
     # Rendering took ~1.5s. On the loop the ticker would not have run at all.
     assert ticks > 10, f"event loop was blocked during rendering ({ticks} ticks)"
+
+
+# --- conditional gating on SkillTool availability ----------------------------
+
+
+@pytest.mark.asyncio
+async def test_hook_respects_call_allowed_tools() -> None:
+    manager = _Manager([_skill("docx")])
+    deps_without_skill = SimpleNamespace(
+        skill_manager=manager,
+        sandbox_enabled=True,
+        last_messages=[],
+        call_allowed_tools=frozenset({"ReadFileTool", "GrepTool"}),
+    )
+    deps_with_skill = SimpleNamespace(
+        skill_manager=manager,
+        sandbox_enabled=True,
+        last_messages=[],
+        call_allowed_tools=frozenset({"ReadFileTool", "SkillTool"}),
+    )
+
+    assert await skills_reminder_hook("chat-1", deps_without_skill) is None
+    assert await skills_reminder_hook("chat-1", deps_with_skill) is not None
+
+
+def test_build_agent_deps_keeps_skills_when_skill_tool_is_enabled() -> None:
+    from suzent.core.context_injection import build_agent_deps
+
+    # 1. Default mode (exact_tools=False): SkillTool is a builtin, so skill_manager stays
+    deps_default = build_agent_deps(
+        "chat-default", config={"tools": ["ReadFileTool"], "memory_enabled": False}
+    )
+    assert deps_default.skill_manager is not None
+
+    # 2. exact_tools=True WITH SkillTool enabled: skill_manager stays
+    deps_exact_with = build_agent_deps(
+        "chat-exact-with",
+        config={
+            "tools": ["ReadFileTool", "SkillTool"],
+            "exact_tools": True,
+            "memory_enabled": False,
+        },
+    )
+    assert deps_exact_with.skill_manager is not None
+
+    # 3. exact_tools=True WITHOUT SkillTool: skill_manager is omitted
+    deps_exact_without = build_agent_deps(
+        "chat-exact-without",
+        config={
+            "tools": ["ReadFileTool", "RunCommandTool"],
+            "exact_tools": True,
+            "memory_enabled": False,
+        },
+    )
+    assert deps_exact_without.skill_manager is None

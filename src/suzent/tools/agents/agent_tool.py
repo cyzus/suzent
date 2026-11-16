@@ -85,8 +85,7 @@ class AgentTool(Tool):
         "you will implement in your own loop.\n"
         "- **write**: when file editing work is independent of your current turn and can run in "
         "parallel (run_in_background=True), or when you want changes isolated in a worktree.\n"
-        "- **verify**: for an independent review of high-risk or coupled changes; "
-        "run focused checks yourself for smaller changes.\n"
+        "- **verify**: for an independent review of high-risk or coupled changes.\n"
         "- **web**: for independent research with a compact result; keep research "
         "you need to reason over in your own context.\n"
         "- **general (no subagent_type)**: for a bounded independent task with "
@@ -249,17 +248,6 @@ class AgentTool(Tool):
         2. **Context protection** — raw tool output (search results, file reads, build logs)
            stays in the sub-agent's context, not yours. Use when a task would otherwise
            fill your window with content you won't need again.
-
-        Available subagent_type profiles and when to use them:
-        - 'explore': find files by pattern, search code for keywords, answer codebase questions.
-          Use when a direct search might take more than 3 tries or produce large raw output.
-        - 'plan': design implementation strategy, identify critical files, weigh trade-offs.
-          Use before writing code on any non-trivial task.
-        - 'write': edit files. Use with run_in_background=True for parallel independent changes,
-          or with isolation='worktree' to sandbox risky edits.
-        - 'verify': run tests/build/lint and attempt to break the code. REQUIRED before
-          reporting completion on any non-trivial code change (3+ files or logic changes).
-        - 'web': web research. Use to keep raw search results out of your context.
 
         When the agent is done, its result is returned to you — not shown directly to the user.
         Summarize findings in your own words when reporting back. To follow up with the same

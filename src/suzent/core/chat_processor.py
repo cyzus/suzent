@@ -1693,6 +1693,9 @@ class ChatProcessor:
                                 user_id,
                                 full_response.strip(),
                                 was_cancelled,
+                                streamed_message=getattr(
+                                    deps, "streamed_message", None
+                                ),
                             ),
                             task_id=f"goal_continue_{chat_id}_{uuid.uuid4().hex}",
                             description=f"Goal continuation for chat {chat_id}",
