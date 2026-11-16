@@ -460,20 +460,24 @@ class ProjectOperationsMixin:
     def get_chat_project_id(self, chat_id: str) -> Optional[str]:
         """Return the project_id for a chat, or None if not found."""
         with self._session() as session:
-            chat = session.get(ChatModel, chat_id)
-            return chat.project_id if chat else None
+            row = session.exec(
+                select(ChatModel.project_id).where(ChatModel.id == chat_id)
+            ).first()
+            return row if isinstance(row, str) else (row[0] if row else None)
 
     def get_chat_project_slug(self, chat_id: str) -> str:
         """Return the project slug for a chat, falling back to the default project slug.
 
         Used by path resolution to map a chat to its on-disk project directory.
         """
-        project_id = self.get_chat_project_id(chat_id)
-        if project_id:
-            project = self.get_project(project_id)
-            if project:
-                return project.slug
-        return self.DEFAULT_PROJECT_SLUG
+        with self._session() as session:
+            row = session.exec(
+                select(ProjectModel.slug)
+                .join(ChatModel, ChatModel.project_id == ProjectModel.id)
+                .where(ChatModel.id == chat_id)
+            ).first()
+        slug = row if isinstance(row, str) else (row[0] if row else None)
+        return slug or self.DEFAULT_PROJECT_SLUG
 
     def resolve_chat_working_directory(self, chat: Any) -> Optional[str]:
         """The working directory a chat runs in, if one is configured.
@@ -488,12 +492,16 @@ class ProjectOperationsMixin:
             own = chat.get("working_directory")
             config = chat.get("config") or {}
             project_id = chat.get("project_id")
+            if own or config.get("cwd"):
+                return own or config.get("cwd")
+            if "project_working_directory" in chat:
+                return chat.get("project_working_directory")
         else:
             own = getattr(chat, "working_directory", None)
             config = getattr(chat, "config", None) or {}
             project_id = getattr(chat, "project_id", None)
-        if own or config.get("cwd"):
-            return own or config.get("cwd")
+            if own or config.get("cwd"):
+                return own or config.get("cwd")
         if not project_id:
             return None
         project = self.get_project(project_id)
@@ -516,8 +524,12 @@ class ProjectOperationsMixin:
         )
         if not isinstance(project_id, str):
             return merged
-        project = self.get_project(project_id)
-        if not project or not project.extra_folders:
+        if isinstance(chat, dict) and "project_extra_folders" in chat:
+            extra_folders = chat.get("project_extra_folders") or []
+        else:
+            project = self.get_project(project_id)
+            extra_folders = project.extra_folders if project else []
+        if not extra_folders:
             return merged
 
         def normalize(path: str) -> str:
@@ -530,7 +542,7 @@ class ProjectOperationsMixin:
             if parsed:
                 mounted_hosts.add(normalize(parsed[0]))
                 mount_points.add(parsed[1])
-        for folder in project.extra_folders:
+        for folder in extra_folders:
             if normalize(folder) in mounted_hosts:
                 continue
             name = normalize(folder).split("/")[-1] or "data"

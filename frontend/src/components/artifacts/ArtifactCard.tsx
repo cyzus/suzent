@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   CheckIcon,
   ClipboardDocumentIcon,
@@ -34,7 +34,31 @@ interface CoverProps {
 
 export const ArtifactCover: React.FC<CoverProps> = ({ kind, name, src }) => {
   const [failed, setFailed] = useState(!src);
+  const [inView, setInView] = useState(
+    () => kind !== 'video' || typeof IntersectionObserver === 'undefined'
+  );
+  const videoContainerRef = useRef<HTMLDivElement | null>(null);
   const ext = extension(name);
+
+  useEffect(() => {
+    if (kind !== 'video' || inView) return;
+    const node = videoContainerRef.current;
+    if (!node || typeof IntersectionObserver === 'undefined') {
+      setInView(true);
+      return;
+    }
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          setInView(true);
+          observer.disconnect();
+        }
+      },
+      { rootMargin: '200px' }
+    );
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [kind, inView]);
 
   if (kind === 'image' && !failed && src) {
     return (
@@ -42,6 +66,7 @@ export const ArtifactCover: React.FC<CoverProps> = ({ kind, name, src }) => {
         src={src}
         alt={name}
         loading="lazy"
+        decoding="async"
         onError={() => setFailed(true)}
         className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.04]"
       />
@@ -49,19 +74,21 @@ export const ArtifactCover: React.FC<CoverProps> = ({ kind, name, src }) => {
   }
   if (kind === 'video' && !failed && src) {
     return (
-      <>
-        <video
-          src={`${src}#t=0.1`}
-          muted
-          playsInline
-          preload="metadata"
-          onError={() => setFailed(true)}
-          className="h-full w-full bg-black object-cover"
-        />
+      <div ref={videoContainerRef} className="relative h-full w-full bg-black">
+        {inView && (
+          <video
+            src={`${src}#t=0.1`}
+            muted
+            playsInline
+            preload="metadata"
+            onError={() => setFailed(true)}
+            className="h-full w-full bg-black object-cover"
+          />
+        )}
         <span className="absolute inset-0 m-auto flex h-11 w-11 items-center justify-center border-2 border-brutal-black bg-white text-brutal-black shadow-brutal-sm transition-transform group-hover:scale-110">
           <PlayIcon className="ml-0.5 h-5 w-5 stroke-[2.5]" />
         </span>
-      </>
+      </div>
     );
   }
   if (kind === 'audio') {

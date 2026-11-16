@@ -76,13 +76,20 @@ interface ArtifactsPageProps {
   onOpenChat: (chatId: string) => void;
 }
 
+interface ArtifactsSnapshot {
+  projects: ArtifactProject[];
+  items: IndexedArtifact[];
+}
+
+let cachedSnapshot: ArtifactsSnapshot | null = null;
+
 /** Everything the agent delivered, across projects. */
 export const ArtifactsPage: React.FC<ArtifactsPageProps> = ({ onOpenChat }) => {
   const { t, locale } = useI18n();
-  const [projects, setProjects] = useState<ArtifactProject[]>([]);
-  const [items, setItems] = useState<IndexedArtifact[]>([]);
+  const [projects, setProjects] = useState<ArtifactProject[]>(() => cachedSnapshot?.projects ?? []);
+  const [items, setItems] = useState<IndexedArtifact[]>(() => cachedSnapshot?.items ?? []);
   const [loading, setLoading] = useState(false);
-  const [loaded, setLoaded] = useState(false);
+  const [loaded, setLoaded] = useState(() => cachedSnapshot !== null);
   const [error, setError] = useState<string | null>(null);
   const [projectId, setProjectId] = useState<string | null>(null);
   const [kind, setKind] = useState<KindFilter>('all');
@@ -111,6 +118,7 @@ export const ArtifactsPage: React.FC<ArtifactsPageProps> = ({ onOpenChat }) => {
         projects: ArtifactProject[];
         items: IndexedArtifact[];
       };
+      cachedSnapshot = { projects: data.projects, items: data.items };
       setProjects(data.projects);
       setItems(data.items);
     } catch {

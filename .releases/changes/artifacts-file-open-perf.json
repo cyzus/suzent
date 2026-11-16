@@ -1,0 +1,1 @@
+{"products":{"desktop":"patch"},"summary":"Speed up opening Artifacts and in-chat deliverable files by avoiding full chat transcript loads and redundant skill scans during path resolution."}

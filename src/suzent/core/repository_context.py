@@ -115,11 +115,44 @@ def resolve_repository_context(
     project_dir = (
         database.get_project_dir(chat_id).resolve() if chat_id else process_cwd
     )
-    chat = database.get_chat(chat_id) if chat_id else None
-    configured_cwd = cwd or (chat.working_directory if chat else None)
+    get_access = getattr(database, "get_chat_access_info", None)
+    chat = (
+        (get_access(chat_id) if callable(get_access) else database.get_chat(chat_id))
+        if chat_id
+        else None
+    )
+    chat_config = (
+        (
+            chat.get("config")
+            if isinstance(chat, dict)
+            else getattr(chat, "config", None)
+        )
+        or {}
+        if chat
+        else {}
+    )
+    chat_wd = (
+        (
+            chat.get("working_directory")
+            if isinstance(chat, dict)
+            else getattr(chat, "working_directory", None)
+        )
+        if chat
+        else None
+    )
+    chat_project_id = (
+        (
+            chat.get("project_id")
+            if isinstance(chat, dict)
+            else getattr(chat, "project_id", None)
+        )
+        if chat
+        else None
+    )
+    configured_cwd = cwd or chat_wd
     if not configured_cwd and chat:
-        configured_cwd = (chat.config or {}).get("cwd")
-    if not configured_cwd and getattr(chat, "project_id", None):
+        configured_cwd = chat_config.get("cwd")
+    if not configured_cwd and chat_project_id:
         configured_cwd = database.resolve_chat_working_directory(chat)
 
     from suzent.config import get_effective_volumes
@@ -127,8 +160,8 @@ def resolve_repository_context(
 
     configured_volumes = custom_volumes
     if configured_volumes is None and chat:
-        configured_volumes = list((chat.config or {}).get("sandbox_volumes") or [])
-    if getattr(chat, "project_id", None):
+        configured_volumes = list(chat_config.get("sandbox_volumes") or [])
+    if chat_project_id:
         configured_volumes = database.with_project_folders(chat, configured_volumes)
     effective_volumes = get_effective_volumes(configured_volumes or [])
     mounts: list[tuple[Path, str]] = []

@@ -98,6 +98,21 @@ function legacyPaths(content: string): string[] {
   );
 }
 
+const messagePathsCache = new WeakMap<Message, string[]>();
+
+function pathsForMessage(message: Message): string[] {
+  if (message.role !== 'assistant') return [];
+  const cached = messagePathsCache.get(message);
+  if (cached !== undefined) return cached;
+  const computed = message.parts?.length
+    ? partPaths(message.parts)
+    : message.content
+      ? legacyPaths(message.content)
+      : [];
+  messagePathsCache.set(message, computed);
+  return computed;
+}
+
 /**
  * Files the agent produced in this conversation, newest first, one entry per path.
  *
@@ -119,13 +134,7 @@ export function collectChatArtifacts(messages: Message[]): ChatArtifact[] {
   };
 
   messages.forEach((message, index) => {
-    if (message.role !== 'assistant') return;
-    const paths = message.parts?.length
-      ? partPaths(message.parts)
-      : message.content
-        ? legacyPaths(message.content)
-        : [];
-    for (const path of paths) add(path, index);
+    for (const path of pathsForMessage(message)) add(path, index);
   });
 
   return [...byPath.values()].reverse();

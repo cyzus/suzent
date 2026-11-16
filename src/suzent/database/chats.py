@@ -362,6 +362,38 @@ class ChatOperationsMixin:
             ).first()
         return None if row is None else (row[1] or {})
 
+    def get_chat_access_info(self, chat_id: str) -> Optional[Dict[str, Any]]:
+        """Lightweight metadata needed for path/volume resolution without messages or agent_state."""
+        with self._session() as session:
+            row = session.exec(
+                select(
+                    ChatModel.id,
+                    ChatModel.config,
+                    ChatModel.working_directory,
+                    ChatModel.project_id,
+                    ProjectModel.slug,
+                    ProjectModel.working_directory,
+                    ProjectModel.extra_folders,
+                )
+                .join(
+                    ProjectModel,
+                    ProjectModel.id == ChatModel.project_id,
+                    isouter=True,
+                )
+                .where(ChatModel.id == chat_id)
+            ).first()
+        if row is None:
+            return None
+        return {
+            "id": row[0],
+            "config": row[1] or {},
+            "working_directory": row[2],
+            "project_id": row[3],
+            "project_slug": row[4],
+            "project_working_directory": row[5],
+            "project_extra_folders": row[6] or [],
+        }
+
     def commit_chat_changes(
         self,
         session: Session,
