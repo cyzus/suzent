@@ -14,6 +14,7 @@
     ".releases/changes/add-provider-redesign.json",
     ".releases/changes/agent-activity-presentation.json",
     ".releases/changes/agent-desktop-1-2.json",
+    ".releases/changes/agent-inbox-parallel-delivery.json",
     ".releases/changes/agent-inbox-system-reminders.json",
     ".releases/changes/align-model-wait-notice.json",
     ".releases/changes/anchor-long-press-menus.json",

@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [v0.27.1] - 2026-11-16
 
 ### Release notes
+- Messages from Regent and other agents reach their sessions promptly instead of waiting behind another session's long-running turn.
 - The unread dot in the mailbox list is no longer partly cut off.
 
 ## [v0.27.0] - 2026-11-16
