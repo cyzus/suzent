@@ -21,8 +21,10 @@ reports into a one-page brief in `brief.md`" gets better results than
   group related chats into a [project](./projects.md).
 - **Archive what's finished.** Right-click a chat (or a selection of chats)
   and choose **Archive chat** to clear it out of the sidebar without deleting
-  it. Archived chats collect under **Archived** at the bottom of the sidebar
-  and still show up in search; choose **Unarchive chat** to bring one back.
+  it. Archived chats still show up in search. To list them, choose **Show
+  archived chats** from the **…** menu next to **Projects**; they collect under
+  **Archived** at the bottom of the sidebar, where **Unarchive chat** brings one
+  back.
   The mobile app doesn't list archived chats.
 - **Tell it what you know.** Mention constraints, preferences, and where things
   are. What it learns about you is kept in [memory](../03-features/memory/README.md),
@@ -43,10 +45,10 @@ The agent only sees what you give it.
 
 | You want it to use | Do this |
 |---|---|
-| A document or image you have | Attach it, or paste the image into the message. It's kept in the project's folder. |
+| A document or image you have | Attach it with **+ → Attach files**, or paste the image into the message. It's kept in the project's folder. |
 | A file it can already reach | Type `@` and part of the file name to point at it exactly. |
 | Another conversation | Type `@`, choose **Chats**, and select a conversation. Suzent receives its title and reference, then reads its messages only when needed. |
-| A folder on your computer | Open it with **Working Dir** for this chat. |
+| A folder on your computer | Open it with **+ → Working Dir** for this chat. |
 | Something on the web | Just ask. It searches and reads pages on its own, and can use [a browser](../03-features/tools/browser.md). |
 
 See [Workspace & sandbox](../03-features/filesystem.md) for what the agent can
@@ -99,9 +101,9 @@ and clicking a file opens it under **Files**. Above a file open there, the
 folder button shows it in Finder or File Explorer, and the clipboard button
 copies where it is saved on your computer.
 
-Ordinary edits, such as code or notes it changed while working, stay on the
-**Edited files** card under each reply instead. Files it only read are not
-listed, and neither are changes you undid. The **Overview** shows how many
+Ordinary edits, such as code or notes it changed while working, aren't listed
+here; the file tool blocks in the reply show them, and the Git status in the
+status bar counts them when the folder is a repository. The **Overview** shows how many
 artifacts there are and the latest few images.
 
 To see everything it has made across all your chats, click **Artifacts** in the
@@ -153,14 +155,15 @@ Under **Settings → Voice & audio → Hands-free start**:
 
 | What happened | What to do |
 |---|---|
-| The answer missed the point | Edit your last message and resend it, or **Retry**. The turn is rolled back, file edits included, and runs again. |
-| The answer is fine but the file edits aren't | **Undo** on the "Edited files" card, or type `/undo`. Files go back; the conversation stays. |
+| The answer missed the point | Edit your last message and resend it, or **Retry**. The conversation is rolled back to before that turn and runs again. Files the agent changed stay as they are. |
+| The file edits are wrong | Ask the agent to put them back, or restore them yourself, for example with Git. Retry doesn't undo file changes. |
 | You want to try another direction and keep this one | **Branch from here** under any reply starts an independent copy from that point. |
 | The chat has drifted too far | Start a new chat. Memory and the project folder carry over. |
 
-Only the most recent turn can be retried or edited. Undo never overwrites a
-file you've changed yourself since. See
-[Undoing the last turn](../03-features/filesystem.md#undoing-the-last-turn-retry).
+Only the most recent turn can be retried or edited. If the chat's folder is a
+Git repository, the status bar at the bottom shows its branch and how many
+files have changed; click it to see which. See
+[Retrying the last turn](../03-features/filesystem.md#undoing-the-last-turn-retry).
 
 ## Bring in another coding agent
 

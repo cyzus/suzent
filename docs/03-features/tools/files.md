@@ -95,7 +95,7 @@ with **Working Dir**.
 
 ## Undoing changes
 
-File changes made with **Write File** and **Edit File** are rolled back when
-you retry the agent's last turn. See
-[Undoing the last turn](../filesystem.md#undoing-the-last-turn-retry). Files
-changed by shell commands are not covered; see [Commands](./shell.md).
+Retrying the agent's last turn rolls back the conversation, not the files:
+changes made with **Write File** and **Edit File** stay. Keep Git or backups
+for anything important. See
+[Retrying the last turn](../filesystem.md#undoing-the-last-turn-retry).

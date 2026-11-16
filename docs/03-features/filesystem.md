@@ -1,7 +1,7 @@
 ---
 sidebar_position: 5
 title: Workspace & sandbox
-description: Which folders your agent can reach, where its files go, how to run code in an isolated sandbox, and how to undo a turn.
+description: Which folders your agent can reach, where its files go, how to run code in an isolated sandbox, and how to retry a turn.
 ---
 
 # Workspace & sandbox
@@ -74,9 +74,10 @@ The agent cannot read outside these folders. Paths such as `/etc/passwd`,
 
 To let the agent work on a folder from your computer, mount it.
 
-The quickest way is the **Working Dir** button in the chat box: choose a folder,
-or pick one from **Recent folders**, and it's mounted for that conversation.
-Click it again to see or remove what's mounted.
+The quickest way is the **+** button in the chat box: open **Working Dir**,
+then choose a folder with **Choose a different folder...** or pick one from
+**Recent folders**, and it's mounted for that conversation. Mounted folders
+show as a small chip next to **+**; click it to see or remove what's mounted.
 
 To mount a folder for every conversation, add a line per folder to
 `~/.suzent/config/local.yaml` (settings in that file stay on this computer), in the form
@@ -131,21 +132,22 @@ To use the `suzent-sandbox` image, build it once from your Suzent folder with
 
 </details>
 
-## Undoing the last turn (Retry)
+<a id="undoing-the-last-turn-retry"></a>
+
+## Retrying the last turn
 
 Not happy with an answer? Click the retry icon (↺) under the agent's last
-reply, or send `/retry` in a chat app. Suzent rolls back everything that turn
-did and runs your message again:
-
-- the conversation itself,
-- files the agent created or edited with its file tools, wherever they are.
+reply, or send `/retry` in a chat app. Suzent rolls the conversation back to
+before that turn, so the agent forgets it, and runs your message again.
 
 Two limits to know:
 
 - **Only the last turn** can be retried. There is no multi-step undo.
-- **Changes made by shell commands are not undone**, such as installed
-  packages or files a script wrote. Keep your own backups (or Git) for
-  anything important.
+- **Files are not rolled back.** Anything the agent wrote, edited, or changed
+  with commands stays as it is. Keep your work in Git, or keep backups, for
+  anything important. When a chat's folders are Git repositories, the status
+  bar at the bottom of the window shows each one's branch and how many files
+  have changed; click it to see the files.
 
 ## Troubleshooting
 
