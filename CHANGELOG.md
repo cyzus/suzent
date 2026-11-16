@@ -7,30 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [v0.27.1] - 2026-11-16
 
-> <!-- highlights -->
-> ### Highlights
->
-> - **Regent finally talks to your chats in time.** A message Regent sends to another
->   conversation used to wait behind that session's whole running turn — on our own
->   machine the average wait for a queued message reached 55 minutes on 15 November and
->   103 minutes on 16 November, and a message to an idle chat once took 5.4 hours. Each
->   chat now receives its messages in its own delivery slot, up to eight at a time, while
->   messages to the same chat stay in order.
-> - **The Mailbox unread dot is whole again.** Its outline was being clipped by the row,
->   so it looked like a half-drawn square instead of a marker you can trust.
->
-> **这篇中文版：**
->
-> - **Regent 派发的消息不再排在长任务后面。** 以前 Regent 发给另一个会话的消息，要等那个会话
->   把当前整轮跑完才送达——在我们自己的机器上，消息平均等待时间 11 月 15 日是 55 分钟，11 月
->   16 日涨到 103 分钟，其中一条发给空闲会话的消息等了 5.4 小时。现在每个会话各自占用一条投递
->   通道、最多同时 8 条并行送达，而同一会话内的消息仍保持先后顺序。
-> - **Mailbox 未读圆点不再被裁掉。** 它之前被行高切掉边缘，看起来像半个方块而不是一个可信的
->   标记。
->
-> **This is a patch on top of v0.27.0.** The Mobile side of 0.27 shipped as
-> mobile-v0.10.0; if you are on mobile, pair it with this desktop build.
-> <!-- /highlights -->
+<!-- highlights -->
+### Highlights
+
+- **Regent finally talks to your chats in time.** A message Regent sends to another conversation used to wait behind that session's whole running turn: on our own machine the average wait for a queued message reached 55 minutes on 15 November and 103 minutes on 16 November, and a message to an idle chat once took 5.4 hours. Each chat now receives its messages in its own delivery slot, up to eight at a time, while messages to the same chat stay in order.
+- **The Mailbox unread dot is whole again.** Its outline was clipped by the row, so it looked like a half-drawn square instead of a marker you can trust.
+
+**这篇中文版：**
+
+- **Regent 派发的消息不再排在长任务后面。** 以前 Regent 发给另一个会话的消息，要等那个会话把当前整轮跑完才送达——在我们自己的机器上，消息平均等待时间 11 月 15 日是 55 分钟，11 月 16 日涨到 103 分钟，其中一条发给空闲会话的消息等了 5.4 小时。现在每个会话各自占用一条投递通道、最多 8 条并行送达，而同一会话内的消息仍保持先后顺序。
+- **Mailbox 未读圆点不再被裁掉。** 它之前被行高切掉边缘，看起来像半个方块而不是一个可信的标记。
+
+**This is a patch on top of v0.27.0.** The Mobile side shipped as mobile-v0.10.0; pair it with this desktop build.
+<!-- /highlights -->
 
 ### Release notes
 - Messages from Regent and other agents reach their sessions promptly instead of waiting behind another session's long-running turn.
