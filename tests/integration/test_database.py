@@ -758,6 +758,28 @@ class TestAgentInboxOperations:
         assert claimed["attempts"] == 2
         assert claimed["lease_owner"] == "worker-2"
 
+    def test_renew_lease_only_for_its_owner(self, db):
+        sender_id, target_id = self._create_agents(db)
+        db.enqueue_agent_message(
+            message_id="msg-renew",
+            sender_chat_id=sender_id,
+            target_chat_id=target_id,
+            content="Long turn",
+        )
+        claimed = db.claim_next_agent_message(worker_id="worker-1", lease_seconds=1)
+
+        assert (
+            db.renew_agent_message_lease(
+                "msg-renew", worker_id="worker-2", lease_seconds=600
+            )
+            is False
+        )
+        assert db.renew_agent_message_lease(
+            "msg-renew", worker_id="worker-1", lease_seconds=600
+        )
+        renewed = db.list_agent_messages(target_chat_id=target_id)[0]
+        assert renewed["lease_until"] > claimed["lease_until"]
+
     def test_claim_serializes_each_target_across_workers(self, db):
         sender_id, target_id = self._create_agents(db)
         other_target_id = db.create_chat(
