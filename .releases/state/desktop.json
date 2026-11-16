@@ -24,6 +24,7 @@
     ".releases/changes/approval-single-badge.json",
     ".releases/changes/approved-tool-names.json",
     ".releases/changes/artifact-preview-media-back.json",
+    ".releases/changes/artifacts-file-open-perf.json",
     ".releases/changes/artifacts-panel.json",
     ".releases/changes/artifacts-project-chips.json",
     ".releases/changes/artifacts-registration.json",
