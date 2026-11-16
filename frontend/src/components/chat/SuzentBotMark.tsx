@@ -43,7 +43,7 @@ export const SuzentBotMark: React.FC<SuzentBotMarkProps> = React.memo(
     isError = false,
     errorCount,
     toolName,
-    size = 28,
+    size = 36,
     className = '',
     interactive = true,
   }) => {
