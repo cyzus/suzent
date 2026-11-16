@@ -91,6 +91,6 @@ remembered exactly as written.
 ## Undo
 
 Changes made by commands, such as installed packages or files a script wrote,
-are not rolled back by [Retry](../filesystem.md#undoing-the-last-turn-retry).
-Use [Files](./files.md) tools for edits you may want to undo, and keep Git or
-backups for anything important.
+are not rolled back by [Retry](../filesystem.md#undoing-the-last-turn-retry),
+which only rewinds the conversation. Keep Git or backups for anything
+important.

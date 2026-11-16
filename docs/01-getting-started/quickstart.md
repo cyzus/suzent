@@ -182,7 +182,7 @@ More answers are in [FAQ & troubleshooting](../07-reference/faq.md).
 
 ## Next Steps
 
-- [Working with your agent](../02-using/conversations.md): hand it tasks, steer it, and undo what went wrong
+- [Working with your agent](../02-using/conversations.md): hand it tasks, steer it, and retry what went wrong
 - [Making it yours](../02-using/make-it-yours.md): what to set up next
 - [Desktop, phone, and browser](./platforms.md): reach your agent from your phone or another computer
 - [Models & Providers](../04-models/README.md): add more models and choose which one does what

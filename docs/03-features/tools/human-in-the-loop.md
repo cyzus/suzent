@@ -36,17 +36,18 @@ the agent is told why so it doesn't simply try the same thing again.
 
 ## Answering a request
 
-When the agent needs approval, it pauses and asks above the message box. You can:
+When the agent needs approval, it pauses and asks above the message box,
+"May I …?", usually with the reason it is asking. You can:
 
 | Answer | What it does |
 |---|---|
-| **Yes** | Allow it this once. |
-| **Yes, and always allow for session** | Allow this tool for the rest of this chat. |
-| **Yes, and always allow globally** | Allow this tool in every chat from now on. |
-| **No** | Refuse. To tell the agent what to do instead, type in **No, and tell Suzent what to do differently** and click **Submit**. |
+| **Allow** | Allow it this once. **Ctrl+Enter** does the same. |
+| **Allow** menu (the arrow next to it) | Pick how long to remember: **Just once**, **Always allow for session** (the rest of this chat), or **Always allow globally** (every chat from now on). The button then shows your choice; click it to answer. |
+| **Decline** | Refuse. To tell the agent why, or what to do instead, type in the box first and click **Decline & send**. |
 
 For shell commands, the remember options name the command, for example
-**Yes, allow all git log … for this session** or **Yes, always allow all git log …**.
+**This command · this chat** and **This command · always**, or
+**Allow all git log … for session** and **Always allow all git log …**.
 That remembers that command, or that command prefix, not every command. Inline
 scripts can only be allowed once. A pending request survives a page refresh, so
 you can come back to it later.
