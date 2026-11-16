@@ -654,7 +654,7 @@ export const ActivityRail: React.FC<{
               hasPending={hasPending}
               errorCount={(summaryTools ?? []).filter((t) => t.failed).length}
               toolName={activeTool ?? latestTool?.toolName}
-              size={28}
+              size={36}
             />
           ) : thinking ? null : isCurrent && !visible && agentResult ? (
             <AgentAvatar
