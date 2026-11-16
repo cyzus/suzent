@@ -948,7 +948,7 @@ export function MailboxView({
                         >
                           {thread.unreadIds.length > 0 && (
                             <span
-                              className="h-2 w-2 shrink-0 bg-brutal-yellow ring-1 ring-brutal-black dark:ring-zinc-300"
+                              className="h-2.5 w-2.5 shrink-0 border border-brutal-black bg-brutal-yellow dark:border-zinc-300"
                               aria-label={t('mailboxView.unread')}
                             />
                           )}
