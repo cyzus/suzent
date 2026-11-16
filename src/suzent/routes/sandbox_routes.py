@@ -6,10 +6,12 @@ import re
 import json
 import shutil
 import mimetypes
+import time
 import uuid
 from collections import deque
 from pathlib import Path
 from datetime import datetime, timezone
+from threading import Lock
 from starlette.requests import Request
 from starlette.responses import JSONResponse, FileResponse
 
@@ -116,16 +118,49 @@ def sanitize_filename(filename: str, max_length: int = 255) -> str:
     return filename
 
 
+_RESOLVER_CACHE_TTL_S = 5.0
+_RESOLVER_CACHE_MAX = 64
+_resolver_cache: dict[tuple[object, ...], tuple[float, PathResolver]] = {}
+_resolver_cache_lock = Lock()
+
+
 def _get_resolver_for_request(
     chat_id: str, override_volumes: list[str] | None = None
 ) -> PathResolver:
     """Helper to create a PathResolver instance for the request context."""
+    db = None
+    cache_key: tuple[object, ...] | None = None
+    try:
+        db = get_database()
+        if getattr(db.__class__, "__module__", "").startswith("suzent.database"):
+            cache_key = (
+                id(db),
+                str(CONFIG.sandbox_data_path),
+                bool(CONFIG.sandbox_enabled),
+                chat_id,
+                tuple(override_volumes) if override_volumes is not None else None,
+            )
+            now = time.monotonic()
+            with _resolver_cache_lock:
+                cached_entry = _resolver_cache.get(cache_key)
+                if (
+                    cached_entry is not None
+                    and (now - cached_entry[0]) < _RESOLVER_CACHE_TTL_S
+                ):
+                    return cached_entry[1]
+    except Exception:
+        db = None
+
     sandbox_enabled = CONFIG.sandbox_enabled
     cwd: str | None = None
     configured_volumes: list[str] = []
+    project_slug: str | None = None
     chat = None
     try:
-        chat = get_database().get_chat(chat_id)
+        if db is None:
+            db = get_database()
+        get_access = getattr(db, "get_chat_access_info", None)
+        chat = get_access(chat_id) if callable(get_access) else db.get_chat(chat_id)
         if chat is not None:
             config = (
                 chat.get("config") if isinstance(chat, dict) else chat.config
@@ -135,18 +170,20 @@ def _get_resolver_for_request(
                 if isinstance(chat, dict)
                 else chat.working_directory
             )
+            if isinstance(chat, dict):
+                project_slug = chat.get("project_slug")
             cwd = working_directory or config.get("cwd")
             sandbox_enabled = config.get("sandbox_enabled", CONFIG.sandbox_enabled)
             configured_volumes = config.get("sandbox_volumes", [])
             if not cwd:
-                cwd = get_database().resolve_chat_working_directory(chat)
+                cwd = db.resolve_chat_working_directory(chat)
     except Exception as e:
         logger.warning(f"Failed to fetch chat config for file access: {e}")
 
     volumes = override_volumes if override_volumes is not None else configured_volumes
     try:
-        if chat is not None:
-            volumes = get_database().with_project_folders(chat, volumes)
+        if chat is not None and db is not None:
+            volumes = db.with_project_folders(chat, volumes)
     except Exception as e:
         logger.warning(f"Failed to add project folders for file access: {e}")
     # Volume overrides must not discard the chat's persisted working-directory grant.
@@ -157,12 +194,19 @@ def _get_resolver_for_request(
     )
 
     # Create resolver for virtual paths such as /workspace, /shared, and custom mounts.
-    return PathResolver(
+    resolver = PathResolver(
         chat_id=chat_id,
         sandbox_enabled=sandbox_enabled,
+        project_slug=project_slug,
         custom_volumes=custom_volumes,
         cwd=cwd,
     )
+    if cache_key is not None:
+        with _resolver_cache_lock:
+            if len(_resolver_cache) >= _RESOLVER_CACHE_MAX:
+                _resolver_cache.clear()
+            _resolver_cache[cache_key] = (time.monotonic(), resolver)
+    return resolver
 
 
 def _with_discovered_skill_volumes(
@@ -172,7 +216,7 @@ def _with_discovered_skill_volumes(
     sandbox_enabled: bool = True,
 ) -> list[str]:
     """Add canonical skill mounts needed by this chat's effective context."""
-    if not chat_id:
+    if not chat_id or not sandbox_enabled:
         return list(volumes)
 
     from suzent.skills.manager import get_skill_manager_for_chat
@@ -203,12 +247,19 @@ async def get_sandbox_volumes(request: Request) -> JSONResponse:
     if chat_id:
         try:
             db = get_database()
-            chat = db.get_chat(chat_id)
-            cv = (
-                chat["config"].get("sandbox_volumes", [])
-                if chat and "config" in chat
-                else []
+            get_access = getattr(db, "get_chat_access_info", None)
+            chat = get_access(chat_id) if callable(get_access) else db.get_chat(chat_id)
+            config = (
+                (
+                    chat.get("config")
+                    if isinstance(chat, dict)
+                    else getattr(chat, "config", None)
+                )
+                or {}
+                if chat
+                else {}
             )
+            cv = config.get("sandbox_volumes", [])
             custom_volumes = cv if isinstance(cv, list) else []
         except Exception as e:
             logger.warning(f"Failed to fetch chat config for volumes: {e}")
