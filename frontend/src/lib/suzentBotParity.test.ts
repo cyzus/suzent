@@ -202,6 +202,46 @@ describe('suzent bot frame parity', () => {
     }
   });
 
+  it('aims the gaze from the bot bounds, not the viewport origin', () => {
+    Object.assign(globalThis, { performance: { now: () => 0 } });
+    const eyeX = (frame: SceneFrame): number => {
+      const transform = frame.nodes.find((node) => node.attrs.id === 'bot-transform');
+      const eye = transform?.children
+        .flatMap((child) => child.children)
+        .flatMap((child) => child.children)
+        .find((node) => node.attrs.class?.includes('eye-path'));
+      const match = eye?.attrs.transform?.match(/translate\(([-\d.]+)/);
+      return match ? Number(match[1]) : Number.NaN;
+    };
+    const aim = (
+      bounds: NonNullable<SuzentBotEngineConfig['bounds']>,
+      client: { x: number; y: number }
+    ) => {
+      useRng(portableMulberry32(4));
+      const config: SuzentBotEngineConfig = {
+        stage: 'idle',
+        size: 36,
+        pointer: true,
+        pointerClient: client,
+        bounds,
+        particlesEnabled: false,
+        autoMorphCycle: false,
+        holdWhenIdle: false,
+        reducedMotion: true,
+      };
+      const engine = new SuzentBotEngine(() => config);
+      let frame = engine.step(0);
+      for (let at = 16; at <= 600; at += 16) frame = engine.step(at);
+      engine.destroy();
+      return eyeX(frame);
+    };
+    const center = { x: 418, y: 318 };
+    const tracked = aim({ left: 400, top: 300, width: 36, height: 36 }, center);
+    const origin = aim({ left: 0, top: 0, width: 36, height: 36 }, center);
+    expect(Number.isFinite(tracked)).toBe(true);
+    expect(Math.abs(tracked - origin)).toBeGreaterThan(4);
+  });
+
   it('parses the act markup subset into elements', () => {
     const nodes = parseSvgFragment(
       '<g opacity="0.50"><circle cx="1" cy="2" r="3" /><path d="M0 0L1 1Z" /></g>'

@@ -94,7 +94,12 @@ export interface SuzentBotEngineConfig {
   holdWhenIdle?: boolean;
   svgId?: string;
   clipId?: string;
-  /** Viewport pointer, already in client pixels. Null releases the gaze. */
+  /**
+   * Element rectangle in the same client-pixel space as `pointerClient`.
+   * Without it, the gaze math treats the bot as sitting at the viewport origin.
+   */
+  bounds?: { left: number; top: number; width: number; height: number };
+  /** Viewport pointer, in client pixels. Null releases the gaze. */
   pointerClient?: { x: number; y: number } | null;
 }
 
@@ -414,13 +419,18 @@ export class SuzentBotEngine {
     this.prepareIdleHold(now);
     this.maybeCycleMorph(now);
     const size = config.size || 36;
+    const box = config.bounds;
+    const boxWidth = box?.width || size;
+    const boxHeight = box?.height || size;
+    const boxLeft = box?.left ?? 0;
+    const boxTop = box?.top ?? 0;
     this.svg.bounds = {
-      left: 0,
-      top: 0,
-      width: size,
-      height: size,
-      right: size,
-      bottom: size,
+      left: boxLeft,
+      top: boxTop,
+      width: boxWidth,
+      height: boxHeight,
+      right: boxLeft + boxWidth,
+      bottom: boxTop + boxHeight,
     };
 
     const isDark =

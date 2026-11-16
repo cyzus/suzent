@@ -13,6 +13,11 @@ import Testing
     #expect(session.resolveStage(hasPending: false, isError: false, isThinking: false, tool: nil, isActive: false) == "idle")
 }
 
+@Test func suzentBotParsesStyleOpacityStrings() {
+    let frame = SuzentBotFrame.parse(#"{"viewBox":"0 0 1 1","fg":"#000","bg":"#fff","settled":true,"nodes":[{"tag":"g","attrs":{},"opacity":"0.420","children":[]}]}"#)
+    #expect(abs(frame.nodes[0].opacity - 0.42) < 0.0001)
+}
+
 @Test func suzentBotPathAndReducedFrame() {
     let path = parseBotPath("M0 0L10 0L10 10Z")
     #expect(path.count == 4)

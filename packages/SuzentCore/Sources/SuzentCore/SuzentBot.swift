@@ -77,11 +77,18 @@ public struct SuzentBotFrame: Equatable, Sendable {
         )
     }
 
+    /// Style opacity is serialized as a string (`"0.420"`). `as? Double` misses it and the node stays fully opaque.
+    private static func jsonDouble(_ value: Any?) -> Double? {
+        if let text = value as? String { return Double(text) }
+        if let number = value as? NSNumber { return number.doubleValue }
+        return nil
+    }
+
     private static func nodes(_ values: [[String: Any]]) -> [SuzentBotNode] {
         values.map { item in
             let raw = item["attrs"] as? [String: Any] ?? [:]
             let attrs = raw.mapValues { "\($0)" }
-            return SuzentBotNode(tag: item["tag"] as? String ?? "", attrs: attrs, opacity: item["opacity"] as? Double ?? 1, children: nodes(item["children"] as? [[String: Any]] ?? []))
+            return SuzentBotNode(tag: item["tag"] as? String ?? "", attrs: attrs, opacity: jsonDouble(item["opacity"]) ?? 1, children: nodes(item["children"] as? [[String: Any]] ?? []))
         }
     }
 }

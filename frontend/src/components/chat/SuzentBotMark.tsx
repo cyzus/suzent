@@ -45,6 +45,17 @@ function readDark(): boolean {
   return typeof document !== 'undefined' && document.documentElement.classList.contains('dark');
 }
 
+function readBounds(svg: SVGSVGElement | null, fallback: number): SuzentBotEngineConfig['bounds'] {
+  if (!svg) return undefined;
+  const rect = svg.getBoundingClientRect();
+  return {
+    left: rect.left,
+    top: rect.top,
+    width: rect.width || fallback,
+    height: rect.height || fallback,
+  };
+}
+
 export const SuzentBotMark: React.FC<SuzentBotMarkProps> = React.memo(
   ({
     stage: stageProp,
@@ -157,6 +168,7 @@ export const SuzentBotMark: React.FC<SuzentBotMarkProps> = React.memo(
       const draw = (now: number): boolean => {
         configRef.current.reducedMotion = readReducedMotion();
         configRef.current.dark = readDark();
+        configRef.current.bounds = readBounds(svg, configRef.current.size);
         const frame = engine.step(now);
         applySuzentBotScene(svg, frame);
         return frame.settled || Boolean(configRef.current.reducedMotion) || !playingRef.current;
@@ -204,6 +216,7 @@ export const SuzentBotMark: React.FC<SuzentBotMarkProps> = React.memo(
     useEffect(() => {
       if (!interactive || !isActive) return undefined;
       const move = (event: PointerEvent) => {
+        configRef.current.bounds = readBounds(svgRef.current, configRef.current.size);
         configRef.current.pointerClient = { x: event.clientX, y: event.clientY };
         kickRef.current();
       };

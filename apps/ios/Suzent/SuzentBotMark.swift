@@ -30,13 +30,18 @@ struct SuzentBotBadge: View {
             }
             .frame(width: 32, height: 32)
             .onChange(of: timeline.date) { _, date in
-                frame = session.frame(json: stepJSON(stage: stage, time: date.timeIntervalSince(started) * 1000, reduced: reduceMotion, dark: colorScheme == .dark))
+                frame = renderedFrame(at: date)
             }
         }
         .onAppear {
-            frame = session.frame(json: stepJSON(stage: stage, time: 0, reduced: reduceMotion, dark: colorScheme == .dark))
+            frame = renderedFrame(at: started)
         }
-        .onChange(of: stage) { _, _ in dropped = Date() }
+        .onChange(of: stage) { _, _ in
+            dropped = Date()
+            frame = renderedFrame(at: Date())
+        }
+        .onChange(of: reduceMotion) { _, _ in frame = renderedFrame(at: Date()) }
+        .onChange(of: colorScheme) { _, _ in frame = renderedFrame(at: Date()) }
         .scaleEffect(dropScale)
         .offset(y: dropOffset)
         .opacity(dropOpacity)
@@ -52,6 +57,10 @@ struct SuzentBotBadge: View {
             startled = false
         }
         .accessibilityHidden(true)
+    }
+
+    private func renderedFrame(at date: Date) -> SuzentBotFrame {
+        session.frame(json: stepJSON(stage: stage, time: date.timeIntervalSince(started) * 1000, reduced: reduceMotion, dark: colorScheme == .dark))
     }
 
     private var drop: Double { reduceMotion ? 1 : min(Date().timeIntervalSince(dropped) / 0.3, 1) }
