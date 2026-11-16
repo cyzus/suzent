@@ -1124,7 +1124,7 @@ const AssistantMessageComponent: React.FC<AssistantMessageProps> = ({
       hasPending={isPendingApproval}
       errorCount={errorCount}
       toolName={isStreamingThis ? (isTrailingProse ? 'write_file' : currentToolName) : undefined}
-      size={28}
+      size={36}
       className="mr-1"
     />
   ) : null;
