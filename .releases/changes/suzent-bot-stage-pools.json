@@ -1,0 +1,12 @@
+{
+  "products": {
+    "desktop": "patch",
+    "mobile_android": "none",
+    "mobile_ios": "none"
+  },
+  "summary": "Refine SuzentBotMark stage pools, 96-point gear and mitosis spline morphs, 2-part fountain pen writing act, and 36px bot display with scaled-up morph particles.",
+  "reasons": {
+    "mobile_android": "Desktop React chat UI only.",
+    "mobile_ios": "Desktop React chat UI only."
+  }
+}

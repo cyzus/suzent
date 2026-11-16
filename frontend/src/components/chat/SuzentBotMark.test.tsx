@@ -10,6 +10,7 @@ vi.mock('../../hooks/useChatStore', () => ({
 
 import {
   HEAD_C,
+  STAGE_SPECS,
   SUZENT_BODY_RING,
   SUZENT_EXPRESSIONS,
   evaluateFullBodyAct,
@@ -38,9 +39,12 @@ describe('SuzentBotEngine & SuzentBotMark', () => {
     expect(resolveSuzentStage({ isError: true, toolName: 'write_file' })).toBe('error');
     expect(resolveSuzentStage({ isThinking: true })).toBe('thinking');
     expect(resolveSuzentStage({ toolName: 'read_file' })).toBe('reading');
+    expect(resolveSuzentStage({ toolName: 'webpage_fetch' })).toBe('ingesting');
+    expect(resolveSuzentStage({ toolName: 'memory_search' })).toBe('ingesting');
     expect(resolveSuzentStage({ toolName: 'edit_file' })).toBe('writing');
     expect(resolveSuzentStage({ toolName: 'web_search' })).toBe('searching');
     expect(resolveSuzentStage({ toolName: 'run_command' })).toBe('bash');
+    expect(resolveSuzentStage({ toolName: 'start_command' })).toBe('starting');
     expect(resolveSuzentStage({ toolName: 'agent' })).toBe('subagent');
     expect(resolveSuzentStage({ toolName: 'render_ui' })).toBe('vision');
     expect(resolveSuzentStage({ toolName: 'skill_execute' })).toBe('skill');
@@ -55,12 +59,43 @@ describe('SuzentBotEngine & SuzentBotMark', () => {
     expect(pose.backHtml + pose.frontHtml).toContain('<circle');
   });
 
-  it('renders barbell press for workout and pure character saccade scan for speed_reader without face clutter', () => {
+  it('provides the curated multi-act rotation pools with reading (R1), ingesting (R3), starting (workout), bash (laptop_type), and writing (fountain_pen)', () => {
+    expect(STAGE_SPECS.reading.acts).toEqual(['speed_reader']);
+    expect(STAGE_SPECS.ingesting.acts).toEqual(['chomp_file']);
+    expect(STAGE_SPECS.thinking.acts).toEqual(['thought_cloud', 'full_gear', 'eureka_levitate']);
+    expect(STAGE_SPECS.searching.acts).toEqual(['big_loupe', 'peek_radar']);
+    expect(STAGE_SPECS.writing.acts).toEqual(['fountain_pen']);
+    expect(STAGE_SPECS.starting.acts).toEqual(['workout']);
+    expect(STAGE_SPECS.bash.acts).toEqual(['laptop_type', 'dj_groove']);
+    expect(STAGE_SPECS.bash.humming).toBe(false);
+    expect(STAGE_SPECS.subagent.acts).toEqual([
+      'constellation_command',
+      'agent_twin_split',
+      'agent_portal_spawn',
+    ]);
+    expect(STAGE_SPECS.subagent.humming).toBe(false);
+
+    const twinPinch = evaluateFullBodyAct('agent_twin_split', 0.35, 0, { x: 0, y: 0, rot: 0 });
+    expect(twinPinch.targetRing).toHaveLength(96);
+    expect(twinPinch.ringBlend).toBeGreaterThan(0.5);
+
+    const twin = evaluateFullBodyAct('agent_twin_split', 1.1, 0, { x: 0, y: 0, rot: 0 });
+    expect(twin.x).toBeLessThan(-70);
+    expect(twin.frontHtml).toContain('translate(192.');
+
     const workout = evaluateFullBodyAct('workout', 0.9, 0, { x: 0, y: 0, rot: 0 });
     expect(workout.frontHtml).toContain(`Q${HEAD_C}`);
-    const reader = evaluateFullBodyAct('speed_reader', 0.4, 0, { x: 0, y: 0, rot: 0 });
-    expect(reader.frontHtml).toBe('');
-    expect(Math.abs(reader.gazeX)).toBeGreaterThan(0);
+    const openBook = evaluateFullBodyAct('speed_reader', 1.15, 0, { x: 0, y: 0, rot: 0 });
+    expect(openBook.frontHtml).toContain('stroke="var(--fg)"');
+    const chompFile = evaluateFullBodyAct('chomp_file', 0.45, 0, { x: 0, y: 0, rot: 0 });
+    expect(chompFile.frontHtml).toContain('stroke="var(--fg)"');
+    const fullGear = evaluateFullBodyAct('full_gear', 1.2, 0, { x: 0, y: 0, rot: 0 });
+    expect(fullGear.targetRing).toHaveLength(96);
+    expect(fullGear.ringBlend).toBe(1);
+    expect(fullGear.hideEyes).toBe(true);
+    expect(fullGear.backHtml).toContain('rotate(');
+    const loupe = evaluateFullBodyAct('big_loupe', 0.5, 0, { x: 0, y: 0, rot: 0 });
+    expect(loupe.frontHtml).toContain('<circle');
   });
 
   it('mounts SuzentBotMark inside ActivityRail when showSuzentBot is enabled on a live rail', () => {
@@ -161,6 +196,8 @@ describe('SuzentBotEngine & SuzentBotMark', () => {
         />
       </I18nProvider>
     );
+    expect(finishedLastHtml).toContain('data-suzent-bot=""');
+    expect(finishedLastHtml).toContain('data-stage="idle"');
     const finishedWithPastFailedToolHtml = renderToStaticMarkup(
       <I18nProvider>
         <AssistantMessage

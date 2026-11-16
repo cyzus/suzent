@@ -57,16 +57,16 @@ const ENGINE_MOTION_SCALE = 1.15;
 const ENGINE_GAZE_SCALE = 1.15;
 
 export const MORPH_SIZES: Record<Exclude<SuzentMorphId, 'none'>, number> = {
-  dots: 34,
-  orbit: 32,
-  radar: 32,
-  progress: 32,
-  gather: 32,
-  wave: 26,
-  send: 32,
-  receive: 34,
-  pencil: 28,
-  bang: 22,
+  dots: 42,
+  orbit: 40,
+  radar: 40,
+  progress: 40,
+  gather: 40,
+  wave: 32,
+  send: 40,
+  receive: 42,
+  pencil: 36,
+  bang: 34,
 };
 
 const MORPH_EFFECT_IDS = Object.keys(MORPH_SIZES) as Array<Exclude<SuzentMorphId, 'none'>>;
@@ -968,6 +968,30 @@ export class SuzentBotEngine {
         ? turnedSuzentRing(SUZENT_BODY_RING, turnAngle)
         : SUZENT_BODY_RING;
 
+    const spec = STAGE_SPECS[this.stage] ?? STAGE_SPECS.idle;
+    const elapsedSec = Math.max(0, (now - this.stageStartedAt) / 1000);
+    const actList = spec.acts?.length ? spec.acts : [spec.act];
+    const activeAct = actList[Math.floor(elapsedSec / 4.2) % actList.length] ?? spec.act;
+    const baseRot = ((this.rotation.x * 180) / Math.PI) * SUZENT_TILT_SCALE + this.directRotation;
+    const actPose = evaluateFullBodyAct(activeAct, elapsedSec, morphAmount, {
+      x: this.headX.x + this.directX,
+      y: this.headY.x + this.directY,
+      rot: baseRot,
+    });
+    if (actPose.gazeX || actPose.gazeY) {
+      this.directGazeX += actPose.gazeX;
+      this.directGazeY += actPose.gazeY;
+    }
+    this.actBackLayer.innerHTML = actPose.backHtml;
+    this.actFrontLayer.innerHTML = actPose.frontHtml;
+
+    const actRingBlend =
+      actPose.targetRing && actPose.ringBlend ? clamp(actPose.ringBlend, 0, 1) : 0;
+    const baseShapeRing =
+      actRingBlend > 0.001 && actPose.targetRing
+        ? lerpRing(shapeRing, actPose.targetRing, actRingBlend)
+        : shapeRing;
+
     const activeMorphRing = this.morphEffect === 'pencil' ? PENCIL_RING : CIRCLE_RING;
     const prevMorphRing = prevMorphEffect === 'pencil' ? PENCIL_RING : CIRCLE_RING;
     const morphRing = prevMorphEffect
@@ -976,10 +1000,10 @@ export class SuzentBotEngine {
     const morphPathAmount = clamp(morphAmount / 0.62, 0, 1);
     const headRing =
       morphPathAmount <= 0
-        ? shapeRing
-        : lerpRing(shapeRing, morphRing, cubicInOut(morphPathAmount));
+        ? baseShapeRing
+        : lerpRing(baseShapeRing, morphRing, cubicInOut(morphPathAmount));
     const headPath =
-      morphPathAmount <= 0
+      morphPathAmount <= 0 && actRingBlend <= 0.001
         ? Math.abs(turnAngle) > 0.001
           ? ringOutline(shapeRing)
           : SUZENT_BODY_PATH
@@ -988,8 +1012,8 @@ export class SuzentBotEngine {
     this.head.setAttribute('d', headPath);
     this.clipHead.setAttribute('d', headPath);
 
-    // Render eyes first, then morph effects & humming markers, then full-body act (matching v14 render order)
-    this.renderEyes(now, config, shapeRing, turnAngle, morphAmount);
+    // Render eyes with actPose gaze overrides, then morph effects & humming markers
+    this.renderEyes(now, config, shapeRing, turnAngle, actPose.hideEyes ? 1 : morphAmount);
 
     const effect = this.morphEffect;
     const activeMorphSize = effect ? MORPH_SIZES[effect] : 19;
@@ -1005,20 +1029,6 @@ export class SuzentBotEngine {
     );
 
     this.renderHummingMarkers();
-
-    const spec = STAGE_SPECS[this.stage] ?? STAGE_SPECS.idle;
-    const baseRot = ((this.rotation.x * 180) / Math.PI) * SUZENT_TILT_SCALE + this.directRotation;
-    const actPose = evaluateFullBodyAct(spec.act, (now - this.stageStartedAt) / 1000, morphAmount, {
-      x: this.headX.x + this.directX,
-      y: this.headY.x + this.directY,
-      rot: baseRot,
-    });
-    if (actPose.gazeX || actPose.gazeY) {
-      this.directGazeX += actPose.gazeX;
-      this.directGazeY += actPose.gazeY;
-    }
-    this.actBackLayer.innerHTML = actPose.backHtml;
-    this.actFrontLayer.innerHTML = actPose.frontHtml;
 
     const normal = 1 - morphAmount;
     const translateX = (this.headX.x + this.directX + actPose.x) * normal + effectPose.x;
@@ -1330,7 +1340,7 @@ export class SuzentBotEngine {
   }
 
   private renderDots(amount: number, now: number): void {
-    const anchors = [HEAD_C - 82, HEAD_C + 82];
+    const anchors = [HEAD_C - 98, HEAD_C + 98];
     for (let i = 0; i < 2; i += 1) {
       const el = this.activeLayer.heads[i];
       const phase = clamp((amount - 0.12 * i) / (1 - 0.12 * i), 0, 1);
@@ -1344,7 +1354,7 @@ export class SuzentBotEngine {
       const pulse = isReducedMotion() ? 1 : Math.exp(-(dist ** 2) / 0.045);
       const lift = isReducedMotion() ? 0 : 9 * pulse * amount;
       const pop = isReducedMotion() ? 1 : 0.84 + 0.22 * pulse;
-      const scale = ((34 * grow * pop) / HEAD_C) * 1.02;
+      const scale = ((42 * grow * pop) / HEAD_C) * 1.02;
       el.style.display = '';
       el.setAttribute('d', CIRCLE_PATH);
       el.setAttribute(
@@ -1356,19 +1366,19 @@ export class SuzentBotEngine {
   }
 
   private renderOrbit(amount: number, now: number): void {
-    const radius = 86 * backOut(amount);
+    const radius = 104 * backOut(amount);
     for (let i = 0; i < 5; i += 1) {
       const el = this.activeLayer.parts[i];
       const phase = 0.0017 * now + (i * Math.PI * 2) / 5;
       const cosine = Math.cos(phase);
-      const depth = 0.5 + 0.5 * clamp(cosine, 0, 1);
+      const depth = 0.65 + 0.35 * clamp(cosine, 0, 1);
       el.style.display = '';
       el.setAttribute('cx', (HEAD_C + radius * Math.sin(phase)).toFixed(1));
-      el.setAttribute('cy', (HEAD_C - 0.42 * radius * Math.cos(phase)).toFixed(1));
-      el.setAttribute('r', Math.max(20 * depth * cubicOut(amount), 0.5).toFixed(2));
+      el.setAttribute('cy', (HEAD_C - 0.44 * radius * Math.cos(phase)).toFixed(1));
+      el.setAttribute('r', Math.max(26 * depth * cubicOut(amount), 0.5).toFixed(2));
       el.setAttribute(
         'opacity',
-        (clamp((cosine + 0.4) / 0.6, 0.18, 1) * cubicOut(amount)).toFixed(3)
+        (clamp((cosine + 0.4) / 0.6, 0.28, 1) * cubicOut(amount)).toFixed(3)
       );
     }
   }
@@ -1380,29 +1390,29 @@ export class SuzentBotEngine {
       el.style.display = '';
       el.setAttribute('fill', 'none');
       el.setAttribute('stroke', 'var(--fg)');
-      el.setAttribute('r', (baseRadius + (104 - baseRadius) * phase).toFixed(1));
-      el.setAttribute('stroke-width', (7.5 * (1 - 0.5 * phase)).toFixed(2));
+      el.setAttribute('r', (baseRadius + (116 - baseRadius) * phase).toFixed(1));
+      el.setAttribute('stroke-width', (8.5 * (1 - 0.45 * phase)).toFixed(2));
       el.setAttribute('opacity', (cubicOut(amount) * (1 - phase) * 0.9).toFixed(3));
     }
   }
 
   private renderProgress(amount: number, now: number): void {
-    const radius = 62 * backOut(amount);
+    const radius = 76 * backOut(amount);
     const track = this.activeLayer.rings[3];
     const value = this.activeLayer.rings[4];
     track.style.display = '';
     track.setAttribute('fill', 'none');
     track.setAttribute('stroke', 'var(--fg)');
     track.setAttribute('r', radius.toFixed(1));
-    track.setAttribute('stroke-width', '5');
-    track.setAttribute('opacity', (0.16 * cubicOut(amount)).toFixed(3));
+    track.setAttribute('stroke-width', '8.5');
+    track.setAttribute('opacity', (0.18 * cubicOut(amount)).toFixed(3));
     const progress = clamp((now - this.morphShotStartedAt) / 2500 / 0.85, 0, 1);
     const circ = 2 * Math.PI * radius;
     value.style.display = '';
     value.setAttribute('fill', 'none');
     value.setAttribute('stroke', 'var(--fg)');
     value.setAttribute('r', radius.toFixed(1));
-    value.setAttribute('stroke-width', '5');
+    value.setAttribute('stroke-width', '9.5');
     value.setAttribute('stroke-dasharray', circ.toFixed(1));
     value.setAttribute('stroke-dashoffset', (circ * (1 - progress)).toFixed(1));
     value.setAttribute('transform', `rotate(-90 ${HEAD_C} ${HEAD_C})`);
@@ -1416,14 +1426,14 @@ export class SuzentBotEngine {
       if (phase >= 1) continue;
       const settle = 1 - (1 - phase) ** 3;
       const angle = 2.4 * i + 2.2 * phase;
-      const radius = 96 * (1 - settle);
+      const radius = 112 * (1 - settle);
       el.style.display = '';
       el.setAttribute('cx', (HEAD_C + radius * Math.cos(angle)).toFixed(1));
       el.setAttribute('cy', (HEAD_C + radius * Math.sin(angle) * 0.8).toFixed(1));
-      el.setAttribute('r', (9 * (0.5 + 0.5 * settle) * cubicOut(amount)).toFixed(2));
+      el.setAttribute('r', (18.5 * (0.7 + 0.3 * settle) * cubicOut(amount)).toFixed(2));
       el.setAttribute(
         'opacity',
-        (cubicOut(amount) * clamp(5 * phase, 0, 1) * (1 - 0.25 * settle)).toFixed(3)
+        (cubicOut(amount) * clamp(5 * phase, 0, 1) * (1 - 0.2 * settle)).toFixed(3)
       );
     }
   }
@@ -1440,18 +1450,19 @@ export class SuzentBotEngine {
           0.29 * Math.sin(0.0021 * now) * Math.sin(0.0034 * now) +
           0.29 * Math.sin(0.0013 * now + 1.7)) *
         (0.55 + 0.45 * Math.sin(0.012 * now - 1.05 * Math.abs(offset)));
-      const size = (7 + 9 * clamp(energy, 0.08, 1)) * cubicOut(phase);
+      const size = (14.5 + 10.5 * clamp(energy, 0.08, 1)) * cubicOut(phase);
       const lift = 6 * clamp(energy, 0, 1) * phase;
+      const spacing = 54;
       el.style.display = '';
       if (i < 2) {
         const scale = (size / HEAD_C) * 1.02;
         el.setAttribute('d', CIRCLE_PATH);
         el.setAttribute(
           'transform',
-          `translate(${(HEAD_C + 44 * offset * backOut(phase)).toFixed(1)} ${(HEAD_C - lift).toFixed(1)}) scale(${scale.toFixed(4)}) translate(${-HEAD_C} ${-HEAD_C})`
+          `translate(${(HEAD_C + spacing * offset * backOut(phase)).toFixed(1)} ${(HEAD_C - lift).toFixed(1)}) scale(${scale.toFixed(4)}) translate(${-HEAD_C} ${-HEAD_C})`
         );
       } else {
-        el.setAttribute('cx', (HEAD_C + 44 * offset * backOut(phase)).toFixed(1));
+        el.setAttribute('cx', (HEAD_C + spacing * offset * backOut(phase)).toFixed(1));
         el.setAttribute('cy', (HEAD_C - lift).toFixed(1));
         el.setAttribute('r', size.toFixed(2));
       }
@@ -1463,25 +1474,25 @@ export class SuzentBotEngine {
     const phase = ((((now - this.stageStartedAt) / 1500) % 1) + 1) % 1;
     const travel = clamp((phase - 0.18) / 0.55, 0, 1);
     const eased = travel * travel * (0.4 + 0.6 * travel);
-    const dist = 108 * eased;
+    const dist = 122 * eased;
     const first = this.activeLayer.parts[0];
     if (travel > 0 && travel < 1) {
       first.style.display = '';
       first.setAttribute('cx', (HEAD_C + 0.74 * dist).toFixed(1));
       first.setAttribute('cy', (HEAD_C - 0.62 * dist).toFixed(1));
-      first.setAttribute('r', (10 * (1 - 0.55 * eased) * cubicOut(amount)).toFixed(2));
+      first.setAttribute('r', (19 * (1 - 0.32 * eased) * cubicOut(amount)).toFixed(2));
       first.setAttribute('opacity', (cubicOut(amount) * (1 - eased * eased)).toFixed(3));
     }
     const secondTravel = clamp((phase - 0.26) / 0.55, 0, 1);
     const secondEase = secondTravel * secondTravel * (0.4 + 0.6 * secondTravel);
     const second = this.activeLayer.parts[1];
     if (travel > 0 && secondTravel > 0 && secondTravel < 1) {
-      const secondDist = 108 * secondEase;
+      const secondDist = 122 * secondEase;
       second.style.display = '';
       second.setAttribute('cx', (HEAD_C + 0.74 * secondDist).toFixed(1));
       second.setAttribute('cy', (HEAD_C - 0.62 * secondDist).toFixed(1));
-      second.setAttribute('r', (5 * (1 - 0.6 * secondEase) * cubicOut(amount)).toFixed(2));
-      second.setAttribute('opacity', (0.3 * cubicOut(amount) * (1 - secondEase)).toFixed(3));
+      second.setAttribute('r', (13.5 * (1 - 0.32 * secondEase) * cubicOut(amount)).toFixed(2));
+      second.setAttribute('opacity', (0.55 * cubicOut(amount) * (1 - secondEase)).toFixed(3));
     }
     const ringPhase = clamp((phase - 0.18) / 0.3, 0, 1);
     if (ringPhase > 0 && ringPhase < 1) {
@@ -1489,9 +1500,9 @@ export class SuzentBotEngine {
       ring.style.display = '';
       ring.setAttribute('fill', 'none');
       ring.setAttribute('stroke', 'var(--fg)');
-      ring.setAttribute('r', (20 + 34 * cubicOut(ringPhase)).toFixed(1));
-      ring.setAttribute('stroke-width', (2.8 * (1 - ringPhase)).toFixed(2));
-      ring.setAttribute('opacity', (cubicOut(amount) * (1 - ringPhase) * 0.8).toFixed(3));
+      ring.setAttribute('r', (24 + 38 * cubicOut(ringPhase)).toFixed(1));
+      ring.setAttribute('stroke-width', (6.5 * (1 - ringPhase)).toFixed(2));
+      ring.setAttribute('opacity', (cubicOut(amount) * (1 - ringPhase) * 0.85).toFixed(3));
     }
   }
 
@@ -1505,7 +1516,7 @@ export class SuzentBotEngine {
     const phase = (((elapsed / 1700) % 1) + 1) % 1;
     const travel = clamp(phase / 0.6, 0, 1);
     const eased = 1 - (1 - travel) ** 3;
-    const radius = 108 * (1 - eased);
+    const radius = 122 * (1 - eased);
     const orbit = 18 * Math.sin(travel * Math.PI) * (1 - 0.7 * eased);
     const cosine = Math.cos(this.receiveAngle);
     const sine = Math.sin(this.receiveAngle);
@@ -1514,10 +1525,10 @@ export class SuzentBotEngine {
       part.style.display = '';
       part.setAttribute('cx', (HEAD_C + cosine * radius - sine * orbit).toFixed(1));
       part.setAttribute('cy', (HEAD_C + sine * radius + cosine * orbit).toFixed(1));
-      part.setAttribute('r', (3.5 + 6.5 * eased).toFixed(2));
+      part.setAttribute('r', (13 + 8 * eased).toFixed(2));
       part.setAttribute(
         'opacity',
-        (cubicOut(amount) * clamp(3.5 * travel, 0, 1) * (0.3 + 0.7 * eased)).toFixed(3)
+        (cubicOut(amount) * clamp(3.5 * travel, 0, 1) * (0.45 + 0.55 * eased)).toFixed(3)
       );
     }
     const ringPhase = clamp((phase - 0.58) / 0.32, 0, 1);
@@ -1526,9 +1537,9 @@ export class SuzentBotEngine {
       ring.style.display = '';
       ring.setAttribute('fill', 'none');
       ring.setAttribute('stroke', 'var(--fg)');
-      ring.setAttribute('r', (20 + 26 * cubicOut(ringPhase)).toFixed(1));
-      ring.setAttribute('stroke-width', (2.8 * (1 - ringPhase)).toFixed(2));
-      ring.setAttribute('opacity', (cubicOut(amount) * (1 - ringPhase) * 0.8).toFixed(3));
+      ring.setAttribute('r', (24 + 30 * cubicOut(ringPhase)).toFixed(1));
+      ring.setAttribute('stroke-width', (6.5 * (1 - ringPhase)).toFixed(2));
+      ring.setAttribute('opacity', (cubicOut(amount) * (1 - ringPhase) * 0.85).toFixed(3));
     }
   }
 
