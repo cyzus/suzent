@@ -484,6 +484,7 @@ const LIVE_ASSISTANT_MESSAGE: Message = { role: 'assistant', content: '' };
 const MessageList: React.FC<{
   messages: Message[];
   liveTurn?: LiveTurn;
+  liveTurnStatus?: React.ReactNode;
   streamingForCurrentChat: boolean;
   messageIndexOffset?: number;
   chatId?: string;
@@ -519,6 +520,7 @@ const MessageList: React.FC<{
 }> = ({
   messages,
   liveTurn,
+  liveTurnStatus,
   streamingForCurrentChat,
   messageIndexOffset = 0,
   chatId,
@@ -829,6 +831,11 @@ const MessageList: React.FC<{
           </React.Fragment>
         );
       })}
+      {liveTurnStatus && (
+        <div className={chatId === FOCAL_CHAT_ID ? '!mt-2' : '!mt-2 pl-1 pr-4 md:pr-12'}>
+          {liveTurnStatus}
+        </div>
+      )}
     </div>
   );
 };
@@ -2166,6 +2173,21 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     liveStartedAtMs,
     stableToolApprovalPolicy,
   ]);
+
+  const liveTurnStatus = useMemo(() => {
+    if (!streamingForCurrentChat || !modelResponseWaiting) return undefined;
+    return (
+      <ModelWaitNotice
+        key={modelResponseWaiting.waitId}
+        wait={modelResponseWaiting}
+        onExtend={async (waitId) => {
+          const runId = getStreamingRunId();
+          if (!currentChatId || !runId) return false;
+          return requestModelWaitExtension(getApiBase(), currentChatId, runId, waitId);
+        }}
+      />
+    );
+  }, [currentChatId, getStreamingRunId, modelResponseWaiting, streamingForCurrentChat]);
 
   useEffect(() => {
     if (!_isCronChat || !Number.isFinite(cronJobId)) {
@@ -3833,6 +3855,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                         {(safeMessages.length > 0 || liveTurn) && (
                           <MessageListMemo
                             liveTurn={liveTurn}
+                            liveTurnStatus={liveTurnStatus}
                             messages={visibleMessages}
                             reactionParts={showTransientAssistant ? streamingParts : undefined}
                             turnWorkedSeconds={turnWorkedSecondsByMessageIndex}
@@ -3856,22 +3879,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                             onOpenForkOrigin={handleOpenForkOrigin}
                             onEditUserMessage={!isStreaming ? handleEditUserMessage : undefined}
                             fallbackModel={fallbackModelSignature}
-                          />
-                        )}
-                        {streamingForCurrentChat && modelResponseWaiting && (
-                          <ModelWaitNotice
-                            key={modelResponseWaiting.waitId}
-                            wait={modelResponseWaiting}
-                            onExtend={async (waitId) => {
-                              const runId = getStreamingRunId();
-                              if (!currentChatId || !runId) return false;
-                              return requestModelWaitExtension(
-                                getApiBase(),
-                                currentChatId,
-                                runId,
-                                waitId
-                              );
-                            }}
                           />
                         )}
                       </>
