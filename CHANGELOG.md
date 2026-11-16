@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [v0.27.0] - 2026-11-15
+## [v0.27.0] - 2026-11-16
 
 ### Release notes
 - Redesign the 3D cube loading animations in ChatWindow (3D Klotski sliding puzzle), SkillsView (full-track tumbling conveyor), and SettingsModal (collision-free 3D card shuffle) with 6-face accent shading and reduced-motion support.
@@ -45,6 +45,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Unify inbox threads across desktop and mobile with backend-owned grouping for all event sources.
 - Renaming a chat, task or project now edits the name in place in the sidebar (Enter or click away saves, Esc cancels), and archived chats are tucked behind the sidebar's more menu.
 - Replace the static runtime header and streaming robot box with the 120Hz SuzentBotMark physics character engine and semantic 24x24 SVG tool-icon choreography.
+- Refine SuzentBotMark stage pools, 96-point gear and mitosis spline morphs, 2-part fountain pen writing act, and 36px bot display with scaled-up morph particles.
 - New Mailbox: one place for webhooks, scheduled runs, peer devices and agent messages, with a router that learns where each kind of event should go.
 - Drop shadows now use three consistent sizes for controls, menus and dialogs, with one shadow colour per theme.
 - Unify file preview header controls by using a trailing close button, removing the filename box frame when docked, and restoring the previous sidebar state when closing an externally opened file.
