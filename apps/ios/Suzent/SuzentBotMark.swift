@@ -9,7 +9,7 @@ struct SuzentBotBadge: View {
     @Environment(\.scenePhase) private var scenePhase
     @State private var session = SuzentBotSession()
     @State private var started = Date()
-    @State private var frame = SuzentBotFrame.parse(#"{"viewBox":"-46 -46 320.54 320.54","fg":"#000000","bg":"#ffffff","settled":true,"nodes":[]}"#)
+    @State private var frame = SuzentBotFrame.parse(##"{"viewBox":"-46 -46 320.54 320.54","fg":"#000000","bg":"#ffffff","settled":true,"nodes":[]}"##)
     @State private var seenErrors: Int?
     @State private var flash = 0
     @State private var startled = false

@@ -14,7 +14,7 @@ import Testing
 }
 
 @Test func suzentBotParsesStyleOpacityStrings() {
-    let frame = SuzentBotFrame.parse(#"{"viewBox":"0 0 1 1","fg":"#000","bg":"#fff","settled":true,"nodes":[{"tag":"g","attrs":{},"opacity":"0.420","children":[]}]}"#)
+    let frame = SuzentBotFrame.parse(##"{"viewBox":"0 0 1 1","fg":"#000","bg":"#fff","settled":true,"nodes":[{"tag":"g","attrs":{},"opacity":"0.420","children":[]}]}"##)
     #expect(abs(frame.nodes[0].opacity - 0.42) < 0.0001)
 }
 
