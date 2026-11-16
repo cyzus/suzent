@@ -86,9 +86,11 @@ The agent only reaches its project library, the shared folder, and folders you m
 
 ### How do I undo what the agent just did?
 
-Click the retry icon under its last reply, or type `/retry`. That rolls back
-the last turn, including file edits, and runs your message again. `/undo` only
-reverts the file edits. See [Slash commands](./slash-commands.md#undo-and-retry).
+To undo its file changes, use Git (for example `git restore .` in the folder)
+or ask the agent to revert them; Suzent doesn't roll files back. To have it try
+again, click the retry icon under its last reply, or type `/retry`: that rewinds
+the conversation to before the last turn and runs your message again. See
+[Slash commands](./slash-commands.md#retry).
 
 ### Can I stop the agent asking for permission all the time?
 

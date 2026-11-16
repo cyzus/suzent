@@ -35,7 +35,7 @@ on a computer you own: that is what makes it a
 | [MCP servers](./tools/mcp.md) | Adding tools from any MCP server. |
 | [Skills](./skills.md) | Teaching it new know-how with `SKILL.md` packages. |
 | [Plugins](./plugins.md) | Adding chat apps, tools, slash commands and skills, and keeping them across upgrades. |
-| [Workspace & sandbox](./filesystem.md) | Which folders it can reach, running code in a sandbox, and undoing a turn. |
+| [Workspace & sandbox](./filesystem.md) | Which folders it can reach, running code in a sandbox, and retrying a turn. |
 
 ## It keeps working
 

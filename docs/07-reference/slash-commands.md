@@ -46,16 +46,14 @@ turn. The agent gets the whole skill right away instead of deciding whether to
 read it. Using the same skill again sends it again, so any edits you made to it
 since are picked up. See [Skills](../03-features/skills.md).
 
-## Undo and retry
+## Retry
 
 | Command | What it does | Works in |
 |---|---|---|
-| `/retry` | Roll back the last turn, including files the agent changed, and run your message again. The retry button under the agent's reply does the same. | Everywhere |
+| `/retry` | Roll the conversation back to before the last turn and run your message again. Files the agent changed stay as they are. The retry button under the agent's reply does the same. | Everywhere |
 | `/retry-edit <text>` | Like `/retry`, but runs `<text>` instead of your original message. Editing your last message in the desktop app does this. | Everywhere |
-| `/undo` | Undo the file changes from the agent's last turn, without rerunning it. It stops if a file was changed again since then. | Everywhere |
 
-Only the last turn can be undone. Changes made by shell commands aren't rolled
-back. See [Undoing the last turn](../03-features/filesystem.md#undoing-the-last-turn-retry).
+Only the last turn can be retried, and file changes aren't rolled back. See [Retrying the last turn](../03-features/filesystem.md#undoing-the-last-turn-retry).
 
 ## Goals
 

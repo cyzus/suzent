@@ -1,7 +1,7 @@
 ---
 sidebar_position: 3
 title: Work on a folder safely
-description: Point the agent at a folder on your computer, keep it on a short leash, and undo anything you don't like.
+description: Point the agent at a folder on your computer, keep it on a short leash, and roll back anything you don't like with Git.
 ---
 
 # Work on a folder safely
@@ -30,15 +30,18 @@ your computer, turn on the sandbox for this chat (requires Docker). See
 
 > Read the README and the tests, then fix the failing test in `parser.py`.
 
-Review each request as it comes in. Answering
-**Yes, allow … for this session** saves you from approving the same command
-again in this chat.
+Review each request as it comes in. Choosing **This command · this chat** (or
+**Allow all … for session**) from the arrow next to **Allow** saves you from
+approving the same command again in this chat.
 
 ## 4. Take it back if you don't like it
 
-Click the retry icon (↺) under the agent's last reply. Suzent restores the
-files the agent edited in that turn and runs your message again. See
-[Undoing the last turn](../03-features/filesystem.md#undoing-the-last-turn-retry).
+Retry doesn't touch files, so keep the folder in Git. To undo the agent's
+edits, run `git restore .` (or `git checkout -- .`) in the folder, or ask the
+agent to revert them. The status bar at the bottom shows how many files have
+changed in the folder's repository; click it to see which.
 
-Retry only covers the last turn and only files the agent changed with its file
-tools, so for real projects keep using Git as well.
+To have the agent try again, click the retry icon (↺) under its last reply.
+Suzent rolls the conversation back to before that turn and runs your message
+again. See
+[Retrying the last turn](../03-features/filesystem.md#undoing-the-last-turn-retry).

@@ -58,4 +58,10 @@ also moves them to a new computer. API keys are never synced.
 ## Look and language
 
 **Settings → Appearance** switches between English and 简体中文, light or dark
-theme, and the accent colors.
+theme, and the accent colors. It also sets how chats read:
+
+- **Interface font** and **Reply font**, including any font installed on your
+  computer (**Choose from device…**).
+- **Chat history text size** and **Chat history width**, each **Small** /
+  **Narrow**, **Medium**, or **Large** / **Wide**.
+- **Motion**: **Follow system**, or **Reduced** to calm the animations.
