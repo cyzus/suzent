@@ -31,18 +31,32 @@ import {
   spanAt,
   suzentSpanAt,
   turnedSuzentRing,
-} from './suzentBotGeometry';
+} from "./suzentBotGeometry";
 import {
   FIXED_STEP,
   SpringState,
+  activeRng,
   cubicInOut,
   random,
+  rng,
+  useRng,
   smoothstep,
   springValue,
   stepSpring,
-} from './suzentBotPhysics';
-import { SuzentParticleSystem } from './suzentBotParticles';
-import { STAGE_SPECS, SuzentBotStageId, SuzentMorphId, evaluateFullBodyAct } from './suzentBotActs';
+} from "./suzentBotPhysics";
+import {
+  VElement,
+  buildSuzentBotTree,
+  sceneFromTree,
+  type SceneFrame,
+} from "./suzentBotScene";
+import { SuzentParticleSystem } from "./suzentBotParticles";
+import {
+  STAGE_SPECS,
+  SuzentBotStageId,
+  SuzentMorphId,
+  evaluateFullBodyAct,
+} from "./suzentBotActs";
 import {
   MORPH_EFFECT_IDS,
   MORPH_SIZES,
@@ -58,11 +72,9 @@ import {
   renderReceiveMorph,
   renderSendMorph,
   renderWaveMorph,
-} from './suzentBotMorphs';
+} from "./suzentBotMorphs";
 
 export { MORPH_SIZES };
-
-const SVG_NS = 'http://www.w3.org/2000/svg';
 
 // Exact v14 global scale constants
 const ENGINE_TEMPO = 0.76;
@@ -76,40 +88,67 @@ export interface SuzentBotEngineConfig {
   pointer?: boolean;
   particlesEnabled?: boolean;
   autoMorphCycle?: boolean;
+  reducedMotion?: boolean;
+  dark?: boolean;
+  /** When true, an idle bot eases to a held pose and reports `settled` so the host can stop. */
+  holdWhenIdle?: boolean;
+  svgId?: string;
+  clipId?: string;
+  /** Viewport pointer, already in client pixels. Null releases the gaze. */
+  pointerClient?: { x: number; y: number } | null;
 }
 
-function isReducedMotion(): boolean {
-  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return false;
+function hostNow(): number {
+  return typeof performance !== "undefined" ? performance.now() : 0;
+}
+
+function prefersReducedMotion(): boolean {
+  if (typeof window === "undefined" || typeof window.matchMedia !== "function")
+    return false;
+  const dataset =
+    typeof document !== "undefined"
+      ? document.documentElement?.dataset?.motion
+      : undefined;
   return (
-    window.matchMedia('(prefers-reduced-motion: reduce)').matches ||
-    document.documentElement.dataset.motion === 'reduced'
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches ||
+    dataset === "reduced"
   );
 }
 
 export class SuzentBotEngine {
-  private svg: SVGSVGElement;
+  private svg: VElement;
   private getConfig: () => SuzentBotEngineConfig;
-  private head: SVGPathElement;
-  private clipHead: SVGPathElement;
-  private transformGroup: SVGGElement;
-  private eyes: SVGPathElement[];
-  private actBackLayer: SVGGElement;
-  private actFrontLayer: SVGGElement;
-  private badge: SVGCircleElement;
+  private head: VElement;
+  private clipHead: VElement;
+  private transformGroup: VElement;
+  private eyes: VElement[];
+  private actBackLayer: VElement;
+  private actFrontLayer: VElement;
+  private badge: VElement;
   private baseMorphLayer: MorphLayer;
   private morphLayers = new Map<string, MorphLayer>();
   private activeLayer: MorphLayer;
   private particles: SuzentParticleSystem;
+  private rng: () => number = Math.random;
+  private idleHold = false;
+  private heldClock = 0;
+  private morphCycleAt = 0;
 
-  private stage: SuzentBotStageId = 'idle';
-  private startedAt = performance.now();
+  private stage: SuzentBotStageId = "idle";
+  private startedAt = hostNow();
   private stageStartedAt = this.startedAt;
   private lastTime = this.startedAt;
   private clockTime = this.startedAt;
-  private frameId = 0;
-  private cycleTimerId: ReturnType<typeof setInterval> | null = null;
 
-  private pointer = { active: false, clientX: 0, clientY: 0, x: 0, y: 0, targetX: 0, targetY: 0 };
+  private pointer = {
+    active: false,
+    clientX: 0,
+    clientY: 0,
+    x: 0,
+    y: 0,
+    targetX: 0,
+    targetY: 0,
+  };
   private expressionFrom: [Point2D[], Point2D[]] = [
     SUZENT_EXPRESSIONS[0][0],
     SUZENT_EXPRESSIONS[0][1],
@@ -134,16 +173,16 @@ export class SuzentBotEngine {
   private humming = springValue(0);
   private spinSpring: SpringState | null = null;
 
-  private requestedMorphEffect: Exclude<SuzentMorphId, 'none'> | null = null;
-  private morphEffect: Exclude<SuzentMorphId, 'none'> | null = null;
-  private previousMorphEffect: Exclude<SuzentMorphId, 'none'> | null = null;
+  private requestedMorphEffect: Exclude<SuzentMorphId, "none"> | null = null;
+  private morphEffect: Exclude<SuzentMorphId, "none"> | null = null;
+  private previousMorphEffect: Exclude<SuzentMorphId, "none"> | null = null;
   private morphVisible = false;
   private morphStartedAt = this.startedAt;
   private morphShotStartedAt = this.startedAt;
   private morphPreview: {
-    effect: Exclude<SuzentMorphId, 'none'>;
+    effect: Exclude<SuzentMorphId, "none">;
     duration: number;
-    phase: 'reset' | 'enter' | 'hold' | 'exit' | 'done';
+    phase: "reset" | "enter" | "hold" | "exit" | "done";
     phaseStartedAt: number;
   } | null = null;
 
@@ -169,7 +208,7 @@ export class SuzentBotEngine {
   private receiveAngle = -0.7;
   private writingTrail: Point2D[] = [];
   private gesture: {
-    kind: 'spinBounce' | 'spinDizzy';
+    kind: "spinBounce" | "spinDizzy";
     startedAt: number;
     direction: number;
     turns: number;
@@ -187,74 +226,48 @@ export class SuzentBotEngine {
   private directGazeY = 0;
   private delta = 1 / 60;
 
-  private boundFrame = (time: number) => this.frame(time);
-  private pointerMove = (event: PointerEvent) => {
-    this.pointer.active = true;
-    this.pointer.clientX = event.clientX;
-    this.pointer.clientY = event.clientY;
-  };
-  private pointerLeave = () => {
-    this.pointer.active = false;
-  };
-
-  constructor(svg: SVGSVGElement, getConfig: () => SuzentBotEngineConfig) {
-    this.svg = svg;
+  constructor(getConfig: () => SuzentBotEngineConfig) {
+    this.rng = activeRng();
     this.getConfig = getConfig;
-    this.head = svg.querySelector('#head-path') as SVGPathElement;
-    this.clipHead = svg.querySelector('#head-clip-path') as SVGPathElement;
-    this.transformGroup = svg.querySelector('#bot-transform') as SVGGElement;
-    this.eyes = Array.from(svg.querySelectorAll('.eye-path')) as SVGPathElement[];
-    this.actBackLayer = svg.querySelector('.suzent-act-back') as SVGGElement;
-    this.actFrontLayer = svg.querySelector('.suzent-act-front') as SVGGElement;
-    this.badge = svg.querySelector('#notify-badge') as SVGCircleElement;
+    const initialCfg = getConfig();
+    const svg = buildSuzentBotTree({
+      svgId: initialCfg.svgId || "suzent-bot",
+      clipId: initialCfg.clipId || "suzent-bot-clip",
+      size: initialCfg.size || 36,
+    });
+    this.svg = svg;
+    this.head = svg.querySelector("#head-path") as VElement;
+    this.clipHead = svg.querySelector("#head-clip-path") as VElement;
+    this.transformGroup = svg.querySelector("#bot-transform") as VElement;
+    this.eyes = svg.querySelectorAll(".eye-path");
+    this.actBackLayer = svg.querySelector(".suzent-act-back") as VElement;
+    this.actFrontLayer = svg.querySelector(".suzent-act-front") as VElement;
+    this.badge = svg.querySelector("#notify-badge") as VElement;
 
     this.baseMorphLayer = {
       group: null,
-      heads: Array.from(svg.querySelectorAll('.morph-head')) as SVGPathElement[],
-      rings: Array.from(svg.querySelectorAll('.morph-ring')) as SVGCircleElement[],
-      parts: Array.from(svg.querySelectorAll('.morph-part')) as SVGCircleElement[],
-      glyphs: Array.from(svg.querySelectorAll('.morph-glyph')) as SVGPathElement[],
+      heads: svg.querySelectorAll(".morph-head"),
+      rings: svg.querySelectorAll(".morph-ring"),
+      parts: svg.querySelectorAll(".morph-part"),
+      glyphs: svg.querySelectorAll(".morph-glyph"),
     };
     this.activeLayer = this.baseMorphLayer;
 
     this.particles = new SuzentParticleSystem(
-      svg.querySelector('#particles-back') as SVGGElement | null,
-      svg.querySelector('#particles-front') as SVGGElement | null,
+      svg.querySelector("#particles-back"),
+      svg.querySelector("#particles-front"),
       {
-        idPrefix: `${svg.id || 'suzent-bot'}-`,
-        reduceMotion: isReducedMotion,
+        idPrefix: `${svg.id || "suzent-bot"}-`,
+        reduceMotion: () => this.motionReduced(),
         radius: () => SUZENT_BELT_RADIUS,
-      }
+      },
     );
 
-    if (typeof window !== 'undefined') {
-      window.addEventListener('pointermove', this.pointerMove, { passive: true });
-      document.documentElement.addEventListener('mouseleave', this.pointerLeave);
-    }
-
-    const initialCfg = this.getConfig();
+    this.morphCycleAt = this.startedAt + 6800;
     this.setStage(initialCfg.stage, true);
-    this.frameId = requestAnimationFrame(this.boundFrame);
-
-    // Periodic morph preview loop (every 6.8s, matching v14 line 4189)
-    this.cycleTimerId = setInterval(() => {
-      const cfg = this.getConfig();
-      if (cfg.autoMorphCycle === false || isReducedMotion()) return;
-      const spec = STAGE_SPECS[this.stage] ?? STAGE_SPECS.idle;
-      if (spec.cycleMorph !== 'none') {
-        const dur = spec.cycleMorph === 'pencil' ? 3200 : 1750;
-        this.triggerMorphPreview(spec.cycleMorph, dur);
-      }
-    }, 6800);
   }
 
   destroy(): void {
-    cancelAnimationFrame(this.frameId);
-    if (this.cycleTimerId) clearInterval(this.cycleTimerId);
-    if (typeof window !== 'undefined') {
-      window.removeEventListener('pointermove', this.pointerMove);
-      document.documentElement.removeEventListener('mouseleave', this.pointerLeave);
-    }
     for (const layer of this.morphLayers.values()) layer.group?.remove();
     this.particles.clear();
   }
@@ -264,6 +277,7 @@ export class SuzentBotEngine {
     const now = this.clockTime;
     this.stage = stage;
     this.stageStartedAt = now;
+    this.idleHold = false;
     const spec = STAGE_SPECS[stage] ?? STAGE_SPECS.idle;
     const baseState = spec.baseState;
     this.expressionCursor = 0;
@@ -274,9 +288,9 @@ export class SuzentBotEngine {
     this.impulseNext = now + random(500, 1200);
     this.behaviorNext =
       now +
-      (baseState === 'searching'
+      (baseState === "searching"
         ? random(800, 1600)
-        : baseState === 'working' || baseState === 'playful'
+        : baseState === "working" || baseState === "playful"
           ? random(1200, 2400)
           : random(4000, 8000));
     this.winkNext = now + random(3000, 8000);
@@ -289,7 +303,7 @@ export class SuzentBotEngine {
     this.celebrateWildActive = false;
     this.morphShotStartedAt = now;
     if (spec.celebrating) {
-      this.turnDirection = Math.random() < 0.5 ? 1 : -1;
+      this.turnDirection = rng() < 0.5 ? 1 : -1;
       this.celebrateCycle = -1;
     }
     const firstExpr = spec.expressionPool[0] ?? 0;
@@ -299,13 +313,17 @@ export class SuzentBotEngine {
 
   setExpression(index: number, frequency = 7): void {
     const safeIdx = clamp(index, 0, SUZENT_EXPRESSIONS.length - 1);
-    if (safeIdx === this.expressionIndex && this.expressionSpring.target === 1) return;
+    if (safeIdx === this.expressionIndex && this.expressionSpring.target === 1)
+      return;
     const amount = clamp(this.expressionSpring.x, 0, 1);
     this.expressionFrom = [
       lerpRing(this.expressionFrom[0], this.expressionTo[0], amount),
       lerpRing(this.expressionFrom[1], this.expressionTo[1], amount),
     ];
-    this.expressionTo = [SUZENT_EXPRESSIONS[safeIdx][0], SUZENT_EXPRESSIONS[safeIdx][1]];
+    this.expressionTo = [
+      SUZENT_EXPRESSIONS[safeIdx][0],
+      SUZENT_EXPRESSIONS[safeIdx][1],
+    ];
     this.expressionIndex = safeIdx;
     this.expressionSpring.x = 0;
     this.expressionSpring.v = 0;
@@ -319,18 +337,24 @@ export class SuzentBotEngine {
       { at: now, value: 0.05 },
       { at: now + 70, value: 0.05 },
       { at: now + 150, value: 1.08 },
-      { at: now + 300, value: 1 }
+      { at: now + 300, value: 1 },
     );
-    if (Math.random() < 0.14) {
-      this.blinkQueue.push({ at: now + 370, value: 0.05 }, { at: now + 480, value: 1 });
+    if (rng() < 0.14) {
+      this.blinkQueue.push(
+        { at: now + 370, value: 0.05 },
+        { at: now + 480, value: 1 },
+      );
     }
   }
 
-  triggerMorphPreview(effect: Exclude<SuzentMorphId, 'none'>, duration = 2200): void {
+  triggerMorphPreview(
+    effect: Exclude<SuzentMorphId, "none">,
+    duration = 2200,
+  ): void {
     this.morphPreview = {
       effect,
       duration: clamp(duration, 200, 15000),
-      phase: 'reset',
+      phase: "reset",
       phaseStartedAt: this.clockTime,
     };
   }
@@ -339,19 +363,19 @@ export class SuzentBotEngine {
     this.morphPreview = null;
   }
 
-  startSpin(turns = 1, direction = Math.random() < 0.5 ? 1 : -1): boolean {
+  startSpin(turns = 1, direction = rng() < 0.5 ? 1 : -1): boolean {
     if (this.spinSpring) return false;
     this.spinSpring = { x: 0, v: 0, target: turns * Math.PI * 2 * direction };
     return true;
   }
 
-  startGesture(kind: 'spinBounce' | 'spinDizzy'): void {
+  startGesture(kind: "spinBounce" | "spinDizzy"): void {
     if (this.gesture || this.spinSpring) return;
-    const turns = kind === 'spinDizzy' ? Math.round(random(3, 4)) : 1;
+    const turns = kind === "spinDizzy" ? Math.round(random(3, 4)) : 1;
     this.gesture = {
       kind,
       startedAt: this.clockTime,
-      direction: Math.random() < 0.5 ? 1 : -1,
+      direction: rng() < 0.5 ? 1 : -1,
       turns,
     };
   }
@@ -365,14 +389,16 @@ export class SuzentBotEngine {
     if (mode === 0) {
       this.wideRibbonActive = this.startSpin(2);
     } else if (mode === 1) {
-      this.startGesture('spinBounce');
+      this.startGesture("spinBounce");
     } else {
-      this.startGesture('spinDizzy');
+      this.startGesture("spinDizzy");
       this.particles.burst(18, 0.95, 0.3);
     }
   }
 
-  private frame(realNow: number): void {
+  /** Advance one frame. `now` is the host clock in milliseconds, the same value rAF used to pass. */
+  step(realNow: number): SceneFrame {
+    useRng(this.rng);
     const rawDelta = Math.max(0, (realNow - this.lastTime) / 1000);
     this.lastTime = realNow;
     const delta = Math.min(rawDelta, 0.1);
@@ -384,17 +410,31 @@ export class SuzentBotEngine {
     if (config.stage !== this.stage) {
       this.setStage(config.stage, false);
     }
+    this.syncPointer(config);
+    this.prepareIdleHold(now);
+    this.maybeCycleMorph(now);
+    const size = config.size || 36;
+    this.svg.bounds = {
+      left: 0,
+      top: 0,
+      width: size,
+      height: size,
+      right: size,
+      bottom: size,
+    };
 
     const isDark =
-      typeof document !== 'undefined' && document.documentElement.classList.contains('dark');
-    const fg = config.isPending ? '#000000' : isDark ? '#f4f4f5' : '#000000';
-    const bg = config.isPending ? '#ffe666' : isDark ? '#18181b' : '#ffffff';
-    this.svg.style.setProperty('--fg', fg);
-    this.svg.style.setProperty('--bg', bg);
+      config.dark ??
+      (typeof document !== "undefined" &&
+        document.documentElement.classList.contains("dark"));
+    const fg = config.isPending ? "#000000" : isDark ? "#f4f4f5" : "#000000";
+    const bg = config.isPending ? "#ffe666" : isDark ? "#18181b" : "#ffffff";
+    this.svg.style.setProperty("--fg", fg);
+    this.svg.style.setProperty("--bg", bg);
 
     this.updateMorph(now);
     this.updateStateTargets(now, delta);
-    this.stepPhysics(delta, isReducedMotion());
+    this.stepPhysics(delta, this.motionReduced());
     this.render(now, config, fg, bg);
 
     if (
@@ -408,7 +448,8 @@ export class SuzentBotEngine {
 
     const spec = STAGE_SPECS[this.stage] ?? STAGE_SPECS.idle;
     if (this.spinSpring) this.particleSpinAngle = this.spinSpring.x;
-    else if (Math.abs(this.directTurn) > 0.001) this.particleSpinAngle = this.directTurn;
+    else if (Math.abs(this.directTurn) > 0.001)
+      this.particleSpinAngle = this.directTurn;
     else if (spec.humming) this.particleSpinAngle = this.spinAngle;
 
     const width = this.svg.getBoundingClientRect().width || config.size || 24;
@@ -416,11 +457,90 @@ export class SuzentBotEngine {
     this.particles.update(now, delta, {
       spinAngle: this.particleSpinAngle,
       sizeScale,
-      wideStyle: spec.humming || this.celebrateWildActive || this.wideRibbonActive,
-      enabled: config.particlesEnabled !== false && this.morphEffect !== 'pencil',
+      wideStyle:
+        spec.humming || this.celebrateWildActive || this.wideRibbonActive,
+      enabled:
+        config.particlesEnabled !== false && this.morphEffect !== "pencil",
+      dark: isDark,
     });
 
-    this.frameId = requestAnimationFrame(this.boundFrame);
+    return sceneFromTree(this.svg, { fg, bg, settled: this.isSettled() });
+  }
+
+  private motionReduced(): boolean {
+    const flag = this.getConfig().reducedMotion;
+    if (typeof flag === "boolean") return flag;
+    return prefersReducedMotion();
+  }
+
+  private syncPointer(config: SuzentBotEngineConfig): void {
+    const client =
+      config.pointer === false ? null : (config.pointerClient ?? null);
+    this.pointer.active = client !== null;
+    if (client) {
+      this.pointer.clientX = client.x;
+      this.pointer.clientY = client.y;
+    }
+  }
+
+  private prepareIdleHold(now: number): void {
+    const config = this.getConfig();
+    if (
+      this.motionReduced() ||
+      !config.holdWhenIdle ||
+      this.stage !== "idle" ||
+      this.pointer.active ||
+      this.gesture ||
+      this.spinSpring ||
+      this.morphPreview ||
+      this.morph.x > 0.02
+    ) {
+      this.idleHold = false;
+      return;
+    }
+    if (now - this.stageStartedAt < 900) {
+      this.idleHold = false;
+      return;
+    }
+    if (!this.idleHold) this.heldClock = now;
+    this.idleHold = true;
+  }
+
+  private maybeCycleMorph(now: number): void {
+    if (now < this.morphCycleAt) return;
+    this.morphCycleAt = now + 6800;
+    const config = this.getConfig();
+    if (config.autoMorphCycle === false || this.motionReduced()) return;
+    const spec = STAGE_SPECS[this.stage] ?? STAGE_SPECS.idle;
+    if (spec.cycleMorph !== "none") {
+      const dur = spec.cycleMorph === "pencil" ? 3200 : 1750;
+      this.triggerMorphPreview(spec.cycleMorph, dur);
+    }
+  }
+
+  private isSettled(): boolean {
+    if (this.motionReduced()) return true;
+    if (!this.idleHold) return false;
+    const springs = [
+      this.expressionSpring,
+      this.rotation,
+      this.headX,
+      this.headY,
+      this.scaleY,
+      this.eyeOpen,
+      this.eyeScale,
+      this.aimX,
+      this.aimY,
+      this.morph,
+      this.morphBlend,
+      this.turn,
+      this.notify,
+      this.humming,
+    ];
+    return springs.every(
+      (spring) =>
+        Math.abs(spring.v) < 0.04 && Math.abs(spring.x - spring.target) < 0.04,
+    );
   }
 
   private stepPhysics(delta: number, reducedMotion: boolean): void {
@@ -444,41 +564,56 @@ export class SuzentBotEngine {
       if (this.spinSpring) stepSpring(this.spinSpring, 6.2, 1, step);
     }
     if (reducedMotion) {
-      this.expressionSpring.x = 1;
-      this.morph.x = this.morph.target;
-      this.morphBlend.x = this.morphBlend.target;
-      this.turn.x = this.turn.target;
+      const snap = (spring: SpringState) => {
+        spring.x = spring.target;
+        spring.v = 0;
+      };
+      snap(this.expressionSpring);
+      snap(this.rotation);
+      snap(this.headX);
+      snap(this.headY);
+      snap(this.scaleY);
+      snap(this.eyeOpen);
+      snap(this.eyeScale);
+      snap(this.aimX);
+      snap(this.aimY);
+      snap(this.morph);
+      snap(this.morphBlend);
+      snap(this.turn);
+      snap(this.notify);
+      snap(this.humming);
+      if (this.spinSpring) snap(this.spinSpring);
     }
   }
 
   private updateMorph(now: number): void {
-    let requestedEffect: Exclude<SuzentMorphId, 'none'> | null = null;
+    let requestedEffect: Exclude<SuzentMorphId, "none"> | null = null;
     if (this.morphPreview) {
       const preview = this.morphPreview;
-      if (preview.phase === 'reset') {
+      if (preview.phase === "reset") {
         requestedEffect = null;
         if (this.morph.x < 0.004) {
-          preview.phase = 'enter';
+          preview.phase = "enter";
           preview.phaseStartedAt = now;
           requestedEffect = preview.effect;
         }
-      } else if (preview.phase === 'enter') {
+      } else if (preview.phase === "enter") {
         requestedEffect = preview.effect;
         if (this.morph.x > 0.996) {
-          preview.phase = 'hold';
+          preview.phase = "hold";
           preview.phaseStartedAt = now;
         }
-      } else if (preview.phase === 'hold') {
+      } else if (preview.phase === "hold") {
         requestedEffect = preview.effect;
         if (now - preview.phaseStartedAt >= preview.duration) {
-          preview.phase = 'exit';
+          preview.phase = "exit";
           preview.phaseStartedAt = now;
           requestedEffect = null;
         }
-      } else if (preview.phase === 'exit') {
+      } else if (preview.phase === "exit") {
         requestedEffect = null;
         if (this.morph.x < 0.004) {
-          preview.phase = 'done';
+          preview.phase = "done";
           preview.phaseStartedAt = now;
         }
       }
@@ -521,8 +656,10 @@ export class SuzentBotEngine {
     }
 
     if (visible !== this.morphVisible) {
-      if (visible && !isReducedMotion()) this.turnDirection = Math.random() < 0.5 ? 1 : -1;
-      if (!isReducedMotion()) this.turn.target += Math.PI * this.turnDirection;
+      if (visible && !this.motionReduced())
+        this.turnDirection = rng() < 0.5 ? 1 : -1;
+      if (!this.motionReduced())
+        this.turn.target += Math.PI * this.turnDirection;
       this.morphVisible = visible;
     }
   }
@@ -540,19 +677,22 @@ export class SuzentBotEngine {
     let y = 0;
     let scaleY = 1;
 
-    const gesture = isReducedMotion() ? this.emptyGesture() : this.updateGestures(now);
+    const gesture = this.motionReduced()
+      ? this.emptyGesture()
+      : this.updateGestures(now);
 
-    if (isReducedMotion()) {
+    if (this.motionReduced()) {
       this.setExpression(spec.expressionPool[0] ?? 0);
-    } else {
+    } else if (!this.idleHold) {
       switch (baseState) {
-        case 'idle':
-          rotation = 1.5 * Math.sin(0.5 * runtime) + 0.6 * Math.sin(0.17 * runtime);
+        case "idle":
+          rotation =
+            1.5 * Math.sin(0.5 * runtime) + 0.6 * Math.sin(0.17 * runtime);
           x = Math.sin(0.27 * runtime);
           y = 1.2 * Math.sin(0.85 * runtime);
           scaleY = 1 + 0.007 * Math.sin(0.85 * runtime);
           break;
-        case 'listening':
+        case "listening":
           rotation = 8 + 1.5 * Math.sin(0.5 * runtime);
           x = 2;
           y = -2 + 0.8 * Math.sin(0.8 * runtime);
@@ -567,19 +707,19 @@ export class SuzentBotEngine {
             rotation += 2 * Math.sin(phase * Math.PI);
           }
           break;
-        case 'thinking':
+        case "thinking":
           rotation = -9 + 5 * Math.sin(0.35 * runtime);
           x = 5 * Math.sin(0.3 * runtime);
           y = 2.5 * Math.sin(0.6 * runtime);
           break;
-        case 'searching': {
+        case "searching": {
           const wave = Math.sin(1.3 * runtime);
           rotation = 13 * wave;
           x = 7 * wave;
           y = 3 * Math.sin(1.7 * runtime);
           break;
         }
-        case 'working': {
+        case "working": {
           const wave = Math.sin(runtime * Math.PI * 3.2);
           rotation = 4 + 2.5 * wave;
           x = 3;
@@ -587,7 +727,7 @@ export class SuzentBotEngine {
           scaleY = 1 - 0.02 * Math.max(0, wave);
           break;
         }
-        case 'suspicious':
+        case "suspicious":
           rotation = -6 + 3 * Math.sin(0.3 * runtime);
           x = -4 * Math.sin(0.25 * runtime);
           y = 1 + 1.2 * Math.sin(0.45 * runtime);
@@ -597,7 +737,7 @@ export class SuzentBotEngine {
             this.impulseNext = now + random(4000, 7000);
           }
           break;
-        case 'curious':
+        case "curious":
           rotation = 10 + 6 * Math.sin(0.7 * runtime);
           x = 5 * Math.sin(0.6 * runtime);
           y = -2 + 1.5 * Math.sin(0.9 * runtime);
@@ -613,19 +753,19 @@ export class SuzentBotEngine {
             rotation += 5 * Math.sin(phase * Math.PI);
           }
           break;
-        case 'playful':
+        case "playful":
           rotation = 8 * Math.sin(1.4 * runtime);
           x = 4 * Math.sin(1.1 * runtime);
           y = -3 * Math.abs(Math.sin(2.2 * runtime));
           scaleY = 1 + 0.015 * Math.sin(2.2 * runtime);
           eyeScale = 1.06;
           break;
-        case 'humming':
+        case "humming":
           rotation = 2 * Math.sin(0.4 * runtime);
           x = 1.5 * Math.sin(0.3 * runtime);
           y = 1.5 * Math.sin(0.7 * runtime);
           break;
-        case 'notifying':
+        case "notifying":
           if (!this.notifyTriggered && elapsed > 0.12) {
             this.notifyTriggered = true;
             this.headY.v -= 26;
@@ -636,7 +776,7 @@ export class SuzentBotEngine {
           x = 2;
           y = -1;
           break;
-        case 'celebrate': {
+        case "celebrate": {
           y = -2.5 * Math.abs(Math.sin(1.6 * runtime));
           eyeScale = 1.1;
           eyeOpen = 1.1;
@@ -663,16 +803,18 @@ export class SuzentBotEngine {
     this.directGazeX = gesture.gazeX;
     this.directGazeY = gesture.gazeY;
 
-    this.rotation.target = (rotation * ENGINE_MOTION_SCALE * Math.PI) / 180;
-    this.headX.target = x * ENGINE_MOTION_SCALE;
-    this.headY.target = y * ENGINE_MOTION_SCALE;
-    this.scaleY.target = scaleY;
-    this.eyeOpen.target = eyeOpen;
-    this.eyeScale.target = eyeScale;
-    this.notify.target = spec.notifying ? 1 : 0;
-    this.humming.target = spec.humming ? 1 : 0;
+    if (!(this.idleHold && baseState === "idle")) {
+      this.rotation.target = (rotation * ENGINE_MOTION_SCALE * Math.PI) / 180;
+      this.headX.target = x * ENGINE_MOTION_SCALE;
+      this.headY.target = y * ENGINE_MOTION_SCALE;
+      this.scaleY.target = scaleY;
+      this.eyeOpen.target = eyeOpen;
+      this.eyeScale.target = eyeScale;
+      this.notify.target = spec.notifying ? 1 : 0;
+      this.humming.target = spec.humming ? 1 : 0;
+    }
 
-    if (spec.humming && !isReducedMotion()) {
+    if (spec.humming && !this.motionReduced()) {
       const speed =
         elapsed < 0.5
           ? 7 * cubicInOut(elapsed / 0.5)
@@ -687,15 +829,20 @@ export class SuzentBotEngine {
 
   private updateExpressionAndBlink(
     now: number,
-    spec: (typeof STAGE_SPECS)[SuzentBotStageId]
+    spec: (typeof STAGE_SPECS)[SuzentBotStageId],
   ): number | null {
     if (now >= this.expressionNext) {
       const pool = spec.expressionPool;
       if (pool.length) {
         this.expressionCursor =
-          (this.expressionCursor + 1 + Math.floor(random(0, Math.max(pool.length - 1, 1)))) %
+          (this.expressionCursor +
+            1 +
+            Math.floor(random(0, Math.max(pool.length - 1, 1)))) %
           pool.length;
-        this.setExpression(pool[this.expressionCursor], spec.baseState === 'searching' ? 10 : 6);
+        this.setExpression(
+          pool[this.expressionCursor],
+          spec.baseState === "searching" ? 10 : 6,
+        );
       }
       this.expressionNext = now + random(1100, 2000) * ENGINE_TEMPO;
     }
@@ -719,60 +866,60 @@ export class SuzentBotEngine {
 
   private updateAim(now: number, baseState: string): void {
     if (now < this.gazeNext) return;
-    const direction = () => (Math.random() < 0.5 ? -1 : 1);
+    const direction = () => (rng() < 0.5 ? -1 : 1);
     let x = 0;
     let y = 0;
     let min = 2500;
     let max = 5000;
     switch (baseState) {
-      case 'idle':
+      case "idle":
         min = 2500;
         max = 5500;
         break;
-      case 'listening':
+      case "listening":
         x = 15 * random(-0.3, 0.3);
         y = 9 * random(-0.25, 0.25);
         min = 2200;
         max = 4200;
         break;
-      case 'thinking':
+      case "thinking":
         x = direction() * random(0.5, 1) * 15;
         y = -9 * random(0.4, 1);
         min = 1500;
         max = 2800;
         break;
-      case 'searching':
+      case "searching":
         x = direction() * random(0.7, 1) * 15;
         y = 9 * random(-1, 1);
         min = 550;
         max = 1150;
         break;
-      case 'working':
+      case "working":
         x = 15 * random(-0.4, 0.4);
         y = 9 * random(0.4, 1);
         min = 1200;
         max = 2400;
         break;
-      case 'suspicious':
+      case "suspicious":
         x = 15 * direction();
         y = 2.7;
         min = 2200;
         max = 4200;
         break;
-      case 'curious':
+      case "curious":
         x = direction() * random(0.6, 1) * 15;
         y = 9 * random(-1, 1);
         min = 950;
         max = 1900;
         break;
-      case 'playful':
+      case "playful":
         x = direction() * random(0.5, 1) * 15;
         y = -9 * random(0, 0.6);
         min = 900;
         max = 1800;
         break;
-      case 'notifying': {
-        const focused = Math.random() < 0.72;
+      case "notifying": {
+        const focused = rng() < 0.72;
         x = (focused ? 0.45 : 0.1) * 15;
         y = -9 * (focused ? 0.3 : 0.05);
         min = 1200;
@@ -806,29 +953,32 @@ export class SuzentBotEngine {
     const spec = STAGE_SPECS[this.stage] ?? STAGE_SPECS.idle;
     const baseState = spec.baseState;
     const out = this.emptyGesture();
-    if (['idle', 'curious', 'playful'].includes(baseState) && now >= this.winkNext) {
+    if (
+      ["idle", "curious", "playful"].includes(baseState) &&
+      now >= this.winkNext
+    ) {
       this.winkAt = now;
-      this.winkEye = Math.random() < 0.5 ? 0 : 1;
+      this.winkEye = rng() < 0.5 ? 0 : 1;
       this.winkNext = now + random(4500, 10000);
     }
     if (now >= this.behaviorNext && !this.gesture && !this.spinSpring) {
-      if (baseState === 'searching') {
+      if (baseState === "searching") {
         this.startSpin();
         this.behaviorNext = now + random(4000, 7000);
-      } else if (baseState === 'working') {
+      } else if (baseState === "working") {
         this.startSpin(1, 1);
         this.behaviorNext = now + random(6000, 9000);
-      } else if (baseState === 'playful') {
+      } else if (baseState === "playful") {
         this.startSpin(1);
         this.behaviorNext = now + random(3500, 6000);
       }
     }
     if (now >= this.ambientNext) {
-      if (!this.gesture && !this.spinSpring && baseState === 'playful') {
-        const roll = Math.random();
-        if (roll < 0.34) this.startGesture('spinBounce');
+      if (!this.gesture && !this.spinSpring && baseState === "playful") {
+        const roll = rng();
+        if (roll < 0.34) this.startGesture("spinBounce");
         else if (roll < 0.62) this.startBounce(now);
-        else if (roll < 0.86) this.startGesture('spinDizzy');
+        else if (roll < 0.86) this.startGesture("spinDizzy");
         else this.startSpin(1);
       }
       this.ambientNext = now + random(9000, 18000);
@@ -836,14 +986,15 @@ export class SuzentBotEngine {
     if (this.gesture) {
       const elapsed = (now - this.gesture.startedAt) / 1000;
       const { kind, direction, turns } = this.gesture;
-      if (kind === 'spinBounce') {
+      if (kind === "spinBounce") {
         if (elapsed < 0.7) {
-          out.turn = turns * Math.PI * 2 * direction * cubicInOut(elapsed / 0.7);
+          out.turn =
+            turns * Math.PI * 2 * direction * cubicInOut(elapsed / 0.7);
         } else {
           this.startBounce(now);
           this.gesture = null;
         }
-      } else if (kind === 'spinDizzy') {
+      } else if (kind === "spinDizzy") {
         const spinDur = 0.55 + 0.16 * turns;
         if (elapsed < spinDur) {
           out.turn = turns * Math.PI * 2 * direction * (elapsed / spinDur) ** 2;
@@ -886,11 +1037,11 @@ export class SuzentBotEngine {
     const out = this.emptyGesture();
     this.celebrateWildActive = false;
     const activeElapsed = elapsed - 0.14;
-    if (activeElapsed < 0 || isReducedMotion()) return out;
+    if (activeElapsed < 0 || this.motionReduced()) return out;
     const cycleIndex = Math.floor(activeElapsed / 6.2);
     if (cycleIndex !== this.celebrateCycle) {
       this.celebrateCycle = cycleIndex;
-      this.turnDirection = Math.random() < 0.5 ? 1 : -1;
+      this.turnDirection = rng() < 0.5 ? 1 : -1;
     }
     const cycle = activeElapsed % 6.2;
     if (cycle > 5.49) return out;
@@ -905,7 +1056,10 @@ export class SuzentBotEngine {
       angle = -0.5 + (speed * t * t) / 0.6;
     } else if (cycle < 2.54) angle = -0.5 + speed * (0.15 + cycle - 0.54);
     else if (cycle < 3.79) {
-      angle = -0.5 + speed * 2.15 + (1.25 * speed * (1 - (1 - (cycle - 2.54) / 1.25) ** 4)) / 4;
+      angle =
+        -0.5 +
+        speed * 2.15 +
+        (1.25 * speed * (1 - (1 - (cycle - 2.54) / 1.25) ** 4)) / 4;
     } else angle = turns * Math.PI * 2;
     out.turn = angle * dir;
 
@@ -913,7 +1067,8 @@ export class SuzentBotEngine {
     if (cycle > 2.54) {
       const progress = Math.min((cycle - 2.54) / 1.25, 1);
       envelope = progress < 0.4 ? 0 : ((progress - 0.4) / 0.6) ** 2;
-      if (cycle >= 3.79) envelope = Math.max(0, (1 - (cycle - 3.79) / 1.7) ** 1.6);
+      if (cycle >= 3.79)
+        envelope = Math.max(0, (1 - (cycle - 3.79) / 1.7) ** 1.6);
     }
     const shakeTime = Math.max(cycle - 2.54, 0);
     out.rotation =
@@ -923,7 +1078,8 @@ export class SuzentBotEngine {
     out.y = 2.6 * Math.sin(18.4 * shakeTime) * envelope;
     out.gazeX = 13 * Math.sin(11.5 * shakeTime) * dir * envelope;
     out.gazeY = (Math.cos(9 * shakeTime) - 1) * 3.5 * envelope;
-    out.eyeOpen = 1.14 - 0.44 * envelope + 0.1 * Math.sin(16 * shakeTime) * envelope;
+    out.eyeOpen =
+      1.14 - 0.44 * envelope + 0.1 * Math.sin(16 * shakeTime) * envelope;
     out.eyeScale = 1.12 - 0.09 * envelope;
     return out;
   }
@@ -937,19 +1093,35 @@ export class SuzentBotEngine {
       const angle = 0.85 * this.spinAngle + index * Math.PI;
       const radius = 1.3 * SUZENT_RADIUS;
       const depth = 0.55 + 0.45 * clamp((Math.cos(angle) + 1) / 2, 0, 1);
-      element.style.display = '';
-      element.setAttribute('cx', (HEAD_C + radius * Math.sin(angle)).toFixed(1));
-      element.setAttribute('cy', (HEAD_C - 0.38 * radius * Math.cos(angle) - 8).toFixed(1));
-      element.setAttribute('r', (7.5 * depth * amount).toFixed(2));
-      element.setAttribute('opacity', ((0.3 + 0.7 * depth) * amount).toFixed(3));
+      element.style.display = "";
+      element.setAttribute(
+        "cx",
+        (HEAD_C + radius * Math.sin(angle)).toFixed(1),
+      );
+      element.setAttribute(
+        "cy",
+        (HEAD_C - 0.38 * radius * Math.cos(angle) - 8).toFixed(1),
+      );
+      element.setAttribute("r", (7.5 * depth * amount).toFixed(2));
+      element.setAttribute(
+        "opacity",
+        ((0.3 + 0.7 * depth) * amount).toFixed(3),
+      );
     }
   }
 
-  private render(now: number, config: SuzentBotEngineConfig, fg: string, bg: string): void {
+  private render(
+    now: number,
+    config: SuzentBotEngineConfig,
+    fg: string,
+    bg: string,
+  ): void {
     const morphAmount = clamp(this.morph.x, 0, 1);
     const morphBlend = clamp(this.morphBlend.x, 0, 1);
-    const prevMorphEffect = morphBlend < 0.999 ? this.previousMorphEffect : null;
-    const morphIsTurning = this.morph.x > 0.001 || Math.abs(this.turn.target - this.turn.x) > 0.01;
+    const prevMorphEffect =
+      morphBlend < 0.999 ? this.previousMorphEffect : null;
+    const morphIsTurning =
+      this.morph.x > 0.001 || Math.abs(this.turn.target - this.turn.x) > 0.01;
     const morphTurn = morphIsTurning ? this.turn.x : 0;
     const turnAngle = morphTurn + (this.spinSpring?.x ?? 0) + this.directTurn;
 
@@ -961,8 +1133,11 @@ export class SuzentBotEngine {
     const spec = STAGE_SPECS[this.stage] ?? STAGE_SPECS.idle;
     const elapsedSec = Math.max(0, (now - this.stageStartedAt) / 1000);
     const actList = spec.acts?.length ? spec.acts : [spec.act];
-    const activeAct = actList[Math.floor(elapsedSec / 4.2) % actList.length] ?? spec.act;
-    const baseRot = ((this.rotation.x * 180) / Math.PI) * SUZENT_TILT_SCALE + this.directRotation;
+    const activeAct =
+      actList[Math.floor(elapsedSec / 4.2) % actList.length] ?? spec.act;
+    const baseRot =
+      ((this.rotation.x * 180) / Math.PI) * SUZENT_TILT_SCALE +
+      this.directRotation;
     const actPose = evaluateFullBodyAct(activeAct, elapsedSec, morphAmount, {
       x: this.headX.x + this.directX,
       y: this.headY.x + this.directY,
@@ -976,14 +1151,18 @@ export class SuzentBotEngine {
     this.actFrontLayer.innerHTML = actPose.frontHtml;
 
     const actRingBlend =
-      actPose.targetRing && actPose.ringBlend ? clamp(actPose.ringBlend, 0, 1) : 0;
+      actPose.targetRing && actPose.ringBlend
+        ? clamp(actPose.ringBlend, 0, 1)
+        : 0;
     const baseShapeRing =
       actRingBlend > 0.001 && actPose.targetRing
         ? lerpRing(shapeRing, actPose.targetRing, actRingBlend)
         : shapeRing;
 
-    const activeMorphRing = this.morphEffect === 'pencil' ? PENCIL_RING : CIRCLE_RING;
-    const prevMorphRing = prevMorphEffect === 'pencil' ? PENCIL_RING : CIRCLE_RING;
+    const activeMorphRing =
+      this.morphEffect === "pencil" ? PENCIL_RING : CIRCLE_RING;
+    const prevMorphRing =
+      prevMorphEffect === "pencil" ? PENCIL_RING : CIRCLE_RING;
     const morphRing = prevMorphEffect
       ? lerpRing(prevMorphRing, activeMorphRing, cubicInOut(morphBlend))
       : activeMorphRing;
@@ -999,53 +1178,67 @@ export class SuzentBotEngine {
           : SUZENT_BODY_PATH
         : ringOutline(headRing);
 
-    this.head.setAttribute('d', headPath);
-    this.clipHead.setAttribute('d', headPath);
+    this.head.setAttribute("d", headPath);
+    this.clipHead.setAttribute("d", headPath);
 
     // Render eyes with actPose gaze overrides, then morph effects & humming markers
-    this.renderEyes(now, config, shapeRing, turnAngle, actPose.hideEyes ? 1 : morphAmount);
+    this.renderEyes(
+      now,
+      config,
+      shapeRing,
+      turnAngle,
+      actPose.hideEyes ? 1 : morphAmount,
+    );
 
     const effect = this.morphEffect;
     const activeMorphSize = effect ? MORPH_SIZES[effect] : 19;
-    const prevMorphSize = prevMorphEffect ? MORPH_SIZES[prevMorphEffect] : activeMorphSize;
-    const morphSize = activeMorphSize * morphBlend + prevMorphSize * (1 - morphBlend);
+    const prevMorphSize = prevMorphEffect
+      ? MORPH_SIZES[prevMorphEffect]
+      : activeMorphSize;
+    const morphSize =
+      activeMorphSize * morphBlend + prevMorphSize * (1 - morphBlend);
     const morphScale = morphSize / HEAD_C;
     const effectPose = this.renderMorphEffects(
       morphAmount,
       morphBlend,
       prevMorphEffect,
       morphSize,
-      now
+      now,
     );
 
     this.renderHummingMarkers();
 
     const normal = 1 - morphAmount;
-    const translateX = (this.headX.x + this.directX + actPose.x) * normal + effectPose.x;
-    const translateY = (this.headY.x + this.directY + actPose.y) * normal + effectPose.y;
+    const translateX =
+      (this.headX.x + this.directX + actPose.x) * normal + effectPose.x;
+    const translateY =
+      (this.headY.x + this.directY + actPose.y) * normal + effectPose.y;
     const rotation = (baseRot + actPose.rot) * normal + effectPose.rotation;
-    const scaleX = actPose.sx * normal + morphScale * effectPose.scale * morphAmount;
+    const scaleX =
+      actPose.sx * normal + morphScale * effectPose.scale * morphAmount;
     const scaleY =
-      this.scaleY.x * actPose.sy * normal + morphScale * effectPose.scale * morphAmount;
+      this.scaleY.x * actPose.sy * normal +
+      morphScale * effectPose.scale * morphAmount;
 
     this.transformGroup.setAttribute(
-      'transform',
-      `translate(${(HEAD_C + translateX).toFixed(2)} ${(HEAD_C + translateY).toFixed(2)}) rotate(${rotation.toFixed(2)}) scale(${scaleX.toFixed(4)} ${scaleY.toFixed(4)}) translate(${-HEAD_C} ${-HEAD_C})`
+      "transform",
+      `translate(${(HEAD_C + translateX).toFixed(2)} ${(HEAD_C + translateY).toFixed(2)}) rotate(${rotation.toFixed(2)}) scale(${scaleX.toFixed(4)} ${scaleY.toFixed(4)}) translate(${-HEAD_C} ${-HEAD_C})`,
     );
     this.transformGroup.style.opacity = effectPose.opacity.toFixed(3);
 
     const badgeAmount = clamp(this.notify.x, 0, 1.4);
     if (badgeAmount <= 0.01) {
-      this.badge.setAttribute('style', 'display:none');
+      this.badge.setAttribute("style", "display:none");
     } else {
-      const badgeAnchor = shapeRing[Math.round((7 * shapeRing.length) / 8) % shapeRing.length];
-      this.badge.setAttribute('style', '');
-      this.badge.setAttribute('fill', fg);
-      this.badge.setAttribute('stroke', bg);
-      this.badge.setAttribute('stroke-width', '10');
-      this.badge.setAttribute('cx', badgeAnchor[0].toFixed(1));
-      this.badge.setAttribute('cy', badgeAnchor[1].toFixed(1));
-      this.badge.setAttribute('r', (20 * badgeAmount).toFixed(2));
+      const badgeAnchor =
+        shapeRing[Math.round((7 * shapeRing.length) / 8) % shapeRing.length];
+      this.badge.setAttribute("style", "");
+      this.badge.setAttribute("fill", fg);
+      this.badge.setAttribute("stroke", bg);
+      this.badge.setAttribute("stroke-width", "10");
+      this.badge.setAttribute("cx", badgeAnchor[0].toFixed(1));
+      this.badge.setAttribute("cy", badgeAnchor[1].toFixed(1));
+      this.badge.setAttribute("r", (20 * badgeAmount).toFixed(2));
     }
   }
 
@@ -1054,7 +1247,7 @@ export class SuzentBotEngine {
     config: SuzentBotEngineConfig,
     shapeRing: Point2D[],
     turnAngle: number,
-    morphAmount: number
+    morphAmount: number,
   ): void {
     const amount = clamp(this.expressionSpring.x, 0, 1);
     const eyeRings = [
@@ -1071,20 +1264,34 @@ export class SuzentBotEngine {
 
     let leftHalf = 0;
     let rightHalf = 0;
-    for (const pt of eyeRings[0]) leftHalf = Math.max(leftHalf, Math.abs(pt[0] - centers[0][0]));
-    for (const pt of eyeRings[1]) rightHalf = Math.max(rightHalf, Math.abs(pt[0] - centers[1][0]));
+    for (const pt of eyeRings[0])
+      leftHalf = Math.max(leftHalf, Math.abs(pt[0] - centers[0][0]));
+    for (const pt of eyeRings[1])
+      rightHalf = Math.max(rightHalf, Math.abs(pt[0] - centers[1][0]));
     const distance = Math.abs(centers[1][0] - centers[0][0]);
     const fit =
-      leftHalf + rightHalf > 0.5 ? clamp((distance + 24) / (leftHalf + rightHalf), 1.02, 4) : 4;
+      leftHalf + rightHalf > 0.5
+        ? clamp((distance + 24) / (leftHalf + rightHalf), 1.02, 4)
+        : 4;
 
     if (config.pointer !== false && this.pointer.active) {
       const bounds = this.svg.getBoundingClientRect();
       this.pointer.targetX =
         22 *
-        clamp((this.pointer.clientX - (bounds.left + bounds.width / 2)) / bounds.width, -0.6, 0.6);
+        clamp(
+          (this.pointer.clientX - (bounds.left + bounds.width / 2)) /
+            bounds.width,
+          -0.6,
+          0.6,
+        );
       this.pointer.targetY =
         14 *
-        clamp((this.pointer.clientY - (bounds.top + bounds.height / 2)) / bounds.height, -0.6, 0.6);
+        clamp(
+          (this.pointer.clientY - (bounds.top + bounds.height / 2)) /
+            bounds.height,
+          -0.6,
+          0.6,
+        );
     } else {
       this.pointer.targetX = 0;
       this.pointer.targetY = 0;
@@ -1097,7 +1304,7 @@ export class SuzentBotEngine {
       const el = this.eyes[index];
       const ring = eyeRings[index];
       const [centerX, centerY] = centers[index];
-      el.setAttribute('d', ringPath(ring));
+      el.setAttribute("d", ringPath(ring));
 
       let localCenter = HEAD_C;
       let offsetX = centerX - HEAD_C;
@@ -1106,7 +1313,10 @@ export class SuzentBotEngine {
       let perspectiveFade = 1;
 
       if (Math.abs(turnAngle) > 0.001) {
-        const [left, right] = spanAt(shapeRing, clamp(centerY, top + 2, bottom - 2));
+        const [left, right] = spanAt(
+          shapeRing,
+          clamp(centerY, top + 2, bottom - 2),
+        );
         const radius = Math.max((right - left) / 2, 12);
         localCenter = (left + right) / 2;
         const initial = Math.asin(clamp(offsetX / radius, -1, 1));
@@ -1120,11 +1330,21 @@ export class SuzentBotEngine {
       }
 
       const pulse = 1 + 0.07 * Math.sin(amount * Math.PI);
-      let driftX = 1.4 * Math.sin(0.00042 * now + index) + 0.5 * Math.sin(0.001 * now + 2 * index);
-      let driftY = 0.9 * Math.sin(0.00058 * now + index);
-      const autoGazeWeight = config.pointer !== false && this.pointer.active ? 0.2 : 1;
-      driftX += this.pointer.x + this.aimX.x * autoGazeWeight + this.directGazeX;
-      driftY += this.pointer.y + this.aimY.x * autoGazeWeight + this.directGazeY;
+      const driftNow = this.motionReduced()
+        ? 0
+        : this.idleHold
+          ? this.heldClock
+          : now;
+      let driftX =
+        1.4 * Math.sin(0.00042 * driftNow + index) +
+        0.5 * Math.sin(0.001 * driftNow + 2 * index);
+      let driftY = 0.9 * Math.sin(0.00058 * driftNow + index);
+      const autoGazeWeight =
+        config.pointer !== false && this.pointer.active ? 0.2 : 1;
+      driftX +=
+        this.pointer.x + this.aimX.x * autoGazeWeight + this.directGazeX;
+      driftY +=
+        this.pointer.y + this.aimY.x * autoGazeWeight + this.directGazeY;
 
       const notification = clamp(this.notify.x, 0, 1);
       driftX -= 10 * notification;
@@ -1135,14 +1355,17 @@ export class SuzentBotEngine {
       let winkScale = 1;
       if (index === this.winkEye && now < this.winkAt + 320) {
         const phase = (now - this.winkAt) / 320;
-        winkScale = Math.max(phase < 0.42 ? 1 - phase / 0.42 : (phase - 0.42) / 0.58, 0.04);
+        winkScale = Math.max(
+          phase < 0.42 ? 1 - phase / 0.42 : (phase - 0.42) / 0.58,
+          0.04,
+        );
       }
       const scaleY = clamp(
         Math.max(this.eyeOpen.x * winkScale, 0.04) * eyeScale * pulse,
         0.02,
-        2.4
+        2.4,
       );
-      el.style.display = visible && morphAmount < 0.5 ? '' : 'none';
+      el.style.display = visible && morphAmount < 0.5 ? "" : "none";
 
       const halfHeight = EYE_HALF * scaleY + 2;
       const y = clamp(centerY + driftY, top + halfHeight, bottom - halfHeight);
@@ -1160,12 +1383,15 @@ export class SuzentBotEngine {
       }
       const desired = localCenter + offsetX + driftX;
       const bounded =
-        maxLeft <= minRight ? clamp(desired, maxLeft, minRight) : (maxLeft + minRight) / 2;
+        maxLeft <= minRight
+          ? clamp(desired, maxLeft, minRight)
+          : (maxLeft + minRight) / 2;
       let finalX = bounded + (desired - bounded) * (1 - perspectiveFade);
       let finalY = y;
 
       if (notification > 0.01) {
-        const badgeAnchor = shapeRing[Math.round((7 * shapeRing.length) / 8) % shapeRing.length];
+        const badgeAnchor =
+          shapeRing[Math.round((7 * shapeRing.length) / 8) % shapeRing.length];
         const dx = finalX - badgeAnchor[0];
         const dy = finalY - badgeAnchor[1];
         const dist = Math.hypot(dx, dy) || 1;
@@ -1183,43 +1409,43 @@ export class SuzentBotEngine {
       }
 
       el.setAttribute(
-        'transform',
-        `translate(${finalX.toFixed(2)} ${finalY.toFixed(2)}) scale(${scaleX.toFixed(4)} ${scaleY.toFixed(4)}) translate(${(-centerX).toFixed(2)} ${(-centerY).toFixed(2)})`
+        "transform",
+        `translate(${finalX.toFixed(2)} ${finalY.toFixed(2)}) scale(${scaleX.toFixed(4)} ${scaleY.toFixed(4)}) translate(${(-centerX).toFixed(2)} ${(-centerY).toFixed(2)})`,
       );
     }
   }
 
   private createMorphLayer(effect: string): MorphLayer {
-    const group = document.createElementNS(SVG_NS, 'g');
-    group.setAttribute('class', 'morph-effect-layer');
-    group.setAttribute('data-morph-effect', effect);
-    const create = <T extends SVGElement>(
+    const group = new VElement("g");
+    group.setAttribute("class", "morph-effect-layer");
+    group.setAttribute("data-morph-effect", effect);
+    const create = (
       tag: string,
       className: string,
       count: number,
-      filled = false
-    ): T[] =>
+      filled = false,
+    ): VElement[] =>
       Array.from({ length: count }, () => {
-        const el = document.createElementNS(SVG_NS, tag) as unknown as T;
-        el.setAttribute('class', className);
+        const el = new VElement(tag);
+        el.setAttribute("class", className);
         if (filled) {
-          el.setAttribute('fill', 'var(--fg)');
+          el.setAttribute("fill", "var(--fg)");
         }
-        if (tag === 'circle') {
-          el.setAttribute('cx', String(HEAD_C));
-          el.setAttribute('cy', String(HEAD_C));
-          el.setAttribute('r', '0');
+        if (tag === "circle") {
+          el.setAttribute("cx", String(HEAD_C));
+          el.setAttribute("cy", String(HEAD_C));
+          el.setAttribute("r", "0");
         }
-        el.style.display = 'none';
+        el.style.display = "none";
         group.appendChild(el);
         return el;
       });
     const layer: MorphLayer = {
       group,
-      heads: create<SVGPathElement>('path', 'grok-bot-mark__head morph-head', 2, true),
-      rings: create<SVGCircleElement>('circle', 'morph-ring', 5, false),
-      parts: create<SVGCircleElement>('circle', 'grok-bot-mark__head morph-part', 5, true),
-      glyphs: create<SVGPathElement>('path', 'morph-glyph', 3, false),
+      heads: create("path", "grok-bot-mark__head morph-head", 2, true),
+      rings: create("circle", "morph-ring", 5, false),
+      parts: create("circle", "grok-bot-mark__head morph-part", 5, true),
+      glyphs: create("path", "morph-glyph", 3, false),
     };
     this.svg.insertBefore(group, this.transformGroup);
     this.morphLayers.set(effect, layer);
@@ -1227,26 +1453,31 @@ export class SuzentBotEngine {
   }
 
   private hideLayerElements(layer: MorphLayer): void {
-    for (const el of [...layer.heads, ...layer.rings, ...layer.parts, ...layer.glyphs]) {
-      el.style.display = 'none';
+    for (const el of [
+      ...layer.heads,
+      ...layer.rings,
+      ...layer.parts,
+      ...layer.glyphs,
+    ]) {
+      el.style.display = "none";
     }
   }
 
   private renderMorphEffects(
     morphAmount: number,
     morphBlend: number,
-    prevMorphEffect: Exclude<SuzentMorphId, 'none'> | null,
+    prevMorphEffect: Exclude<SuzentMorphId, "none"> | null,
     morphSize: number,
-    now: number
+    now: number,
   ) {
     this.hideLayerElements(this.baseMorphLayer);
     for (const layer of this.morphLayers.values()) {
-      if (layer.group) layer.group.style.display = 'none';
+      if (layer.group) layer.group.style.display = "none";
     }
     const pose = { x: 0, y: 0, rotation: 0, scale: 1, opacity: 1 };
     if (!this.morphEffect || morphAmount <= 0.004) return pose;
 
-    const effectAmount = (eff: Exclude<SuzentMorphId, 'none'>) => {
+    const effectAmount = (eff: Exclude<SuzentMorphId, "none">) => {
       if (eff === this.morphEffect) return morphAmount * morphBlend;
       if (eff === prevMorphEffect) return morphAmount * (1 - morphBlend);
       return 0;
@@ -1259,68 +1490,88 @@ export class SuzentBotEngine {
       receiveCycle: this.receiveCycle,
       receiveAngle: this.receiveAngle,
       writingTrail: this.writingTrail,
-      reducedMotion: isReducedMotion(),
+      reducedMotion: this.motionReduced(),
     };
 
     for (const eff of MORPH_EFFECT_IDS) {
       const amount = effectAmount(eff);
       if (amount <= 0.004) continue;
       const layer = this.morphLayers.get(eff) || this.createMorphLayer(eff);
-      if (layer.group) layer.group.style.display = '';
+      if (layer.group) layer.group.style.display = "";
       this.activeLayer = layer;
       this.hideLayerElements(layer);
 
       switch (eff) {
-        case 'dots': {
+        case "dots": {
           renderDotsMorph(layer, amount, now, morphState);
           const dist = Math.abs(
-            (((((now - this.morphStartedAt) / 1400 + 0.119) % 1) + 1) % 1) - 1 / 3
+            (((((now - this.morphStartedAt) / 1400 + 0.119) % 1) + 1) % 1) -
+              1 / 3,
           );
           const pulseDist = Math.min(dist, 1 - dist);
-          const pulse = morphState.reducedMotion ? 1 : Math.exp(-(pulseDist ** 2) / 0.045);
+          const pulse = morphState.reducedMotion
+            ? 1
+            : Math.exp(-(pulseDist ** 2) / 0.045);
           const pop = morphState.reducedMotion ? 1 : 0.84 + 0.22 * pulse;
           pose.scale *= 1 + (pop - 1) * (amount / Math.max(morphAmount, 0.001));
-          pose.y -= morphState.reducedMotion ? 0 : 9 * pulse * amount * morphAmount;
-          pose.opacity *= 1 - (morphState.reducedMotion ? 0 : 0.5 * (1 - pulse)) * amount;
+          pose.y -= morphState.reducedMotion
+            ? 0
+            : 9 * pulse * amount * morphAmount;
+          pose.opacity *=
+            1 - (morphState.reducedMotion ? 0 : 0.5 * (1 - pulse)) * amount;
           break;
         }
-        case 'orbit':
-          renderOrbitMorph(layer, amount, now);
+        case "orbit":
+          renderOrbitMorph(layer, amount, now, morphState.reducedMotion);
           break;
-        case 'radar':
-          renderRadarMorph(layer, amount, now, morphSize);
+        case "radar":
+          renderRadarMorph(
+            layer,
+            amount,
+            now,
+            morphSize,
+            morphState.reducedMotion,
+          );
           break;
-        case 'progress':
+        case "progress":
           renderProgressMorph(layer, amount, now, morphState);
           break;
-        case 'gather':
+        case "gather":
           renderGatherMorph(layer, amount, now, morphState);
           break;
-        case 'wave':
-          renderWaveMorph(layer, amount, now);
+        case "wave":
+          renderWaveMorph(layer, amount, now, morphState.reducedMotion);
           break;
-        case 'send': {
+        case "send": {
           renderSendMorph(layer, amount, now, morphState);
-          const phase = (((elapsed / 1500) % 1) + 1) % 1;
-          pose.scale *=
-            1 +
-            (phase < 0.18
-              ? -0.06 * Math.sin((phase / 0.18) * Math.PI)
-              : phase < 0.42
-                ? 0.05 * Math.sin(((phase - 0.18) / 0.24) * Math.PI)
-                : 0) *
-              amount;
+          if (!morphState.reducedMotion) {
+            const phase = (((elapsed / 1500) % 1) + 1) % 1;
+            pose.scale *=
+              1 +
+              (phase < 0.18
+                ? -0.06 * Math.sin((phase / 0.18) * Math.PI)
+                : phase < 0.42
+                  ? 0.05 * Math.sin(((phase - 0.18) / 0.24) * Math.PI)
+                  : 0) *
+                amount;
+          }
           break;
         }
-        case 'receive': {
+        case "receive": {
           renderReceiveMorph(layer, amount, now, morphState);
           this.receiveCycle = morphState.receiveCycle;
           this.receiveAngle = morphState.receiveAngle;
-          const phase = clamp((((((elapsed / 1700) % 1) + 1) % 1) - 0.58) / 0.34, 0, 1);
-          pose.scale *= 1 + 0.11 * Math.sin(phase * Math.PI) * amount;
+          if (!morphState.reducedMotion) {
+            const phase = clamp(
+              (((((elapsed / 1700) % 1) + 1) % 1) - 0.58) / 0.34,
+              0,
+              1,
+            );
+            pose.scale *= 1 + 0.11 * Math.sin(phase * Math.PI) * amount;
+          }
           break;
         }
-        case 'pencil': {
+        case "pencil": {
           const p = renderPencilMorph(layer, amount, now, morphState);
           this.writingTrail = morphState.writingTrail;
           pose.x += p.x * amount * morphAmount;
@@ -1328,10 +1579,13 @@ export class SuzentBotEngine {
           pose.rotation += p.rotation * amount * morphAmount;
           break;
         }
-        case 'bang':
+        case "bang":
           renderBangMorph(layer, amount, now, morphState);
           pose.y += 58 * amount * morphAmount;
-          pose.scale *= 1 + 0.04 * Math.exp(-((elapsed / 1000) % 2.2) * 5.5) * amount;
+          if (!morphState.reducedMotion) {
+            pose.scale *=
+              1 + 0.04 * Math.exp(-((elapsed / 1000) % 2.2) * 5.5) * amount;
+          }
           break;
         default:
           break;

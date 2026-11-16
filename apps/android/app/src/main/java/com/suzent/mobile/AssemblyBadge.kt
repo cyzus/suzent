@@ -8,6 +8,8 @@ import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
@@ -98,15 +100,19 @@ fun AssemblyBadge(thinking: Boolean, parts: List<MessagePart> = emptyList(), str
 private val robotDrop = Curve(.175, .885, .32, 1.275)
 
 /**
- * Desktop's AgentBadge: a robot whose mood follows the turn. It keeps a random personality at rest, dozes off
- * after ten idle seconds, is startled for a moment by each new failure, turns skeptical while approval waits,
- * and wears a face per tool. Every change drops the new face in.
+ * Desktop's Suzent bot: the same stage resolver and scene the desktop mark draws, capped at 30fps and
+ * paused while animations are disabled or the screen is in the background.
  */
 @Composable
 fun RobotBadge(parts: List<MessagePart>, streaming: Boolean) {
     val reduced = !ValueAnimator.areAnimatorsEnabled()
+    val dark = isSystemInDarkTheme()
     val lifecycle = LocalLifecycleOwner.current.lifecycle
-    var base by remember { mutableStateOf(robotPersonality(Random.nextDouble())) }
+    val context = LocalContext.current
+    val host = remember {
+        SuzentBotHost(context.assets.open("suzent-bot-core.js").bufferedReader().use { it.readText() })
+    }
+    DisposableEffect(host) { onDispose { host.close() } }
     val pending = parts.any { it.type == "tool" && it.state == "approval-requested" && it.output.isEmpty() }
     val errors = parts.count { it.type == "tool" && toolCallFailed(it) }
     var seenErrors by remember { mutableIntStateOf(errors) }
@@ -116,77 +122,50 @@ fun RobotBadge(parts: List<MessagePart>, streaming: Boolean) {
         if (errors > seenErrors) flash++
         seenErrors = errors
     }
-    // Keyed on the flash alone: a count that drops when parts reconcile must not cancel the reset and leave it shaking.
     LaunchedEffect(flash) {
         if (flash == 0) return@LaunchedEffect
         startled = true
         delay(2600)
         startled = false
     }
-    LaunchedEffect(streaming, pending, base) {
-        if (streaming || pending) { if (base == RobotVariant.SNOOZER) base = RobotVariant.IDLE }
-        else if (base == RobotVariant.IDLE) { delay(10_000); base = RobotVariant.SNOOZER }
-    }
-    val variant = robotBadgeVariant(base, startled, pending, streaming, robotCurrentTool(parts))
-    var seconds by remember { mutableDoubleStateOf(0.0) }
-    LaunchedEffect(reduced, lifecycle) {
-        if (!reduced) lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+    val tool = robotCurrentTool(parts)
+    val stage = host.resolveStage(pending, startled, streaming && tool == null, tool, streaming || pending)
+    var timeMs by remember { mutableDoubleStateOf(0.0) }
+    var frame by remember { mutableStateOf(host.step("""{"stage":"idle","time":0,"reducedMotion":true,"size":32}""").let(SuzentBotFrame::parse)) }
+    LaunchedEffect(reduced, dark, stage, lifecycle) {
+        frame = SuzentBotFrame.parse(host.step(botStep(stage, timeMs, reduced, dark)))
+        if (reduced) return@LaunchedEffect
+        lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
             var previous = 0L
+            var accumulator = 0.0
             while (true) withFrameNanos { now ->
-                if (previous != 0L) seconds += ((now - previous) / 1_000_000_000.0).coerceAtMost(.05)
+                if (previous != 0L) {
+                    accumulator += ((now - previous) / 1_000_000_000.0).coerceAtMost(0.05)
+                    if (accumulator >= 1.0 / 30.0) {
+                        timeMs += accumulator * 1000.0
+                        accumulator = 0.0
+                        frame = SuzentBotFrame.parse(host.step(botStep(stage, timeMs, false, dark)))
+                    }
+                }
                 previous = now
             }
         }
     }
     val drop = remember { Animatable(1f) }
-    LaunchedEffect(variant, reduced) {
+    LaunchedEffect(stage, reduced) {
         if (reduced) return@LaunchedEffect
         drop.snapTo(0f)
         drop.animateTo(1f, tween(300, easing = LinearEasing))
     }
-    val ink = MaterialTheme.colorScheme.onSurface
-    val bold = remember { android.graphics.Typeface.create(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD) }
     Canvas(Modifier.size(32.dp).graphicsLayer {
-        val p = drop.value.toDouble()
+        val progress = drop.value.toDouble()
         val stops = doubleArrayOf(0.0, .5, 1.0)
-        translationY = keyframe(p, stops, doubleArrayOf(15.0, -3.0, 0.0), robotDrop).dp.toPx()
-        scaleX = keyframe(p, stops, doubleArrayOf(.5, 1.05, 1.0), robotDrop).toFloat(); scaleY = scaleX
-        alpha = keyframe(p, stops, doubleArrayOf(0.0, 1.0, 1.0), robotDrop).toFloat().coerceIn(0f, 1f)
-    }.then(if (RobotScene.clips(variant)) Modifier.clipToBounds() else Modifier)) {
-        fun color(role: RobotRole) = when (role) {
-            RobotRole.BODY -> Color.Black
-            RobotRole.EYE -> Color.White
-            RobotRole.INK -> ink
-            RobotRole.GRAY -> Color(0xFF666666)
-            RobotRole.DARK -> Color(0xFF262626)
-        }
-        scale(size.width / RobotScene.SLOT.toFloat(), size.height / RobotScene.SLOT.toFloat(), pivot = Offset.Zero) {
-            RobotScene.frame(variant, seconds, reduced).forEach { mark ->
-                when (mark) {
-                    is RobotMark.Shape -> {
-                        val path = Path().apply {
-                            mark.points.forEachIndexed { i, p -> if (i == 0) moveTo(p.x.toFloat(), p.y.toFloat()) else lineTo(p.x.toFloat(), p.y.toFloat()) }
-                            if (mark.stroke == 0.0) close()
-                        }
-                        if (mark.stroke > 0) drawPath(path, color(mark.role), mark.alpha.toFloat(), Stroke(mark.stroke.toFloat(), cap = StrokeCap.Round))
-                        else drawPath(path, color(mark.role), mark.alpha.toFloat())
-                    }
-                    is RobotMark.Glyph -> drawIntoCanvas { canvas ->
-                        val native = canvas.nativeCanvas
-                        native.save()
-                        native.concat(android.graphics.Matrix().apply {
-                            setValues(floatArrayOf(mark.matrix.a.toFloat(), mark.matrix.c.toFloat(), mark.matrix.e.toFloat(),
-                                mark.matrix.b.toFloat(), mark.matrix.d.toFloat(), mark.matrix.f.toFloat(), 0f, 0f, 1f))
-                        })
-                        native.drawText(mark.text, mark.x.toFloat(), mark.y.toFloat(), android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
-                            this.color = color(mark.role).copy(alpha = color(mark.role).alpha * mark.alpha.toFloat()).toArgb()
-                            textSize = mark.size.toFloat()
-                            typeface = bold
-                        })
-                        native.restore()
-                    }
-                }
-            }
-        }
-    }
+        translationY = keyframe(progress, stops, doubleArrayOf(15.0, -3.0, 0.0), robotDrop).dp.toPx()
+        scaleX = keyframe(progress, stops, doubleArrayOf(.5, 1.05, 1.0), robotDrop).toFloat()
+        scaleY = scaleX
+        alpha = keyframe(progress, stops, doubleArrayOf(0.0, 1.0, 1.0), robotDrop).toFloat().coerceIn(0f, 1f)
+    }) { drawSuzentBot(frame) }
 }
+
+private fun botStep(stage: String, timeMs: Double, reduced: Boolean, dark: Boolean) =
+    """{"stage":"$stage","time":$timeMs,"reducedMotion":$reduced,"dark":$dark,"size":32,"holdWhenIdle":true,"particlesEnabled":${!reduced},"autoMorphCycle":${!reduced},"isActive":true}"""
