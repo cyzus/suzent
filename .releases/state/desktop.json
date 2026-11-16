@@ -1,5 +1,5 @@
 {
-  "version": "0.27.0",
+  "version": "0.27.1",
   "consumed": [
     ".releases/changes/3d-loading-redesign.json",
     ".releases/changes/about-install-identity.json",
@@ -148,6 +148,7 @@
     ".releases/changes/macos-native-traffic-lights.json",
     ".releases/changes/macos-universal-installer.json",
     ".releases/changes/mailbox-email-watch.json",
+    ".releases/changes/mailbox-unread-dot-clipped.json",
     ".releases/changes/mcp-oauth-public-client.json",
     ".releases/changes/mcp-services-start-off.json",
     ".releases/changes/mcp-tool-approvals.json",
