@@ -132,6 +132,9 @@ async def skills_reminder_hook(chat_id: str, deps: Any) -> Optional[str]:
     skill_mgr = getattr(deps, "skill_manager", None)
     if not skill_mgr or not skill_mgr.has_enabled_skills():
         return None
+    call_allowed = getattr(deps, "call_allowed_tools", None)
+    if call_allowed is not None and "SkillTool" not in call_allowed:
+        return None
 
     sandbox_enabled = getattr(deps, "sandbox_enabled", True)
 

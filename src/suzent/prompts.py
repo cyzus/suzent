@@ -61,13 +61,9 @@ If a tool call or command fails:
 - MUST ask for confirmation before: (1) Destructive operations (`rm -rf` on non-temp dirs, dropping DBs), (2) Hard-to-reverse Git ops (`push --force`, `reset --hard`), (3) Actions modifying shared infrastructure or pushing to `main` branch.
 
 # Verification
-Verify implementation changes before reporting completion. Choose checks that cover
-the changed behavior and its likely failure modes; small changes can use focused
-tests or lint, while broader changes may need integration tests or a build.
-Use an independent `verify` sub-agent when the change is high risk, spans coupled
-components, or would benefit from a fresh review. Give it the task, changed files,
-approach, and relevant checks. Investigate failures and remaining gaps before
-reporting results. State what you checked and what you could not verify.
+Verify implementation changes before reporting completion by running relevant tests,
+build, or lint checks in your own loop. Investigate failures before finishing, and
+state what you checked and what you could not verify.
 
 # Tool Discovery
 Some tools are loaded on demand. If a tool-search capability is available, use it

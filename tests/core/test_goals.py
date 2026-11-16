@@ -9,10 +9,13 @@ from suzent.core.goals import (
     STATUS_COMPLETED,
     STATUS_PAUSED,
     _budget_exhausted,
+    _build_continuation_reminder,
     _build_judge_user_prompt,
     _parse_verdict,
     format_status,
     judge_goal,
+    maybe_continue_goal,
+    summarize_turn_evidence,
 )
 
 
@@ -197,3 +200,196 @@ def test_judge_goal_done(monkeypatch):
     assert verdict == "done"
     assert reason == "complete"
     assert parse_failed is False
+
+
+# ─── Evidence extraction & deterministic ZCode-style gates ───────────────────
+
+
+def test_summarize_turn_evidence_flags_unverified_edits():
+    msg = {
+        "parts": [
+            {
+                "type": "tool",
+                "toolName": "run_command",
+                "args": '{"content": "pytest"}',
+                "state": "completed",
+                "output": "1 failed [exit code: 1]",
+            },
+            {
+                "type": "tool",
+                "toolName": "edit_file",
+                "args": '{"file_path": "src/app.py"}',
+                "state": "completed",
+                "output": "Replaced 1 occurrence",
+            },
+        ]
+    }
+    evidence = summarize_turn_evidence(msg)
+    assert "edit_file" in evidence
+    assert "STATUS: UNVERIFIED_EDITS" in evidence
+
+
+def test_summarize_turn_evidence_clears_when_verified_after_edit():
+    msg = {
+        "parts": [
+            {
+                "type": "tool",
+                "toolName": "edit_file",
+                "args": '{"file_path": "src/app.py"}',
+                "state": "completed",
+                "output": "Replaced 1 occurrence",
+            },
+            {
+                "type": "tool",
+                "toolName": "run_command",
+                "args": '{"content": "pytest"}',
+                "state": "completed",
+                "output": "2 passed [exit code: 0]",
+            },
+        ]
+    }
+    evidence = summarize_turn_evidence(msg)
+    assert "STATUS: UNVERIFIED_EDITS" not in evidence
+    assert "STATUS: LAST_COMMAND_FAILED" not in evidence
+    assert "[OK]" in evidence
+
+
+def test_summarize_turn_evidence_flags_failed_command():
+    msg = {
+        "parts": [
+            {
+                "type": "tool",
+                "toolName": "edit_file",
+                "args": '{"file_path": "src/app.py"}',
+                "state": "completed",
+                "output": "Replaced 1 occurrence",
+            },
+            {
+                "type": "tool",
+                "toolName": "run_command",
+                "args": '{"content": "pytest"}',
+                "state": "completed",
+                "output": "AssertionError [exit code: 1]",
+            },
+        ]
+    }
+    evidence = summarize_turn_evidence(msg)
+    assert "STATUS: LAST_COMMAND_FAILED" in evidence
+
+
+def test_maybe_continue_goal_blocks_completion_when_open_tasks_remain(monkeypatch):
+    goal = _goal(turns_elapsed=1, max_turns=10)
+    step_calls = []
+
+    class _FakeDB:
+        def get_chat_project_id(self, chat_id):
+            return "proj-1"
+
+        def get_goal(self, project_id, chat_id=None):
+            return goal
+
+        def list_tasks(self, **kwargs):
+            return [
+                SimpleNamespace(id=3, title="Write unit tests", status="in_progress")
+            ]
+
+    async def _never_judge(*args, **kwargs):
+        raise AssertionError("judge LLM must not be called while open tasks remain")
+
+    async def _fake_step(chat_id, user_id, judge_feedback=""):
+        step_calls.append((chat_id, user_id, judge_feedback))
+
+    monkeypatch.setattr("suzent.core.goals.get_database", lambda: _FakeDB())
+    monkeypatch.setattr("suzent.core.goals.judge_goal", _never_judge)
+    monkeypatch.setattr("suzent.core.goals.run_goal_step", _fake_step)
+
+    asyncio.run(maybe_continue_goal("chat-1", "u1", "All done!", False))
+    assert len(step_calls) == 1
+    assert "[#3] Write unit tests" in step_calls[0][2]
+
+
+def test_maybe_continue_goal_blocks_completion_on_unverified_edits(monkeypatch):
+    goal = _goal(turns_elapsed=1, max_turns=10)
+    step_calls = []
+
+    class _FakeDB:
+        def get_chat_project_id(self, chat_id):
+            return "proj-1"
+
+        def get_goal(self, project_id, chat_id=None):
+            return goal
+
+        def list_tasks(self, **kwargs):
+            return []
+
+    async def _never_judge(*args, **kwargs):
+        raise AssertionError("judge LLM must not be called when edits are unverified")
+
+    async def _fake_step(chat_id, user_id, judge_feedback=""):
+        step_calls.append((chat_id, user_id, judge_feedback))
+
+    monkeypatch.setattr("suzent.core.goals.get_database", lambda: _FakeDB())
+    monkeypatch.setattr("suzent.core.goals.judge_goal", _never_judge)
+    monkeypatch.setattr("suzent.core.goals.run_goal_step", _fake_step)
+
+    unverified_msg = {
+        "parts": [
+            {
+                "type": "tool",
+                "toolName": "write_file",
+                "args": '{"file_path": "main.py"}',
+                "state": "completed",
+                "output": "Wrote file",
+            }
+        ]
+    }
+    asyncio.run(
+        maybe_continue_goal(
+            "chat-1", "u1", "I finished the implementation.", False, unverified_msg
+        )
+    )
+    assert len(step_calls) == 1
+    assert "verification command" in step_calls[0][2]
+
+
+def test_maybe_continue_goal_passes_judge_reason_to_next_step(monkeypatch):
+    goal = _goal(turns_elapsed=1, max_turns=10)
+    step_calls = []
+
+    class _FakeDB:
+        def get_chat_project_id(self, chat_id):
+            return "proj-1"
+
+        def get_goal(self, project_id, chat_id=None):
+            return goal
+
+        def list_tasks(self, **kwargs):
+            return []
+
+    async def _fake_judge(objective, subgoals, last_response, evidence=""):
+        assert "pytest" in evidence
+        return "continue", "Edge case for empty input not tested yet", False
+
+    async def _fake_step(chat_id, user_id, judge_feedback=""):
+        step_calls.append(judge_feedback)
+
+    monkeypatch.setattr("suzent.core.goals.get_database", lambda: _FakeDB())
+    monkeypatch.setattr("suzent.core.goals.judge_goal", _fake_judge)
+    monkeypatch.setattr("suzent.core.goals.run_goal_step", _fake_step)
+
+    verified_msg = {
+        "parts": [
+            {
+                "type": "tool",
+                "toolName": "run_command",
+                "args": '{"content": "pytest"}',
+                "state": "completed",
+                "output": "1 passed [exit code: 0]",
+            }
+        ]
+    }
+    asyncio.run(maybe_continue_goal("chat-1", "u1", "Ran 1 test.", False, verified_msg))
+    assert step_calls == ["Edge case for empty input not tested yet"]
+    assert "Edge case for empty input not tested yet" in _build_continuation_reminder(
+        step_calls[0]
+    )
