@@ -17,6 +17,9 @@ logger = get_logger(__name__)
 
 _POLL_INTERVAL_SECONDS = 1.0
 _LEASE_SECONDS = 180
+# Deliveries to different chats run side by side, so one long turn does not
+# hold up messages for every other chat; the claim keeps each chat in order.
+_MAX_CONCURRENT_DELIVERIES = 8
 _DELIVERY_MARKER_PREFIX = "suzent-agent-inbox"
 
 
@@ -73,12 +76,20 @@ def _route_reply(message: dict[str, Any], reply: AgentReply) -> None:
 class AgentInboxDispatcher:
     """Claims durable inbox rows and delivers them as background chat turns."""
 
-    def __init__(self, poll_interval_seconds: float = _POLL_INTERVAL_SECONDS):
+    def __init__(
+        self,
+        poll_interval_seconds: float = _POLL_INTERVAL_SECONDS,
+        max_concurrent_deliveries: int = _MAX_CONCURRENT_DELIVERIES,
+        lease_seconds: int = _LEASE_SECONDS,
+    ):
         self.poll_interval_seconds = poll_interval_seconds
+        self.max_concurrent_deliveries = max_concurrent_deliveries
+        self.lease_seconds = lease_seconds
         self.worker_id = f"{os.getpid()}-{uuid.uuid4().hex[:12]}"
         self._running = False
         self._task: Optional[asyncio.Task[None]] = None
         self._wake_event = asyncio.Event()
+        self._deliveries: set[asyncio.Task[None]] = set()
 
     async def start(self) -> None:
         if self._running:
@@ -99,6 +110,10 @@ class AgentInboxDispatcher:
             except asyncio.CancelledError:
                 pass
             self._task = None
+        deliveries = list(self._deliveries)
+        for delivery in deliveries:
+            delivery.cancel()
+        await asyncio.gather(*deliveries, return_exceptions=True)
         logger.info("Agent inbox dispatcher stopped")
 
     def notify(self) -> None:
@@ -120,18 +135,61 @@ class AgentInboxDispatcher:
                 self._wake_event.clear()
 
     async def _drain_available(self) -> bool:
-        delivered_any = False
-        while self._running:
+        """Start a delivery for each claimable message while slots are free.
+
+        Returns without waiting for the deliveries; each one wakes the loop
+        when it finishes, since its chat's next message may then be claimable.
+        """
+        started_any = False
+        while self._running and len(self._deliveries) < self.max_concurrent_deliveries:
             message = get_database().claim_next_agent_message(
-                worker_id=self.worker_id, lease_seconds=_LEASE_SECONDS
+                worker_id=self.worker_id, lease_seconds=self.lease_seconds
             )
             if message is None:
-                return delivered_any
-            delivered_any = True
-            await self._deliver_claimed(message)
-        return delivered_any
+                return started_any
+            started_any = True
+            delivery = asyncio.create_task(
+                self._deliver_claimed(message),
+                name=f"agent_inbox_delivery_{message['message_id']}",
+            )
+            self._deliveries.add(delivery)
+            delivery.add_done_callback(self._delivery_finished)
+        return started_any
+
+    def _delivery_finished(self, delivery: asyncio.Task[None]) -> None:
+        self._deliveries.discard(delivery)
+        self._wake_event.set()
+
+    async def _keep_lease(self, message_id: str) -> None:
+        """Renew the lease until cancelled, so a long turn is not claimed twice."""
+        while True:
+            await asyncio.sleep(self.lease_seconds / 3)
+            try:
+                renewed = get_database().renew_agent_message_lease(
+                    message_id,
+                    worker_id=self.worker_id,
+                    lease_seconds=self.lease_seconds,
+                )
+            except Exception as exc:
+                logger.warning(
+                    "Could not renew the lease on agent message {}: {}",
+                    message_id,
+                    exc,
+                )
+                continue
+            if not renewed:
+                logger.warning("Lost the lease on agent message {}", message_id)
+                return
 
     async def _deliver_claimed(self, message: dict[str, Any]) -> None:
+        message_id = str(message["message_id"])
+        lease_keeper = asyncio.create_task(self._keep_lease(message_id))
+        try:
+            await self._deliver_claimed_leased(message)
+        finally:
+            lease_keeper.cancel()
+
+    async def _deliver_claimed_leased(self, message: dict[str, Any]) -> None:
         message_id = str(message["message_id"])
         try:
             if message.get(
@@ -460,8 +518,9 @@ async def deliver_and_wait(
 ) -> Optional[AgentReply]:
     """Run the target's turn now and return its reply, skipping the queue.
 
-    The dispatcher delivers one message at a time, so a sender waiting on it
-    from inside a turn the dispatcher itself is running would wait on itself.
+    A sender waiting on the dispatcher from inside a turn the dispatcher is
+    running would hold one of its delivery slots for the whole wait, and with
+    every slot held that way it would wait on itself.
     A cancelled wait leaves the turn running, and a sub-agent's reply then
     reaches its parent the way a queued message's would.
     """

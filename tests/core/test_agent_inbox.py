@@ -1,3 +1,4 @@
+import asyncio
 from types import SimpleNamespace
 
 import pytest
@@ -535,8 +536,6 @@ async def test_deliver_and_wait_returns_the_reply_without_queueing(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_cancelled_wait_lets_the_turn_finish_and_routes_the_reply(monkeypatch):
-    import asyncio
-
     from suzent.core import agent_inbox
     from suzent.core.agent_inbox import AgentReply, deliver_and_wait
 
@@ -644,3 +643,102 @@ async def test_a_failed_reply_enqueue_retries_the_delivery(monkeypatch):
     await dispatcher._deliver_claimed({**_message(), "kind": "agent_message"})
 
     assert retried == ["msg-1"]
+
+
+@pytest.mark.asyncio
+async def test_long_turn_does_not_hold_up_another_chat(monkeypatch):
+    queue = [
+        {**_message(), "message_id": "msg-slow", "target_chat_id": "slow-chat"},
+        {**_message(), "message_id": "msg-fast", "target_chat_id": "fast-chat"},
+    ]
+    acknowledged = []
+
+    class FakeDatabase:
+        def claim_next_agent_message(self, *, worker_id, lease_seconds):
+            return queue.pop(0) if queue else None
+
+        def get_chat(self, chat_id):
+            return SimpleNamespace(messages=[])
+
+        def acknowledge_agent_message(self, message_id, *, worker_id):
+            acknowledged.append(message_id)
+            return True
+
+    release_slow = asyncio.Event()
+    fast_delivered = asyncio.Event()
+
+    async def run_turn(message):
+        if message["message_id"] == "msg-slow":
+            await release_slow.wait()
+        else:
+            fast_delivered.set()
+
+    dispatcher = AgentInboxDispatcher(poll_interval_seconds=0.01)
+    monkeypatch.setattr("suzent.core.agent_inbox.get_database", lambda: FakeDatabase())
+    monkeypatch.setattr(dispatcher, "_run_target_turn", run_turn)
+
+    await dispatcher.start()
+    try:
+        await asyncio.wait_for(fast_delivered.wait(), timeout=2)
+        assert "msg-slow" not in acknowledged
+        release_slow.set()
+        for _ in range(100):
+            if len(acknowledged) == 2:
+                break
+            await asyncio.sleep(0.01)
+    finally:
+        await dispatcher.stop()
+
+    assert sorted(acknowledged) == ["msg-fast", "msg-slow"]
+
+
+@pytest.mark.asyncio
+async def test_dispatcher_waits_for_a_free_slot(monkeypatch):
+    claims = []
+
+    class FakeDatabase:
+        def claim_next_agent_message(self, *, worker_id, lease_seconds):
+            claims.append(worker_id)
+            return {**_message(), "message_id": f"msg-{len(claims)}"}
+
+    dispatcher = AgentInboxDispatcher(max_concurrent_deliveries=2)
+    dispatcher._running = True
+
+    async def never_finish(message):
+        await asyncio.Event().wait()
+
+    monkeypatch.setattr("suzent.core.agent_inbox.get_database", lambda: FakeDatabase())
+    monkeypatch.setattr(dispatcher, "_deliver_claimed", never_finish)
+
+    assert await dispatcher._drain_available() is True
+    assert len(claims) == 2
+    assert await dispatcher._drain_available() is False
+    assert len(claims) == 2
+    await dispatcher.stop()
+
+
+@pytest.mark.asyncio
+async def test_long_delivery_keeps_its_lease(monkeypatch):
+    renewed = []
+
+    class FakeDatabase:
+        def get_chat(self, chat_id):
+            return SimpleNamespace(messages=[])
+
+        def renew_agent_message_lease(self, message_id, *, worker_id, lease_seconds):
+            renewed.append(message_id)
+            return True
+
+        def acknowledge_agent_message(self, message_id, *, worker_id):
+            return True
+
+    async def slow_turn(message):
+        await asyncio.sleep(0.05)
+
+    dispatcher = AgentInboxDispatcher(lease_seconds=0.03)
+    monkeypatch.setattr("suzent.core.agent_inbox.get_database", lambda: FakeDatabase())
+    monkeypatch.setattr(dispatcher, "_run_target_turn", slow_turn)
+
+    await dispatcher._deliver_claimed(_message())
+
+    assert renewed and set(renewed) == {"msg-1"}
