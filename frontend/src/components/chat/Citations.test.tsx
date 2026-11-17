@@ -56,6 +56,34 @@ describe('citation rendering', () => {
     expect(html).not.toContain('citet0_src_1');
   });
 
+  it('keeps bare GFM autolinks clean when a citation marker immediately follows the URL', () => {
+    const withSources = render(
+      '- **PR**: https://github.com/cyzus/suzent/pull/761\ue200cite\ue202t0_src_1\ue201'
+    );
+    expect(withSources).toContain('href="https://github.com/cyzus/suzent/pull/761"');
+    expect(withSources).not.toContain('%EE%88%80');
+    expect(withSources).toContain('example.com');
+
+    const withoutSources = renderWithSources(
+      '- **PR**: https://github.com/cyzus/suzent/pull/761\ue200cite\ue202t134_src_0\ue201',
+      new Map()
+    );
+    expect(withoutSources).toContain('href="https://github.com/cyzus/suzent/pull/761"');
+    expect(withoutSources).not.toContain('%EE%88%80');
+    expect(withoutSources).not.toContain('t134_src_0');
+    expect(withoutSources).not.toMatch(/[\ue200-\ue202]/);
+  });
+
+  it('preserves onClick handler on links inside list items and paragraphs when citations are present', () => {
+    const html = render(
+      '- **PR**: https://github.com/cyzus/suzent/pull/761 \ue200cite\ue202t0_src_1\ue201'
+    );
+    expect(html).toContain('href="https://github.com/cyzus/suzent/pull/761"');
+    expect(html).toContain('target="_blank"');
+    expect(html).toContain('example.com');
+    expect(html).not.toMatch(/[\ue200-\ue202]/);
+  });
+
   it('renders PUA markers nested in bold when file links are enabled', () => {
     const html = renderToStaticMarkup(
       <I18nProvider>
