@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowPathIcon,
   BellIcon,
@@ -333,6 +333,18 @@ function MailboxPayload({ item }: { item: MailboxItem }): React.ReactElement {
   );
 }
 
+// The view remounts on every open; show the last data at once and refresh behind it.
+interface MailboxCache {
+  items?: MailboxItem[];
+  endpoint?: WebhookUrls;
+  rules?: MailboxRule[];
+  destinations?: MailboxDestination[];
+  jobs?: CronJob[];
+  heartbeatSessions?: HeartbeatSessionItem[];
+}
+
+const mailboxCache: MailboxCache = {};
+
 export function MailboxView({
   onOpenChat,
   onOpenSettings,
@@ -341,42 +353,82 @@ export function MailboxView({
   const { t, locale } = useI18n();
   const [activeTab, setActiveTab] = useState<MailboxTabId>(initialTab);
   const [category, setCategory] = useState<InboxCategory>('all');
-  const [items, setItems] = useState<MailboxItem[]>([]);
-  const [rules, setRules] = useState<MailboxRule[]>([]);
-  const [jobs, setJobs] = useState<CronJob[]>([]);
-  const [heartbeatSessions, setHeartbeatSessions] = useState<HeartbeatSessionItem[]>([]);
-  const [destinations, setDestinations] = useState<MailboxDestination[]>([]);
-  const [endpoint, setEndpoint] = useState<WebhookUrls>({});
+  const [items, setItems] = useState<MailboxItem[]>(() => mailboxCache.items ?? []);
+  const [itemsLoaded, setItemsLoaded] = useState(() => mailboxCache.items !== undefined);
+  const [rules, setRules] = useState<MailboxRule[]>(() => mailboxCache.rules ?? []);
+  const [jobs, setJobs] = useState<CronJob[]>(() => mailboxCache.jobs ?? []);
+  const [heartbeatSessions, setHeartbeatSessions] = useState<HeartbeatSessionItem[]>(
+    () => mailboxCache.heartbeatSessions ?? []
+  );
+  const [destinations, setDestinations] = useState<MailboxDestination[]>(
+    () => mailboxCache.destinations ?? []
+  );
+  const [endpoint, setEndpoint] = useState<WebhookUrls>(() => mailboxCache.endpoint ?? {});
   const [expandedThreads, setExpandedThreads] = useState<Set<string>>(new Set());
   const [expandedSteps, setExpandedSteps] = useState<Set<number>>(new Set());
   const [copiedUrl, setCopiedUrl] = useState(false);
   const [loading, setLoading] = useState(false);
   const [busyId, setBusyId] = useState<number | string | null>(null);
 
-  const loadAll = useCallback(async (silent = false) => {
-    if (!silent) setLoading(true);
-    try {
-      const [itemRes, ruleRes, jobList, hbStatus] = await Promise.all([
-        fetchMailboxItems({ limit: 150 }),
-        fetchMailboxRules(),
-        fetchCronJobs().catch(() => [] as CronJob[]),
-        fetchHeartbeatStatus().catch(() => null),
-      ]);
-      setItems(itemRes.items);
-      setDestinations(ruleRes.destinations ?? []);
-      setEndpoint(itemRes.endpoint || {});
-      setRules(ruleRes.rules);
-      setJobs(jobList.filter((j) => j.source !== 'heartbeat' && j.schedule_kind !== 'webhook'));
-      setHeartbeatSessions(hbStatus?.active_sessions || []);
-    } catch (err) {
-      console.error('Failed to load mailbox data:', err);
-    } finally {
-      if (!silent) setLoading(false);
+  const inFlight = useRef<Promise<void> | null>(null);
+
+  // Each source renders as soon as it arrives, so a slow one never holds back the list.
+  const fetchAll = useCallback(async (): Promise<void> => {
+    const loadItems = fetchMailboxItems({ limit: 150 }).then((res) => {
+      const nextEndpoint = res.endpoint || {};
+      mailboxCache.items = res.items;
+      mailboxCache.endpoint = nextEndpoint;
+      setItems(res.items);
+      setEndpoint(nextEndpoint);
+      setItemsLoaded(true);
+    });
+    const loadRules = fetchMailboxRules().then((res) => {
+      const nextDestinations = res.destinations ?? [];
+      mailboxCache.rules = res.rules;
+      mailboxCache.destinations = nextDestinations;
+      setRules(res.rules);
+      setDestinations(nextDestinations);
+    });
+    const loadJobs = fetchCronJobs().then((jobList) => {
+      const nextJobs = jobList.filter(
+        (j) => j.source !== 'heartbeat' && j.schedule_kind !== 'webhook'
+      );
+      mailboxCache.jobs = nextJobs;
+      setJobs(nextJobs);
+    });
+    const loadHeartbeats = fetchHeartbeatStatus().then((hbStatus) => {
+      const sessions = hbStatus?.active_sessions || [];
+      mailboxCache.heartbeatSessions = sessions;
+      setHeartbeatSessions(sessions);
+    });
+    const results = await Promise.allSettled([loadItems, loadRules, loadJobs, loadHeartbeats]);
+    for (const result of results) {
+      if (result.status === 'rejected') {
+        console.error('Failed to load mailbox data:', result.reason);
+      }
     }
   }, []);
 
+  const loadAll = useCallback(
+    async (silent = false): Promise<void> => {
+      // A poll that lands while a load is still running would only pile up behind it.
+      if (silent && inFlight.current) return;
+      if (!silent) setLoading(true);
+      const run = (inFlight.current ?? Promise.resolve()).then(fetchAll);
+      inFlight.current = run;
+      try {
+        await run;
+      } finally {
+        if (inFlight.current === run) inFlight.current = null;
+        if (!silent) setLoading(false);
+      }
+    },
+    [fetchAll]
+  );
+
   useEffect(() => {
-    void loadAll();
+    // With cached data on screen, refresh it quietly rather than spinning.
+    void loadAll(mailboxCache.items !== undefined);
     const refresh = () => {
       if (document.visibilityState === 'visible') void loadAll(true);
     };
@@ -909,7 +961,9 @@ export function MailboxView({
           {visibleThreads.length === 0 ? (
             <div className="flex flex-col items-center gap-2 p-12 text-center">
               <InboxStackIcon className="h-6 w-6 text-neutral-300 dark:text-zinc-600" />
-              <p className="font-mono text-xs text-neutral-400">{t('mailboxView.empty')}</p>
+              <p className="font-mono text-xs text-neutral-400">
+                {itemsLoaded ? t('mailboxView.empty') : t('mailboxView.loading')}
+              </p>
             </div>
           ) : (
             <div className="divide-y divide-neutral-200 dark:divide-zinc-700">

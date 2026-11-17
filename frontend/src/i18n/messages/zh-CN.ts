@@ -95,6 +95,7 @@ export const zhCN = {
     },
     messages: '消息',
     empty: '这里还没有消息',
+    loading: '加载中…',
     filter: {
       all: '全部',
       notifications: '通知',

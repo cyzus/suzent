@@ -139,14 +139,23 @@ async def list_mailbox_items_route(request: Request) -> JSONResponse:
 
 
 async def get_mailbox_item_route(request: Request) -> JSONResponse:
-    item = get_database().get_mailbox_item(int(request.path_params["item_id"]))
+    item_id = int(request.path_params["item_id"])
+
+    def build() -> dict | None:
+        item = get_database().get_mailbox_item(item_id)
+        return None if item is None else _item_to_dict(item)
+
+    item = await asyncio.to_thread(build)
     if item is None:
         return JSONResponse({"error": "Mailbox item not found"}, status_code=404)
-    return JSONResponse({"item": _item_to_dict(item)})
+    return JSONResponse({"item": item})
 
 
 async def mailbox_unread_route(request: Request) -> JSONResponse:
-    return JSONResponse({"unread": get_database().count_unread_mailbox_notifications()})
+    unread = await asyncio.to_thread(
+        lambda: get_database().count_unread_mailbox_notifications()
+    )
+    return JSONResponse({"unread": unread})
 
 
 async def mark_mailbox_read_route(request: Request) -> JSONResponse:
@@ -162,11 +171,13 @@ async def mark_mailbox_read_route(request: Request) -> JSONResponse:
         return JSONResponse(
             {"error": "ids must be a list of item ids"}, status_code=400
         )
-    db = get_database()
-    marked = db.mark_mailbox_notifications_read(ids)
-    return JSONResponse(
-        {"marked": marked, "unread": db.count_unread_mailbox_notifications()}
-    )
+
+    def mark() -> dict:
+        db = get_database()
+        marked = db.mark_mailbox_notifications_read(ids)
+        return {"marked": marked, "unread": db.count_unread_mailbox_notifications()}
+
+    return JSONResponse(await asyncio.to_thread(mark))
 
 
 async def route_mailbox_item_route(request: Request) -> JSONResponse:
@@ -180,37 +191,43 @@ async def route_mailbox_item_route(request: Request) -> JSONResponse:
     target_chat_id = data.get("target_chat_id")
     pin_rule = bool(data.get("pin_rule", True))
 
-    try:
+    def route() -> dict | None:
         updated = route_or_override_mailbox_item(
             item_id,
             action=action,
             target_chat_id=target_chat_id,
             pin_rule=pin_rule,
         )
+        return None if updated is None else _item_to_dict(updated)
+
+    try:
+        item = await asyncio.to_thread(route)
     except MissingTargetError as exc:
         return JSONResponse({"error": str(exc)}, status_code=400)
-    if updated is None:
+    if item is None:
         return JSONResponse({"error": "Mailbox item not found"}, status_code=404)
-    return JSONResponse({"item": _item_to_dict(updated)})
+    return JSONResponse({"item": item})
 
 
 async def delete_mailbox_item_route(request: Request) -> JSONResponse:
     item_id = int(request.path_params["item_id"])
-    db = get_database()
-    if not db.delete_mailbox_item(item_id):
+    deleted = await asyncio.to_thread(
+        lambda: get_database().delete_mailbox_item(item_id)
+    )
+    if not deleted:
         return JSONResponse({"error": "Mailbox item not found"}, status_code=404)
     return JSONResponse({"deleted": True, "id": item_id})
 
 
 async def list_mailbox_rules_route(request: Request) -> JSONResponse:
-    db = get_database()
-    rules = db.list_mailbox_rules()
-    return JSONResponse(
-        {
-            "rules": [_rule_to_dict(r) for r in rules],
+    def build() -> dict:
+        db = get_database()
+        return {
+            "rules": [_rule_to_dict(r) for r in db.list_mailbox_rules()],
             "destinations": list_destinations(db),
         }
-    )
+
+    return JSONResponse(await asyncio.to_thread(build))
 
 
 async def update_mailbox_rule_route(request: Request) -> JSONResponse:
@@ -220,47 +237,57 @@ async def update_mailbox_rule_route(request: Request) -> JSONResponse:
     except Exception:
         return JSONResponse({"error": "Invalid JSON"}, status_code=400)
 
-    db = get_database()
-    destination = Destination.parse(data.get("destination"))
-    if destination.missing(db):
-        return JSONResponse(
-            {"error": str(MissingTargetError(destination.value))}, status_code=400
-        )
     cadence = str(data.get("cadence") or "now")
-    if cadence not in ("now", "digest"):
-        return JSONResponse({"error": f"Unknown cadence '{cadence}'"}, status_code=400)
-    label = destination.label(db)
-    updated = db.update_mailbox_rule(
-        rule_id,
-        delivery=cadence,
-        digest_minutes=_safe_int(str(data.get("digest_minutes", 60)), 60),
-        prompt=data.get("prompt") if destination.reaches_agent else None,
-        origin="pinned",
-        reason=data.get("reason")
-        or (
-            f"Pinned by user: send to {label}."
-            if destination.kind != DEST_NONE
-            else "Pinned by user: keep in the Mailbox only."
-        ),
-        **routing_fields(db, destination),
-    )
-    if updated is None:
-        return JSONResponse({"error": "Rule not found"}, status_code=404)
-    return JSONResponse({"rule": _rule_to_dict(updated)})
+
+    def update() -> JSONResponse:
+        db = get_database()
+        destination = Destination.parse(data.get("destination"))
+        if destination.missing(db):
+            return JSONResponse(
+                {"error": str(MissingTargetError(destination.value))}, status_code=400
+            )
+        if cadence not in ("now", "digest"):
+            return JSONResponse(
+                {"error": f"Unknown cadence '{cadence}'"}, status_code=400
+            )
+        label = destination.label(db)
+        updated = db.update_mailbox_rule(
+            rule_id,
+            delivery=cadence,
+            digest_minutes=_safe_int(str(data.get("digest_minutes", 60)), 60),
+            prompt=data.get("prompt") if destination.reaches_agent else None,
+            origin="pinned",
+            reason=data.get("reason")
+            or (
+                f"Pinned by user: send to {label}."
+                if destination.kind != DEST_NONE
+                else "Pinned by user: keep in the Mailbox only."
+            ),
+            **routing_fields(db, destination),
+        )
+        if updated is None:
+            return JSONResponse({"error": "Rule not found"}, status_code=404)
+        return JSONResponse({"rule": _rule_to_dict(updated)})
+
+    return await asyncio.to_thread(update)
 
 
 async def delete_mailbox_rule_route(request: Request) -> JSONResponse:
     rule_id = int(request.path_params["rule_id"])
-    db = get_database()
-    if not db.delete_mailbox_rule(rule_id):
+    deleted = await asyncio.to_thread(
+        lambda: get_database().delete_mailbox_rule(rule_id)
+    )
+    if not deleted:
         return JSONResponse({"error": "Rule not found"}, status_code=404)
     return JSONResponse({"deleted": True, "id": rule_id})
 
 
 async def get_mailbox_endpoint_route(request: Request) -> JSONResponse:
-    return JSONResponse(_endpoint_urls(request, get_mailbox_webhook_path()))
+    # The token lives in the OS keyring, which can be slow to read.
+    path = await asyncio.to_thread(get_mailbox_webhook_path)
+    return JSONResponse(_endpoint_urls(request, path))
 
 
 async def rotate_mailbox_endpoint_route(request: Request) -> JSONResponse:
-    token = rotate_mailbox_token()
+    token = await asyncio.to_thread(rotate_mailbox_token)
     return JSONResponse(_endpoint_urls(request, webhook_path(token)))
