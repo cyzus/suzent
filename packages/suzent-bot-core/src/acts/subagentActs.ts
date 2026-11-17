@@ -1,5 +1,15 @@
-import { HEAD_C, Point2D, SUZENT_BODY_PATH, SUZENT_BODY_RING, clamp } from '../suzentBotGeometry';
-import { ActEvalContext, FullBodyActPose, createDefaultActPose } from './actTypes';
+import {
+  HEAD_C,
+  Point2D,
+  SUZENT_BODY_PATH,
+  SUZENT_BODY_RING,
+  clamp,
+} from "../suzentBotGeometry";
+import {
+  ActEvalContext,
+  FullBodyActPose,
+  createDefaultActPose,
+} from "./actTypes";
 
 /**
  * Compute a 96-point organic cell-division (peanut / figure-8) contour as `pinch` goes 0 -> 1.
@@ -7,7 +17,7 @@ import { ActEvalContext, FullBodyActPose, createDefaultActPose } from './actType
 export function buildMitosisPinchRing(
   baseRing: readonly Point2D[],
   pinch: number,
-  stretchX: number
+  stretchX: number,
 ): Point2D[] {
   return baseRing.map(([x, y]) => {
     const dx = x - HEAD_C;
@@ -22,7 +32,10 @@ export function buildMitosisPinchRing(
 }
 
 /** A1: 3D tilted planetary ring + 3 monochrome satellite nodes orbiting with front/back depth occlusion */
-export function evalConstellationCommand({ t, fade }: ActEvalContext): FullBodyActPose {
+export function evalConstellationCommand({
+  t,
+  fade,
+}: ActEvalContext): FullBodyActPose {
   const pose = createDefaultActPose();
   const floatWave = Math.sin(t * 2.4);
   pose.y = -10 * floatWave;
@@ -56,7 +69,10 @@ export function evalConstellationCommand({ t, fade }: ActEvalContext): FullBodyA
 }
 
 /** A2: True organic mitosis figure-8/peanut spline morph -> clean snap into two fully separated twin bots -> fusion */
-export function evalAgentTwinSplit({ t, fade }: ActEvalContext): FullBodyActPose {
+export function evalAgentTwinSplit({
+  t,
+  fade,
+}: ActEvalContext): FullBodyActPose {
   const pose = createDefaultActPose();
   const cyc = (t / 2.6) % 1;
   let pinch = 0;
@@ -133,7 +149,7 @@ export function evalAgentTwinSplit({ t, fade }: ActEvalContext): FullBodyActPose
     const strandSvg =
       strandOp > 0.04
         ? `<path d="M ${(HEAD_C - strandHalf).toFixed(1)} ${(HEAD_C - 10 * (1 - split)).toFixed(1)} Q ${HEAD_C} ${HEAD_C} ${(HEAD_C + strandHalf).toFixed(1)} ${(HEAD_C - 10 * (1 - split)).toFixed(1)} M ${(HEAD_C - strandHalf).toFixed(1)} ${(HEAD_C + 10 * (1 - split)).toFixed(1)} Q ${HEAD_C} ${HEAD_C} ${(HEAD_C + strandHalf).toFixed(1)} ${(HEAD_C + 10 * (1 - split)).toFixed(1)}" fill="none" stroke="var(--fg)" stroke-width="${(12 * (1 - split / 0.55)).toFixed(1)}" stroke-linecap="round" opacity="${strandOp.toFixed(2)}" />`
-        : '';
+        : "";
     pose.frontHtml = `
       <g opacity="${cloneOp.toFixed(2)}">
         ${strandSvg}
@@ -149,7 +165,10 @@ export function evalAgentTwinSplit({ t, fade }: ActEvalContext): FullBodyActPose
 }
 
 /** A3: Portal summoning mini-bot rising from a ground portal ring on the right */
-export function evalAgentPortalSpawn({ t, fade }: ActEvalContext): FullBodyActPose {
+export function evalAgentPortalSpawn({
+  t,
+  fade,
+}: ActEvalContext): FullBodyActPose {
   const pose = createDefaultActPose();
   const cyc = (t / 2.2) % 1;
   let emerge = 0;
@@ -191,7 +210,10 @@ export function evalAgentPortalSpawn({ t, fade }: ActEvalContext): FullBodyActPo
 }
 
 /** A4: Commander megaphone rally call */
-export function evalAgentMegaphoneRally({ t, fade }: ActEvalContext): FullBodyActPose {
+export function evalAgentMegaphoneRally({
+  t,
+  fade,
+}: ActEvalContext): FullBodyActPose {
   const pose = createDefaultActPose();
   const shout = Math.abs(Math.sin(t * 6.5));
   pose.x = -18;
@@ -219,7 +241,11 @@ export function evalAgentMegaphoneRally({ t, fade }: ActEvalContext): FullBodyAc
 }
 
 /** A5: Telepathic antenna dispatch to mini-agent */
-export function evalAgentAntennaDispatch({ t, fade, headPose }: ActEvalContext): FullBodyActPose {
+export function evalAgentAntennaDispatch({
+  t,
+  fade,
+  headPose,
+}: ActEvalContext): FullBodyActPose {
   const pose = createDefaultActPose();
   const pulse = (t * 2.0) % 1;
   pose.x = -24;
@@ -249,7 +275,10 @@ export function evalAgentAntennaDispatch({ t, fade, headPose }: ActEvalContext):
 }
 
 /** A6: Tandem 3-bot squad formation hopping together */
-export function evalAgentSquadMarch({ t, fade }: ActEvalContext): FullBodyActPose {
+export function evalAgentSquadMarch({
+  t,
+  fade,
+}: ActEvalContext): FullBodyActPose {
   const pose = createDefaultActPose();
   const hop = Math.abs(Math.sin(t * 7));
   const hop2 = Math.abs(Math.sin(t * 7 - 0.9));

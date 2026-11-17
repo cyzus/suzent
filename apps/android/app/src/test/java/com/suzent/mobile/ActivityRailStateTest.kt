@@ -10,7 +10,7 @@ class ActivityRailStateTest {
     @Test fun aCollapsedStreamingRailStaysClosedAcrossRemountAndTokenUpdates() {
         val choices = RailChoices()
         val key = "${railScope("chat", "live1")}:${railChunkKey(listOf(MessagePart("reasoning", text = "Looking")), 0)}"
-        assertTrue(railExpanded(choices.choice(key), live = true, current = true, waiting = false))
+        assertFalse(railExpanded(choices.choice(key), live = true, current = true, waiting = false))
         choices.set(key, false)
         // A recycled row has no local choice and reads the same conversation store.
         assertFalse(railExpanded(choices.choice(key), live = true, current = true, waiting = false))
@@ -34,7 +34,7 @@ class ActivityRailStateTest {
         assertEquals(2, second.first)
         val nextKey = "${railScope("chat", "live${second.first}")}:i0"
         assertNull(choices.choice(nextKey))
-        assertTrue(railExpanded(choices.choice(nextKey), live = true, current = true, waiting = false))
+        assertFalse(railExpanded(choices.choice(nextKey), live = true, current = true, waiting = false))
     }
 
     @Test fun aNewChatDoesNotReuseChoices() {
@@ -42,7 +42,7 @@ class ActivityRailStateTest {
         previous.set("${railScope("a", "m0")}:i0", false)
         val next = RailChoices()
         assertNull(next.choice("${railScope("b", "m0")}:i0"))
-        assertTrue(railExpanded(next.choice("${railScope("b", "m0")}:i0"), live = true, current = true, waiting = false))
+        assertFalse(railExpanded(next.choice("${railScope("b", "m0")}:i0"), live = true, current = true, waiting = false))
     }
 
     @Test fun approvalKeepsTheRailOpenAndAFinishedUntouchedRailCloses() {

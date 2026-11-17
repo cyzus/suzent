@@ -1,12 +1,14 @@
-import React, { useEffect, useId, useRef, useState } from 'react';
+import React, { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
+
+const useIsoLayoutEffect = typeof window === 'undefined' ? useEffect : useLayoutEffect;
+import { applySuzentBotScene } from '../../lib/suzentBot/applySuzentBotScene';
 import {
-  HEAD_C,
-  SUZENT_BODY_PATH,
-  SUZENT_EXPRESSIONS,
   SuzentBotEngine,
-  SuzentBotStageId,
+  type SuzentBotEngineConfig,
+  type SuzentBotStageId,
+  portableMulberry32,
   resolveSuzentStage,
-  ringPath,
+  useRng,
 } from '../../lib/suzentBot';
 
 export interface SuzentBotMarkProps {
@@ -30,8 +32,29 @@ export interface SuzentBotMarkProps {
 }
 
 const ERROR_FLASH_MS = 2600;
-const INITIAL_LEFT_EYE_PATH = ringPath(SUZENT_EXPRESSIONS[0][0]);
-const INITIAL_RIGHT_EYE_PATH = ringPath(SUZENT_EXPRESSIONS[0][1]);
+
+function readReducedMotion(): boolean {
+  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return false;
+  return (
+    window.matchMedia('(prefers-reduced-motion: reduce)').matches ||
+    document.documentElement.dataset.motion === 'reduced'
+  );
+}
+
+function readDark(): boolean {
+  return typeof document !== 'undefined' && document.documentElement.classList.contains('dark');
+}
+
+function readBounds(svg: SVGSVGElement | null, fallback: number): SuzentBotEngineConfig['bounds'] {
+  if (!svg) return undefined;
+  const rect = svg.getBoundingClientRect();
+  return {
+    left: rect.left,
+    top: rect.top,
+    width: rect.width || fallback,
+    height: rect.height || fallback,
+  };
+}
 
 export const SuzentBotMark: React.FC<SuzentBotMarkProps> = React.memo(
   ({
@@ -52,17 +75,16 @@ export const SuzentBotMark: React.FC<SuzentBotMarkProps> = React.memo(
     const svgId = `suzent-bot-${rawId}`;
     const svgRef = useRef<SVGSVGElement | null>(null);
     const engineRef = useRef<SuzentBotEngine | null>(null);
+    const kickRef = useRef<() => void>(() => undefined);
     const clickCycleRef = useRef(0);
 
     const streamingFlag = isStreaming ?? isActive;
     const wasStreamingRef = useRef(streamingFlag);
     const [celebratingDone, setCelebratingDone] = useState(false);
 
-    // Transient startled reaction when errorCount increments (matching AgentBadge's ERROR_FLASH_MS):
-    // a past tool failure that the agent already recovered from must not freeze the robot in `!` forever.
     const [errorFlash, setErrorFlash] = useState(false);
     const seenErrorCountRef = useRef(errorCount ?? 0);
-    const flashTimerRef = useRef<ReturnType<typeof setTimeout>>();
+    const flashTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
     useEffect(() => {
       if (errorCount === undefined) return;
@@ -105,47 +127,122 @@ export const SuzentBotMark: React.FC<SuzentBotMarkProps> = React.memo(
             isActive: streamingFlag,
           }));
 
-    const configRef = useRef({
+    const configRef = useRef<SuzentBotEngineConfig>({
       stage: resolvedStage,
       size,
       isPending: hasPending,
       pointer: interactive && isActive,
       particlesEnabled: isActive,
       autoMorphCycle: isActive,
+      reducedMotion: false,
+      dark: false,
+      holdWhenIdle: true,
+      svgId,
+      clipId,
+      pointerClient: null,
     });
+    const playingRef = useRef(isActive);
+    playingRef.current = isActive;
     configRef.current = {
+      ...configRef.current,
       stage: resolvedStage,
       size,
       isPending: hasPending,
       pointer: interactive && isActive,
       particlesEnabled: isActive,
       autoMorphCycle: isActive,
+      holdWhenIdle: true,
+      svgId,
+      clipId,
     };
 
-    useEffect(() => {
+    useIsoLayoutEffect(() => {
       const svg = svgRef.current;
-      if (!svg || !isActive) return undefined;
-      const engine = new SuzentBotEngine(svg, () => configRef.current);
+      if (!svg) return undefined;
+      useRng(portableMulberry32((Math.random() * 0x100000000) >>> 0));
+      const engine = new SuzentBotEngine(() => configRef.current);
       engineRef.current = engine;
+      let raf = 0;
+      let running = false;
+
+      const draw = (now: number): boolean => {
+        configRef.current.reducedMotion = readReducedMotion();
+        configRef.current.dark = readDark();
+        configRef.current.bounds = readBounds(svg, configRef.current.size);
+        const frame = engine.step(now);
+        applySuzentBotScene(svg, frame);
+        return frame.settled || Boolean(configRef.current.reducedMotion) || !playingRef.current;
+      };
+
+      const loop = (now: number) => {
+        if (draw(now)) {
+          running = false;
+          return;
+        }
+        raf = requestAnimationFrame(loop);
+      };
+
+      const kick = () => {
+        if (running) return;
+        if (draw(performance.now())) return;
+        running = true;
+        raf = requestAnimationFrame(loop);
+      };
+
+      kickRef.current = kick;
+      kick();
       return () => {
+        kickRef.current = () => undefined;
+        running = false;
+        cancelAnimationFrame(raf);
         engine.destroy();
         engineRef.current = null;
       };
-    }, [isActive]);
+    }, [clipId, svgId]);
+
+    useIsoLayoutEffect(() => {
+      kickRef.current();
+    }, [resolvedStage, isActive, hasPending, size, interactive]);
 
     useEffect(() => {
-      engineRef.current?.setStage(resolvedStage, false);
-    }, [resolvedStage]);
+      if (typeof window === 'undefined' || typeof window.matchMedia !== 'function')
+        return undefined;
+      const media = window.matchMedia('(prefers-reduced-motion: reduce)');
+      const onChange = () => kickRef.current();
+      media.addEventListener('change', onChange);
+      return () => media.removeEventListener('change', onChange);
+    }, []);
+
+    useEffect(() => {
+      if (!interactive || !isActive) return undefined;
+      const move = (event: PointerEvent) => {
+        configRef.current.bounds = readBounds(svgRef.current, configRef.current.size);
+        configRef.current.pointerClient = { x: event.clientX, y: event.clientY };
+        kickRef.current();
+      };
+      const leave = () => {
+        configRef.current.pointerClient = null;
+      };
+      window.addEventListener('pointermove', move, { passive: true });
+      document.documentElement.addEventListener('mouseleave', leave);
+      return () => {
+        window.removeEventListener('pointermove', move);
+        document.documentElement.removeEventListener('mouseleave', leave);
+        configRef.current.pointerClient = null;
+      };
+    }, [interactive, isActive]);
 
     const handleMouseEnter = () => {
       if (!interactive || !isActive) return;
       engineRef.current?.startSpin(1);
+      kickRef.current();
     };
 
-    const handleClick = (e: React.MouseEvent<HTMLElement>) => {
+    const handleClick = (event: React.MouseEvent<HTMLElement>) => {
       if (!interactive || !isActive || !engineRef.current) return;
-      e.stopPropagation();
+      event.stopPropagation();
       engineRef.current.triggerInteractiveTrick(clickCycleRef.current++);
+      kickRef.current();
     };
 
     return (
@@ -167,130 +264,7 @@ export const SuzentBotMark: React.FC<SuzentBotMarkProps> = React.memo(
           data-pending={hasPending ? 'true' : undefined}
           style={{ overflow: 'visible' }}
           className="suzent-bot-svg h-full w-full overflow-visible"
-        >
-          <defs>
-            <clipPath id={clipId}>
-              <path id="head-clip-path" d={SUZENT_BODY_PATH} />
-            </clipPath>
-          </defs>
-          <g id="particles-back" />
-          <g className="suzent-act-back" />
-          <path
-            className="grok-bot-mark__head morph-head"
-            d={SUZENT_BODY_PATH}
-            fill="var(--fg)"
-            style={{ display: 'none' }}
-          />
-          <path
-            className="grok-bot-mark__head morph-head"
-            d={SUZENT_BODY_PATH}
-            fill="var(--fg)"
-            style={{ display: 'none' }}
-          />
-          <circle
-            className="morph-ring"
-            cx={HEAD_C}
-            cy={HEAD_C}
-            r="0"
-            style={{ display: 'none' }}
-          />
-          <circle
-            className="morph-ring"
-            cx={HEAD_C}
-            cy={HEAD_C}
-            r="0"
-            style={{ display: 'none' }}
-          />
-          <circle
-            className="morph-ring"
-            cx={HEAD_C}
-            cy={HEAD_C}
-            r="0"
-            style={{ display: 'none' }}
-          />
-          <circle
-            className="morph-ring"
-            cx={HEAD_C}
-            cy={HEAD_C}
-            r="0"
-            style={{ display: 'none' }}
-          />
-          <circle
-            className="morph-ring"
-            cx={HEAD_C}
-            cy={HEAD_C}
-            r="0"
-            style={{ display: 'none' }}
-          />
-          <circle
-            className="grok-bot-mark__head morph-part"
-            cx={HEAD_C}
-            cy={HEAD_C}
-            r="0"
-            fill="var(--fg)"
-            style={{ display: 'none' }}
-          />
-          <circle
-            className="grok-bot-mark__head morph-part"
-            cx={HEAD_C}
-            cy={HEAD_C}
-            r="0"
-            fill="var(--fg)"
-            style={{ display: 'none' }}
-          />
-          <circle
-            className="grok-bot-mark__head morph-part"
-            cx={HEAD_C}
-            cy={HEAD_C}
-            r="0"
-            fill="var(--fg)"
-            style={{ display: 'none' }}
-          />
-          <circle
-            className="grok-bot-mark__head morph-part"
-            cx={HEAD_C}
-            cy={HEAD_C}
-            r="0"
-            fill="var(--fg)"
-            style={{ display: 'none' }}
-          />
-          <circle
-            className="grok-bot-mark__head morph-part"
-            cx={HEAD_C}
-            cy={HEAD_C}
-            r="0"
-            fill="var(--fg)"
-            style={{ display: 'none' }}
-          />
-          <path className="morph-glyph" style={{ display: 'none' }} />
-          <path className="morph-glyph" style={{ display: 'none' }} />
-          <path className="morph-glyph" style={{ display: 'none' }} />
-          <g id="bot-transform">
-            <path
-              id="head-path"
-              className="grok-bot-mark__head"
-              d={SUZENT_BODY_PATH}
-              fill="var(--fg)"
-            />
-            <g clipPath={`url(#${clipId})`}>
-              <g id="eyes-group">
-                <path
-                  className="grok-bot-mark__eye eye-path"
-                  d={INITIAL_LEFT_EYE_PATH}
-                  fill="var(--bg)"
-                />
-                <path
-                  className="grok-bot-mark__eye eye-path"
-                  d={INITIAL_RIGHT_EYE_PATH}
-                  fill="var(--bg)"
-                />
-              </g>
-            </g>
-            <circle id="notify-badge" cx="198" cy="40" r="0" style={{ display: 'none' }} />
-          </g>
-          <g className="suzent-act-front" />
-          <g id="particles-front" />
-        </svg>
+        />
       </span>
     );
   }
