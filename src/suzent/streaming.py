@@ -43,7 +43,7 @@ from ag_ui.encoder import EventEncoder
 
 from suzent.core.agent_serializer import serialize_state
 from suzent.core.agent_deps import AgentDeps
-from suzent.core.display_log import merge_streamed_message
+from suzent.core.live_turn import LiveTurns, get_live_turns, message_content
 from suzent.core.citation_manager import CitationManager
 from suzent.core.prefill_probe import make_prefill_probe
 from suzent.core.message_history import (
@@ -458,16 +458,25 @@ def _stringify_part_content(raw: Any) -> str:
 class _DraftDisplayAccumulator:
     """Accumulates AG-UI events into the frontend's persisted parts shape."""
 
-    def __init__(self, chat_id: Optional[str], run_id: str):
+    def __init__(
+        self,
+        chat_id: Optional[str],
+        run_id: str,
+        *,
+        model_id: Optional[str] = None,
+        live: Optional[LiveTurns] = None,
+    ):
         self.chat_id = chat_id
         self.run_id = run_id
+        self.model_id = model_id
+        self._live = live
         self.parts: list[dict[str, Any]] = []
         self._tool_index: dict[str, dict[str, Any]] = {}
         self.last_persisted_at = 0.0
         self.dirty = False
         self.timestamp = datetime.now().astimezone().isoformat()
-        # The draft write runs off the token loop, one at a time. Kept here so
-        # the final forced persist can wait for it instead of racing it.
+        # The journal write runs off the token loop, one at a time. Kept here
+        # so the final forced persist can wait for it instead of racing it.
         self._persist_task: Optional["asyncio.Task[None]"] = None
 
     def snapshot(
@@ -632,21 +641,29 @@ class _DraftDisplayAccumulator:
             return
 
         snapshot = [dict(part) for part in self.parts]
-        content = "\n\n".join(
-            text
-            for part in snapshot
-            if part.get("type") == "text"
-            and (text := str(part.get("text") or "").strip())
-        )
         self.last_persisted_at = now
         self.dirty = False
-        coro = asyncio.to_thread(
-            _persist_draft_display_message,
+        live = self.live
+        # A reload mid-turn reads this overlay; the journal is only for a crash.
+        live.publish(
             self.chat_id,
-            self.run_id,
-            snapshot,
-            content,
-            started_at=self.timestamp,
+            {
+                "role": "assistant",
+                "content": message_content(snapshot),
+                "parts": snapshot,
+                "_streaming_draft": True,
+                "_streaming_run_id": self.run_id,
+                "run_started_at": self.timestamp,
+            },
+        )
+        coro = asyncio.wrap_future(
+            live.record(
+                self.chat_id,
+                self.run_id,
+                snapshot,
+                started_at=self.timestamp,
+                model=self.model_id,
+            )
         )
         if force:
             # The last write of a turn has to land before the stream reports
@@ -658,6 +675,20 @@ class _DraftDisplayAccumulator:
                 raise
             return
         self._persist_task = asyncio.create_task(self._persist_quietly(coro))
+
+    @property
+    def live(self) -> LiveTurns:
+        if self._live is None:
+            self._live = get_live_turns()
+        return self._live
+
+    async def finish(self, finished_at: str) -> None:
+        """Mark the journal finished and fsync it."""
+        if not self.chat_id or not self.parts:
+            return
+        await asyncio.wrap_future(
+            self.live.finish(self.chat_id, self.run_id, finished_at)
+        )
 
     async def _await_persist_task(self) -> None:
         """Wait for a background draft write to finish, if one is running."""
@@ -826,40 +857,6 @@ class _DraftDisplayAccumulator:
             }
         )
         self.dirty = True
-
-
-def _persist_draft_display_message(
-    chat_id: str,
-    run_id: str,
-    parts: list[dict[str, Any]],
-    content: str,
-    *,
-    started_at: Optional[str] = None,
-) -> None:
-    from suzent.database import get_database
-
-    db = get_database()
-    chat = db.get_chat(chat_id)
-    if chat is None:
-        return
-
-    messages = list(chat.messages or [])
-    draft = {
-        "role": "assistant",
-        "content": content,
-        "parts": parts,
-        "_streaming_draft": True,
-        "_streaming_run_id": run_id,
-        **({"run_started_at": started_at} if started_at else {}),
-    }
-
-    messages = merge_streamed_message(messages, draft)
-
-    # The draft is transient: every 0.75s it is overwritten, and the turn's real
-    # write reindexes it when it lands. Reindexing here re-wrote every FTS row of
-    # the whole conversation on each draft — 0.5s per write on a 1MB chat, with
-    # the token stream waiting behind it.
-    db.update_chat(chat_id, messages=messages, reindex=False)
 
 
 def _encode_custom(name: str, value: Any) -> str:
@@ -2468,7 +2465,9 @@ async def stream_agent_responses(
         nonlocal draft_accumulator
         try:
             if not is_heartbeat:
-                draft_accumulator = _DraftDisplayAccumulator(chat_id, run_id)
+                draft_accumulator = _DraftDisplayAccumulator(
+                    chat_id, run_id, model_id=getattr(agent, "_model_id", None)
+                )
             run_input = RunAgentInput(
                 thread_id=chat_id or "default",
                 run_id=run_id,
@@ -2507,6 +2506,7 @@ async def stream_agent_responses(
                     if final_sources:
                         draft_accumulator.apply_citation_sources(final_sources)
                     await draft_accumulator.maybe_persist(force=True)
+                    await draft_accumulator.finish(finished_at)
                 except Exception as exc:
                     logger.debug(f"[Streaming] Failed to persist final draft: {exc}")
                 # The fast snapshot commits this even if a draft write failed.

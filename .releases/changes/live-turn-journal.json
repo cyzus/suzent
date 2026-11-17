@@ -1,0 +1,1 @@
+{"products": {"desktop": "patch"}, "summary": "Streaming replies no longer rewrite the whole chat in the database every moment, so other parts of the app stay responsive during long answers, and a reply cut off by a crash is restored as interrupted."}
