@@ -1,0 +1,1 @@
+{"products": {"desktop": "patch"}, "summary": "Long chats save faster at the end of each reply, because their messages are stored only in the chat log instead of being rewritten into the database every turn."}

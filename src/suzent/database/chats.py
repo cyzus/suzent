@@ -6,10 +6,10 @@ from datetime import datetime, timezone
 import re
 from typing import Any, Dict, Iterable, List, Optional
 
-from sqlalchemy import func, or_, text, update
+from sqlalchemy import event, func, or_, text, update
 from sqlalchemy import inspect as sa_inspect
 from sqlalchemy import select as sa_select
-from sqlalchemy.orm.attributes import flag_modified
+from sqlalchemy.orm.attributes import flag_modified, set_committed_value
 from sqlalchemy.orm import defer
 from sqlmodel import Session, col, delete, select
 
@@ -23,13 +23,14 @@ from .chat_log import (
     RetryCheckpoint,
     normalize_json,
     project_chat,
+    project_meta,
     project_state,
     projection_differences,
     state_bytes,
     visible_messages,
 )
 from .models import (
-    ChatLogIndexModel,
+    ChatLogPositionModel,
     ChatModel,
     ChatStatusModel,
     ChatSummaryModel,
@@ -75,6 +76,89 @@ _UNSET = object()
 HIDDEN_CHAT_PLATFORMS = ("dream", "focal")
 
 logger = get_logger(__name__)
+
+# The chat's log holds these; its ``chats`` row keeps only the empty values.
+_CONVERSATION_FIELDS: tuple[tuple[str, Any], ...] = (
+    ("messages", []),
+    ("agent_state", None),
+)
+_HELD_KEY = "suzent_held_conversation"
+_RESTORE_KEY = "suzent_restore_conversation"
+_ASSIGNED_KEY = "suzent_assigned_conversation"
+
+
+def _note_assignment(field: str):
+    # Assigning the value the row already has (``None`` over a slim row's
+    # NULL state) is no change to SQLAlchemy, but it still has to be logged.
+    def note(state: Any, value: Any, oldvalue: Any, initiator: Any) -> Any:
+        state.info.setdefault(_ASSIGNED_KEY, set()).add(field)
+        return value
+
+    return note
+
+
+for _field, _ in _CONVERSATION_FIELDS:
+    event.listen(
+        getattr(ChatModel, _field),
+        "set",
+        _note_assignment(_field),
+        raw=True,
+        retval=True,
+    )
+
+
+@event.listens_for(Session, "before_flush")
+def _hold_conversation(session: Session, flush_context: Any, instances: Any) -> None:
+    """Keep messages and agent state out of the ``chats`` row being flushed.
+
+    Write paths assign them as before. What the flush would have written is
+    held in ``session.info`` for :meth:`commit_chat_changes` to log, and the
+    row gets the empty values. The objects show the assigned values again
+    once the flush is done. A new row with empty values has nothing to hold.
+    """
+    held: Optional[dict[str, dict[str, Any]]] = None
+    for obj in [*session.new, *session.dirty]:
+        if not isinstance(obj, ChatModel):
+            continue
+        state = sa_inspect(obj)
+        assigned = state.info.pop(_ASSIGNED_KEY, set())
+        pending = obj in session.new
+        for field, empty in _CONVERSATION_FIELDS:
+            value = getattr(obj, field)
+            if pending:
+                if value == empty:
+                    continue
+            elif field not in assigned and not state.attrs[field].history.has_changes():
+                continue
+            if held is None:
+                held = session.info.setdefault(_HELD_KEY, {})
+            held.setdefault(obj.id, {})[field] = value
+            session.info.setdefault(_RESTORE_KEY, []).append((obj, field, value))
+            setattr(obj, field, copy.copy(empty))
+            state.info.pop(_ASSIGNED_KEY, None)
+
+
+@event.listens_for(Session, "after_flush_postexec")
+def _show_held_conversation(session: Session, flush_context: Any) -> None:
+    for obj, field, value in session.info.pop(_RESTORE_KEY, ()):
+        set_committed_value(obj, field, value)
+
+
+@event.listens_for(Session, "before_commit")
+def _refuse_unlogged_conversation(session: Session) -> None:
+    session.flush()
+    held = session.info.get(_HELD_KEY)
+    if held:
+        raise RuntimeError(
+            f"Chat messages or state for {sorted(held)} were written without "
+            "commit_chat_changes; only the chat log can store them"
+        )
+
+
+@event.listens_for(Session, "after_rollback")
+def _drop_held_conversation(session: Session) -> None:
+    session.info.pop(_HELD_KEY, None)
+    session.info.pop(_RESTORE_KEY, None)
 
 
 def _json_column(raw: Any, default: Any) -> Any:
@@ -353,10 +437,30 @@ class ChatOperationsMixin:
     def get_chat(
         self, chat_id: str, *, include_agent_state: bool = True
     ) -> Optional[ChatModel]:
-        """Get a chat, optionally excluding the agent-state blob for transcript reads."""
+        """Get a chat, optionally excluding the agent state for transcript reads."""
         with self._session() as session:
-            options = [] if include_agent_state else [defer(ChatModel.agent_state)]
-            return session.get(ChatModel, chat_id, options=options)
+            return self._load_chat(session, chat_id, state=include_agent_state)
+
+    def _load_chat(
+        self, session: Session, chat_id: str, *, state: bool = True
+    ) -> Optional[ChatModel]:
+        """Load a chat with its messages (and state) read from its log."""
+        options = [] if state else [defer(ChatModel.agent_state)]
+        chat = session.get(ChatModel, chat_id, options=options)
+        if chat is None:
+            return None
+        with self.chat_log.lock(chat_id):
+            logged, _ = self.chat_log.logged(chat_id)
+            if logged is None:
+                # A chat from before logs, not imported yet: the row still
+                # holds its own messages and state.
+                return chat
+            messages = normalize_json(logged["messages"])
+            agent_state = state_bytes(logged["state"]) if state else None
+        set_committed_value(chat, "messages", messages)
+        if state:
+            set_committed_value(chat, "agent_state", agent_state)
+        return chat
 
     def get_chat_config(self, chat_id: str) -> Optional[Dict[str, Any]]:
         """The chat's config without its messages and state, or None when it is gone."""
@@ -419,8 +523,10 @@ class ChatOperationsMixin:
         # Take SQLite's write lock even when the session changed nothing (an
         # import, a checkpoint update) before any chat lock, so nothing ever
         # waits for SQLite while holding a chat lock another writer needs.
-        session.execute(text("UPDATE chat_log_index SET seq = seq WHERE 0"))
+        session.execute(text("UPDATE chat_log_positions SET seq = seq WHERE 0"))
         ids = sorted(set(chat_ids))
+        held = session.info.get(_HELD_KEY, {})
+        assigned = {chat_id: held.pop(chat_id, {}) for chat_id in ids}
         pending: List[PendingAppend] = []
         with ExitStack() as locks:
             for chat_id in ids:
@@ -429,7 +535,7 @@ class ChatOperationsMixin:
                 for chat_id in ids:
                     append = self.chat_log.prepare(
                         chat_id,
-                        self._project_in_session(session, chat_id),
+                        self._project_in_session(session, chat_id, assigned[chat_id]),
                         created=created,
                         extra=tuple((checkpoint_events or {}).get(chat_id, ())),
                     )
@@ -442,6 +548,20 @@ class ChatOperationsMixin:
                             if append.projection is None
                             else (append.seq, append.size, append.mtime_ns),
                         )
+                # A row from before slim rows (an import, a legacy chat) still
+                # holds the conversation the log now has.
+                session.execute(
+                    update(ChatModel)
+                    .where(
+                        ChatModel.id.in_(ids),
+                        or_(
+                            text("chats.messages != '[]'"),
+                            ChatModel.agent_state.is_not(None),
+                        ),
+                    )
+                    .values(messages=[], agent_state=None)
+                    .execution_options(synchronize_session=False)
+                )
                 session.commit()
             except BaseException:
                 session.rollback()
@@ -452,28 +572,61 @@ class ChatOperationsMixin:
                 self.chat_log.confirm(append)
 
     def _project_in_session(
-        self, session: Session, chat_id: str
+        self,
+        session: Session,
+        chat_id: str,
+        assigned: Optional[Dict[str, Any]] = None,
     ) -> Optional[Projection]:
-        """Project the row as *session* sees it, uncommitted changes included."""
+        """Project the chat as *session* sees it, uncommitted changes included.
+
+        The row gives everything but messages and state. Those are *assigned*
+        when this write set them, else the log's, else (a chat from before
+        logs) the row's own. The caller holds the chat's log lock.
+        """
         table = ChatModel.__table__
         row = (
             session.connection()
             .execute(sa_select(table).where(table.c.id == chat_id))
             .first()
         )
-        return project_chat(row) if row is not None else None
+        if row is None:
+            return None
+        assigned = assigned or {}
+        logged, _ = self.chat_log.logged(chat_id)
+        projection = project_meta(row)
+        if "messages" in assigned:
+            previous = logged["messages"] if logged is not None else []
+            projection["messages"] = [
+                previous[i]
+                if i < len(previous) and previous[i] == message
+                else normalize_json(message)
+                for i, message in enumerate(visible_messages(assigned["messages"]))
+            ]
+        elif logged is not None:
+            projection["messages"] = logged["messages"]
+        else:
+            projection["messages"] = visible_messages(row.messages)
+        if "agent_state" in assigned:
+            projection["state"] = project_state(assigned["agent_state"])
+        elif logged is not None:
+            projection["state"] = logged["state"]
+        else:
+            projection["state"] = project_state(row.agent_state)
+        return projection
 
     def _index_in_session(
         self, session: Session, chat_id: str, position: Optional[tuple[int, int, int]]
     ) -> None:
         if position is None:
             session.exec(
-                delete(ChatLogIndexModel).where(ChatLogIndexModel.chat_id == chat_id)
+                delete(ChatLogPositionModel).where(
+                    ChatLogPositionModel.chat_id == chat_id
+                )
             )
             return
         seq, size, mtime_ns = position
         session.merge(
-            ChatLogIndexModel(chat_id=chat_id, seq=seq, size=size, mtime_ns=mtime_ns)
+            ChatLogPositionModel(chat_id=chat_id, seq=seq, size=size, mtime_ns=mtime_ns)
         )
 
     def all_chat_ids(self) -> list[str]:
@@ -491,7 +644,7 @@ class ChatOperationsMixin:
         with self._session() as session:
             index = {
                 entry.chat_id: (entry.size, entry.mtime_ns)
-                for entry in session.exec(select(ChatLogIndexModel)).all()
+                for entry in session.exec(select(ChatLogPositionModel)).all()
             }
         changed = 0
         for chat_id in self.chat_log.chat_ids():
@@ -506,6 +659,55 @@ class ChatOperationsMixin:
         self.chat_log.purge_trash()
         return changed
 
+    def _adopt_legacy_log_positions(self) -> None:
+        """Take over the log positions an older version recorded.
+
+        Only versions that stored full rows write ``chat_log_index``, so an
+        entry there is always newer than the one in ``chat_log_positions``.
+        """
+        with self.engine.begin() as connection:
+            connection.execute(
+                text(
+                    "INSERT OR REPLACE INTO chat_log_positions "
+                    "SELECT chat_id, seq, size, mtime_ns FROM chat_log_index"
+                )
+            )
+
+    def _slim_logged_rows(self) -> None:
+        """Empty the messages and state of rows whose log is fully applied.
+
+        Rows written by versions that stored the conversation in SQLite keep a
+        copy until here. Then ``chat_log_index`` is emptied, so an older
+        version opening this database replays every log into full rows.
+        """
+        with self._session() as session:
+            positions = {
+                entry.chat_id: (entry.size, entry.mtime_ns)
+                for entry in session.exec(select(ChatLogPositionModel)).all()
+            }
+        applied = [
+            chat_id
+            for chat_id, position in positions.items()
+            if self.chat_log.stat(chat_id) == position
+        ]
+        slimmed = 0
+        with self.engine.begin() as connection:
+            for start in range(0, len(applied), 500):
+                slimmed += connection.execute(
+                    update(ChatModel)
+                    .where(
+                        ChatModel.id.in_(applied[start : start + 500]),
+                        or_(
+                            text("chats.messages != '[]'"),
+                            ChatModel.agent_state.is_not(None),
+                        ),
+                    )
+                    .values(messages=[], agent_state=None)
+                ).rowcount
+            connection.execute(text("DELETE FROM chat_log_index"))
+        if slimmed:
+            logger.info("Moved the messages of {} chats out of chats.db", slimmed)
+
     def _restore_chat_from_log(self, chat_id: str) -> int:
         """Make the row match its log. Returns 1 if the row changed."""
         with self.chat_log.lock(chat_id):
@@ -518,7 +720,8 @@ class ChatOperationsMixin:
                 self.chat_log.forget(chat_id)
                 return 0
         with self._session() as session:
-            stored = self._project_in_session(session, chat_id)
+            with self.chat_log.lock(chat_id):
+                stored = self._project_in_session(session, chat_id)
             if logged is None:
                 if stored is not None:
                     self._delete_chat_rows(session, [chat_id])
@@ -526,9 +729,12 @@ class ChatOperationsMixin:
                 session.commit()
                 self.chat_log.retire(chat_id)
                 return int(stored is not None)
+            # Messages and state are read from the log either way, so only the
+            # row's own fields can differ. The row is written regardless: the
+            # search index and sidebar summary follow the replayed messages,
+            # and a full row left by an older version is slimmed.
             differs = bool(projection_differences(logged, stored))
-            if differs:
-                self._write_projection(session, chat_id, logged)
+            self._write_projection(session, chat_id, logged)
             size, mtime_ns = self.chat_log.stat(chat_id)
             self._index_in_session(session, chat_id, (seq, size, mtime_ns))
             self.commit_chat_changes(session, [chat_id])
@@ -654,7 +860,8 @@ class ChatOperationsMixin:
             )
             if claimed.rowcount != 1:
                 return False
-            current = self._project_in_session(session, chat_id)
+            with self.chat_log.lock(chat_id):
+                current = self._project_in_session(session, chat_id)
             before_messages = visible_messages(messages_before)
             before_state = project_state(agent_state_before)
             if before_messages == current["messages"] and (
@@ -713,16 +920,26 @@ class ChatOperationsMixin:
         with no log, or a log with no row, is reported too.
         """
         report: dict[str, list[str]] = {}
+        table = ChatModel.__table__
         for chat_id in sorted(set(self.all_chat_ids()) | set(chat_log.chat_ids())):
-            chat = self.get_chat(chat_id)
             try:
                 logged, _ = chat_log.fold(chat_id)
             except ChatLogError as exc:
                 report[chat_id] = [f"<unreadable log: {exc}>"]
                 continue
-            differences = projection_differences(
-                logged, project_chat(chat) if chat else None
-            )
+            with self.engine.connect() as connection:
+                row = connection.execute(
+                    sa_select(table).where(table.c.id == chat_id)
+                ).first()
+            stored = None
+            if row is not None:
+                # The row holds messages and state only for a chat without a
+                # log; otherwise the log is their one copy.
+                stored = project_chat(row)
+                if logged is not None:
+                    stored["messages"] = logged["messages"]
+                    stored["state"] = logged["state"]
+            differences = projection_differences(logged, stored)
             if differences:
                 report[chat_id] = differences
         return report
@@ -770,12 +987,9 @@ class ChatOperationsMixin:
     ) -> bool:
         """Update an existing chat.
 
-        ``reindex=False`` skips the full-text reindex. The reindex rewrites every
-        FTS row for the chat, so it costs time proportional to the whole
-        conversation — fine for a turn that has landed, ruinous for a write that
-        repeats every fraction of a second. Use it only for transient writes that
-        a later write will supersede (the streaming draft), never for content
-        that must be findable.
+        ``reindex=False`` skips the full-text reindex, which rewrites every FTS
+        row for the chat. Use it only for writes a later write supersedes,
+        never for content that must be findable.
         """
         with self._session() as session:
             chat = session.get(ChatModel, chat_id)
@@ -832,18 +1046,13 @@ class ChatOperationsMixin:
             session.add(chat)
             if messages is not None and reindex:
                 self._reindex_in_session(session, chat_id, messages)
-            if messages is not None and not reindex:
-                # A streaming draft: the log leaves it out, and the turn's
-                # real write records the summary and timestamp it changes.
-                session.commit()
-            else:
-                self.commit_chat_changes(session, [chat_id])
+            self.commit_chat_changes(session, [chat_id])
         return True
 
     def append_chat_message(self, chat_id: str, message: Dict[str, Any]) -> bool:
         """Append one display message to a chat."""
         with self._session() as session:
-            chat = session.get(ChatModel, chat_id)
+            chat = self._load_chat(session, chat_id, state=False)
             if not chat:
                 return False
 
@@ -864,7 +1073,7 @@ class ChatOperationsMixin:
         from suzent.core.display_log import merge_streamed_message
 
         with self._session() as session:
-            chat = session.get(ChatModel, chat_id)
+            chat = self._load_chat(session, chat_id, state=False)
             if not chat:
                 return False
 
@@ -906,7 +1115,7 @@ class ChatOperationsMixin:
     ) -> str:
         """Append a client-authored message once, returning its claim status."""
         with self._session() as session:
-            chat = session.get(ChatModel, chat_id)
+            chat = self._load_chat(session, chat_id, state=False)
             if not chat:
                 return "missing"
 
@@ -932,7 +1141,7 @@ class ChatOperationsMixin:
     def has_client_message(self, chat_id: str, client_message_id: str) -> bool:
         """Return whether a chat already contains a mobile send receipt."""
         with self._session() as session:
-            chat = session.get(ChatModel, chat_id)
+            chat = self._load_chat(session, chat_id, state=False)
             if not chat:
                 return False
             return any(
@@ -1045,7 +1254,7 @@ class ChatOperationsMixin:
                 )
                 if claimed.rowcount != 1:
                     return None
-            chat = session.get(ChatModel, chat_id)
+            chat = self._load_chat(session, chat_id, state=False)
             if not chat:
                 _postprocess_metrics.snapshot_failed += 1
                 return None
@@ -1122,7 +1331,7 @@ class ChatOperationsMixin:
             True when the chat exists.
         """
         with self._session() as session:
-            chat = session.get(ChatModel, chat_id)
+            chat = self._load_chat(session, chat_id, state=False)
             if not chat:
                 return False
             existing = list(chat.messages or [])
@@ -1271,12 +1480,16 @@ class ChatOperationsMixin:
     def _search_fts_ids(self, search):
         """Return FTS-matched chat ids for a chat-list search, or None to use LIKE.
 
-        None means "FTS can't serve this" (no search term, FTS unavailable, or query
-        below the trigram minimum) — callers then fall back to the LIKE message scan,
-        preserving prior behaviour (e.g. 2-char CJK substrings).
+        None means the FTS ``MATCH`` can't serve the query (no search term, or
+        shorter than a trigram); callers then scan the indexed text with LIKE
+        (e.g. 2-char CJK substrings). Without the index, ``[]``: titles only.
         """
         if not search:
             return None
+        if not self.fts_available():
+            # Message text lives in the logs and the search index; without the
+            # index, only titles can be searched.
+            return []
         return self.fts_match_chat_ids(search)
 
     def _remove_from_fts_in_session(self, session, chat_id: str) -> None:
@@ -1445,11 +1658,11 @@ class ChatOperationsMixin:
                     ChatModel.id,
                     ChatModel.title,
                     ChatModel.project_id,
-                    ChatLogIndexModel.seq,
+                    ChatLogPositionModel.seq,
                 )
                 .join(
-                    ChatLogIndexModel,
-                    ChatLogIndexModel.chat_id == ChatModel.id,
+                    ChatLogPositionModel,
+                    ChatLogPositionModel.chat_id == ChatModel.id,
                     isouter=True,
                 )
                 .where(
@@ -1469,7 +1682,17 @@ class ChatOperationsMixin:
             statement = select(ChatModel.id, ChatModel.messages).where(
                 ChatModel.id.in_(chat_ids)
             )
-            return {row[0]: row[1] or [] for row in session.exec(statement).all()}
+            rows = session.exec(statement).all()
+        found: dict[str, list] = {}
+        for chat_id, stored in rows:
+            with self.chat_log.lock(chat_id):
+                logged, _ = self.chat_log.logged(chat_id)
+                found[chat_id] = (
+                    normalize_json(logged["messages"])
+                    if logged is not None
+                    else stored or []
+                )
+        return found
 
     def project_chat_ids(self, project_ids: list[str]) -> dict[str, str]:
         """One chat id per project in *project_ids*, archived chats included."""
@@ -1577,7 +1800,7 @@ class ChatOperationsMixin:
                 visible_count = config.get(SUMMARY_VISIBLE_COUNT_KEY)
                 last_message = config.get(SUMMARY_LAST_MESSAGE_KEY)
                 if visible_count is None or SUMMARY_LAST_MESSAGE_KEY not in config:
-                    chat = session.get(ChatModel, chat_id)
+                    chat = self._load_chat(session, chat_id, state=False)
                     messages = chat.messages if chat else []
                     visible_count, last_message = _summarize_messages(messages)
                     if chat:

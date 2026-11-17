@@ -155,6 +155,15 @@ def project_chat(chat: Any) -> Projection:
     already in the form they read back from the log, which saves re-encoding
     the whole conversation on every write.
     """
+    return {
+        **project_meta(chat),
+        "messages": visible_messages(chat.messages),
+        "state": project_state(chat.agent_state),
+    }
+
+
+def project_meta(chat: Any) -> dict[str, Any]:
+    """The logged fields of a ``chats`` row other than messages and state."""
     meta = {
         "title": chat.title,
         "pinned": bool(chat.pinned),
@@ -167,12 +176,7 @@ def project_chat(chat: Any) -> Projection:
         "turn_count": chat.turn_count or 0,
         "context_usage": chat.context_usage or {},
     }
-    return {
-        **normalize_json(meta),
-        "config": chat.config or {},
-        "messages": visible_messages(chat.messages),
-        "state": project_state(chat.agent_state),
-    }
+    return {**normalize_json(meta), "config": chat.config or {}}
 
 
 def splice_diff(old: list[Any], new: list[Any]) -> Optional[dict[str, Any]]:

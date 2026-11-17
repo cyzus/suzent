@@ -59,7 +59,7 @@ Before this, the draft was rewritten into the SQLite row every 0.75s. Rows with
 | `<data>/chats/.media/<sha256>` | Strings of 64 KiB or more from any log (pasted images, large tool output), stored once by content hash. |
 | `<data>/chats/.trash/` | Logs of deleted chats, renamed `<chat_id>.<utc timestamp>.jsonl`, purged after 30 days. |
 | `<data>/chats/.corrupt/` | Logs that could not be read, set aside for inspection. |
-| `<data>/chats.db` | The `chats` row of each chat, its search rows, and `chat_log_index`: the `seq`, size and mtime of each log as of its last commit. |
+| `<data>/chats.db` | The `chats` row of each chat (metadata and config only), its search rows, and `chat_log_positions`: the `seq`, size and mtime of each log as of its last commit. |
 
 The log directory is named after the database file, so a test database at
 `/tmp/abc.db` keeps its logs in `/tmp/abc/`. File names are the percent-encoded
@@ -103,6 +103,46 @@ them at zero. Streaming drafts (display rows with `_streaming_draft`, from
 older versions) are not logged either, since the turn's real write replaces
 them.
 
+## Slim chat rows
+
+A chat's display messages and agent state live only in its log. The `chats`
+row keeps `messages = []` and `agent_state = NULL`; its title, config, project
+and counters stay there, and so does the message text in `chat_messages_fts`.
+
+- **Reads.** `get_chat` and the other readers load the row, then fill
+  `messages` and `agent_state` from the log's cached projection. A chat with no
+  log yet (one an older version wrote and the import has not reached) is read
+  from its row as before.
+- **Writes.** Write paths still assign `chat.messages` and `chat.agent_state`.
+  A `before_flush` listener on every `Session` takes those values out of the
+  `chats` row being flushed and holds them in `session.info` for
+  `commit_chat_changes`, which diffs them against the log. Autoflush (from a
+  raw SQL statement in the same session) goes through the same listener.
+  Committing a session that changed a chat's conversation without
+  `commit_chat_changes` raises `RuntimeError` rather than dropping the change.
+- **Search.** Every message search goes through `chat_messages_fts`. Queries too
+  short for the trigram tokenizer (one or two CJK characters) run a `LIKE` over
+  its `text` column. Without FTS5, message search finds nothing and only titles
+  match.
+
+A turn's snapshot and finalize no longer rewrite multi-megabyte blobs under the
+SQLite write lock: on a 600-message chat with 2.9 MB of state, a snapshot went
+from about 0.25s to 0.10s and finalize from about 0.25s to 0.03s.
+
+### Upgrade and downgrade
+
+Earlier versions recorded log positions in `chat_log_index`. On start the
+positions are copied into `chat_log_positions`, the logs are reconciled, and
+every row whose log is fully applied has its messages and state emptied. Then
+`chat_log_index` is emptied. An older version opening the database finds no
+positions, so it replays every log into a full row and works as before. A
+version from before chat logs existed cannot read slim rows.
+
+A row that still holds a conversation (an import, a legacy chat) is emptied by
+the first logged write to it. If a log cannot be read, it moves to `.corrupt/`
+and the chat shows no messages; the conversation is in that file, not in the
+row.
+
 ## How a write works
 
 Every write to a `chats` row ends in `commit_chat_changes(session, chat_ids)`
@@ -118,7 +158,7 @@ directly (heartbeat config, the heartbeat route, the turn-end file snapshot).
    common prefix and suffix: items added at the end become one append event
    each, and any other change (a compaction, a rollback, a retry) is one
    splice. The log grows with the conversation, not with the number of writes.
-4. The events are appended and fsynced, and `chat_log_index` is updated in the
+4. The events are appended and fsynced, and `chat_log_positions` is updated in the
    same SQLite transaction.
 5. SQLite commits. If the commit fails, the log is truncated back to its old
    size; if the process dies first, the log is ahead of SQLite.
@@ -139,7 +179,7 @@ appended message used to hold the lock for up to a second.
 
 `ChatDatabase.__init__` runs `reconcile_chat_logs()` after the migrations and
 before anything can write. It compares every log's size and mtime with
-`chat_log_index` and replays only the logs that differ, so its cost is one
+`chat_log_positions` and replays only the logs that differ, so its cost is one
 `stat` per chat when nothing went wrong. A replay folds the log and rewrites the
 row from it when they disagree:
 
@@ -153,7 +193,7 @@ row from it when they disagree:
 A crash mid-append can leave a partial final line. Readers ignore everything
 after the last newline, and the next append truncates it first. A log that
 cannot be read at all moves to `.corrupt/`, and the chat's next write starts a
-new log from its row.
+new log from its row, which holds only the metadata.
 
 The server then runs `import_unlogged_chats()` in a background thread. It gives
 every chat without a log a `chat.imported` event, and moves the checkpoints of
