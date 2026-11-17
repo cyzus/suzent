@@ -2029,6 +2029,7 @@ export const en = {
     searchChatsPlaceholder: 'Search chats…',
     clearSearch: 'Clear search',
     newChat: 'New chat',
+    newChatInProject: 'New chat in {name}',
     search: 'Search',
     newProject: 'New project',
     newProjectPlaceholder: 'Project name...',
