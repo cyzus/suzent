@@ -3,7 +3,15 @@
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
-from suzent.core import mcp_store
+from suzent.core import mcp_health, mcp_store
+
+
+def _after_probe(name: str, probe: dict) -> None:
+    """A good probe clears a stale failure; a failed one keeps installing in the background."""
+    if probe.get("ok"):
+        mcp_health.forget(name)
+    elif entry := mcp_store.get(name):
+        mcp_health.warm_up([entry])
 
 
 async def list_mcp_servers(request: Request) -> JSONResponse:
@@ -14,6 +22,7 @@ async def list_mcp_servers(request: Request) -> JSONResponse:
             "stdio": cfg["mcp_stdio_params"],
             "headers": cfg["mcp_headers"],
             "enabled": cfg["mcp_enabled"],
+            "status": mcp_health.status(),
         }
     )
 
@@ -52,6 +61,7 @@ async def add_mcp_server(request: Request) -> JSONResponse:
     from suzent.agent_manager import probe_mcp_server
 
     probe = await probe_mcp_server(mcp_store.get(name) or config, timeout=15.0)
+    _after_probe(name, probe)
     return JSONResponse({"success": True, "probe": probe})
 
 
@@ -68,6 +78,8 @@ async def test_mcp_server(request: Request) -> JSONResponse:
     from suzent.agent_manager import probe_mcp_server
 
     result = await probe_mcp_server(entry)
+    if result.get("ok"):
+        mcp_health.forget(name)
     return JSONResponse(result)
 
 
@@ -77,6 +89,7 @@ async def remove_mcp_server(request: Request) -> JSONResponse:
     if not name:
         return JSONResponse({"error": "Missing name"}, status_code=400)
     if mcp_store.remove(name):
+        mcp_health.forget(name)
         return JSONResponse({"success": True})
     return JSONResponse({"error": "Not found"}, status_code=404)
 
@@ -122,6 +135,7 @@ async def update_mcp_server(request: Request) -> JSONResponse:
     from suzent.agent_manager import probe_mcp_server
 
     probe = await probe_mcp_server(mcp_store.get(name), timeout=15.0)
+    _after_probe(name, probe)
     return JSONResponse({"success": True, "probe": probe})
 
 
@@ -132,5 +146,7 @@ async def set_mcp_server_enabled(request: Request) -> JSONResponse:
     if not name or not isinstance(enabled, bool):
         return JSONResponse({"error": "Invalid request"}, status_code=400)
     if mcp_store.set_enabled(name, enabled):
+        if enabled and (entry := mcp_store.get(name)):
+            mcp_health.warm_up([entry])
         return JSONResponse({"success": True})
     return JSONResponse({"error": "Server not found"}, status_code=404)

@@ -1149,6 +1149,7 @@ export const en = {
       testing: 'Testing...',
       reachable: 'Reachable',
       unreachable: 'Unreachable',
+      preparing: 'Preparing: installing on first launch',
       editServerTitle: 'Edit Server',
       saveServer: 'Save Changes',
       saving: 'Saving...',
