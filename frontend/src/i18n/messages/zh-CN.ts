@@ -1249,6 +1249,7 @@ export const zhCN = {
       testing: '测试中...',
       reachable: '可连接',
       unreachable: '无法连接',
+      preparing: '准备中：首次启动正在安装',
       editServerTitle: '编辑服务器',
       saveServer: '保存更改',
       saving: '保存中...',

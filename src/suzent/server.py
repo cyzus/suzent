@@ -971,6 +971,15 @@ async def startup():
         _warm_artifact_index(app.state.chat_log_import), name="artifact_index_warmup"
     )
 
+    # A stdio server's first launch can spend minutes installing its package;
+    # do that now so chats skip it until it is ready rather than failing.
+    try:
+        from suzent.core import mcp_health, mcp_store
+
+        mcp_health.warm_up(mcp_store.get_all())
+    except Exception as e:
+        logger.warning(f"MCP server warm-up failed to start: {e}")
+
     global social_brain, channel_manager
     if social_brain is not None:
         logger.warning("Social brain already initialized, skipping duplicate startup.")
