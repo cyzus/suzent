@@ -26,11 +26,16 @@ import { useI18n } from '../i18n';
 import { useSlashCommands } from '../hooks/useSlashCommands';
 import {
   getApiBase,
-  refreshAllProviderModels,
+  type RefreshProviderModelsResponse,
   setChatPermissionMode,
   setDefaultPermissionMode,
   toggleStarredModel,
 } from '../lib/api';
+import {
+  autoRefreshProviderModels,
+  forceRefreshProviderModels,
+  syncCachedStarredModels,
+} from '../lib/providerModelsRefresh';
 import { buildMountedVolumes } from '../lib/volumeMounts';
 import { MentionTextArea, type MentionTextAreaHandle } from './chat/MentionTextArea';
 import { ghostRemainder } from '../lib/inputSuggestion';
@@ -247,7 +252,6 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
   const [discoveredModels, setDiscoveredModels] = React.useState<string[] | null>(null);
   const [starredModelsOverride, setStarredModelsOverride] = React.useState<string[] | null>(null);
   const [refreshingModels, setRefreshingModels] = React.useState(false);
-  const autoRefreshedModelsRef = React.useRef(false);
 
   React.useEffect(() => {
     if (backendConfig?.models) {
@@ -261,27 +265,37 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
     }
   }, [backendConfig?.starredModels]);
 
+  const applyModelRefresh = React.useCallback((result: RefreshProviderModelsResponse) => {
+    if (result.success && Array.isArray(result.models)) {
+      setDiscoveredModels(result.models);
+    }
+    if (result.success && Array.isArray(result.starredModels)) {
+      setStarredModelsOverride(result.starredModels);
+    }
+  }, []);
+
   const handleRefreshModels = React.useCallback(async () => {
     if (refreshingModels) return;
     setRefreshingModels(true);
     try {
-      const result = await refreshAllProviderModels();
-      if (result.success && Array.isArray(result.models)) {
-        setDiscoveredModels(result.models);
-      }
-      if (result.success && Array.isArray(result.starredModels)) {
-        setStarredModelsOverride(result.starredModels);
-      }
+      applyModelRefresh(await forceRefreshProviderModels());
     } finally {
       setRefreshingModels(false);
     }
-  }, [refreshingModels]);
+  }, [applyModelRefresh, refreshingModels]);
 
   React.useEffect(() => {
-    if (!configReady || autoRefreshedModelsRef.current) return;
-    autoRefreshedModelsRef.current = true;
-    void handleRefreshModels();
-  }, [configReady, handleRefreshModels]);
+    if (!configReady) return;
+    const pending = autoRefreshProviderModels();
+    if (!pending) return;
+    let cancelled = false;
+    void pending.then((result) => {
+      if (!cancelled) applyModelRefresh(result);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [configReady, applyModelRefresh]);
 
   const effectiveModels = React.useMemo(() => {
     const base = backendConfig?.models ?? [];
@@ -313,6 +327,7 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
       const res = await toggleStarredModel(modelId, nextStarred);
       if (res.success && Array.isArray(res.starredModels)) {
         setStarredModelsOverride(res.starredModels);
+        syncCachedStarredModels(res.starredModels);
       }
     },
     [backendConfig?.starredModels]

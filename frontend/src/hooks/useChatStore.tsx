@@ -26,6 +26,7 @@ import { hasToolContinuation } from '../lib/toolContinuation';
 import { stripDenyApprovalPolicies } from '../lib/approvalPolicy';
 import { pairLastTurnAssistants, shouldKeepLocalAssistantContent } from '../lib/chatSyncGuards';
 import { stableList, stableObject } from '../lib/stableUpdate';
+import { markProviderModelsSuperseded } from '../lib/providerModelsRefresh';
 import { useContextUsageStore } from './useContextUsageStore';
 import { useProjects } from './useProjects';
 
@@ -643,6 +644,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
           const data: ConfigOptions = await res.json();
 
           setBackendConfig(data);
+          markProviderModelsSuperseded();
           // Align memory user id with backend-provided userId if present
           try {
             if (data.userId) {

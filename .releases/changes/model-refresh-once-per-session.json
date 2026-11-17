@@ -1,0 +1,1 @@
+{"products": {"desktop": "patch"}, "summary": "Switching chats no longer re-queries every model provider; model lists refresh at most every 15 minutes or when you press refresh."}
