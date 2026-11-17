@@ -44,6 +44,7 @@ import { freshPointerPoint } from '../lib/menuPlacement';
 import { ProjectSettingsDialog, SYSTEM_PROJECT_SLUGS } from './ProjectSettingsDialog';
 import { BrutalDialog } from './BrutalDialog';
 import { isImeComposing } from '../lib/ime';
+import { pollWhileVisible } from '../lib/visiblePolling';
 import { SidebarRenameInput } from './sidebar/SidebarRenameInput';
 
 const ALL_PROJECTS_FILTER = '__all__';
@@ -134,11 +135,11 @@ function useMailboxUnread(): number {
       else refresh();
     };
     refresh();
-    const timer = window.setInterval(refresh, MAILBOX_UNREAD_POLL_MS);
+    const stopPolling = pollWhileVisible(refresh, MAILBOX_UNREAD_POLL_MS);
     window.addEventListener(MAILBOX_UNREAD_EVENT, onChange);
     return () => {
       alive = false;
-      window.clearInterval(timer);
+      stopPolling();
       window.removeEventListener(MAILBOX_UNREAD_EVENT, onChange);
     };
   }, []);

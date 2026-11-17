@@ -24,6 +24,7 @@ import { RegentMark } from './regent/RegentMark';
 import { ResolveChatButton } from './chat/ResolveChatButton';
 import { forgetRegentReturnUnless, useOpenedFromRegent } from '../lib/regentReturn';
 import { hoverText } from '../lib/hoverText';
+import { pollWhileVisible } from '../lib/visiblePolling';
 
 const SERVICE_STATUS_POLL_MS = 8_000;
 
@@ -479,10 +480,10 @@ function BackendServiceWidget() {
     };
 
     refresh();
-    const interval = window.setInterval(refresh, SERVICE_STATUS_POLL_MS);
+    const stopPolling = pollWhileVisible(() => void refresh(), SERVICE_STATUS_POLL_MS);
     return () => {
       active = false;
-      window.clearInterval(interval);
+      stopPolling();
     };
   }, []);
 
