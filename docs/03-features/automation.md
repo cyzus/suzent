@@ -148,7 +148,8 @@ Suzent still requires an approved device.
 A relay is a small server you deploy once, for free on Cloudflare Workers or on
 any server with Docker: [suzent-relay](https://github.com/cyzus/suzent-relay).
 Suzent connects out to it, so you don't need a tunnel, port forwarding or a
-fixed port. There is no Suzent-run relay; you use your own.
+fixed port. There is no Suzent-run relay; you use your own. The same relay also
+lets your phone reach Suzent from anywhere; see [Your own relay](./relay.md).
 
 1. Deploy suzent-relay by following its README. Note its `https://` address and,
    if you set one, its registration key.

@@ -166,7 +166,7 @@ connection open; the phone sends its requests to the relay, which passes them
 down. Suzent has no hosted relay: you run
 [suzent-relay](https://github.com/cyzus/suzent-relay) yourself, for free on
 Cloudflare Workers or with Docker on any server. Its README walks through each
-option.
+option, and [Your own relay](./relay.md) covers how it works.
 
 Everything between the phone and your computer is end-to-end encrypted. The
 QR code carries your computer's key, and the phone checks it before sending
