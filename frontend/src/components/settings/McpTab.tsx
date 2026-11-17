@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   BeakerIcon,
   CheckIcon,
@@ -16,6 +16,7 @@ import {
   setMcpServerEnabled,
   testMcpServer,
   type McpProbeResult,
+  type McpServerHealth,
 } from '../../lib/api';
 import { BrutalSelect } from '../BrutalSelect';
 import { SettingsHeader } from './SettingsHeader';
@@ -96,6 +97,31 @@ export function McpTab({
   const [probes, setProbes] = useState<Record<string, McpProbeResult & { testing?: boolean }>>({});
   // Which servers have their tool list expanded.
   const [expandedTools, setExpandedTools] = useState<Record<string, boolean>>({});
+  // Servers that are not ready yet, from the backend's background warm-up.
+  const [health, setHealth] = useState<Record<string, McpServerHealth>>({});
+  const anyWarming = Object.values(health).some((h) => h.state === 'warming');
+
+  useEffect(() => {
+    let cancelled = false;
+    const load = async (): Promise<void> => {
+      try {
+        const data = await fetchMcpServers();
+        if (!cancelled) setHealth(data.status ?? {});
+      } catch {
+        // The list itself reports load failures; status is best-effort.
+      }
+    };
+    void load();
+    if (!anyWarming)
+      return () => {
+        cancelled = true;
+      };
+    const timer = window.setInterval(() => void load(), 5000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [anyWarming]);
 
   const clearAddForm = () => {
     setSrvName('');
@@ -109,6 +135,7 @@ export function McpTab({
   const refreshServerList = async () => {
     const data = await fetchMcpServers();
     onMcpServersRefresh(data);
+    setHealth(data.status ?? {});
     const urls = data.urls || {};
     const stdio = data.stdio || {};
     const headers = data.headers || {};
@@ -241,6 +268,9 @@ export function McpTab({
       onServerListChange(
         serverList.map((s) => (s.name === server.name ? { ...s, enabled: !s.enabled } : s))
       );
+      // Switching a stdio server on starts its background install.
+      const data = await fetchMcpServers();
+      setHealth(data.status ?? {});
     } finally {
       setLoading(false);
     }
@@ -425,6 +455,15 @@ export function McpTab({
                       )}
                     </div>
 
+                    {!probes[server.name] && server.enabled && health[server.name] && (
+                      <div className="mt-2">
+                        <Badge>
+                          {health[server.name].state === 'warming'
+                            ? t('settings.mcp.preparing')
+                            : `${t('settings.mcp.unreachable')}: ${health[server.name].error ?? ''}`}
+                        </Badge>
+                      </div>
+                    )}
                     {probes[server.name] && (
                       <div className="mt-2">
                         {probes[server.name].testing ? (

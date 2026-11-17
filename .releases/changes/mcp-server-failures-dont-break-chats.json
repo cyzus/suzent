@@ -1,0 +1,1 @@
+{"products": {"desktop": "patch"}, "summary": "An MCP server that can't connect no longer fails every chat: its tools are skipped for that turn, first-launch installs run in the background, and the MCP settings page shows which servers are still preparing or failing."}
