@@ -46,8 +46,9 @@ def test_builds_prefixed_v2_mcp_toolsets() -> None:
     prefixed = [toolset.wrapped for toolset in with_metadata]
     assert all(isinstance(toolset, PrefixedToolset) for toolset in prefixed)
     assert [toolset.prefix for toolset in prefixed] == ["remote", "local"]
-    assert all(isinstance(toolset.wrapped, MCPToolset) for toolset in prefixed)
-    assert [toolset.wrapped.id for toolset in prefixed] == ["remote", "local"]
+    tolerant = [toolset.wrapped for toolset in prefixed]
+    assert all(isinstance(toolset.wrapped, MCPToolset) for toolset in tolerant)
+    assert [toolset.wrapped.id for toolset in tolerant] == ["remote", "local"]
 
 
 class _ToolDef:

@@ -368,11 +368,19 @@ interface StdioConfig {
   env?: Record<string, string>;
 }
 
+/** Why a server is not ready: still installing on first launch, or failing to connect. */
+export interface McpServerHealth {
+  state: 'warming' | 'error';
+  error?: string;
+}
+
 interface McpServersResponse {
   urls: Record<string, string>;
   stdio: Record<string, StdioConfig>;
   headers: Record<string, Record<string, string>>;
   enabled: Record<string, boolean>;
+  /** Only servers that are not ready appear here. */
+  status?: Record<string, McpServerHealth>;
 }
 
 interface VerifyProviderResponse {

@@ -77,6 +77,7 @@ def _build_mcp_servers(config: Dict[str, Any]) -> List:
     if config.get("mcp_disabled") or config.get("exact_tools"):
         return []
     from suzent.core import mcp_store as _mcp_store
+    from suzent.core.mcp_health import tolerant_server
 
     # JSON file is the source of truth; config dict can override for special callers
     _defaults = _mcp_store.as_agent_config()
@@ -108,10 +109,8 @@ def _build_mcp_servers(config: Dict[str, Any]) -> List:
         if mcp_enabled.get(name, False) and url:
             headers = mcp_headers.get(name)
             server = (
-                MCPToolset(
-                    url,
-                    headers=headers,
-                    id=name,
+                tolerant_server(
+                    MCPToolset(url, headers=headers, id=name), name, stdio=False
                 )
                 .prefixed(name)
                 .with_metadata(suzent_context_source="mcp")
@@ -129,7 +128,7 @@ def _build_mcp_servers(config: Dict[str, Any]) -> List:
                     env=params.get("env"),
                 )
                 server = (
-                    MCPToolset(transport, id=name)
+                    tolerant_server(MCPToolset(transport, id=name), name, stdio=True)
                     .prefixed(name)
                     .with_metadata(suzent_context_source="mcp")
                     .approval_required(_mcp_call_needs_approval)
