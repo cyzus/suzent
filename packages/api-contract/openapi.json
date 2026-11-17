@@ -324,6 +324,16 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "include_models",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "default": true,
+              "title": "Include Models",
+              "type": "boolean"
+            }
           }
         ]
       },
@@ -2071,6 +2081,17 @@
           "projects"
         ],
         "title": "ApiNavigation",
+        "type": "object"
+      },
+      "ChatDetailQuery": {
+        "properties": {
+          "include_models": {
+            "default": true,
+            "title": "Include Models",
+            "type": "boolean"
+          }
+        },
+        "title": "ChatDetailQuery",
         "type": "object"
       },
       "HostFieldsRequest": {

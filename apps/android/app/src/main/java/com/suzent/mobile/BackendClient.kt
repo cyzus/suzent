@@ -63,8 +63,13 @@ class BackendClient(val backend: Backend, private val token: String, probeOnly: 
 
     @Volatile private var sharedResources = false
 
-    private fun request(call: ResourceRequest): Request = request(call.path(sharedResources), call.body)
-        .newBuilder().method(call.method, call.body?.toString()?.toRequestBody("application/json".toMediaType())).build()
+    private fun request(call: ResourceRequest): Request {
+        val url = backend.endpoint(call.path(sharedResources)).newBuilder().apply {
+            call.query.forEach { (key, value) -> addQueryParameter(key, value) }
+        }.build()
+        return request(call.path(sharedResources), call.body).newBuilder().url(url)
+            .method(call.method, call.body?.toString()?.toRequestBody("application/json".toMediaType())).build()
+    }
 
     private suspend fun json(call: ResourceRequest): JSONObject = execute(request(call), if (call.readOnly) reads else http)
 
@@ -247,10 +252,9 @@ class BackendClient(val backend: Backend, private val token: String, probeOnly: 
         require(!id.contains('/') && id != "." && id != "..")
         return ChatOverview.parse(json(ResourceRequests.overview(id)))
     }
-    override suspend fun chat(id: String): Chat {
-        require(!id.contains('/') && id != "." && id != "..")
-        return Chat.parse(json(ResourceRequests.chat(id)))
-    }
+    override suspend fun chat(id: String): Chat = chat(id, includeModels = true)
+    override suspend fun chat(id: String, includeModels: Boolean): Chat = Chat.parse(
+        json(ResourceRequests.chat(id, WireChatDetailQuery(if (includeModels) null else false))))
     override suspend fun media(chatId: String, mediaId: String, destination: File) = withContext(Dispatchers.IO) {
         require(!chatId.contains('/') && chatId != "." && chatId != "..")
         require(mediaId.matches(Regex("^[0-9a-f]{32}$")))

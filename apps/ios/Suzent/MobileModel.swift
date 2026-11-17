@@ -746,8 +746,9 @@ import SuzentCore
                 if (try? CredentialStore.save(next)) != nil { store = next }
             }
             if let id = selected?.id, !id.isEmpty, !streaming {
-                let chat = try await client.chat(id)
+                var chat = try await client.chat(id, includeModels: !poll)
                 guard generation == current, selected?.id == id, !streaming else { return }
+                if chat.models == nil { chat.models = selected?.models }
                 selected = chat
                 if chatVisible, foreground { await clearUnread(id, client: client) }
                 if chat.isRegent {
@@ -897,6 +898,7 @@ import SuzentCore
     func loadModelCatalog(refresh: Bool = false, toggling modelID: String? = nil) async {
         guard let client, !isDemo, !modelCatalogBusy || modelCatalogGeneration != generation else { return }
         let current = generation
+        if modelCatalogGeneration != current { modelCatalog = nil }
         modelCatalogBusy = true
         modelCatalogGeneration = current
         modelCatalogError = nil

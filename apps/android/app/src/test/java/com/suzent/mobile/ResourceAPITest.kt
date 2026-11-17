@@ -8,6 +8,13 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class ResourceAPITest {
+    @Test fun pollRequestOmitsModelsWithoutChangingResourcePath() {
+        val call = ResourceRequests.chat("chat", WireChatDetailQuery(false))
+        assertEquals("api/v1/chats/chat", call.path)
+        assertEquals(mapOf("include_models" to "false"), call.query)
+        assertNull(call.body)
+    }
+
     @Test fun generatedDtosPreserveAllowedUnknownFields() {
         val source = JSONObject("""{"id":"chat","title":"Title","futureField":{"enabled":true}}""")
         val value = WireApiChat.fromJson(source)

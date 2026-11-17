@@ -21,6 +21,7 @@ class Operation:
     host_only: bool = False
     transport: Literal["json", "sse", "multipart", "binary", "websocket"] = "json"
     read_only: bool = False
+    query: type[BaseModel] | None = None
     host_handler: str | None = None
 
 
@@ -86,7 +87,13 @@ OPERATIONS = (
         "navigation", "GET", "/navigation", "navigation", response=c.ApiNavigation
     ),
     Operation(
-        "chat", "GET", "/chats/{chat_id}", "chat", response=c.ApiChat, chat="path"
+        "chat",
+        "GET",
+        "/chats/{chat_id}",
+        "chat",
+        response=c.ApiChat,
+        chat="path",
+        query=c.ChatDetailQuery,
     ),
     Operation(
         "updateChat",

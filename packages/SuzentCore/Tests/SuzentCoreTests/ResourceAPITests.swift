@@ -44,3 +44,10 @@ import Testing
     let restored = try JSONSerialization.jsonObject(with: encoded) as? [String: Any]
     #expect((restored?["futureField"] as? [String: Bool])?["enabled"] == true)
 }
+
+@Test func pollingRequestOmitsModelCatalogWithoutChangingResourcePath() throws {
+    let request = try ResourceRequests.chat(chatId: "chat", query: .init(includeModels: false))
+    #expect(request.path == "api/v1/chats/chat")
+    #expect(request.query == ["include_models": "false"])
+    #expect(request.body == nil)
+}
