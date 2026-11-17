@@ -205,6 +205,12 @@ class BackendClient(val backend: Backend, private val token: String, probeOnly: 
         val array = json("mobile/client/projects").getJSONArray("projects")
         return (0 until array.length()).map { val item = array.getJSONObject(it); Project(item.getString("id"), item.getString("name")) }
     }
+    override suspend fun modelCatalog(refresh: Boolean): ModelCatalog = ModelCatalog.parse(
+        if (refresh) json("mobile/client/models/refresh", JSONObject()) else json("mobile/client/models"))
+
+    override suspend fun starModel(model: String, starred: Boolean): ModelCatalog = ModelCatalog.parse(
+        json("mobile/client/models/star", JSONObject().put("model", model).put("starred", starred)))
+
     override suspend fun composer(): Chat = Chat.parse(json("mobile/client/composer"))
     override suspend fun create(title: String, projectId: String?): Chat = Chat.parse(json("mobile/client/chats", JSONObject().put("title", title).apply { if (projectId != null) put("project_id", projectId) }))
     override suspend fun manageChat(id: String, action: String, value: String?) {

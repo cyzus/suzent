@@ -423,3 +423,31 @@
 "Unassigned" = "已取消分配";
 "Ready for review" = "待审阅";
 "Draft" = "已转为草稿";
+
+"Choose model" = "选择模型";
+
+"Search models" = "搜索模型";
+
+"Models" = "模型";
+
+"No matching models" = "没有匹配的模型";
+
+"Applies to your next message in this conversation." = "用于当前会话的下一条消息。";
+
+"Refresh models" = "刷新模型";
+
+"Refreshing…" = "刷新中…";
+
+"★ Favorites" = "★ 收藏";
+
+"Try again" = "重试";
+
+"Expanded" = "已展开";
+
+"Collapsed" = "已收起";
+
+"Add favorite" = "收藏模型";
+
+"Remove favorite" = "取消收藏";
+
+"Could not update models. Try again." = "无法更新模型，请重试。";

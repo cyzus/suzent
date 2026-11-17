@@ -115,6 +115,10 @@ import SuzentCore
     private var mailboxRevision = UUID()
     private var mailboxMutation = UUID()
 
+    var modelCatalog: ModelCatalog?
+    var modelCatalogBusy = false
+    private var modelCatalogGeneration: UUID?
+    var modelCatalogError: String?
     var selectedModel: String?
     var sentVersion = 0
     var openedVersion = 0
@@ -890,6 +894,34 @@ import SuzentCore
         } catch { handle(error) }
     }
 
+    func loadModelCatalog(refresh: Bool = false, toggling modelID: String? = nil) async {
+        guard let client, !isDemo, !modelCatalogBusy || modelCatalogGeneration != generation else { return }
+        let current = generation
+        modelCatalogBusy = true
+        modelCatalogGeneration = current
+        modelCatalogError = nil
+        defer { if generation == current { modelCatalogBusy = false } }
+        do {
+            let catalog: ModelCatalog
+            if let modelID {
+                catalog = try await client.starModel(modelID, starred: !(modelCatalog?.starredModels.contains(modelID) ?? false))
+            } else {
+                catalog = try await client.modelCatalog(refresh: refresh)
+            }
+            guard generation == current, !Task.isCancelled else { return }
+            modelCatalog = catalog
+            if let selectedModel, !catalog.models.contains(selectedModel) { selectModel(nil) }
+            if selected?.model != nil { selected?.models = catalog.models }
+        } catch is CancellationError {
+        } catch ClientError.http(let code) where code == 404 || code == 405 {
+            if generation == current { modelCatalog = nil }
+        } catch {
+            guard generation == current else { return }
+            modelCatalogError = String(localized: "Could not update models. Try again.")
+            if case ClientError.http(401) = error { handle(error) }
+        }
+    }
+
     func selectModel(_ model: String?) {
         selectedModel = model
         UserDefaults.standard.set(model, forKey: "suzent.lastModel.\(origin)")
@@ -1388,7 +1420,7 @@ import SuzentCore
         scheduledTasks = []
         mailbox = .empty; mailboxLoading = false; mailboxChats = [:]; mailboxSupported = false; mailboxOffset = 0; mailboxCategory = "all"
         mailboxBusy = false; mailboxError = nil; mailboxRevision = UUID(); mailboxMutation = UUID()
-        projects = []; selectedModel = nil; drafts = [:]; discardAttachments(); attachmentsSupported = false; overviewSupported = false; surfacesSupported = false; steerSupported = false
+        projects = []; modelCatalog = nil; modelCatalogBusy = false; modelCatalogError = nil; selectedModel = nil; drafts = [:]; discardAttachments(); attachmentsSupported = false; overviewSupported = false; surfacesSupported = false; steerSupported = false
         discardQueues()
         pendingApprovals = []; approvalChoices = [:]; approvalBusy = false
         generation = UUID()

@@ -29,6 +29,8 @@ interface MobileClient {
     suspend fun chatStatuses(ids: List<String>): List<Chat> = chats().filter { it.id in ids.toSet() }
     suspend fun projects(): List<Project>
     suspend fun scheduledTasks(): List<ScheduledTask>
+    suspend fun modelCatalog(refresh: Boolean = false): ModelCatalog = throw UnsupportedOperationException()
+    suspend fun starModel(model: String, starred: Boolean): ModelCatalog = throw UnsupportedOperationException()
     suspend fun composer(): Chat
     suspend fun create(title: String, projectId: String? = null): Chat
     suspend fun chat(id: String): Chat

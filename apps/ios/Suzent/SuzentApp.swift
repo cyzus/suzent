@@ -378,10 +378,18 @@ struct ContentView: View {
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in keyboardVisible = true }
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in keyboardVisible = false }
         .sheet(isPresented: $showModelPicker) {
-            SuzentSelectionPanel(title: String(localized: "Desktop model"),
-                options: [(id: "", title: String(localized: "Conversation default"))] + Array(Set(model.selected?.models ?? [])).sorted().map { (id: $0, title: $0) },
-                selected: model.selectedModel ?? "", dismiss: { showModelPicker = false }) {
+            SuzentSelectionPanel(title: String(localized: "Choose model"),
+                options: [(id: "", title: String(localized: "Conversation default"))] + Array(Set(model.modelCatalog?.models ?? model.selected?.models ?? [])).sorted().map { (id: $0, title: $0) },
+                selected: model.selectedModel ?? "", modelPicker: true, defaultModel: model.selected?.model,
+                starredModels: Set(model.modelCatalog?.starredModels ?? []), canManageModels: model.modelCatalog?.canManage ?? false,
+                modelsBusy: model.modelCatalogBusy, modelsError: model.modelCatalogError,
+                refreshModels: { Task { await model.loadModelCatalog(refresh: model.modelCatalog != nil) } },
+                toggleStar: { id in Task { await model.loadModelCatalog(toggling: id) } },
+                dismiss: { showModelPicker = false }) {
                     model.selectModel($0.isEmpty ? nil : $0)
+                }.onAppear {
+                    model.modelCatalog = nil
+                    Task { await model.loadModelCatalog() }
                 }
         }
         .sheet(isPresented: $showProjectPicker) {

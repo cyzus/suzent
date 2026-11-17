@@ -382,4 +382,18 @@
     <string name="mailbox_action_unassigned">Unassigned</string>
     <string name="mailbox_action_ready_for_review">Ready for review</string>
     <string name="mailbox_action_converted_to_draft">Draft</string>
+    <string name="choose_model">Choose model</string>
+    <string name="search_models">Search models</string>
+    <string name="models_group">Models</string>
+    <string name="no_matching_models">No matching models</string>
+    <string name="model_selection_scope">Applies to your next message in this conversation.</string>
+    <string name="refresh_models">Refresh models</string>
+    <string name="refreshing_models">Refreshing…</string>
+    <string name="favorite_models">★ Favorites</string>
+    <string name="retry_models">Try again</string>
+    <string name="models_expanded">Expanded</string>
+    <string name="models_collapsed">Collapsed</string>
+    <string name="add_model_favorite">Add favorite</string>
+    <string name="remove_model_favorite">Remove favorite</string>
+    <string name="model_catalog_error">Could not update models. Try again.</string>
 </resources>

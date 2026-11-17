@@ -56,6 +56,10 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
     var scheduledTasks by mutableStateOf<List<ScheduledTask>>(emptyList())
         private set
     var projects by mutableStateOf<List<Project>>(emptyList())
+    var modelCatalog by mutableStateOf<ModelCatalog?>(null)
+    var modelCatalogBusy by mutableStateOf(false)
+    private var modelCatalogGeneration: Int? = null
+    var modelCatalogError by mutableStateOf<String?>(null)
     var selectedModel by mutableStateOf<String?>(null)
     private val modelPreferences = application.getSharedPreferences("model_preferences", android.content.Context.MODE_PRIVATE)
 
@@ -824,6 +828,31 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun loadModelCatalog(refresh: Boolean = false, toggling: String? = null): Job = viewModelScope.launch {
+        val api = client ?: return@launch
+        if (isDemo || (modelCatalogBusy && modelCatalogGeneration == generation)) return@launch
+        val current = generation
+        modelCatalogBusy = true
+        modelCatalogGeneration = current
+        modelCatalogError = null
+        try {
+            val catalog = if (toggling != null) api.starModel(toggling, toggling !in (modelCatalog?.starredModels ?: emptySet()))
+                else api.modelCatalog(refresh)
+            if (current != generation) return@launch
+            modelCatalog = catalog
+            if (selectedModel != null && selectedModel !in catalog.models) selectModel(null)
+            selected?.takeIf { it.model != null }?.let { selected = it.copy(models = catalog.models) }
+        } catch (failure: CancellationException) { throw failure }
+        catch (failure: Exception) {
+            if (current != generation) return@launch
+            if (failure is BackendClient.HttpFailure && failure.code in listOf(404, 405)) modelCatalog = null
+            else {
+                modelCatalogError = text(R.string.model_catalog_error)
+                if (failure is BackendClient.HttpFailure && failure.code == 401) handle(failure)
+            }
+        } finally { if (current == generation) modelCatalogBusy = false }
+    }
+
     fun selectModel(model: String?) {
         selectedModel = model
         modelPreferences.edit().putString("lastModel.$origin", model).apply()
@@ -1342,7 +1371,7 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
         scheduledTasks = emptyList()
         mailbox = MailboxPage(); mailboxLoading = false; mailboxChats = emptyMap(); mailboxSupported = false; mailboxOffset = 0; mailboxCategory = "all"
         mailboxBusy = false; mailboxError = null; mailboxRevision++; mailboxMutation++
-        projects = emptyList(); selectedModel = null; drafts.clear(); discardAttachments(); discardQueues(); attachmentsSupported = false
+        projects = emptyList(); modelCatalog = null; modelCatalogBusy = false; modelCatalogError = null; selectedModel = null; drafts.clear(); discardAttachments(); discardQueues(); attachmentsSupported = false
         pendingApprovals = emptyList(); approvalChoices = emptyMap(); approvalBusy = false
         generation++
         nodeEnabled = false
