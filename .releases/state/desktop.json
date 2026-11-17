@@ -1,5 +1,5 @@
 {
-  "version": "0.27.1",
+  "version": "0.28.0",
   "consumed": [
     ".releases/changes/3d-loading-redesign.json",
     ".releases/changes/about-install-identity.json",
@@ -203,6 +203,7 @@
     ".releases/changes/mobile-voice-animation-actions.json",
     ".releases/changes/mobile-voice-composer.json",
     ".releases/changes/mobile-websocket-message-size.json",
+    ".releases/changes/model-picker-auto-discovery-and-stars.json",
     ".releases/changes/model-role-hierarchy.json",
     ".releases/changes/model-wait-ux.json",
     ".releases/changes/msix-packaged-mode.json",

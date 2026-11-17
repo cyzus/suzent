@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [v0.27.1] - 2026-11-17
+## [v0.28.0] - 2026-11-17
 
 <!-- highlights -->
 ### Highlights
@@ -25,6 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Messages from Regent and other agents reach their sessions promptly instead of waiting behind another session's long-running turn.
 - The unread dot in the mailbox list is no longer partly cut off.
 - Place the mobile robot and animate tool icons the way desktop does, and draw them off the UI thread on iOS and Android, pausing when hidden or settled.
+- Automatically discover models from configured providers in the chat model selector with collapsible provider groups, quick search, one-click refresh, and starred favorites.
 - The phone apps play the same Suzent bot animation as desktop, and the desktop mark rests when it is idle or reduced motion is on.
 
 ## [v0.27.0] - 2026-11-16
