@@ -24,10 +24,32 @@ retain whatever output was actually received; an earlier answer is not used as
 a substitute. Legacy history rebuilding remains available for callers without
 a captured stream identity.
 
-During a run, transient drafts still live in SQLite rather than the JSONL log.
-The completed, stopped or failed run's quick snapshot makes its captured output
-durable in JSONL. An abrupt process exit before that snapshot can therefore
-leave only a SQLite draft of the latest partial output.
+## The turn still streaming
+
+A run's output is not written to the chat row until the quick snapshot. While
+it streams, `core/live_turn.py` keeps it in two places:
+
+- An in-memory overlay. `GET /chats/{id}` merges it into the stored messages
+  with `merge_streamed_message`, so a reload mid-turn shows the reply so far
+  (still marked `_streaming_draft`). An overlay never replaces a finished row
+  for the same run.
+- A journal at `<chat log root>/.live/<chat>.<run>.jsonl`. On the same 0.75s
+  throttle as the overlay, it appends a `turn.part` line for each part that
+  changed, flushed but not fsynced; `turn.started` opens it and `turn.finished`
+  closes it with an fsync. One writer thread serves every chat, and the journal
+  never takes the SQLite write lock.
+
+When the quick snapshot commits the reply, the overlay and journal are dropped.
+If it did not, post-processing has the last word: when it ends without the
+reply in the chat, the journal's copy is written back. On startup, after the
+chat logs are reconciled, any journal left by a crash is folded into an
+assistant row: a run that never finished is marked `interrupted`, its running
+or pending tools become errors with `outcome: "interrupted"`, and its end time
+is the last journal line. Journals for chats that are gone, or whose run
+already has a finished row, are deleted.
+
+Before this, the draft was rewritten into the SQLite row every 0.75s. Rows with
+`_streaming_draft` written by older versions are still read as before.
 
 ## Where chats live
 
@@ -77,9 +99,9 @@ Anywhere in `data`, a string of 64 KiB or more is written as
 Revision counters (`state_revision`, `finalized_revision`, `state_stage`,
 `state_updated_at`) and `last_result_at` are not logged: they coordinate the
 running process rather than describe the conversation, and a rebuilt row starts
-them at zero. Streaming drafts (display rows with `_streaming_draft`) are not
-logged either, since the turn's real write replaces them; the draft write
-commits to SQLite alone.
+them at zero. Streaming drafts (display rows with `_streaming_draft`, from
+older versions) are not logged either, since the turn's real write replaces
+them.
 
 ## How a write works
 
