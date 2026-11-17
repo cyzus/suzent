@@ -518,7 +518,7 @@ struct SuzentIconButtonStyle: ButtonStyle {
         configuration.label
             .foregroundStyle(Color.suzentText)
             .frame(width: PresentationTokens.controlHeight, height: PresentationTokens.controlHeight)
-            .background(configuration.isPressed ? Color.suzentText.opacity(PresentationTokens.pressedAlpha) : Color.clear, in: Circle())
+            .background(configuration.isPressed ? Color.suzentText.opacity(PresentationTokens.pressedAlpha) : Color.clear, in: Rectangle())
             .opacity(enabled ? 1 : PresentationTokens.disabledAlpha)
     }
 }

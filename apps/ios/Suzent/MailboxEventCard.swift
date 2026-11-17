@@ -111,7 +111,7 @@ struct MailboxThreadRow: View {
             VStack(alignment: .leading, spacing: 6) {
                 HStack(alignment: .firstTextBaseline, spacing: 7) {
                     if unread {
-                        Circle().fill(Color.suzentYellow).frame(width: 7, height: 7)
+                        Rectangle().fill(Color.suzentYellow).frame(width: 7, height: 7)
                             .alignmentGuide(.firstTextBaseline) { $0[.bottom] - 1 }
                             .accessibilityLabel("Unread")
                     }

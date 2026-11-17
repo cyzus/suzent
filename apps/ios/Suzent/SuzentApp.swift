@@ -1308,9 +1308,9 @@ struct ContentView: View {
                 if loading || action == .connecting { ProgressView().tint(tint) }
                 else { Image(systemName: symbol).font(.system(size: action == .stop ? 14 : 20, weight: .bold)) }
             }.foregroundStyle(tint).frame(width: 36, height: 36)
-                .background(fill, in: Circle())
-                .overlay(Circle().stroke(Color.suzentOutline, lineWidth: 1.5))
-                .padding(4).contentShape(Circle())
+                .background(fill, in: Rectangle())
+                .overlay(Rectangle().stroke(Color.suzentOutline, lineWidth: 1.5))
+                .padding(4).contentShape(Rectangle())
         }.buttonStyle(.plain).disabled(loading).accessibilityLabel(label)
     }
 

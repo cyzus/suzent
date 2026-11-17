@@ -222,6 +222,8 @@
     <string name="activity_copy_details">Copy details</string>
     <string name="activity_full_details">Show full details</string>
     <string name="recent_chats">Recent</string>
+    <string name="home_list_view">Show conversations</string>
+    <string name="home_list_by_project">By project</string>
     <string name="recent_view_all">View all</string>
     <string name="search_hint">Search the titles of every chat this phone can read.</string>
     <string name="clear_search">Clear search</string>

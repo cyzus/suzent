@@ -111,7 +111,7 @@ internal fun MailboxThreadRow(thread: MailboxThread, target: Chat?, open: () -> 
             MailboxSourceMark(latest)
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                    if (unread) Box(Modifier.padding(top = 6.dp).size(7.dp).background(suzentYellow(), androidx.compose.foundation.shape.CircleShape))
+                    if (unread) Box(Modifier.padding(top = 6.dp).size(7.dp).background(suzentYellow(), androidx.compose.ui.graphics.RectangleShape))
                     Text(latest.display.title, fontSize = 14.sp, lineHeight = 19.sp, fontWeight = if (unread) FontWeight.SemiBold else FontWeight.Normal,
                         color = if (latest.status == "unrouted") muted else MaterialTheme.colorScheme.onSurface, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 }

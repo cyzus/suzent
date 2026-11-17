@@ -55,6 +55,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -67,6 +68,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
@@ -530,17 +532,13 @@ private fun Sidebar(model: MobileModel, hideSelection: Boolean, tabs: Boolean, o
             val selected = model.selected?.isRegent == true && !hideSelection
             val regentInteraction = remember { MutableInteractionSource() }
             val regentPressed by regentInteraction.collectIsPressedAsState()
-            Row(Modifier.padding(horizontal = 16.dp).fillMaxWidth()
-                .clickable(interactionSource = regentInteraction, indication = LocalIndication.current,
-                    enabled = !model.busy, role = Role.Button) { open(regent) }.padding(horizontal = 4.dp, vertical = 14.dp),
-                verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.weight(1f)) {
-                    RegentIdentity(working = regent.running || (model.selected?.isRegent == true && model.streaming),
-                        waiting = regent.regent?.waiting ?: 0, unread = if (selected) 0 else regent.regent?.unread ?: 0,
-                        lastMessageAt = regent.regent?.lastMessageAt, expanded = false, coronation = regentPressed)
-                }
-                SuzentChevron(false, Modifier.padding(start = 8.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
+            RegentHero(working = regent.running || (model.selected?.isRegent == true && model.streaming),
+                waiting = regent.regent?.waiting ?: 0, unread = if (selected) 0 else regent.regent?.unread ?: 0,
+                lastMessageAt = regent.regent?.lastMessageAt, coronation = regentPressed,
+                modifier = Modifier.padding(horizontal = 16.dp).fillMaxWidth()
+                    .background(if (selected) suzentSelection else Color.Transparent)
+                    .clickable(interactionSource = regentInteraction, indication = LocalIndication.current,
+                        enabled = !model.busy, role = Role.Button) { open(regent) }.padding(vertical = 18.dp))
         }
         HorizontalDivider(Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.onSurface.copy(alpha = .08f))
         if (openSearch == null) Button(onClick = { create(null) },
@@ -1357,8 +1355,8 @@ private fun ComposerButton(action: ComposerAction, model: MobileModel, chat: Cha
             ComposerAction.QUEUE -> MaterialTheme.colorScheme.onSurface
             else -> Color.White
         }
-        Box(Modifier.size(36.dp).background(fill, androidx.compose.foundation.shape.CircleShape)
-            .border(1.5.dp, MaterialTheme.colorScheme.outline, androidx.compose.foundation.shape.CircleShape), contentAlignment = Alignment.Center) {
+        Box(Modifier.size(36.dp).background(fill, RectangleShape)
+            .border(1.5.dp, MaterialTheme.colorScheme.outline, RectangleShape), contentAlignment = Alignment.Center) {
             if (loading || action == ComposerAction.CONNECTING) CircularProgressIndicator(Modifier.size(18.dp), color = tint, strokeWidth = 2.dp)
             else Icon(painterResource(when (action) {
                 ComposerAction.STOP -> R.drawable.ic_stop
@@ -1413,11 +1411,41 @@ private fun SidebarSectionHeading(label: String, count: Int? = null, start: Dp =
     }
 }
 
-private enum class HomeListMode(val label: Int) { RECENT(R.string.recent_chats), PROJECTS(R.string.sidebar_projects) }
+private enum class HomeListMode(val label: Int, val menuLabel: Int, val icon: Int) {
+    RECENT(R.string.recent_chats, R.string.recent_chats, R.drawable.ic_clock),
+    PROJECTS(R.string.sidebar_projects, R.string.home_list_by_project, R.drawable.ic_chat_folder)
+}
 
+/** The list's section heading doubles as its view picker: tap it to choose Recent or By project. */
 @Composable
 private fun HomeListPicker(selection: HomeListMode, select: (HomeListMode) -> Unit, modifier: Modifier = Modifier) {
-    SuzentSegmentedTabs(HomeListMode.entries, selection, select, { stringResource(it.label) }, modifier)
+    var open by remember { mutableStateOf(false) }
+    var anchor by remember { mutableStateOf<androidx.compose.ui.geometry.Offset?>(null) }
+    val current = stringResource(selection.label)
+    val hint = stringResource(R.string.home_list_view)
+    val muted = MaterialTheme.colorScheme.onSurfaceVariant
+    Box(modifier) {
+        Row(Modifier.recordPressInWindow { anchor = it }
+            .background(if (open) suzentSelection else Color.Transparent)
+            .clickable(role = Role.Button) { open = true }
+            .semantics { contentDescription = "$hint: $current" }
+            .heightIn(min = 44.dp).padding(horizontal = 12.dp),
+            verticalAlignment = Alignment.CenterVertically) {
+            Text(current.uppercase(java.util.Locale.getDefault()), fontWeight = FontWeight.ExtraBold,
+                fontSize = PresentationTokens.typeSidebarSection.sp, letterSpacing = 1.6.sp,
+                color = if (open) MaterialTheme.colorScheme.onSurface else muted)
+            Icon(painterResource(R.drawable.ic_chevron_right), contentDescription = null, tint = muted,
+                modifier = Modifier.padding(start = 6.dp).size(12.dp).rotate(if (open) -90f else 90f))
+        }
+        SuzentMenu(expanded = open, onDismissRequest = { open = false }, anchorInWindow = anchor) {
+            HomeListMode.entries.forEach { mode ->
+                SuzentMenuItem(stringResource(mode.menuLabel), mode.icon, selected = mode == selection) {
+                    open = false
+                    select(mode)
+                }
+            }
+        }
+    }
 }
 
 private enum class HomeTab(val label: Int, val icon: Int) {

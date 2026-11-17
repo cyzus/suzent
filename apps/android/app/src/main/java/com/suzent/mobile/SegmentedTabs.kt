@@ -48,7 +48,7 @@ fun <T> SuzentSegmentedTabs(
             if (motion) tween(300) else snap(), label = "segmented tab selection")
         Box(Modifier.matchParentSize()) {
             Box(Modifier.offset(x = slider).width(segment).fillMaxHeight()
-                .background(block, RoundedCornerShape((PresentationTokens.radiusControl - 3).dp)))
+                .background(block, RoundedCornerShape(maxOf(PresentationTokens.radiusControl - 3, 0).dp)))
         }
         Row(Modifier.fillMaxWidth().selectableGroup()) {
             options.forEach { option ->

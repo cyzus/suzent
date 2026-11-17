@@ -40,7 +40,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.text.selection.SelectionContainer
@@ -959,7 +958,7 @@ fun SuzentIconButton(onClick: () -> Unit, label: String, modifier: Modifier = Mo
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
     Box(modifier.size(PresentationTokens.controlHeight.dp).alpha(if (enabled) 1f else DisabledAlpha)
-        .background(if (pressed) MaterialTheme.colorScheme.onSurface.copy(alpha = PressedAlpha) else Color.Transparent, CircleShape)
+        .background(if (pressed) MaterialTheme.colorScheme.onSurface.copy(alpha = PressedAlpha) else Color.Transparent, RectangleShape)
         .clickable(interactionSource = interaction, indication = null, enabled = enabled,
             role = androidx.compose.ui.semantics.Role.Button, onClick = onClick)
         .semantics { contentDescription = label },

@@ -22,7 +22,7 @@ struct SuzentSegmentedTabs<Selection: Hashable>: View {
                         .frame(maxWidth: .infinity, minHeight: 40)
                         .background {
                             if selected {
-                                RoundedRectangle(cornerRadius: PresentationTokens.radiusControl - 3, style: .continuous)
+                                RoundedRectangle(cornerRadius: max(PresentationTokens.radiusControl - 3, 0), style: .continuous)
                                     .fill(Color.suzentTabBlock)
                                     .matchedGeometryEffect(id: "selection", in: slider)
                             }

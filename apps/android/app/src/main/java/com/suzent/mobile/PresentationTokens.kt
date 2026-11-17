@@ -44,11 +44,11 @@ object PresentationTokens {
     const val shadowOffsetHeavy = 4
     const val shadowOffsetOverlay = 3
     const val radius = 0
-    const val radiusBubble = 22
-    const val radiusControl = 14
-    const val radiusCard = 18
-    const val radiusSheet = 28
-    const val radiusBadge = 6
+    const val radiusBubble = 0
+    const val radiusControl = 0
+    const val radiusCard = 0
+    const val radiusSheet = 0
+    const val radiusBadge = 0
     const val spaceSmall = 8
     const val spaceRow = 10
     const val spaceMedium = 12

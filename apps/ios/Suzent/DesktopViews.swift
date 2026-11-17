@@ -49,7 +49,7 @@ struct HomeTabBar: View {
                 .frame(maxWidth: .infinity, minHeight: 52).padding(.top, PresentationTokens.borderWidth)
                 .overlay(alignment: .top) {
                     if selected {
-                        Capsule().fill(Color.suzentYellow).frame(width: 28, height: 3).accessibilityHidden(true)
+                        Rectangle().fill(Color.suzentYellow).frame(width: 28, height: 3).accessibilityHidden(true)
                     }
                 }
                 .contentShape(Rectangle())

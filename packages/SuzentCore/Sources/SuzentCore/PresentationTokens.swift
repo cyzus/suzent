@@ -42,11 +42,11 @@ public enum PresentationTokens {
     public static let shadowOffsetHeavy: Double = 4
     public static let shadowOffsetOverlay: Double = 3
     public static let radius: Double = 0
-    public static let radiusBubble: Double = 22
-    public static let radiusControl: Double = 14
-    public static let radiusCard: Double = 18
-    public static let radiusSheet: Double = 28
-    public static let radiusBadge: Double = 6
+    public static let radiusBubble: Double = 0
+    public static let radiusControl: Double = 0
+    public static let radiusCard: Double = 0
+    public static let radiusSheet: Double = 0
+    public static let radiusBadge: Double = 0
     public static let spaceSmall: Double = 8
     public static let spaceRow: Double = 10
     public static let spaceMedium: Double = 12
