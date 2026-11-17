@@ -128,12 +128,14 @@ def fold_journal(path: Path) -> Optional[FoldedTurn]:
     finished_at: Optional[str] = None
     last_ts: Optional[str] = None
     try:
-        with path.open("r", encoding="utf-8") as handle:
+        # Bytes, not text: a crash can tear a line inside a multibyte character,
+        # and decoding it eagerly would lose the whole journal.
+        with path.open("rb") as handle:
             for raw in handle:
-                if not raw.endswith("\n"):
+                if not raw.endswith(b"\n"):
                     break
                 try:
-                    event = json.loads(raw)
+                    event = json.loads(raw.decode("utf-8"))
                 except ValueError:
                     break
                 if not isinstance(event, dict) or event.get("v") != JOURNAL_VERSION:

@@ -58,6 +58,19 @@ def test_fold_stops_at_a_torn_tail(tmp_path: Path) -> None:
     assert turn.finished_at is None
 
 
+def test_fold_keeps_the_prefix_before_a_torn_multibyte_character(
+    tmp_path: Path,
+) -> None:
+    live = LiveTurns(tmp_path)
+    path = _journal(live, "chat", "run", [{"type": "text", "text": "你好"}])
+    torn = '{"v": 1, "type": "turn.part", "data": {"text": "世'.encode("utf-8")[:-1]
+    with path.open("ab") as handle:
+        handle.write(torn)
+    turn = fold_journal(path)
+    assert turn is not None
+    assert [part["text"] for part in turn.parts] == ["你好"]
+
+
 def test_crash_mid_turn_recovers_an_interrupted_reply(temp_db: ChatDatabase) -> None:
     chat_id = temp_db.create_chat(
         title="Crash", messages=[{"role": "user", "content": "go"}], config={}
