@@ -163,3 +163,14 @@ object NodeProtocol {
         else -> null
     }
 }
+
+
+data class ModelCatalog(val models: List<String>, val starredModels: Set<String>, val canManage: Boolean) {
+    companion object {
+        fun parse(value: JSONObject) = ModelCatalog(value.getJSONArray("models").let { list ->
+            (0 until list.length()).map { list.getString(it) }
+        }, value.getJSONArray("starredModels").let { list ->
+            (0 until list.length()).map { list.getString(it) }.toSet()
+        }, value.getBoolean("canManage"))
+    }
+}

@@ -380,4 +380,18 @@
     <string name="mailbox_action_unassigned">已取消分配</string>
     <string name="mailbox_action_ready_for_review">待审阅</string>
     <string name="mailbox_action_converted_to_draft">已转为草稿</string>
+    <string name="choose_model">选择模型</string>
+    <string name="search_models">搜索模型</string>
+    <string name="models_group">模型</string>
+    <string name="no_matching_models">没有匹配的模型</string>
+    <string name="model_selection_scope">用于当前会话的下一条消息。</string>
+    <string name="refresh_models">刷新模型</string>
+    <string name="refreshing_models">刷新中…</string>
+    <string name="favorite_models">★ 收藏</string>
+    <string name="retry_models">重试</string>
+    <string name="models_expanded">已展开</string>
+    <string name="models_collapsed">已收起</string>
+    <string name="add_model_favorite">收藏模型</string>
+    <string name="remove_model_favorite">取消收藏</string>
+    <string name="model_catalog_error">无法更新模型，请重试。</string>
 </resources>

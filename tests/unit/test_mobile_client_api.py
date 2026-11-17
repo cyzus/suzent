@@ -2049,3 +2049,149 @@ def test_regent_overview_uses_global_queue_and_requires_global_scope(
         client.get(f"/mobile/client/chats/{focal.id}/overview").json()["workQueue"]
         == []
     )
+
+
+def test_model_catalog_is_shared_and_filters_unavailable_stars(
+    setup_client, monkeypatch
+):
+    client, store = setup_client
+    result = grant(store)
+    client.headers["Authorization"] = f"Bearer {result['token']}"
+    monkeypatch.setattr(
+        "suzent.core.providers.get_starred_models_from_db",
+        lambda: ["test/other", "removed/model"],
+    )
+    assert client.get("/mobile/client/models").json() == {
+        "models": ["test/model", "test/other"],
+        "starredModels": ["test/other"],
+        "canManage": False,
+    }
+    store.revoke(result["device"]["device_id"])
+    assert client.get("/mobile/client/models").status_code == 401
+
+
+@pytest.mark.parametrize("path", ["star", "refresh"])
+def test_model_mutations_require_send_permission(setup_client, monkeypatch, path):
+    client, store = setup_client
+    result = grant(store)
+    client.headers["Authorization"] = f"Bearer {result['token']}"
+    calls = []
+
+    async def unexpected(request):
+        calls.append(request)
+        return JSONResponse({})
+
+    monkeypatch.setattr("suzent.routes.config_routes.toggle_starred_model", unexpected)
+    monkeypatch.setattr(
+        "suzent.routes.config_routes.refresh_all_provider_models", unexpected
+    )
+    response = client.post(
+        f"/mobile/client/models/{path}", json={"model": "test/model", "starred": True}
+    )
+    assert response.status_code == 403
+    assert calls == []
+
+
+def test_model_star_validates_and_reuses_desktop_favorites(setup_client, monkeypatch):
+    client, store = setup_client
+    result = grant(store, send=True)
+    client.headers["Authorization"] = f"Bearer {result['token']}"
+    favorites = []
+
+    async def desktop_star(request):
+        body = await request.json()
+        assert body == {"model": "test/other", "starred": True}
+        favorites.append(body["model"])
+        return JSONResponse({"success": True, "private_config": "must not leak"})
+
+    monkeypatch.setattr(
+        "suzent.routes.config_routes.toggle_starred_model", desktop_star
+    )
+    monkeypatch.setattr(
+        "suzent.core.providers.get_starred_models_from_db", lambda: favorites
+    )
+    for body in [
+        {"model": "unknown/model", "starred": True},
+        {"model": "test/other", "starred": "false"},
+        {"model": "test/other", "starred": True, "config": {}},
+    ]:
+        assert client.post("/mobile/client/models/star", json=body).status_code == 400
+    assert favorites == []
+    response = client.post(
+        "/mobile/client/models/star", json={"model": "test/other", "starred": True}
+    )
+    assert response.status_code == 200
+    assert response.json() == {
+        "models": ["test/model", "test/other"],
+        "starredModels": ["test/other"],
+        "canManage": True,
+    }
+
+
+def test_model_refresh_returns_updated_catalog_only(setup_client, monkeypatch):
+    client, store = setup_client
+    result = grant(store, send=True)
+    client.headers["Authorization"] = f"Bearer {result['token']}"
+    models = ["test/model"]
+
+    async def desktop_refresh(request):
+        assert await request.json() == {}
+        models.append("test/new")
+        return JSONResponse({"models": models, "private_config": "must not leak"})
+
+    monkeypatch.setattr(
+        "suzent.routes.config_routes.refresh_all_provider_models", desktop_refresh
+    )
+    monkeypatch.setattr(
+        "suzent.core.providers.get_enabled_models_from_db", lambda: models
+    )
+    monkeypatch.setattr("suzent.core.providers.get_starred_models_from_db", lambda: [])
+    response = client.post("/mobile/client/models/refresh", json={})
+    assert response.status_code == 200
+    assert response.json() == {
+        "models": ["test/model", "test/new"],
+        "starredModels": [],
+        "canManage": True,
+    }
+
+
+@pytest.mark.parametrize(
+    "path,handler",
+    [
+        ("star", "toggle_starred_model"),
+        ("refresh", "refresh_all_provider_models"),
+    ],
+)
+def test_model_mutation_failure_keeps_catalog_and_hides_internal_errors(
+    setup_client, monkeypatch, path, handler
+):
+    client, store = setup_client
+    result = grant(store, send=True)
+    client.headers["Authorization"] = f"Bearer {result['token']}"
+
+    async def failure(request):
+        return JSONResponse(
+            {"error": "provider credential must not leak"}, status_code=500
+        )
+
+    monkeypatch.setattr(f"suzent.routes.config_routes.{handler}", failure)
+    response = client.post(
+        f"/mobile/client/models/{path}", json={"model": "test/model", "starred": False}
+    )
+    assert response.status_code == 500
+    assert "credential" not in response.text
+
+
+def test_model_refresh_rechecks_revoked_grant(setup_client, monkeypatch):
+    client, store = setup_client
+    result = grant(store, send=True)
+    client.headers["Authorization"] = f"Bearer {result['token']}"
+
+    async def revoke_during_refresh(request):
+        store.revoke(result["device"]["device_id"])
+        return JSONResponse({"success": True})
+
+    monkeypatch.setattr(
+        "suzent.routes.config_routes.refresh_all_provider_models", revoke_during_refresh
+    )
+    assert client.post("/mobile/client/models/refresh", json={}).status_code == 401
