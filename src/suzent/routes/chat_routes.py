@@ -1095,13 +1095,13 @@ async def get_chats(request: Request) -> JSONResponse:
 def _chat_payload(chat_id: str, include_runtime: bool) -> dict[str, Any] | None:
     """Build the GET /chats/{id} body, or None when the chat does not exist.
 
-    Synchronous on purpose: it reads the whole row (messages and agent state)
-    and may fold the chat log and estimate tokens, which is far too much work
-    to do on the event loop while other chats are streaming.
+    Synchronous on purpose: folding the chat log and estimating runtime tokens
+    must not block the event loop while other chats are streaming. Transcript
+    reads skip the unused agent state.
     """
     db = get_database()
 
-    chat = db.get_chat(chat_id)
+    chat = db.get_chat(chat_id, include_agent_state=include_runtime)
     if not chat and chat_id == FOCAL_CHAT_ID:
         chat = get_or_create_focal_chat()
     if not chat:
@@ -1182,14 +1182,20 @@ def _chat_payload(chat_id: str, include_runtime: bool) -> dict[str, Any] | None:
     return response_chat
 
 
+async def load_chat_payload(
+    chat_id: str, *, include_runtime: bool = True
+) -> dict[str, Any] | None:
+    return await asyncio.to_thread(_chat_payload, chat_id, include_runtime)
+
+
 async def get_chat(request: Request, *, include_runtime: bool = True) -> JSONResponse:
     """Return a specific chat by ID (excluding binary agent_state)."""
     try:
         chat_id = request.path_params["chat_id"]
-        payload = await asyncio.to_thread(_chat_payload, chat_id, include_runtime)
+        payload = await load_chat_payload(chat_id, include_runtime=include_runtime)
         if payload is None:
             return JSONResponse({"error": "Chat not found"}, status_code=404)
-        return JSONResponse(payload)
+        return await asyncio.to_thread(JSONResponse, payload)
     except Exception as e:
         logger.error(f"Error in get_chat: {e}")
         traceback.print_exc()

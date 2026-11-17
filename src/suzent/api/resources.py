@@ -267,22 +267,20 @@ async def mark_read(request: Request) -> JSONResponse:
 async def chat(request: Request) -> JSONResponse:
     chat_id = request.path_params["chat_id"]
     grant = authorize(request, chat_id)
-    from suzent.routes.chat_routes import get_chat
+    from suzent.routes.chat_routes import get_chat, load_chat_payload
 
     if is_host(request):
         return await get_chat(request)
-    response = await get_chat(request, include_runtime=False)
-    if response.status_code != 200:
-        return response
-    data = json.loads(response.body)
+    data = await load_chat_payload(chat_id, include_runtime=False)
+    if data is None:
+        raise HTTPException(404, "Conversation unavailable")
     from suzent.core.providers import get_default_chat_model
 
     db = get_database()
-    stored_chat = db.get_chat(chat_id)
-    if stored_chat is None:
+    config = db.get_chat_config(chat_id)
+    if config is None:
         raise HTTPException(404, "Conversation unavailable")
-    # The lightweight transcript deliberately excludes configuration.
-    config = stored_chat.config or {}
+    # Configuration is used for routing only and never returned to paired clients.
     regent = chat_id == FOCAL_CHAT_ID
     native = str(config.get("runtime", "native")).lower() != "acp"
     metadata = get_database().get_chat_projects([chat_id]).get(chat_id, (None, None))
@@ -294,11 +292,13 @@ async def chat(request: Request) -> JSONResponse:
         if native and include_models
         else None
     )
-    authorize(request, chat_id)
-    return reply(
+    messages = await asyncio.to_thread(with_media, data.get("messages") or [])
+    grant = authorize(request, chat_id)
+    response = await asyncio.to_thread(
+        reply,
         {
             **{key: data[key] for key in ("id", "title", "isRunning") if key in data},
-            "messages": with_media(data.get("messages") or []),
+            "messages": messages,
             **({"regent": regent_summary()["regent"]} if regent else {}),
             "projectId": None if regent else metadata[0],
             "projectName": None if regent else metadata[1],
@@ -324,8 +324,13 @@ async def chat(request: Request) -> JSONResponse:
                 if not native
                 else {}
             ),
-        }
+        },
     )
+
+    latest = authorize(request, chat_id)
+    if latest.permissions != grant.permissions:
+        raise HTTPException(409, "Conversation permissions changed; retry")
+    return response
 
 
 async def media(request: Request) -> Response:
