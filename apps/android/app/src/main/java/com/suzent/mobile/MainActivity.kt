@@ -1248,10 +1248,18 @@ private fun ColumnScope.Conversation(model: MobileModel) {
         }
     }
     }
+    LaunchedEffect(modelsExpanded) {
+        if (modelsExpanded) { model.modelCatalog = null; model.loadModelCatalog() }
+    }
     if (modelsExpanded) SuzentSelectionPanel(
-        title = stringResource(R.string.desktop_model),
-        options = listOf("" to stringResource(R.string.conversation_default)) + chat.models.distinct().sorted().map { it to it },
-        selected = model.selectedModel.orEmpty(), dismiss = { modelsExpanded = false }
+        title = stringResource(R.string.choose_model),
+        options = listOf("" to stringResource(R.string.conversation_default)) + (model.modelCatalog?.models ?: chat.models).distinct().sorted().map { it to it },
+        selected = model.selectedModel.orEmpty(), dismiss = { modelsExpanded = false },
+        modelPicker = true, defaultModel = chat.model,
+        starredModels = model.modelCatalog?.starredModels ?: emptySet(), canManageModels = model.modelCatalog?.canManage ?: false,
+        modelsBusy = model.modelCatalogBusy, modelsError = model.modelCatalogError,
+        refreshModels = { model.loadModelCatalog(refresh = model.modelCatalog != null) },
+        toggleStar = { model.loadModelCatalog(toggling = it) }
     ) { model.selectModel(it.ifEmpty { null }); modelsExpanded = false }
 
 }

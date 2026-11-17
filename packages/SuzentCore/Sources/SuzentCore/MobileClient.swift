@@ -12,6 +12,8 @@ public protocol MobileClient: Sendable {
     func mailboxPage(category: String, offset: Int) async throws -> MailboxPage
     func readMailbox(ids: [Int]?, all: Bool) async throws
     func scheduledTasks() async throws -> [ScheduledTask]
+    func modelCatalog(refresh: Bool) async throws -> ModelCatalog
+    func starModel(_ model: String, starred: Bool) async throws -> ModelCatalog
     func composer() async throws -> Chat
     func createChat(title: String, projectID: String?) async throws -> Chat
     func chat(_ id: String) async throws -> Chat
@@ -33,6 +35,8 @@ public protocol MobileClient: Sendable {
 }
 
 public extension MobileClient {
+    func modelCatalog(refresh: Bool) async throws -> ModelCatalog { throw ClientError.invalidResponse }
+    func starModel(_ model: String, starred: Bool) async throws -> ModelCatalog { throw ClientError.invalidResponse }
     func mailboxPage(category: String, offset: Int) async throws -> MailboxPage { .empty }
     func readMailbox(ids: [Int]?, all: Bool) async throws { throw ClientError.invalidResponse }
 
