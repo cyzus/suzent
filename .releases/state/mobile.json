@@ -116,6 +116,7 @@
     ".releases/changes/send-file-tool.json",
     ".releases/changes/sent-files-under-reply.json",
     ".releases/changes/shared-mailbox-thread-contract.json",
+    ".releases/changes/shared-resource-api.json",
     ".releases/changes/shared-suzent-bot-core.json",
     ".releases/changes/shell-approval-risk-separation.json",
     ".releases/changes/windows-utf8-file-reads.json"

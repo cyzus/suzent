@@ -6,6 +6,7 @@
 - Place the mobile robot and animate tool icons the way desktop does, and draw them off the UI thread on iOS and Android, pausing when hidden or settled.
 - Collapse mobile model groups, share favorites with desktop, and refresh provider model lists from your phone.
 - Find mobile chat models with search and provider groups, and see the conversation default model before choosing.
+- Keep desktop and mobile actions consistent through a shared API while preserving device permissions and compatibility with older clients.
 - The phone apps play the same Suzent bot animation as desktop, and the desktop mark rests when it is idle or reduced motion is on.
 
 ## [mobile-v0.10.0] - 2026-11-16
