@@ -27,6 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Folders mounted in one chat no longer carry over to other chats or projects.
 - The unread dot in the mailbox list is no longer partly cut off.
 - Place the mobile robot and animate tool icons the way desktop does, and draw them off the UI thread on iOS and Android, pausing when hidden or settled.
+- Collapse mobile model groups, share favorites with desktop, and refresh provider model lists from your phone.
 - Automatically discover models from configured providers in the chat model selector with collapsible provider groups, quick search, one-click refresh, and starred favorites.
 - The phone apps play the same Suzent bot animation as desktop, and the desktop mark rests when it is idle or reduced motion is on.
 
