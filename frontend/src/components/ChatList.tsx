@@ -8,6 +8,8 @@ import {
   ChevronRightIcon,
   CircleStackIcon,
   EllipsisVerticalIcon,
+  FolderIcon,
+  FolderOpenIcon,
   InboxStackIcon,
   PencilSquareIcon,
   PlusIcon,
@@ -1731,7 +1733,7 @@ export const ChatList: React.FC<ChatListProps> = ({
               >
                 <div
                   ref={organizationMenuRef}
-                  className="relative flex items-center justify-between px-3 py-2"
+                  className="group/hdr relative flex items-center justify-between px-3 py-2"
                 >
                   <h2 className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-neutral-400 dark:text-neutral-500">
                     {regentConsole ? (
@@ -1752,7 +1754,9 @@ export const ChatList: React.FC<ChatListProps> = ({
                       t('chatList.sections.chats')
                     )}
                   </h2>
-                  <div className="flex items-center gap-0.5">
+                  <div
+                    className={`flex items-center gap-0.5 transition-opacity ${mobile || organizationMenuOpen ? 'opacity-100' : 'opacity-0 group-hover/hdr:opacity-100 focus-within:opacity-100'}`}
+                  >
                     <button
                       type="button"
                       onClick={() => setOrganizationMenuOpen((value) => !value)}
@@ -1873,10 +1877,10 @@ export const ChatList: React.FC<ChatListProps> = ({
                                   },
                                 });
                               }}
-                              className={`group/proj relative grid min-h-8 grid-cols-[minmax(0,1fr)_24px] transition-colors hover:bg-neutral-100 dark:hover:bg-zinc-700`}
+                              className={`group/proj relative grid min-h-8 grid-cols-[minmax(0,1fr)_24px_24px] transition-colors hover:bg-neutral-100 dark:hover:bg-zinc-700`}
                             >
                               {isRenaming ? (
-                                <div className="col-span-2 flex items-center px-2 py-1">
+                                <div className="col-span-3 flex items-center px-2 py-1">
                                   <SidebarRenameInput
                                     saveLabel={t('chatList.rename.confirm')}
                                     cancelLabel={t('chatList.rename.cancel')}
@@ -1903,10 +1907,17 @@ export const ChatList: React.FC<ChatListProps> = ({
                                     }
                                     className="min-w-0 flex items-center gap-1.5 px-2 py-1.5 text-left outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brutal-blue"
                                   >
-                                    <ChevronRightIcon
-                                      aria-hidden="true"
-                                      className={`h-3 w-3 shrink-0 text-neutral-400 transition-transform ${isOpen ? 'rotate-90' : ''}`}
-                                    />
+                                    {isOpen ? (
+                                      <FolderOpenIcon
+                                        aria-hidden="true"
+                                        className="h-3.5 w-3.5 shrink-0 text-neutral-500 dark:text-neutral-400"
+                                      />
+                                    ) : (
+                                      <FolderIcon
+                                        aria-hidden="true"
+                                        className="h-3.5 w-3.5 shrink-0 text-neutral-400"
+                                      />
+                                    )}
                                     <span
                                       className={`min-w-0 truncate text-[11px] ${projectUnread(project) > 0 ? 'font-extrabold text-brutal-black dark:text-white' : 'font-medium text-neutral-500 dark:text-neutral-400'}`}
                                     >
@@ -1929,6 +1940,25 @@ export const ChatList: React.FC<ChatListProps> = ({
                                       className={`absolute inset-0 flex items-center justify-center hover:bg-neutral-200 dark:hover:bg-zinc-600 ${projectMenu?.projectId === project.id ? 'opacity-100' : 'opacity-0 group-hover/proj:opacity-100 focus:opacity-100'}`}
                                     >
                                       <MoreActionsIcon />
+                                    </button>
+                                  </span>
+                                  <span className="relative flex items-center justify-center">
+                                    <button
+                                      type="button"
+                                      aria-label={t('chatList.newChatInProject', {
+                                        name: project.name,
+                                      })}
+                                      title={t('chatList.newChatInProject', { name: project.name })}
+                                      onClick={(event) => {
+                                        event.stopPropagation();
+                                        startChatInProject(project.id);
+                                      }}
+                                      className={`absolute inset-0 flex items-center justify-center text-neutral-500 hover:bg-brutal-yellow hover:text-brutal-black dark:text-neutral-400 ${mobile ? 'opacity-100' : 'opacity-0 group-hover/proj:opacity-100 focus:opacity-100'}`}
+                                    >
+                                      <PencilSquareIcon
+                                        className="h-3.5 w-3.5"
+                                        aria-hidden="true"
+                                      />
                                     </button>
                                   </span>
                                 </>
