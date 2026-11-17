@@ -28,7 +28,7 @@ describe('subscribeToFocalStatus', () => {
 
     const leaveCard = subscribeToFocalStatus(card);
     const leaveHeader = subscribeToFocalStatus(header);
-    await vi.advanceTimersByTimeAsync(10_000);
+    await vi.advanceTimersByTimeAsync(30_000);
 
     expect(fetchStatus).toHaveBeenCalledTimes(2);
     expect(busListeners.size).toBe(1);
@@ -38,7 +38,7 @@ describe('subscribeToFocalStatus', () => {
     leaveCard();
     leaveHeader();
     fetchStatus.mockClear();
-    await vi.advanceTimersByTimeAsync(30_000);
+    await vi.advanceTimersByTimeAsync(60_000);
     expect(fetchStatus).not.toHaveBeenCalled();
     expect(busListeners.size).toBe(0);
   });

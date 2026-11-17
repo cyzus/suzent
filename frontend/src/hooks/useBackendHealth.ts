@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { getApiBase } from '../lib/api';
+import { pollWhileVisible } from '../lib/visiblePolling';
 
 export type BackendHealth = 'checking' | 'online' | 'offline';
 
@@ -19,7 +20,6 @@ export function useBackendHealth(): BackendHealth {
 
   useEffect(() => {
     let cancelled = false;
-    let timer: ReturnType<typeof setTimeout> | undefined;
 
     const probe = async () => {
       try {
@@ -28,13 +28,13 @@ export function useBackendHealth(): BackendHealth {
       } catch {
         if (!cancelled) setHealth('offline');
       }
-      if (!cancelled) timer = setTimeout(probe, POLL_INTERVAL_MS);
     };
 
     void probe();
+    const stopPolling = pollWhileVisible(() => void probe(), POLL_INTERVAL_MS);
     return () => {
       cancelled = true;
-      if (timer) clearTimeout(timer);
+      stopPolling();
     };
   }, []);
 

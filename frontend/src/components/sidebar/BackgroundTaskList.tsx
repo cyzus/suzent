@@ -1,7 +1,8 @@
 /** Shared task list; polling repairs state after a dropped event stream. */
 import { ArrowPathIcon, CommandLineIcon, StopIcon } from '@heroicons/react/24/outline';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { getApiBase } from '../../lib/api';
+import { isDocumentHidden } from '../../lib/visiblePolling';
 import { useBackgroundTasks, BackgroundTaskSummary } from '../../hooks/useBackgroundTasks';
 import { isStreamStateStale, isSubAgentActive, SubAgentStatusBadge } from '../chat/subAgentStatus';
 import { AgentAvatar } from './subAgentDisplay';
@@ -14,6 +15,11 @@ interface BackgroundTaskListProps {
 }
 
 type BackgroundTaskRow = BackgroundTaskSummary;
+
+// The event stream carries new and changing tasks; the poll only repairs a
+// dropped stream, so it can relax once nothing is running.
+const ACTIVE_POLL_MS = 3000;
+const IDLE_POLL_MS = 30_000;
 
 function formatDuration(
   startedAt: string | null | undefined,
@@ -53,10 +59,20 @@ export const BackgroundTaskList: React.FC<BackgroundTaskListProps> = ({ chatId, 
   const [stopping, setStopping] = useState<Set<string>>(new Set());
   const { taskStates } = useBackgroundTasks();
 
+  const liveTasks = Object.values(taskStates).filter((task) => task.parent_chat_id === chatId);
+  const anyActive =
+    liveTasks.some((task) => isSubAgentActive(task.status)) ||
+    historicTasks.some((task) => isSubAgentActive(task.status));
+  const anyActiveRef = useRef(anyActive);
+  useEffect(() => {
+    anyActiveRef.current = anyActive;
+  }, [anyActive]);
+
   useEffect(() => {
     setLoading(true);
     setHistoricTasks([]);
     let active = true;
+    let timer: ReturnType<typeof setTimeout> | undefined;
     const refresh = async () => {
       try {
         const res = await fetch(
@@ -66,19 +82,29 @@ export const BackgroundTaskList: React.FC<BackgroundTaskListProps> = ({ chatId, 
           const data = await res.json();
           if (active) setHistoricTasks(data.tasks ?? []);
         }
+      } catch {
+        // Backend restarting or offline; the next tick retries.
       } finally {
         if (active) setLoading(false);
       }
     };
-    void refresh().catch(() => {});
-    const timer = setInterval(() => void refresh().catch(() => {}), 3000);
+    const tick = async () => {
+      if (!isDocumentHidden()) await refresh();
+      if (!active) return;
+      timer = setTimeout(() => void tick(), anyActiveRef.current ? ACTIVE_POLL_MS : IDLE_POLL_MS);
+    };
+    const onVisibilityChange = () => {
+      if (!isDocumentHidden()) void refresh();
+    };
+    void refresh();
+    timer = setTimeout(() => void tick(), ACTIVE_POLL_MS);
+    document.addEventListener('visibilitychange', onVisibilityChange);
     return () => {
       active = false;
-      clearInterval(timer);
+      clearTimeout(timer);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
     };
   }, [chatId]);
-
-  const liveTasks = Object.values(taskStates).filter((task) => task.parent_chat_id === chatId);
 
   const liveById = new Map(liveTasks.map((task) => [task.task_id, task]));
   const merged = [

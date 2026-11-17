@@ -8,6 +8,7 @@ import {
   type FocalWakeup,
 } from '../../lib/focalAgent';
 import { hoverText } from '../../lib/hoverText';
+import { pollWhileVisible } from '../../lib/visiblePolling';
 
 const PANEL_POLL_MS = 30_000;
 
@@ -33,8 +34,7 @@ export function FocalToolsPanel(): React.ReactElement {
 
   useEffect(() => {
     void refresh();
-    const timer = window.setInterval(() => void refresh(), PANEL_POLL_MS);
-    return () => window.clearInterval(timer);
+    return pollWhileVisible(() => void refresh(), PANEL_POLL_MS);
   }, [refresh]);
 
   const cancel = async (wakeup: FocalWakeup): Promise<void> => {
