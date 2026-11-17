@@ -492,6 +492,9 @@ def save_discovered_models(provider_id: str, model_ids: list[str]) -> None:
 
     if added > 0:
         _write_provider(provider_id, models)
+        from suzent.core.model_catalog_cache import invalidate_model_catalog
+
+        invalidate_model_catalog()
         logger.info("Added {} new model(s) to {}.json", added, provider_id)
 
 
@@ -592,6 +595,9 @@ class ModelRegistry:
     def reload(self) -> None:
         """Hot-reload capabilities from disk."""
         self._capabilities = _load_capabilities()
+        from suzent.core.model_catalog_cache import invalidate_model_catalog
+
+        invalidate_model_catalog()
 
 
 # ---------------------------------------------------------------------------

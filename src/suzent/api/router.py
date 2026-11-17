@@ -6,6 +6,7 @@ from importlib import import_module
 from collections.abc import Awaitable, Callable
 from typing import Any
 from starlette.exceptions import HTTPException
+from pydantic import ValidationError
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 from starlette.routing import BaseRoute, Route, WebSocketRoute
@@ -37,6 +38,11 @@ def endpoint(operation: Operation) -> Callable[[Request], Awaitable[Response]]:
         ):
             if operation.request is not EmptyRequest or await request.body():
                 await parse(request, operation.request)
+        if operation.query:
+            try:
+                operation.query.model_validate(dict(request.query_params))
+            except ValidationError:
+                raise HTTPException(400, "Invalid query parameters") from None
         chat_id = None
         if operation.chat == "path":
             chat_id = request.path_params.get("chat_id")

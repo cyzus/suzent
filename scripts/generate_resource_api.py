@@ -300,6 +300,7 @@ public struct ResourceRequest: Sendable {
     public let method: String
     public let body: Data?
     public let readOnly: Bool
+    public var query: [String: String] = [:]
     public func path(shared: Bool) -> String { shared ? path : (legacyPath ?? path) }
 }
 
@@ -319,6 +320,8 @@ public enum ResourceRequests {
         args = [f"{camel(key)}: String" for key in keys]
         if op.request:
             args.append(f"body: Wire{op.request.__name__}")
+        if op.query:
+            args.append(f"query: Wire{op.query.__name__} = .init()")
         values = (
             "[" + ", ".join(f'"{key}": {camel(key)}' for key in keys) + "]"
             if keys
@@ -339,9 +342,14 @@ public enum ResourceRequests {
                 else "nil"
             )
         )
-        lines.append(
-            f'    public static func {op.name}({", ".join(args)}) throws -> ResourceRequest {{\n        ResourceRequest(path: {path}, legacyPath: {legacy}, method: "{op.method}", body: {body}, readOnly: {str(op.read_only or op.method == "GET").lower()})\n    }}'
-        )
+        if op.query:
+            lines.append(
+                f'    public static func {op.name}({", ".join(args)}) throws -> ResourceRequest {{\n        var call = ResourceRequest(path: {path}, legacyPath: {legacy}, method: "{op.method}", body: {body}, readOnly: {str(op.read_only or op.method == "GET").lower()})\n        call.query = try JSONDecoder().decode([String: JSONValue].self, from: JSONEncoder().encode(query)).mapValues(\\.text)\n        return call\n    }}'
+            )
+        else:
+            lines.append(
+                f'    public static func {op.name}({", ".join(args)}) throws -> ResourceRequest {{\n        ResourceRequest(path: {path}, legacyPath: {legacy}, method: "{op.method}", body: {body}, readOnly: {str(op.read_only or op.method == "GET").lower()})\n    }}'
+            )
     lines.extend(
         [
             "}",
@@ -361,6 +369,9 @@ public struct ResourceClient: Sendable {
         if op.request:
             args.append(f"body: Wire{op.request.__name__}")
             forwarded.append("body: body")
+        if op.query:
+            args.append(f"query: Wire{op.query.__name__} = .init()")
+            forwarded.append("query: query")
         lines.append(
             f"    public func {op.name}({', '.join(args)}) async throws -> Wire{op.response.__name__} {{\n        try JSONDecoder().decode(Wire{op.response.__name__}.self, from: await transport(ResourceRequests.{op.name}({', '.join(forwarded)})))\n    }}"
         )
@@ -394,7 +405,7 @@ private fun resourceEncodeValue(value: Any?): Any = when (value) {
             "}",
             dtos(schema, "kotlin"),
             """
-data class ResourceRequest(val path: String, val legacyPath: String?, val method: String, val body: JSONObject?, val readOnly: Boolean) {
+data class ResourceRequest(val path: String, val legacyPath: String?, val method: String, val body: JSONObject?, val readOnly: Boolean, val query: Map<String, String> = emptyMap()) {
     fun path(shared: Boolean): String = if (shared) path else legacyPath ?: path
 }
 object ResourceRequests {
@@ -416,6 +427,8 @@ object ResourceRequests {
         args = [f"{camel(key)}: String" for key in keys]
         if op.request:
             args.append(f"body: Wire{op.request.__name__}")
+        if op.query:
+            args.append(f"query: Wire{op.query.__name__} = Wire{op.query.__name__}()")
         values = "mapOf(" + ", ".join(f'"{key}" to {camel(key)}' for key in keys) + ")"
         legacy = (
             f'path("{LEGACY_PATHS[op.name].lstrip(chr(47))}", {values})'
@@ -431,8 +444,13 @@ object ResourceRequests {
                 else "null"
             )
         )
+        query_arg = (
+            ", query.json().let { value -> value.keys().asSequence().associateWith { value.get(it).toString() } }"
+            if op.query
+            else ""
+        )
         lines.append(
-            f'    fun {op.name}({", ".join(args)}): ResourceRequest = ResourceRequest(path("api/v1{op.path}", {values}), {legacy}, "{op.method}", {body}, {str(op.read_only or op.method == "GET").lower()})'
+            f'    fun {op.name}({", ".join(args)}): ResourceRequest = ResourceRequest(path("api/v1{op.path}", {values}), {legacy}, "{op.method}", {body}, {str(op.read_only or op.method == "GET").lower()}{query_arg})'
         )
     lines.extend(
         [
@@ -449,6 +467,9 @@ object ResourceRequests {
         if op.request:
             args.append(f"body: Wire{op.request.__name__}")
             forwards.append("body")
+        if op.query:
+            args.append(f"query: Wire{op.query.__name__} = Wire{op.query.__name__}()")
+            forwards.append("query")
         lines.append(
             f"    suspend fun {op.name}({', '.join(args)}): Wire{op.response.__name__} = Wire{op.response.__name__}.fromJson(transport(ResourceRequests.{op.name}({', '.join(forwards)})))"
         )
@@ -460,7 +481,7 @@ def typescript(schema: dict) -> str:
         "// Generated by scripts/generate_resource_api.py. Do not edit.",
         dtos(schema, "ts"),
         """
-export interface ResourceRequest { path: string; method: string; body?: unknown; readOnly: boolean; }
+export interface ResourceRequest { path: string; method: string; body?: unknown; readOnly: boolean; query?: Record<string, string>; }
 export type ResourceTransport = (request: ResourceRequest) => Promise<Response>;
 function resourcePath(template: string, parameters: Record<string, string>): string {
   return template.replace(/\\{(\\w+)\\}/g, (_, key: string) => {
@@ -477,8 +498,12 @@ export const resourceRequests = {
         args = [f"{camel(key)}: string" for key in keys]
         if op.request:
             args.append(f"body: Wire{op.request.__name__}")
+        if op.query:
+            args.append(f"query: Wire{op.query.__name__} = {{}}")
         mapping = "{" + ", ".join(f"{key}: {camel(key)}" for key in keys) + "}"
         body = ", body" if op.request else ""
+        if op.query:
+            body += ", query: Object.fromEntries(Object.entries(query).filter(([, value]) => value != null).map(([key, value]) => [key, String(value)]))"
         lines.append(
             f'  {op.name}: ({", ".join(args)}): ResourceRequest => ({{path: resourcePath("/api/v1{op.path}", {mapping}), method: "{op.method}", readOnly: {str(op.read_only or op.method == "GET").lower()}{body}}}),'
         )
@@ -514,6 +539,9 @@ export class ResourceClient {
         if op.request:
             args.append(f"body: Wire{op.request.__name__}")
             forwards.append("body")
+        if op.query:
+            args.append(f"query: Wire{op.query.__name__} = {{}}")
+            forwards.append("query")
         lines.append(
             f"  {op.name}({', '.join(args)}): Promise<Wire{op.response.__name__}> {{ return this.json(resourceRequests.{op.name}({', '.join(forwards)})); }}"
         )

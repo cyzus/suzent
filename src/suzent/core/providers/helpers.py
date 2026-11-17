@@ -283,6 +283,9 @@ def invalidate_default_model_cache() -> None:
     """Invalidate the cached default model (call after provider config changes)."""
     global _default_model_cache
     _default_model_cache = _UNSET
+    from suzent.core.model_catalog_cache import invalidate_model_catalog
+
+    invalidate_model_catalog()
 
 
 def _compute_default_chat_model() -> Optional[str]:

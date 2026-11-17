@@ -19,12 +19,14 @@ from starlette.responses import (
 from starlette.websockets import WebSocket
 
 from suzent.auth_boundary import extract_token
+from suzent.core.model_catalog_cache import get_model_catalog, invalidate_model_catalog
 from suzent.api.access import Principal, authorize, forwarded, parse, is_host
 from suzent.api.contracts import (
     MailboxPageRequest,
     MailboxReadRequest,
     CreateRequest,
     ChatRequest,
+    ChatDetailQuery,
     SendRequest,
     SteerRequest,
     ManageRequest,
@@ -273,7 +275,7 @@ async def chat(request: Request) -> JSONResponse:
     if response.status_code != 200:
         return response
     data = json.loads(response.body)
-    from suzent.core.providers import get_default_chat_model, get_enabled_models_from_db
+    from suzent.core.providers import get_default_chat_model
 
     db = get_database()
     stored_chat = db.get_chat(chat_id)
@@ -284,6 +286,15 @@ async def chat(request: Request) -> JSONResponse:
     regent = chat_id == FOCAL_CHAT_ID
     native = str(config.get("runtime", "native")).lower() != "acp"
     metadata = get_database().get_chat_projects([chat_id]).get(chat_id, (None, None))
+    include_models = ChatDetailQuery.model_validate(
+        dict(request.query_params)
+    ).include_models
+    catalog = (
+        await asyncio.to_thread(get_model_catalog, request.app.state)
+        if native and include_models
+        else None
+    )
+    authorize(request, chat_id)
     return reply(
         {
             **{key: data[key] for key in ("id", "title", "isRunning") if key in data},
@@ -306,7 +317,13 @@ async def chat(request: Request) -> JSONResponse:
             )
             if native
             else None,
-            "models": get_enabled_models_from_db() if native else [],
+            **(
+                {"models": list(catalog.models)}
+                if catalog
+                else {"models": []}
+                if not native
+                else {}
+            ),
         }
     )
 
@@ -601,35 +618,35 @@ def allowed_projects(grant: Principal) -> list[dict[str, str]]:
 
 async def composer(request: Request) -> JSONResponse:
     authorize(request)
-    from suzent.core.providers import get_default_chat_model, get_enabled_models_from_db
+    from suzent.core.providers import get_default_chat_model
 
+    catalog = await asyncio.to_thread(get_model_catalog, request.app.state)
+    authorize(request)
     return reply(
         {
             "id": "",
             "title": "",
             "messages": [],
             "model": get_default_chat_model(),
-            "models": get_enabled_models_from_db(),
+            "models": list(catalog.models),
         }
     )
 
 
-def model_catalog_payload(grant: Principal) -> dict[str, object]:
-    from suzent.core.providers import (
-        get_enabled_models_from_db,
-        get_starred_models_from_db,
-    )
-
-    models = get_enabled_models_from_db()
+async def model_catalog_payload(
+    request: Request, grant: Principal
+) -> dict[str, object]:
+    catalog = await asyncio.to_thread(get_model_catalog, request.app.state)
+    grant = authorize(request)
     return {
-        "models": models,
-        "starredModels": [m for m in get_starred_models_from_db() if m in models],
+        "models": list(catalog.models),
+        "starredModels": list(catalog.starred),
         "canManage": grant.permissions.send,
     }
 
 
 async def model_catalog(request: Request) -> JSONResponse:
-    return reply(model_catalog_payload(authorize(request)))
+    return reply(await model_catalog_payload(request, authorize(request)))
 
 
 async def star_model(request: Request) -> JSONResponse:
@@ -644,7 +661,8 @@ async def star_model(request: Request) -> JSONResponse:
     if response.status_code != 200:
         return reply({"error": "Could not update model favorite"}, response.status_code)
     authorize(request, action="send")
-    payload = model_catalog_payload(grant)
+    invalidate_model_catalog()
+    payload = await model_catalog_payload(request, grant)
     if is_host(request):
         payload = {**json.loads(response.body), **payload}
     return reply(payload)
@@ -658,7 +676,8 @@ async def refresh_models(request: Request) -> JSONResponse:
     if response.status_code != 200:
         return reply({"error": "Could not refresh models"}, response.status_code)
     authorize(request, action="send")
-    payload = model_catalog_payload(grant)
+    invalidate_model_catalog()
+    payload = await model_catalog_payload(request, grant)
     if is_host(request):
         payload = {**json.loads(response.body), **payload}
     return reply(payload)

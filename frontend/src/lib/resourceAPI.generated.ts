@@ -109,6 +109,10 @@ export interface WireApprovalChoice {
   kind?: "tool" | "acp";
 }
 
+export interface WireChatDetailQuery {
+  include_models?: boolean;
+}
+
 export interface WireChatPageRequest {
   kind?: "recent" | "pinned" | "project" | "search";
   value?: string;
@@ -195,7 +199,7 @@ export interface WireSurfaceAnswerRequest {
 }
 
 
-export interface ResourceRequest { path: string; method: string; body?: unknown; readOnly: boolean; }
+export interface ResourceRequest { path: string; method: string; body?: unknown; readOnly: boolean; query?: Record<string, string>; }
 export type ResourceTransport = (request: ResourceRequest) => Promise<Response>;
 function resourcePath(template: string, parameters: Record<string, string>): string {
   return template.replace(/\{(\w+)\}/g, (_, key: string) => {
@@ -216,7 +220,7 @@ export const resourceRequests = {
   chatPage: (body: WireChatPageRequest): ResourceRequest => ({path: resourcePath("/api/v1/chat-page", {}), method: "POST", readOnly: true, body}),
   chatStatuses: (body: WireChatStatusRequest): ResourceRequest => ({path: resourcePath("/api/v1/chat-status", {}), method: "POST", readOnly: true, body}),
   navigation: (): ResourceRequest => ({path: resourcePath("/api/v1/navigation", {}), method: "GET", readOnly: true}),
-  chat: (chatId: string): ResourceRequest => ({path: resourcePath("/api/v1/chats/{chat_id}", {chat_id: chatId}), method: "GET", readOnly: true}),
+  chat: (chatId: string, query: WireChatDetailQuery = {}): ResourceRequest => ({path: resourcePath("/api/v1/chats/{chat_id}", {chat_id: chatId}), method: "GET", readOnly: true, query: Object.fromEntries(Object.entries(query).filter(([, value]) => value != null).map(([key, value]) => [key, String(value)]))}),
   updateChat: (chatId: string, body: WireHostFieldsRequest): ResourceRequest => ({path: resourcePath("/api/v1/chats/{chat_id}", {chat_id: chatId}), method: "PUT", readOnly: false, body}),
   deleteChat: (chatId: string): ResourceRequest => ({path: resourcePath("/api/v1/chats/{chat_id}", {chat_id: chatId}), method: "DELETE", readOnly: false}),
   markRead: (chatId: string, body: WireEmptyRequest): ResourceRequest => ({path: resourcePath("/api/v1/chats/{chat_id}/read", {chat_id: chatId}), method: "POST", readOnly: false, body}),
@@ -319,7 +323,7 @@ export class ResourceClient {
   chatPage(body: WireChatPageRequest): Promise<WireApiChatList> { return this.json(resourceRequests.chatPage(body)); }
   chatStatuses(body: WireChatStatusRequest): Promise<WireApiChatList> { return this.json(resourceRequests.chatStatuses(body)); }
   navigation(): Promise<WireApiNavigation> { return this.json(resourceRequests.navigation()); }
-  chat(chatId: string): Promise<WireApiChat> { return this.json(resourceRequests.chat(chatId)); }
+  chat(chatId: string, query: WireChatDetailQuery = {}): Promise<WireApiChat> { return this.json(resourceRequests.chat(chatId, query)); }
   updateChat(chatId: string, body: WireHostFieldsRequest): Promise<WireApiResult> { return this.json(resourceRequests.updateChat(chatId, body)); }
   deleteChat(chatId: string): Promise<WireApiResult> { return this.json(resourceRequests.deleteChat(chatId)); }
   markRead(chatId: string, body: WireEmptyRequest): Promise<WireApiResult> { return this.json(resourceRequests.markRead(chatId, body)); }

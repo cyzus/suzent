@@ -1249,7 +1249,7 @@ private fun ColumnScope.Conversation(model: MobileModel) {
     }
     }
     LaunchedEffect(modelsExpanded) {
-        if (modelsExpanded) { model.modelCatalog = null; model.loadModelCatalog() }
+        if (modelsExpanded) model.loadModelCatalog()
     }
     if (modelsExpanded) SuzentSelectionPanel(
         title = stringResource(R.string.choose_model),

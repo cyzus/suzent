@@ -12,7 +12,7 @@ def contract() -> dict[str, Any]:
     definitions: dict[str, Any] = {}
     paths: dict[str, Any] = {}
     for op in OPERATIONS:
-        for model in (op.request, op.response):
+        for model in (op.request, op.response, op.query):
             if model is None:
                 continue
             schema = model.model_json_schema(
@@ -88,6 +88,17 @@ def contract() -> dict[str, Any]:
             {"name": p, "in": "path", "required": True, "schema": {"type": "string"}}
             for p in re.findall(r"{(\w+)}", op.path)
         ]
+        if op.query:
+            query_schema = op.query.model_json_schema()
+            for name, field in query_schema.get("properties", {}).items():
+                params.append(
+                    {
+                        "name": name,
+                        "in": "query",
+                        "required": name in query_schema.get("required", []),
+                        "schema": field,
+                    }
+                )
         if op.chat == "query":
             params.append(
                 {
