@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - An MCP server that can't connect no longer fails every chat: its tools are skipped for that turn, first-launch installs run in the background, and the MCP settings page shows which servers are still preparing or failing.
 - Switching chats no longer re-queries every model provider; model lists refresh at most every 15 minutes or when you press refresh.
 - Keep desktop and mobile actions consistent through a shared API while preserving device permissions and compatibility with older clients.
+- Long chats save faster at the end of each reply, because their messages are stored only in the chat log instead of being rewritten into the database every turn.
 
 ## [v0.27.1] - 2026-11-17
 
