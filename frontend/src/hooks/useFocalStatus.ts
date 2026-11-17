@@ -1,8 +1,11 @@
 import { useSyncExternalStore } from 'react';
 import { subscribeToBusPayloads } from './useEventBus';
 import { fetchFocalAgentStatus, type FocalAgentStatus } from '../lib/focalAgent';
+import { pollWhileVisible } from '../lib/visiblePolling';
 
-const STATUS_POLL_MS = 10_000;
+// Task and chat-status events refresh it at once; the poll only covers a
+// dropped event stream.
+const STATUS_POLL_MS = 30_000;
 
 // One poll serves every component showing Regent: each /focal request scans
 // every project and task, so the sidebar card, the header title and its logo
@@ -34,13 +37,13 @@ export function subscribeToFocalStatus(listener: () => void): () => void {
   listeners.add(listener);
   if (listeners.size === 1) {
     void refresh();
-    const timer = setInterval(() => void refresh(), STATUS_POLL_MS);
+    const stopPolling = pollWhileVisible(() => void refresh(), STATUS_POLL_MS);
     const unsubscribe = subscribeToBusPayloads((payload) => {
       if (payload?.event === 'goal_tasks_changed' || payload?.event === 'chat_status_changed')
         void refresh();
     });
     stop = () => {
-      clearInterval(timer);
+      stopPolling();
       unsubscribe();
     };
   }

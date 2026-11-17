@@ -25,6 +25,7 @@ import { collectRunTimings } from '../lib/runTiming';
 import { hasToolContinuation } from '../lib/toolContinuation';
 import { stripDenyApprovalPolicies } from '../lib/approvalPolicy';
 import { pairLastTurnAssistants, shouldKeepLocalAssistantContent } from '../lib/chatSyncGuards';
+import { stableList, stableObject } from '../lib/stableUpdate';
 import { useContextUsageStore } from './useContextUsageStore';
 import { useProjects } from './useProjects';
 
@@ -758,18 +759,16 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
 
           const data = await res.json();
           const serverList: ChatSummary[] = data.chats || [];
-          setPinnedChats(data.pinnedChats || []);
+          setPinnedChats((prev) => stableList(prev, data.pinnedChats || []));
           setArchivedCount(data.archivedCount ?? 0);
           setChatTotal(data.total ?? serverList.length);
-          setChatKindTotals(
-            data.kindCounts ?? {
-              you: serverList.filter((chat) => (chat.platform || '').toLowerCase() !== 'cron')
-                .length,
-              scheduled: serverList.filter((chat) => (chat.platform || '').toLowerCase() === 'cron')
-                .length,
-              all: data.total ?? serverList.length,
-            }
-          );
+          const kindTotals: ChatKindCounts = data.kindCounts ?? {
+            you: serverList.filter((chat) => (chat.platform || '').toLowerCase() !== 'cron').length,
+            scheduled: serverList.filter((chat) => (chat.platform || '').toLowerCase() === 'cron')
+              .length,
+            all: data.total ?? serverList.length,
+          };
+          setChatKindTotals((prev) => stableObject(prev, kindTotals));
 
           // Merge server list with local state, preserving local updates
           setChats((prev) => {
@@ -780,7 +779,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
               }
               return serverChat;
             });
-            return merged;
+            return stableList(prev, merged);
           });
 
           if (currentChatId) {
