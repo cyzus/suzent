@@ -140,3 +140,53 @@ async def test_inbox_dispatcher_wakes_when_notified_from_a_worker_thread() -> No
     thread.join()
 
     await asyncio.wait_for(dispatcher._wake_event.wait(), timeout=1)
+
+
+async def test_concurrent_heartbeat_enables_keep_one_per_project(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import time
+
+    from suzent.routes import heartbeat_routes
+
+    enabled: set[str] = set()
+
+    class FakeChat:
+        def __init__(self, chat_id: str) -> None:
+            self.id = chat_id
+            self.title = chat_id
+
+    class FakeDb:
+        def get_chat_project_id(self, chat_id: str) -> str:
+            return "project"
+
+        def find_heartbeat_enabled_chat_in_project(
+            self, project_id: str, exclude_chat_id: str
+        ):
+            # Widen the window between the check and the enable.
+            time.sleep(0.05)
+            others = enabled - {exclude_chat_id}
+            return FakeChat(next(iter(others))) if others else None
+
+    def fake_update(chat_id: str, updates: dict) -> bool:
+        enabled.add(chat_id)
+        return True
+
+    monkeypatch.setattr(heartbeat_routes, "get_database", lambda: FakeDb())
+    monkeypatch.setattr(heartbeat_routes, "_update_chat_config", fake_update)
+    monkeypatch.setattr(heartbeat_routes, "_get_runner", lambda: None)
+
+    class FakeRequest:
+        def __init__(self, chat_id: str) -> None:
+            self._body = {"chat_id": chat_id}
+
+        async def json(self) -> dict:
+            return self._body
+
+    responses = await asyncio.gather(
+        heartbeat_routes.enable_heartbeat(FakeRequest("a")),
+        heartbeat_routes.enable_heartbeat(FakeRequest("b")),
+    )
+
+    assert sorted(r.status_code for r in responses) == [200, 409]
+    assert len(enabled) == 1

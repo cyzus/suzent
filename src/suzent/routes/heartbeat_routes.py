@@ -4,6 +4,7 @@ Heartbeat system API routes.
 
 import asyncio
 import json
+import threading
 from typing import Optional
 from datetime import datetime
 from pathlib import Path
@@ -32,6 +33,11 @@ def _load_heartbeat_config() -> dict:
 def _save_heartbeat_config(cfg: dict) -> None:
     _HEARTBEAT_CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
     _HEARTBEAT_CONFIG_PATH.write_text(json.dumps(cfg, indent=2), encoding="utf-8")
+
+
+# The one-heartbeat-per-project check and the enable that follows must not
+# interleave across worker threads, or two chats in a project both get enabled.
+_ENABLE_LOCK = threading.Lock()
 
 
 def _get_runner() -> Optional[HeartbeatRunner]:
@@ -86,6 +92,10 @@ async def enable_heartbeat(request: Request) -> JSONResponse:
     if chat_id:
 
         def enable_for_chat() -> Optional[JSONResponse]:
+            with _ENABLE_LOCK:
+                return _enable_for_chat_locked()
+
+        def _enable_for_chat_locked() -> Optional[JSONResponse]:
             db = get_database()
             project_id = db.get_chat_project_id(chat_id)
             if project_id:

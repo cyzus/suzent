@@ -358,10 +358,10 @@ export function MailboxView({
   const [rules, setRules] = useState<MailboxRule[]>(() => mailboxCache.rules ?? []);
   const [jobs, setJobs] = useState<CronJob[]>(() => mailboxCache.jobs ?? []);
   const [heartbeatSessions, setHeartbeatSessions] = useState<HeartbeatSessionItem[]>(
-    () => mailboxCache.heartbeatSessions ?? [],
+    () => mailboxCache.heartbeatSessions ?? []
   );
   const [destinations, setDestinations] = useState<MailboxDestination[]>(
-    () => mailboxCache.destinations ?? [],
+    () => mailboxCache.destinations ?? []
   );
   const [endpoint, setEndpoint] = useState<WebhookUrls>(() => mailboxCache.endpoint ?? {});
   const [expandedThreads, setExpandedThreads] = useState<Set<string>>(new Set());
@@ -391,7 +391,7 @@ export function MailboxView({
     });
     const loadJobs = fetchCronJobs().then((jobList) => {
       const nextJobs = jobList.filter(
-        (j) => j.source !== 'heartbeat' && j.schedule_kind !== 'webhook',
+        (j) => j.source !== 'heartbeat' && j.schedule_kind !== 'webhook'
       );
       mailboxCache.jobs = nextJobs;
       setJobs(nextJobs);
@@ -423,7 +423,7 @@ export function MailboxView({
         if (!silent) setLoading(false);
       }
     },
-    [fetchAll],
+    [fetchAll]
   );
 
   useEffect(() => {
