@@ -1,3 +1,4 @@
+import { resourcePaths } from '../../lib/resourceAPI.generated';
 import React, { useCallback, useEffect, useId, useState, useRef } from 'react';
 import QRCode from 'qrcode';
 import { DevicePhoneMobileIcon, QrCodeIcon } from '@heroicons/react/24/outline';
@@ -269,7 +270,7 @@ export function MobileAccessCard({
     };
     void poll();
     const clock = setInterval(() => setNow(Date.now()), 1000);
-    void fetch(`${getApiBase()}/chats?limit=1000`)
+    void fetch(`${getApiBase()}${resourcePaths.chats()}?limit=1000`)
       .then(async (response) => {
         if (!response.ok) throw new Error();
         const result = await response.json();

@@ -20,7 +20,7 @@ describe('requestStopTurn', () => {
       accepted: true,
     });
     const [url, init] = fetchImpl.mock.calls[0];
-    expect(url).toBe('/api/chat/stop');
+    expect(url).toBe('/api/api/v1/stop');
     expect(JSON.parse(init.body)).toEqual({ chat_id: 'c1', reason: 'User requested stop' });
   });
 

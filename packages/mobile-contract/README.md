@@ -1,23 +1,25 @@
-# Mobile wire contract, preview 1
+# Paired-client wire contract, version 1
 
-The backend remains the source of truth. HTTP requests send `Authorization:
-Bearer <host token>` and JSON bodies. Origins have no path, credentials, query or
+The backend remains the source of truth. New clients negotiate `resource_api: 1`
+and use the [shared resource API](../api-contract/README.md). The routes below are
+its compatible paired-client aliases. HTTP requests send `Authorization:
+Bearer <paired-device token>` and JSON bodies. Origins have no path, credentials, query or
 fragment. Clients reject redirects to keep credentials bound to the selected host.
 
 | Operation | Route | Payload/result |
 | --- | --- | --- |
-| List | GET /chats | `{chats: [{id,title,isRunning}]}` |
-| Create | POST /chats | `{title}` → `{id,title,messages}` |
-| Load | GET /chats/{id} | `{id,title,messages:[{role,content}]}` |
+| List | GET /mobile/client/chats | `{chats: [{id,title,isRunning}]}` |
+| Create | POST /mobile/client/chats | `{title}` → `{id,title,messages}` |
+| Load | GET /mobile/client/chats/{id} | `{id,title,messages:[{role,content}]}` |
 | Mailbox page | POST /mobile/client/mailbox/page | `{category:"notifications", "all", "external" or "agent",offset:0,limit:50}` → `{items,unread,hasMore}`; each item carries `sourceKind` (`webhook`, `email`, `schedule`, `peer`, `agent_inbox`) and `status` (`routed`, `notified`, `queued`, `unrouted`, `error`; a failed agent hand-off reads as `error`); requires session capability `mailbox: 1` |
 | Mailbox read | POST /mobile/client/mailbox/read | `{ids:[positive integer]}` or `{all:true}` → `{marked,unread}`; same visibility scope as the page |
 | Scheduled tasks | GET /mobile/client/scheduled-tasks | `{tasks:[{id,name,chatId,active,isRunning,nextRunAt,lastRunAt,hasError}]}`; requires session capability `scheduled_tasks: 1` |
 | Chat overview | GET /mobile/client/chats/{id}/overview | `{goal:{objective,status,turnsElapsed,maxTurns}|null, tasks:[{id,title,activeForm,status}], context:{usedTokens,limit,percent,reserveTokens,categories:[{id,tokens}]}}`; Regent adds `workQueue:[{chatId,title,projectName,state,waitingKind,waitingReason,summary}]` for waiting/running chats (blocking questions and approvals first), with empty `goal`/`tasks` and its own `context`; absent `workQueue` means an older desktop, not an empty queue; scoped like the chat; task descriptions, results and paths stay on the desktop; requires session capability `chat_overview: 1` |
 | Tool media | GET /mobile/client/chats/{id}/media/{media_id} | the file's bytes, with Range support; `media_id` comes from a loaded transcript, where a finished media tool part (`generate_image`, `edit_image`, `check_video`, `speak`, `analyze_visual`, `send_file`) carries `media:[{id,kind:"image"\|"video"\|"audio"\|"file",name}]`; only `send_file` produces `file`; ids are opaque, so desktop paths never reach the phone; scoped like the chat; 404 once the file is gone; requires session capability `media: 1` |
 | Surface answer | POST /mobile/client/surface-answer | `{chat_id, surface_id, answer}` → `{ok:true}`; resolves a waiting `ask_question`; needs `send`; 404 when nothing waits; requires session capability `surfaces: 1`. Ordinary surface actions are sends; see `surface-fixtures.json` |
-| Send once | POST /chat/send | `{chat_id,message}` → 202 |
-| Observe | POST /chat/live | `{chat_id,wait_ms:1000,protocol:1}` → SSE or 204 |
-| Stop | POST /chat/stop | `{chat_id}` |
+| Send once | POST /mobile/client/send | `{chat_id,message}` → 202 |
+| Observe | POST /mobile/client/live | `{chat_id,wait_ms:1000,protocol:1}` → SSE or 204 |
+| Stop | POST /mobile/client/stop | `{chat_id}` |
 | Attach | POST /mobile/client/upload?chat_id= | multipart `files` (≤10, ≤200 MB, Content-Length required) → `{attachments:[{id,filename,mime_type,size}]}` |
 
 Clients show the attach control only when `GET /mobile/client/session` reports

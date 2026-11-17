@@ -12,8 +12,10 @@ from starlette.responses import JSONResponse
 from starlette.testclient import TestClient
 
 from suzent.auth_boundary import AuthBoundaryMiddleware
+from suzent.api.router import resource_routes
 from suzent.mobile.attachments import AttachmentRegistry
-from suzent.mobile.client_api import client_routes, revocable_stream
+from suzent.mobile.client_api import client_routes
+from suzent.api.resources import revocable_stream
 from suzent.mobile.media import media_id
 from suzent.mobile.pairing import ClientPermissions, PairingStore
 from suzent.routes.mobile_routes import mobile_routes
@@ -26,10 +28,28 @@ def grant(store, **permissions):
     return store.collect(invite["pairing_id"], pickup["pickup_secret"])
 
 
-@pytest.fixture
-def setup_client(tmp_path, monkeypatch):
+class ResourceTestClient(TestClient):
+    def __init__(self, *args, shared: bool = False, **kwargs):
+        self.shared = shared
+        super().__init__(*args, **kwargs)
+
+    def resource_url(self, url):
+        value = str(url)
+        if self.shared and "/mobile/client/pairing/" not in value:
+            return value.replace("/mobile/client/", "/api/v1/")
+        return value
+
+    def request(self, method, url, **kwargs):
+        return super().request(method, self.resource_url(url), **kwargs)
+
+    def websocket_connect(self, url, **kwargs):
+        return super().websocket_connect(self.resource_url(url), **kwargs)
+
+
+@pytest.fixture(params=["legacy", "shared"])
+def setup_client(tmp_path, monkeypatch, request):
     store = PairingStore(tmp_path / "clients.json")
-    app = Starlette(routes=[*mobile_routes, *client_routes])
+    app = Starlette(routes=[*mobile_routes, *client_routes, *resource_routes])
     app.state.mobile_store = store
     app.add_middleware(AuthBoundaryMiddleware)
     records = {
@@ -88,7 +108,7 @@ def setup_client(tmp_path, monkeypatch):
             if chat_ids is None or record.id in chat_ids
         ][:limit],
     )
-    monkeypatch.setattr("suzent.mobile.client_api.get_database", lambda: db)
+    monkeypatch.setattr("suzent.api.resources.get_database", lambda: db)
     monkeypatch.setattr(
         "suzent.core.providers.get_default_chat_model", lambda: "test/model"
     )
@@ -96,7 +116,9 @@ def setup_client(tmp_path, monkeypatch):
         "suzent.core.providers.get_enabled_models_from_db",
         lambda: ["test/model", "test/other"],
     )
-    with TestClient(app, client=("192.0.2.1", 1234)) as client:
+    with ResourceTestClient(
+        app, client=("192.0.2.1", 1234), shared=request.param == "shared"
+    ) as client:
         yield client, store
 
 
@@ -242,7 +264,7 @@ def test_management_move_and_delete_do_not_escape_scope(setup_client, monkeypatc
     )
     assert not calls[-1][1]
 
-    from suzent.mobile.client_api import get_database
+    from suzent.api.resources import get_database
 
     monkeypatch.setattr(
         get_database(), "get_subagent_chat_ids_for_parent_chat", lambda _: ["private"]
@@ -261,7 +283,7 @@ def test_management_move_and_delete_do_not_escape_scope(setup_client, monkeypatc
 
 
 def test_move_rejects_running_shared_descendants(setup_client, monkeypatch):
-    from suzent.mobile.client_api import get_database
+    from suzent.api.resources import get_database
 
     client, store = setup_client
     result = grant(store, chat_ids=["shared", "private"], manage_chats=True)
@@ -443,7 +465,7 @@ def test_transcript_reports_current_run_without_loading_runtime(
     client, store = setup_client
     result = grant(store, chat_ids=["shared"])
     client.headers["Authorization"] = f"Bearer {result['token']}"
-    from suzent.mobile.client_api import get_database
+    from suzent.api.resources import get_database
 
     get_database().get_chat("shared").config = {
         model_key: "test/other",
@@ -636,7 +658,7 @@ def test_model_selection_only_forwards_enabled_native_model(setup_client, monkey
     assert calls == [
         {"chat_id": "shared", "message": "Hello", "config": {"model": "test/other"}}
     ]
-    from suzent.mobile.client_api import get_database
+    from suzent.api.resources import get_database
 
     get_database().get_chat("shared").config = {"runtime": "acp"}
     assert client.post("/mobile/client/send", json=body).status_code == 400
@@ -651,9 +673,7 @@ def test_composer_does_not_create_or_list_chats(setup_client, monkeypatch):
     def unexpected_database_access():
         pytest.fail("Opening an empty composer must not access stored conversations")
 
-    monkeypatch.setattr(
-        "suzent.mobile.client_api.get_database", unexpected_database_access
-    )
+    monkeypatch.setattr("suzent.api.resources.get_database", unexpected_database_access)
     for _ in range(2):
         response = client.get("/mobile/client/composer")
         assert response.status_code == 200
@@ -682,7 +702,7 @@ def test_confirm_pairing_requires_mobile_credential(setup_client):
 def test_steer_needs_send_and_stop_and_redirects_only_a_running_turn(
     setup_client, monkeypatch
 ):
-    from suzent.mobile.client_api import get_database
+    from suzent.api.resources import get_database
 
     client, store = setup_client
     calls = []
@@ -746,7 +766,7 @@ def test_steer_needs_send_and_stop_and_redirects_only_a_running_turn(
 def test_send_preserves_chat_config_and_saves_only_accepted_model(
     setup_client, monkeypatch, status
 ):
-    from suzent.mobile.client_api import get_database
+    from suzent.api.resources import get_database
 
     client, store = setup_client
     result = grant(store, chat_ids=["shared"], send=True)
@@ -774,7 +794,7 @@ def test_send_preserves_chat_config_and_saves_only_accepted_model(
 
 
 def test_duplicate_mobile_send_does_not_replace_saved_model(setup_client, monkeypatch):
-    from suzent.mobile.client_api import get_database
+    from suzent.api.resources import get_database
 
     client, store = setup_client
     result = grant(store, chat_ids=["shared"], send=True)
@@ -810,7 +830,7 @@ def test_duplicate_mobile_send_does_not_replace_saved_model(setup_client, monkey
 def test_mobile_send_uses_subagent_model_unless_explicitly_changed(
     setup_client, monkeypatch, config
 ):
-    from suzent.mobile.client_api import get_database
+    from suzent.api.resources import get_database
 
     client, store = setup_client
     result = grant(store, chat_ids=["shared"], send=True)
@@ -838,7 +858,7 @@ def test_message_actions_require_scoped_permissions(setup_client, action):
     client, store = setup_client
     result = grant(store, chat_ids=["shared"])
     client.headers["Authorization"] = f"Bearer {result['token']}"
-    from suzent.mobile.client_api import get_database
+    from suzent.api.resources import get_database
 
     get_database().get_chat("shared").messages = [{"role": "user", "content": "Hi"}]
     body = {"chat_id": "shared", "message_index": 0, "action": action, "text": "Edited"}
@@ -860,7 +880,7 @@ def test_message_actions_replay_only_latest_turn(
     client, store = setup_client
     result = grant(store, chat_ids=["shared"], send=True, manage_chats=True)
     client.headers["Authorization"] = f"Bearer {result['token']}"
-    from suzent.mobile.client_api import get_database
+    from suzent.api.resources import get_database
 
     record = get_database().get_chat("shared")
     record.messages = [
@@ -923,7 +943,7 @@ def test_mobile_message_fork_grants_access_only_to_requesting_device(
     result = grant(store, chat_ids=["shared"], create_chats=True)
     other = grant(store, chat_ids=["shared"], create_chats=True)
     client.headers["Authorization"] = f"Bearer {result['token']}"
-    from suzent.mobile.client_api import get_database
+    from suzent.api.resources import get_database
 
     messages = [
         {"role": "user", "content": "Question"},
@@ -976,7 +996,7 @@ def test_mobile_message_fork_grants_access_only_to_requesting_device(
 def test_message_edit_checks_commands_and_model(
     setup_client, monkeypatch, override, expected_status
 ):
-    from suzent.mobile.client_api import get_database
+    from suzent.api.resources import get_database
 
     client, store = setup_client
     result = grant(store, chat_ids=["shared"], send=True, manage_chats=True)
@@ -1018,7 +1038,7 @@ def test_message_edit_checks_commands_and_model(
 
 
 def test_mobile_retry_rejects_acp_runtime(setup_client):
-    from suzent.mobile.client_api import get_database
+    from suzent.api.resources import get_database
 
     client, store = setup_client
     result = grant(store, chat_ids=["shared"], send=True, manage_chats=True)
@@ -1040,7 +1060,7 @@ def test_mobile_retry_rejects_acp_runtime(setup_client):
 def test_mobile_replay_rejects_automation_or_stale_checkpoint(
     setup_client, monkeypatch, trigger, action
 ):
-    from suzent.mobile.client_api import get_database
+    from suzent.api.resources import get_database
 
     client, store = setup_client
     result = grant(store, chat_ids=["shared"], send=True, manage_chats=True)
@@ -1084,7 +1104,7 @@ def test_mobile_replay_rejects_automation_or_stale_checkpoint(
 
 
 def test_mobile_retry_allows_one_complete_tool_turn(setup_client, monkeypatch):
-    from suzent.mobile.client_api import get_database
+    from suzent.api.resources import get_database
 
     client, store = setup_client
     result = grant(store, chat_ids=["shared"], send=True, manage_chats=True)
@@ -1119,7 +1139,7 @@ def test_mobile_retry_allows_one_complete_tool_turn(setup_client, monkeypatch):
 def test_mobile_replay_rejects_hidden_state_changes(
     setup_client, monkeypatch, checkpoint_revision, action
 ):
-    from suzent.mobile.client_api import get_database
+    from suzent.api.resources import get_database
 
     client, store = setup_client
     result = grant(store, chat_ids=["shared"], send=True, manage_chats=True)
@@ -1160,7 +1180,7 @@ def test_attachments_are_sent_by_issued_id_only(setup_client, monkeypatch):
     other = grant(store, chat_ids=["shared"], send=True)
     client.headers["Authorization"] = f"Bearer {result['token']}"
     monkeypatch.setattr(
-        "suzent.mobile.client_api.attachment_registry", AttachmentRegistry()
+        "suzent.api.resources.attachment_registry", AttachmentRegistry()
     )
     saved = []
 
@@ -1242,7 +1262,7 @@ def test_upload_requires_send_permission_and_bounded_size(setup_client, monkeypa
     )
     sender = grant(store, chat_ids=["shared"], send=True)
     client.headers["Authorization"] = f"Bearer {sender['token']}"
-    monkeypatch.setattr("suzent.mobile.client_api.MAX_UPLOAD_BYTES", 10)
+    monkeypatch.setattr("suzent.api.resources.MAX_UPLOAD_BYTES", 10)
     assert (
         client.post(
             "/mobile/client/upload?chat_id=shared",
@@ -1325,7 +1345,7 @@ def test_navigation_redacts_unshared_parent(
     setup_client: tuple[TestClient, PairingStore],
 ) -> None:
     client, store = setup_client
-    from suzent.mobile.client_api import get_database
+    from suzent.api.resources import get_database
 
     db = get_database()
     db.get_chat("shared").config = {"platform": "subagent", "parent_chat_id": "private"}
@@ -1345,7 +1365,7 @@ def test_navigation_reports_unread_replies(
     setup_client: tuple[TestClient, PairingStore],
 ) -> None:
     client, store = setup_client
-    from suzent.mobile.client_api import get_database
+    from suzent.api.resources import get_database
 
     get_database().get_chat("shared").config = {"unread_count": 2}
     result = grant(store, chat_ids=["shared"])
@@ -1358,7 +1378,7 @@ def test_scheduled_tasks_are_scoped_and_safe(
     setup_client: tuple[TestClient, PairingStore],
 ) -> None:
     client, store = setup_client
-    from suzent.mobile.client_api import get_database
+    from suzent.api.resources import get_database
     from datetime import datetime
 
     db = get_database()
@@ -1432,7 +1452,7 @@ def test_regent_discovery_requires_all_chats_and_does_not_activate(
         "regent": {"waiting": 0, "unread": 0, "lastMessageAt": None},
     }
     assert sum(row["id"] == "focal-suzent" for row in rows) == 1
-    from suzent.mobile.client_api import get_database
+    from suzent.api.resources import get_database
 
     assert get_database().get_chat("focal-suzent") is None
     assert (
@@ -1479,7 +1499,7 @@ def test_regent_status_and_read_receipt_use_existing_singleton(
     setup_client: tuple[TestClient, PairingStore], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     client, store = setup_client
-    from suzent.mobile.client_api import get_database
+    from suzent.api.resources import get_database
 
     db = get_database()
     original = db.get_chat
@@ -1492,7 +1512,7 @@ def test_regent_status_and_read_receipt_use_existing_singleton(
         lambda chat_id: focal if chat_id == focal.id else original(chat_id),
     )
     monkeypatch.setattr(
-        "suzent.mobile.client_api.focal_status",
+        "suzent.api.resources.focal_status",
         lambda: {
             "running": True,
             "waiting": 2,
@@ -1582,7 +1602,7 @@ def test_regent_detail_and_send_reuse_desktop_singleton(
     setup_client: tuple[TestClient, PairingStore], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     client, store = setup_client
-    from suzent.mobile.client_api import get_database
+    from suzent.api.resources import get_database
 
     db = get_database()
     original = db.get_chat
@@ -1596,7 +1616,7 @@ def test_regent_detail_and_send_reuse_desktop_singleton(
         "get_chat",
         lambda chat_id: focal if chat_id == focal.id else original(chat_id),
     )
-    monkeypatch.setattr("suzent.mobile.client_api.focal_status", lambda: {"waiting": 1})
+    monkeypatch.setattr("suzent.api.resources.focal_status", lambda: {"waiting": 1})
 
     async def detail(request: Request, *, include_runtime: bool = True) -> JSONResponse:
         assert request.path_params["chat_id"] == focal.id
@@ -1750,7 +1770,7 @@ def test_overview_is_scoped_and_omits_task_details(
     setup_client: tuple[TestClient, PairingStore], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     client, store = setup_client
-    from suzent.mobile.client_api import get_database
+    from suzent.api.resources import get_database
 
     db = get_database()
     monkeypatch.setattr(
@@ -1825,7 +1845,7 @@ def test_overview_without_usage_or_project(
     setup_client: tuple[TestClient, PairingStore], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     client, store = setup_client
-    from suzent.mobile.client_api import get_database
+    from suzent.api.resources import get_database
 
     db = get_database()
     monkeypatch.setattr(
@@ -1897,7 +1917,7 @@ def test_media_route_serves_only_reported_files_in_shared_chats(
     tmp_path: Path,
 ) -> None:
     client, store = setup_client
-    from suzent.mobile.client_api import get_database
+    from suzent.api.resources import get_database
 
     video = tmp_path / "clip.mp4"
     video.write_bytes(b"0123456789")
@@ -1954,7 +1974,7 @@ def test_uploaded_image_preview_is_scoped_to_shared_conversation(
     tmp_path: Path,
 ) -> None:
     client, store = setup_client
-    from suzent.mobile.client_api import get_database
+    from suzent.api.resources import get_database
 
     image = tmp_path / "photo.png"
     image.write_bytes(b"image data")
@@ -1983,7 +2003,7 @@ def test_regent_overview_uses_global_queue_and_requires_global_scope(
     setup_client: tuple[TestClient, PairingStore], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     client, store = setup_client
-    from suzent.mobile.client_api import get_database
+    from suzent.api.resources import get_database
 
     db = get_database()
     original = db.get_chat
@@ -1992,7 +2012,7 @@ def test_regent_overview_uses_global_queue_and_requires_global_scope(
         db, "get_chat", lambda cid: focal if cid == focal.id else original(cid)
     )
     monkeypatch.setattr(
-        "suzent.mobile.client_api.context_summary",
+        "suzent.api.resources.context_summary",
         lambda chat: {"categories": [], "usedTokens": 123},
     )
     calls = []
@@ -2176,7 +2196,8 @@ def test_model_mutation_failure_keeps_catalog_and_hides_internal_errors(
 
     monkeypatch.setattr(f"suzent.routes.config_routes.{handler}", failure)
     response = client.post(
-        f"/mobile/client/models/{path}", json={"model": "test/model", "starred": False}
+        f"/mobile/client/models/{path}",
+        json={"model": "test/model", "starred": False} if path == "star" else {},
     )
     assert response.status_code == 500
     assert "credential" not in response.text

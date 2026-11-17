@@ -3,26 +3,14 @@
 from __future__ import annotations
 
 import json
-from typing import Literal
 
-from pydantic import ConfigDict, Field
 from starlette.exceptions import HTTPException
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
-from suzent.mobile.client_api import ChatRequest, authorize, forwarded, parse
+from suzent.api.access import authorize, forwarded, parse
+from suzent.api.contracts import ApprovalBatch
 from suzent.routes.mobile_routes import reply
-
-
-class ApprovalChoice(ChatRequest):
-    model_config = ConfigDict(extra="forbid")
-    request_id: str = Field(min_length=1, max_length=200)
-    action_id: str = Field(min_length=1, max_length=200)
-    kind: Literal["tool", "acp"] = "tool"
-
-
-class ApprovalBatch(ChatRequest):
-    decisions: list[ApprovalChoice] = Field(min_length=1, max_length=64)
 
 
 def once_actions(decision: dict) -> list[dict]:

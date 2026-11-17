@@ -282,13 +282,14 @@ class AuthBoundaryMiddleware:
         if scope["type"] not in ("http", "websocket"):
             return await self.app(scope, receive, send)
 
-        # This dedicated surface authenticates every request in its handlers,
-        # including loopback, and never accepts host/Node tokens as client grants.
+        # Resource handlers authenticate every request, including loopback.
+        # Legacy paired-client routes continue to reject host and Node tokens.
         if (
             scope["type"] == "http"
-            and scope.get("path", "").startswith("/mobile/client/")
+            and scope.get("path", "").startswith(("/mobile/client/", "/api/v1/"))
         ) or (
-            scope["type"] == "websocket" and scope.get("path") == "/mobile/client/voice"
+            scope["type"] == "websocket"
+            and scope.get("path") in {"/mobile/client/voice", "/api/v1/voice"}
         ):
             return await self.app(scope, receive, send)
 

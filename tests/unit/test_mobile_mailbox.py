@@ -25,7 +25,7 @@ def mailbox_client(
     app = Starlette(routes=client_routes)
     app.state.mobile_store = store
     app.add_middleware(AuthBoundaryMiddleware)
-    monkeypatch.setattr("suzent.mobile.client_api.get_database", lambda: temp_db)
+    monkeypatch.setattr("suzent.api.resources.get_database", lambda: temp_db)
     with TestClient(app, client=("192.0.2.1", 1234)) as client:
         yield client, store, temp_db
 

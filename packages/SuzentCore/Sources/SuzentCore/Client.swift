@@ -36,6 +36,13 @@ private actor NavigationCapability {
     func update(_ value: Bool) { enabled = value }
 }
 
+private final class ResourceRouting: @unchecked Sendable {
+    private let lock = NSLock()
+    private var shared = false
+    var enabled: Bool { lock.withLock { shared } }
+    func update(_ enabled: Bool) { lock.withLock { shared = enabled } }
+}
+
 /// A desktop WebSocket: a URLSessionWebSocketTask, or one carried through a relay tunnel.
 public protocol MobileSocket: AnyObject, Sendable {
     func resume()
@@ -52,6 +59,7 @@ let maxWebSocketMessageSize = 64 * 1024 * 1024
 
 public final class SuzentClient: Sendable {
     private let navigationCapability = NavigationCapability()
+    private let resourceRouting = ResourceRouting()
     public let backend: Backend
     private let token: String
     private let session: URLSession
@@ -92,25 +100,24 @@ public final class SuzentClient: Sendable {
         tunnel?.close()
     }
 
+    public var resourceAPI: ResourceClient {
+        ResourceClient { call in try await self.data(call) }
+    }
+
     public func approvals(_ id: String) async throws -> ApprovalState {
         guard !id.contains("/"), id != ".", id != ".." else { throw ClientError.invalidResponse }
-        return try mobileDecode(ApprovalState.self, await data("mobile/client/chats/\(id)/approvals"))
+        return try mobileDecode(ApprovalState.self, await data(ResourceRequests.approvals(chatId: id)))
     }
     public func decideApprovals(_ id: String, pending: [ApprovalRequest], choices: [String: String]) async throws {
-        let decisions: [[String: String]] = try pending.map { item in
+        let decisions = try pending.map { item -> WireApprovalChoice in
             guard let action = choices[item.id] else { throw ClientError.invalidResponse }
-            return ["chat_id": id, "request_id": item.id, "kind": item.kind, "action_id": action]
+            return .init(chatId: id, requestId: item.id, actionId: action, kind: item.kind)
         }
-        var request = try request("mobile/client/approvals")
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try JSONSerialization.data(withJSONObject: ["chat_id": id, "decisions": decisions])
-        let (_, response) = try await session.data(for: request)
-        try validate(response)
+        _ = try await data(ResourceRequests.decideApprovals(body: .init(chatId: id, decisions: decisions)))
     }
 
     public func voiceSocket(chatID: String) throws -> any MobileSocket {
-        var request = try request("mobile/client/voice")
+        var request = try request(ResourceRequests.voice())
         var url = URLComponents(url: request.url!, resolvingAgainstBaseURL: false)!
         url.scheme = url.scheme == "https" ? "wss" : "ws"
         url.queryItems = [URLQueryItem(name: "chat_id", value: chatID)]
@@ -151,6 +158,20 @@ public final class SuzentClient: Sendable {
         return data
     }
 
+    private func request(_ call: ResourceRequest) throws -> URLRequest {
+        var value = try request(call.path(shared: resourceRouting.enabled))
+        value.httpMethod = call.method
+        value.httpBody = call.body
+        if call.body != nil { value.setValue("application/json", forHTTPHeaderField: "Content-Type") }
+        return value
+    }
+
+    private func data(_ call: ResourceRequest) async throws -> Data {
+        let (data, response) = try await session.data(for: request(call))
+        try validate(response)
+        return data
+    }
+
     private func mobileDecode<T: Decodable>(_ type: T.Type, _ data: Data) throws -> T {
         let decoder = JSONDecoder()
         decoder.keyDecodingStrategy = .convertFromSnakeCase
@@ -168,9 +189,10 @@ public final class SuzentClient: Sendable {
     }
 
     public func clientSession() async throws -> ClientSession {
-        let result = try mobileDecode(ClientSession.self, await data("mobile/client/session"))
+        let result = try mobileDecode(ClientSession.self, await data(ResourceRequests.session()))
         try result.validate()
         await navigationCapability.update(result.chatPagination == 1)
+        resourceRouting.update(result.resourceApi == 1)
         return result
     }
 
@@ -215,9 +237,7 @@ public final class SuzentClient: Sendable {
         guard await navigationCapability.enabled else {
             return localChatPage(try await chats(), query: query, offset: offset, limit: limit)
         }
-        return try JSONDecoder().decode(ChatPage.self, from: await data("mobile/client/chat-page", body: [
-            "kind": query.kind, "value": query.value, "offset": String(offset), "limit": String(limit)
-        ]))
+        return try JSONDecoder().decode(ChatPage.self, from: await data(ResourceRequests.chatPage(body: .init(kind: query.kind, value: query.value, offset: offset, limit: limit))))
     }
 
     public func navigationMetadata() async throws -> NavigationMetadata {
@@ -232,7 +252,7 @@ public final class SuzentClient: Sendable {
             }
             return NavigationMetadata(regent: rows.first { $0.isRegent }, projects: projects)
         }
-        return try JSONDecoder().decode(NavigationMetadata.self, from: await data("mobile/client/navigation"))
+        return try JSONDecoder().decode(NavigationMetadata.self, from: await data(ResourceRequests.navigation()))
     }
 
     public func chatStatuses(_ ids: [String]) async throws -> [Chat] {
@@ -244,113 +264,84 @@ public final class SuzentClient: Sendable {
         struct Listing: Decodable { let chats: [Chat] }
         var result: [Chat] = []
         for start in stride(from: 0, to: ids.count, by: 100) {
-            var request = try request("mobile/client/chat-status", body: [:])
-            request.httpBody = try JSONSerialization.data(withJSONObject: ["ids": Array(ids.dropFirst(start).prefix(100))])
-            let (data, response) = try await session.data(for: request)
-            try validate(response)
-            result += try JSONDecoder().decode(Listing.self, from: data).chats
+            let call = try ResourceRequests.chatStatuses(body: .init(ids: Array(ids.dropFirst(start).prefix(100))))
+            result += try JSONDecoder().decode(Listing.self, from: await data(call)).chats
         }
         return result
     }
 
     public func chats() async throws -> [Chat] {
         struct Listing: Decodable { let chats: [Chat] }
-        return try JSONDecoder().decode(Listing.self, from: await data("mobile/client/chats")).chats
+        return try JSONDecoder().decode(Listing.self, from: await data(ResourceRequests.chats())).chats
     }
 
     public func answerSurface(_ chatID: String, surfaceID: String, answer: [String: JSONValue]) async throws {
-        var request = try request("mobile/client/surface-answer", body: [:])
-        request.httpBody = try JSONSerialization.data(withJSONObject: ["chat_id": chatID, "surface_id": surfaceID,
-                                                                      "answer": answer.mapValues(\.foundationValue)])
-        let (_, response) = try await session.data(for: request)
-        try validate(response)
+        _ = try await data(ResourceRequests.answerSurface(body: .init(chatId: chatID, surfaceId: surfaceID, answer: answer)))
     }
 
     public func overview(_ id: String) async throws -> ChatOverview {
-        try JSONDecoder().decode(ChatOverview.self, from: await data("mobile/client/chats/\(id)/overview"))
+        try JSONDecoder().decode(ChatOverview.self, from: await data(ResourceRequests.overview(chatId: id)))
     }
 
     public func mailboxPage(category: String, offset: Int) async throws -> MailboxPage {
-        var request = try request("mobile/client/mailbox/page", body: [:])
-        request.httpBody = try JSONSerialization.data(withJSONObject: ["category": category, "offset": offset, "limit": 50])
-        let (data, response) = try await session.data(for: request)
-        try validate(response)
-        return try JSONDecoder().decode(MailboxPage.self, from: data)
+        try JSONDecoder().decode(MailboxPage.self, from: await data(ResourceRequests.mailboxPage(body: .init(offset: offset, limit: 50, category: category))))
     }
 
     public func readMailbox(ids: [Int]?, all: Bool) async throws {
-        var request = try request("mobile/client/mailbox/read", body: [:])
-        request.httpBody = try JSONSerialization.data(withJSONObject: ["ids": ids ?? [], "all": all])
-        let (_, response) = try await session.data(for: request)
-        try validate(response)
+        _ = try await data(ResourceRequests.readMailbox(body: .init(ids: ids ?? [], all: all)))
     }
 
     public func scheduledTasks() async throws -> [ScheduledTask] {
         struct Listing: Decodable { let tasks: [ScheduledTask] }
-        return try JSONDecoder().decode(Listing.self, from: await data("mobile/client/scheduled-tasks")).tasks
+        return try JSONDecoder().decode(Listing.self, from: await data(ResourceRequests.scheduledTasks())).tasks
     }
 
     public func manageChat(_ id: String, action: String, value: String? = nil) async throws {
-        var body = ["chat_id": id, "action": action]
-        if let value { body["value"] = value }
-        _ = try await data("mobile/client/manage", body: body)
+        _ = try await data(ResourceRequests.manageChat(body: .init(chatId: id, action: action, value: value)))
     }
 
     public func messageAction(_ id: String, index: Int, action: String, text: String? = nil, model: String? = nil) async throws -> String {
-        var body: [String: Any] = ["chat_id": id, "message_index": index, "action": action]
-        if let text { body["text"] = text }
-        if let model { body["model"] = model }
         struct Result: Decodable { let chat_id: String }
-        var request = try request("mobile/client/message-action", body: [:])
-        request.httpBody = try JSONSerialization.data(withJSONObject: body)
-        let (data, response) = try await session.data(for: request)
-        try validate(response)
-        return try JSONDecoder().decode(Result.self, from: data).chat_id
+        return try JSONDecoder().decode(Result.self, from: await data(ResourceRequests.messageAction(body: .init(chatId: id, action: action, messageIndex: index, text: text, model: model)))).chat_id
     }
 
     public func projects() async throws -> [Project] {
         struct Listing: Decodable { let projects: [Project] }
-        return try JSONDecoder().decode(Listing.self, from: await data("mobile/client/projects")).projects
+        return try JSONDecoder().decode(Listing.self, from: await data(ResourceRequests.projects())).projects
     }
 
     public func modelCatalog(refresh: Bool = false) async throws -> ModelCatalog {
-        try JSONDecoder().decode(ModelCatalog.self, from: await data(
-            refresh ? "mobile/client/models/refresh" : "mobile/client/models", body: refresh ? [:] : nil))
+        let call = try refresh ? ResourceRequests.refreshModels(body: .init()) : ResourceRequests.models()
+        return try JSONDecoder().decode(ModelCatalog.self, from: await data(call))
     }
 
     public func starModel(_ model: String, starred: Bool) async throws -> ModelCatalog {
-        var request = try request("mobile/client/models/star", body: [:])
-        request.httpBody = try JSONSerialization.data(withJSONObject: ["model": model, "starred": starred])
-        let (data, response) = try await session.data(for: request)
-        try validate(response)
-        return try JSONDecoder().decode(ModelCatalog.self, from: data)
+        try JSONDecoder().decode(ModelCatalog.self, from: await data(ResourceRequests.starModel(body: .init(model: model, starred: starred))))
     }
 
     public func composer() async throws -> Chat {
-        try JSONDecoder().decode(Chat.self, from: await data("mobile/client/composer"))
+        try JSONDecoder().decode(Chat.self, from: await data(ResourceRequests.composer()))
     }
 
     public func createChat(title: String, projectID: String? = nil) async throws -> Chat {
-        var body = ["title": title]
-        if let projectID { body["project_id"] = projectID }
-        return try JSONDecoder().decode(Chat.self, from: await data("mobile/client/chats", body: body))
+        try JSONDecoder().decode(Chat.self, from: await data(ResourceRequests.createChat(body: .init(title: title, projectId: projectID))))
     }
 
     public func markRead(_ id: String) async throws {
         guard !id.contains("/"), id != ".", id != ".." else { throw ClientError.invalidResponse }
-        _ = try await data("mobile/client/chats/\(id)/read", body: [:])
+        _ = try await data(ResourceRequests.markRead(chatId: id, body: .init()))
     }
 
     public func chat(_ id: String) async throws -> Chat {
         // IDs are backend-issued. Reject path separators instead of treating them as routes.
         guard !id.contains("/"), id != ".", id != ".." else { throw ClientError.invalidResponse }
-        return try JSONDecoder().decode(Chat.self, from: await data("mobile/client/chats/\(id)"))
+        return try JSONDecoder().decode(Chat.self, from: await data(ResourceRequests.chat(chatId: id)))
     }
 
     public func media(_ chatID: String, mediaID: String, to destination: URL) async throws {
         guard !chatID.contains("/"), chatID != ".", chatID != "..",
               MediaItem(id: mediaID, kind: "image", name: "").isValid else { throw ClientError.invalidResponse }
-        let request = try request("mobile/client/chats/\(chatID)/media/\(mediaID)")
+        let request = try request(ResourceRequests.media(chatId: chatID, mediaId: mediaID))
         let fileManager = FileManager.default
         try? fileManager.removeItem(at: destination)
         if tunnel == nil {
@@ -368,7 +359,7 @@ public final class SuzentClient: Sendable {
     /// Uploads files for one conversation and returns the ids the backend issued for them.
     public func upload(_ attachments: [PendingAttachment], chatID: String) async throws -> [String] {
         guard !chatID.contains("/"), chatID != ".", chatID != ".." else { throw ClientError.invalidResponse }
-        var components = URLComponents(url: backend.endpoint("mobile/client/upload"), resolvingAgainstBaseURL: false)
+        var components = URLComponents(url: backend.endpoint(try ResourceRequests.upload().path(shared: resourceRouting.enabled)), resolvingAgainstBaseURL: false)
         components?.queryItems = [URLQueryItem(name: "chat_id", value: chatID)]
         guard let url = components?.url else { throw ClientError.invalidAddress }
         let boundary = "suzent-\(UUID().uuidString)"
@@ -392,40 +383,27 @@ public final class SuzentClient: Sendable {
     }
 
     public func send(_ text: String, chatID: String, model: String? = nil, attachments: [String] = []) async throws {
-        var body: [String: Any] = [
-            "chat_id": chatID,
-            "message": text,
-            "client_message_id": UUID().uuidString.lowercased()
-        ]
-        if let model { body["model"] = model }
-        if !attachments.isEmpty { body["attachments"] = attachments }
-        var request = try request("mobile/client/send", body: [:])
-        request.httpBody = try JSONSerialization.data(withJSONObject: body)
-        do {
-            let (_, response) = try await session.data(for: request)
-            try validate(response)
-        } catch let error as URLError {
+        let call = try ResourceRequests.send(body: .init(chatId: chatID, message: text, model: model, clientMessageId: UUID().uuidString, attachments: attachments))
+        do { _ = try await data(call) }
+        catch let error as URLError {
             guard error.code != .cancelled else { throw error }
-            let (_, response) = try await session.data(for: request)
-            try validate(response)
+            _ = try await data(call)
         }
     }
 
     public func stop(_ chatID: String) async throws {
-        _ = try await data("mobile/client/stop", body: ["chat_id": chatID])
+        _ = try await data(ResourceRequests.stop(body: .init(chatId: chatID)))
     }
 
     public func steer(_ text: String, chatID: String, model: String? = nil) async throws {
-        var body = ["chat_id": chatID, "message": text]
-        if let model { body["model"] = model }
-        _ = try await data("mobile/client/steer", body: body)
+        _ = try await data(ResourceRequests.steer(body: .init(chatId: chatID, message: text, model: model)))
     }
 
     public func observe(_ chatID: String, onEvent: @Sendable (StreamEvent) async -> Void) async throws {
         var recovery = StreamRecovery()
         for attempt in 0..<5 {
             try Task.checkCancellation()
-            var request = try request("mobile/client/live", body: ["chat_id": chatID])
+            var request = try request(ResourceRequests.observe(body: .init(chatId: chatID)))
             request.httpBody = try recovery.request(chatID: chatID)
             do {
                 let (bytes, response) = try await session.bytes(for: request)

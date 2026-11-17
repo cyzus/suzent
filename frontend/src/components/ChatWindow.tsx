@@ -1,3 +1,4 @@
+import { resourcePaths } from '../lib/resourceAPI.generated';
 import { regentReactions } from '../lib/regentConversation';
 import { resolvedCompactionFailures } from '../lib/compactionNotices';
 import { ModelWaitNotice } from './chat/ModelWaitNotice';
@@ -1762,7 +1763,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       let resp: Response;
       try {
         resp = await trackPendingStart(
-          fetch(`${getApiBase()}/chat/send`, {
+          fetch(`${getApiBase()}${resourcePaths.send()}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ ...body, client_run_token: runToken }),
@@ -2673,7 +2674,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       }
       connectingRef.current = true;
 
-      const liveUrl = `${getApiBase()}/chat/live`;
+      const liveUrl = `${getApiBase()}${resourcePaths.observe()}`;
 
       // Seed with parts from a prior connection we abandoned on switch, so the
       // visible steps and in-flight tool states resume instead of resetting.
@@ -3055,7 +3056,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       watchForReply(steerChatId);
       const steerAbort = new AbortController();
       trackPendingStart(
-        fetch(`${getApiBase()}/chat/steer-send`, {
+        fetch(`${getApiBase()}${resourcePaths.steer()}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           signal: steerAbort.signal,
@@ -3226,7 +3227,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     // where the subscription for the new chat ID isn't set up yet).
     const sendAbort = new AbortController();
     trackPendingStart(
-      fetch(`${getApiBase()}/chat/send`, {
+      fetch(`${getApiBase()}${resourcePaths.send()}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -3324,7 +3325,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     watchForReply(chatIdForRetry);
     const retryAbort = new AbortController();
     trackPendingStart(
-      fetch(`${getApiBase()}/chat/send`, {
+      fetch(`${getApiBase()}${resourcePaths.send()}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         signal: retryAbort.signal,
@@ -3422,7 +3423,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       watchForReply(chatIdForEdit);
       const editAbort = new AbortController();
       trackPendingStart(
-        fetch(`${getApiBase()}/chat/send`, {
+        fetch(`${getApiBase()}${resourcePaths.send()}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           signal: editAbort.signal,

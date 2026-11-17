@@ -2,6 +2,7 @@ import Foundation
 
 /// The conversation surface is shared by network and fully local demonstration clients.
 public protocol MobileClient: Sendable {
+    var resourceAPI: ResourceClient { get }
     func close()
     func clientSession() async throws -> ClientSession
     func chats() async throws -> [Chat]
@@ -35,6 +36,7 @@ public protocol MobileClient: Sendable {
 }
 
 public extension MobileClient {
+    var resourceAPI: ResourceClient { ResourceClient { _ in throw ClientError.invalidResponse } }
     func modelCatalog(refresh: Bool) async throws -> ModelCatalog { throw ClientError.invalidResponse }
     func starModel(_ model: String, starred: Bool) async throws -> ModelCatalog { throw ClientError.invalidResponse }
     func mailboxPage(category: String, offset: Int) async throws -> MailboxPage { .empty }

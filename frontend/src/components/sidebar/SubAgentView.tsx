@@ -1,3 +1,4 @@
+import { resourcePaths } from '../../lib/resourceAPI.generated';
 /**
  * SubAgentView — sidebar panel showing a sub-agent's execution status and log.
  *
@@ -106,7 +107,7 @@ export const SubAgentView: React.FC<SubAgentViewProps> = ({ taskId, onClose }) =
 
   const fetchChatLog = useCallback(async (chatId: string) => {
     try {
-      const res = await fetch(`${getApiBase()}/chats/${chatId}`);
+      const res = await fetch(`${getApiBase()}${resourcePaths.chat(chatId)}`);
       if (!res.ok) return;
       const data = await res.json();
       chatMessagesRef.current = data.messages ?? [];

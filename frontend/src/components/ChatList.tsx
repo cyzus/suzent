@@ -1,3 +1,4 @@
+import { resourcePaths } from '../lib/resourceAPI.generated';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ChatBubbleLeftRightIcon,
@@ -334,7 +335,7 @@ export const ChatList: React.FC<ChatListProps> = ({
       openProject(known.projectId);
       return;
     }
-    void fetch(`${getApiBase()}/chats/${encodeURIComponent(chatId)}`)
+    void fetch(`${getApiBase()}${resourcePaths.chat(chatId)}`)
       .then((response) => (response.ok ? response.json() : null))
       .then((chat: { projectId?: string | null } | null) => openProject(chat?.projectId))
       .catch(() => {});
@@ -580,7 +581,7 @@ export const ChatList: React.FC<ChatListProps> = ({
           project_id: projectId,
         });
 
-        const res = await fetch(`${getApiBase()}/chats?${params.toString()}`);
+        const res = await fetch(`${getApiBase()}${resourcePaths.chats()}?${params.toString()}`);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
         const data = await res.json();
@@ -631,7 +632,7 @@ export const ChatList: React.FC<ChatListProps> = ({
         if (projectChatCacheRef.current.has(projectId)) continue;
         try {
           const params = new URLSearchParams({ limit: '50', offset: '0', project_id: projectId });
-          const res = await fetch(`${getApiBase()}/chats?${params.toString()}`);
+          const res = await fetch(`${getApiBase()}${resourcePaths.chats()}?${params.toString()}`);
           if (!res.ok) continue;
           const data = await res.json();
           // An open in the meantime cached a fresher list.
@@ -670,7 +671,9 @@ export const ChatList: React.FC<ChatListProps> = ({
   const fetchArchivedChats = useCallback(async () => {
     setLoadingArchived(true);
     try {
-      const res = await fetch(`${getApiBase()}/chats?archived=true&limit=${archivedLimit}`);
+      const res = await fetch(
+        `${getApiBase()}${resourcePaths.chats()}?archived=true&limit=${archivedLimit}`
+      );
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       setArchivedChats(data.chats || []);
@@ -1065,7 +1068,7 @@ export const ChatList: React.FC<ChatListProps> = ({
 
   const handleTogglePin = async (chatId: string): Promise<void> => {
     try {
-      const response = await fetch(`${getApiBase()}/chats/${chatId}`, {
+      const response = await fetch(`${getApiBase()}${resourcePaths.chat(chatId)}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ pinned: !pinnedChats.some((chat) => chat.id === chatId) }),
@@ -1089,7 +1092,7 @@ export const ChatList: React.FC<ChatListProps> = ({
     else setArchivedChats((prev) => prev.filter((chat) => !ids.has(chat.id)));
     const results = await Promise.allSettled(
       chatIds.map(async (chatId) => {
-        const response = await fetch(`${getApiBase()}/chats/${chatId}`, {
+        const response = await fetch(`${getApiBase()}${resourcePaths.chat(chatId)}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ archived }),

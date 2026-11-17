@@ -17,7 +17,7 @@ def pagination_client(temp_db, tmp_path, monkeypatch):
     app = Starlette(routes=client_routes)
     app.state.mobile_store = store
     app.add_middleware(AuthBoundaryMiddleware)
-    monkeypatch.setattr("suzent.mobile.client_api.get_database", lambda: temp_db)
+    monkeypatch.setattr("suzent.api.resources.get_database", lambda: temp_db)
 
     def headers(**permissions: object) -> dict[str, str]:
         invite = store.invite()

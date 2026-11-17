@@ -1,0 +1,1 @@
+{"products":{"desktop":"patch","mobile":"patch"},"summary":"Keep desktop and mobile actions consistent through a shared API while preserving device permissions and compatibility with older clients."}

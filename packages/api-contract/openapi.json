@@ -1,0 +1,2709 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Suzent resource API",
+    "version": "1.0.0"
+  },
+  "paths": {
+    "/api/v1/session": {
+      "get": {
+        "operationId": "session",
+        "x-legacy-path": "/mobile/client/session",
+        "x-actions": [],
+        "x-chat-scope": null,
+        "x-host-only": false,
+        "x-transport": "json",
+        "x-read-only": true,
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiSession"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/composer": {
+      "get": {
+        "operationId": "composer",
+        "x-legacy-path": "/mobile/client/composer",
+        "x-actions": [],
+        "x-chat-scope": null,
+        "x-host-only": false,
+        "x-transport": "json",
+        "x-read-only": true,
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiChat"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/models": {
+      "get": {
+        "operationId": "models",
+        "x-legacy-path": "/mobile/client/models",
+        "x-actions": [],
+        "x-chat-scope": null,
+        "x-host-only": false,
+        "x-transport": "json",
+        "x-read-only": true,
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiModels"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/models/star": {
+      "post": {
+        "operationId": "starModel",
+        "x-legacy-path": "/mobile/client/models/star",
+        "x-actions": [
+          "send"
+        ],
+        "x-chat-scope": null,
+        "x-host-only": false,
+        "x-transport": "json",
+        "x-read-only": false,
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiModels"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StarModelRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/models/refresh": {
+      "post": {
+        "operationId": "refreshModels",
+        "x-legacy-path": "/mobile/client/models/refresh",
+        "x-actions": [
+          "send"
+        ],
+        "x-chat-scope": null,
+        "x-host-only": false,
+        "x-transport": "json",
+        "x-read-only": false,
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiModels"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EmptyRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/chats": {
+      "get": {
+        "operationId": "chats",
+        "x-legacy-path": "/mobile/client/chats",
+        "x-actions": [],
+        "x-chat-scope": null,
+        "x-host-only": false,
+        "x-transport": "json",
+        "x-read-only": true,
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiChatList"
+                }
+              }
+            }
+          }
+        },
+        "x-host-request": {
+          "$ref": "#/components/schemas/HostFieldsRequest"
+        }
+      },
+      "post": {
+        "operationId": "createChat",
+        "x-legacy-path": "/mobile/client/chats",
+        "x-actions": [
+          "create_chats"
+        ],
+        "x-chat-scope": null,
+        "x-host-only": false,
+        "x-transport": "json",
+        "x-read-only": false,
+        "responses": {
+          "201": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiChat"
+                }
+              }
+            }
+          }
+        },
+        "x-host-request": {
+          "$ref": "#/components/schemas/HostFieldsRequest"
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/chat-page": {
+      "post": {
+        "operationId": "chatPage",
+        "x-legacy-path": "/mobile/client/chat-page",
+        "x-actions": [],
+        "x-chat-scope": null,
+        "x-host-only": false,
+        "x-transport": "json",
+        "x-read-only": true,
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiChatList"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChatPageRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/chat-status": {
+      "post": {
+        "operationId": "chatStatuses",
+        "x-legacy-path": "/mobile/client/chat-status",
+        "x-actions": [],
+        "x-chat-scope": null,
+        "x-host-only": false,
+        "x-transport": "json",
+        "x-read-only": true,
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiChatList"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChatStatusRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/navigation": {
+      "get": {
+        "operationId": "navigation",
+        "x-legacy-path": "/mobile/client/navigation",
+        "x-actions": [],
+        "x-chat-scope": null,
+        "x-host-only": false,
+        "x-transport": "json",
+        "x-read-only": true,
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiNavigation"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/chats/{chat_id}": {
+      "get": {
+        "operationId": "chat",
+        "x-legacy-path": "/mobile/client/chats/{chat_id}",
+        "x-actions": [],
+        "x-chat-scope": "path",
+        "x-host-only": false,
+        "x-transport": "json",
+        "x-read-only": true,
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiChat"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "chat_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      },
+      "put": {
+        "operationId": "updateChat",
+        "x-legacy-path": null,
+        "x-actions": [],
+        "x-chat-scope": "path",
+        "x-host-only": true,
+        "x-transport": "json",
+        "x-read-only": false,
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResult"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "chat_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HostFieldsRequest"
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteChat",
+        "x-legacy-path": null,
+        "x-actions": [],
+        "x-chat-scope": "path",
+        "x-host-only": true,
+        "x-transport": "json",
+        "x-read-only": false,
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResult"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "chat_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/chats/{chat_id}/read": {
+      "post": {
+        "operationId": "markRead",
+        "x-legacy-path": "/mobile/client/chats/{chat_id}/read",
+        "x-actions": [],
+        "x-chat-scope": "path",
+        "x-host-only": false,
+        "x-transport": "json",
+        "x-read-only": false,
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResult"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "chat_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EmptyRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/chats/{chat_id}/overview": {
+      "get": {
+        "operationId": "overview",
+        "x-legacy-path": "/mobile/client/chats/{chat_id}/overview",
+        "x-actions": [],
+        "x-chat-scope": "path",
+        "x-host-only": false,
+        "x-transport": "json",
+        "x-read-only": true,
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiOverview"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "chat_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/manage": {
+      "post": {
+        "operationId": "manageChat",
+        "x-legacy-path": "/mobile/client/manage",
+        "x-actions": [
+          "manage_chats"
+        ],
+        "x-chat-scope": "body",
+        "x-host-only": false,
+        "x-transport": "json",
+        "x-read-only": false,
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResult"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ManageRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/message-action": {
+      "post": {
+        "operationId": "messageAction",
+        "x-legacy-path": "/mobile/client/message-action",
+        "x-actions": [],
+        "x-chat-scope": "body",
+        "x-host-only": false,
+        "x-transport": "json",
+        "x-read-only": false,
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResult"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MessageActionRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/send": {
+      "post": {
+        "operationId": "send",
+        "x-legacy-path": "/mobile/client/send",
+        "x-actions": [
+          "send"
+        ],
+        "x-chat-scope": "body",
+        "x-host-only": false,
+        "x-transport": "json",
+        "x-read-only": false,
+        "responses": {
+          "202": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResult"
+                }
+              }
+            }
+          }
+        },
+        "x-host-request": {
+          "$ref": "#/components/schemas/HostFieldsRequest"
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SendRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/stop": {
+      "post": {
+        "operationId": "stop",
+        "x-legacy-path": "/mobile/client/stop",
+        "x-actions": [
+          "stop"
+        ],
+        "x-chat-scope": "body",
+        "x-host-only": false,
+        "x-transport": "json",
+        "x-read-only": false,
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResult"
+                }
+              }
+            }
+          }
+        },
+        "x-host-request": {
+          "$ref": "#/components/schemas/HostFieldsRequest"
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChatRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/steer": {
+      "post": {
+        "operationId": "steer",
+        "x-legacy-path": "/mobile/client/steer",
+        "x-actions": [
+          "send",
+          "stop"
+        ],
+        "x-chat-scope": "body",
+        "x-host-only": false,
+        "x-transport": "json",
+        "x-read-only": false,
+        "responses": {
+          "202": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResult"
+                }
+              }
+            }
+          }
+        },
+        "x-host-request": {
+          "$ref": "#/components/schemas/HostFieldsRequest"
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SteerRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/live": {
+      "post": {
+        "operationId": "observe",
+        "x-legacy-path": "/mobile/client/live",
+        "x-actions": [],
+        "x-chat-scope": "body",
+        "x-host-only": false,
+        "x-transport": "sse",
+        "x-read-only": true,
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "204": {
+            "description": "No active stream"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ObserveRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/upload": {
+      "post": {
+        "operationId": "upload",
+        "x-legacy-path": "/mobile/client/upload",
+        "x-actions": [
+          "send"
+        ],
+        "x-chat-scope": "query",
+        "x-host-only": false,
+        "x-transport": "multipart",
+        "x-read-only": false,
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiUploads"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "files"
+                ],
+                "properties": {
+                  "files": {
+                    "type": "array",
+                    "maxItems": 10,
+                    "items": {
+                      "type": "string",
+                      "format": "binary"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "chat_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/chats/{chat_id}/media/{media_id}": {
+      "get": {
+        "operationId": "media",
+        "x-legacy-path": "/mobile/client/chats/{chat_id}/media/{media_id}",
+        "x-actions": [],
+        "x-chat-scope": "path",
+        "x-host-only": false,
+        "x-transport": "binary",
+        "x-read-only": true,
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "chat_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "media_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/projects": {
+      "get": {
+        "operationId": "projects",
+        "x-legacy-path": "/mobile/client/projects",
+        "x-actions": [],
+        "x-chat-scope": null,
+        "x-host-only": false,
+        "x-transport": "json",
+        "x-read-only": true,
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProjects"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "createProject",
+        "x-legacy-path": null,
+        "x-actions": [],
+        "x-chat-scope": null,
+        "x-host-only": true,
+        "x-transport": "json",
+        "x-read-only": false,
+        "responses": {
+          "201": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProject"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HostFieldsRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project_id}": {
+      "patch": {
+        "operationId": "updateProject",
+        "x-legacy-path": null,
+        "x-actions": [],
+        "x-chat-scope": null,
+        "x-host-only": true,
+        "x-transport": "json",
+        "x-read-only": false,
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProject"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HostFieldsRequest"
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteProject",
+        "x-legacy-path": null,
+        "x-actions": [],
+        "x-chat-scope": null,
+        "x-host-only": true,
+        "x-transport": "json",
+        "x-read-only": false,
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResult"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/projects/{project_id}/folders": {
+      "get": {
+        "operationId": "projectFolders",
+        "x-legacy-path": null,
+        "x-actions": [],
+        "x-chat-scope": null,
+        "x-host-only": true,
+        "x-transport": "json",
+        "x-read-only": true,
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResult"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/projects/{project_id}/move-chats": {
+      "post": {
+        "operationId": "moveProjectChats",
+        "x-legacy-path": null,
+        "x-actions": [],
+        "x-chat-scope": null,
+        "x-host-only": true,
+        "x-transport": "json",
+        "x-read-only": false,
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResult"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HostFieldsRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/chats/{chat_id}/project": {
+      "post": {
+        "operationId": "moveChat",
+        "x-legacy-path": null,
+        "x-actions": [],
+        "x-chat-scope": "path",
+        "x-host-only": true,
+        "x-transport": "json",
+        "x-read-only": false,
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResult"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "chat_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HostFieldsRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/scheduled-tasks": {
+      "get": {
+        "operationId": "scheduledTasks",
+        "x-legacy-path": "/mobile/client/scheduled-tasks",
+        "x-actions": [],
+        "x-chat-scope": null,
+        "x-host-only": false,
+        "x-transport": "json",
+        "x-read-only": true,
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiTasks"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/mailbox/page": {
+      "post": {
+        "operationId": "mailboxPage",
+        "x-legacy-path": "/mobile/client/mailbox/page",
+        "x-actions": [],
+        "x-chat-scope": null,
+        "x-host-only": false,
+        "x-transport": "json",
+        "x-read-only": true,
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiMailboxPage"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MailboxPageRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/mailbox/read": {
+      "post": {
+        "operationId": "readMailbox",
+        "x-legacy-path": "/mobile/client/mailbox/read",
+        "x-actions": [],
+        "x-chat-scope": null,
+        "x-host-only": false,
+        "x-transport": "json",
+        "x-read-only": false,
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiMailboxRead"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MailboxReadRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/chats/{chat_id}/approvals": {
+      "get": {
+        "operationId": "approvals",
+        "x-legacy-path": "/mobile/client/chats/{chat_id}/approvals",
+        "x-actions": [],
+        "x-chat-scope": "path",
+        "x-host-only": false,
+        "x-transport": "json",
+        "x-read-only": true,
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiApprovals"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "chat_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/approvals": {
+      "post": {
+        "operationId": "decideApprovals",
+        "x-legacy-path": "/mobile/client/approvals",
+        "x-actions": [
+          "approve_tools"
+        ],
+        "x-chat-scope": "body",
+        "x-host-only": false,
+        "x-transport": "json",
+        "x-read-only": false,
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResult"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApprovalBatch"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/surface-answer": {
+      "post": {
+        "operationId": "answerSurface",
+        "x-legacy-path": "/mobile/client/surface-answer",
+        "x-actions": [
+          "send"
+        ],
+        "x-chat-scope": "body",
+        "x-host-only": false,
+        "x-transport": "json",
+        "x-read-only": false,
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResult"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SurfaceAnswerRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/voice": {
+      "get": {
+        "operationId": "voice",
+        "x-legacy-path": "/mobile/client/voice",
+        "x-actions": [
+          "send",
+          "stop"
+        ],
+        "x-chat-scope": "query",
+        "x-host-only": false,
+        "x-transport": "websocket",
+        "x-read-only": true,
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "chat_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/chat-states": {
+      "get": {
+        "operationId": "chatStates",
+        "x-legacy-path": null,
+        "x-actions": [],
+        "x-chat-scope": null,
+        "x-host-only": true,
+        "x-transport": "json",
+        "x-read-only": true,
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostFieldsRequest"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/chats/{chat_id}/resolved": {
+      "post": {
+        "operationId": "setResolved",
+        "x-legacy-path": null,
+        "x-actions": [],
+        "x-chat-scope": "path",
+        "x-host-only": true,
+        "x-transport": "json",
+        "x-read-only": false,
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResult"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "chat_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HostFieldsRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/chats/{chat_id}/permission-mode": {
+      "get": {
+        "operationId": "permissionMode",
+        "x-legacy-path": null,
+        "x-actions": [],
+        "x-chat-scope": "path",
+        "x-host-only": true,
+        "x-transport": "json",
+        "x-read-only": true,
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostFieldsRequest"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "chat_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      },
+      "put": {
+        "operationId": "setPermissionMode",
+        "x-legacy-path": null,
+        "x-actions": [],
+        "x-chat-scope": "path",
+        "x-host-only": true,
+        "x-transport": "json",
+        "x-read-only": false,
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostFieldsRequest"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "chat_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HostFieldsRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/chats/{chat_id}/permission-state": {
+      "get": {
+        "operationId": "permissionState",
+        "x-legacy-path": null,
+        "x-actions": [],
+        "x-chat-scope": "path",
+        "x-host-only": true,
+        "x-transport": "json",
+        "x-read-only": true,
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostFieldsRequest"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "chat_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/chats/{chat_id}/git-status": {
+      "get": {
+        "operationId": "chatGitStatus",
+        "x-legacy-path": null,
+        "x-actions": [],
+        "x-chat-scope": "path",
+        "x-host-only": true,
+        "x-transport": "json",
+        "x-read-only": true,
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostFieldsRequest"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "chat_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/chats/{chat_id}/fork": {
+      "post": {
+        "operationId": "forkChat",
+        "x-legacy-path": null,
+        "x-actions": [],
+        "x-chat-scope": "path",
+        "x-host-only": true,
+        "x-transport": "json",
+        "x-read-only": false,
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostFieldsRequest"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "chat_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HostFieldsRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/compact": {
+      "post": {
+        "operationId": "compactChat",
+        "x-legacy-path": null,
+        "x-actions": [],
+        "x-chat-scope": "body",
+        "x-host-only": true,
+        "x-transport": "json",
+        "x-read-only": false,
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostFieldsRequest"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HostFieldsRequest"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "ApiSession": {
+        "additionalProperties": true,
+        "properties": {
+          "device": {
+            "additionalProperties": true,
+            "title": "Device",
+            "type": "object"
+          },
+          "client_protocol": {
+            "title": "Client Protocol",
+            "type": "integer"
+          },
+          "stream_protocols": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Stream Protocols",
+            "type": "array"
+          },
+          "resource_api": {
+            "title": "Resource Api",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "device",
+          "client_protocol",
+          "stream_protocols",
+          "resource_api"
+        ],
+        "title": "ApiSession",
+        "type": "object"
+      },
+      "ApiChat": {
+        "additionalProperties": true,
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "messages": {
+            "anyOf": [
+              {
+                "items": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Messages"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Model"
+          },
+          "models": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Models"
+          },
+          "isRunning": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Isrunning"
+          },
+          "projectId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Projectid"
+          },
+          "projectName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Projectname"
+          },
+          "pinned": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Pinned"
+          },
+          "platform": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Platform"
+          },
+          "unreadCount": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Unreadcount"
+          },
+          "parentChatId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Parentchatid"
+          },
+          "regent": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Regent"
+          },
+          "config": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Config"
+          }
+        },
+        "required": [
+          "id",
+          "title"
+        ],
+        "title": "ApiChat",
+        "type": "object"
+      },
+      "ApiModels": {
+        "properties": {
+          "models": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Models",
+            "type": "array"
+          },
+          "starredModels": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Starredmodels",
+            "type": "array"
+          },
+          "canManage": {
+            "title": "Canmanage",
+            "type": "boolean"
+          },
+          "success": {
+            "default": true,
+            "title": "Success",
+            "type": "boolean"
+          },
+          "defaultModel": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Defaultmodel"
+          },
+          "contextWindows": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Contextwindows",
+            "type": "object"
+          },
+          "providers": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Providers",
+            "type": "object"
+          }
+        },
+        "required": [
+          "models",
+          "starredModels",
+          "canManage"
+        ],
+        "title": "ApiModels",
+        "type": "object"
+      },
+      "StarModelRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "model": {
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Model",
+            "type": "string"
+          },
+          "starred": {
+            "title": "Starred",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "model",
+          "starred"
+        ],
+        "title": "StarModelRequest",
+        "type": "object"
+      },
+      "EmptyRequest": {
+        "additionalProperties": false,
+        "properties": {},
+        "title": "EmptyRequest",
+        "type": "object"
+      },
+      "ApiChatList": {
+        "properties": {
+          "chats": {
+            "items": {
+              "$ref": "#/components/schemas/ApiChat"
+            },
+            "title": "Chats",
+            "type": "array"
+          },
+          "total": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Total"
+          },
+          "nextOffset": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Nextoffset"
+          }
+        },
+        "required": [
+          "chats"
+        ],
+        "title": "ApiChatList",
+        "type": "object"
+      },
+      "CreateRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "title": {
+            "default": "New conversation",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Project Id"
+          }
+        },
+        "title": "CreateRequest",
+        "type": "object"
+      },
+      "ChatPageRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "default": "recent",
+            "enum": [
+              "recent",
+              "pinned",
+              "project",
+              "search"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "value": {
+            "default": "",
+            "maxLength": 200,
+            "title": "Value",
+            "type": "string"
+          },
+          "offset": {
+            "default": 0,
+            "maximum": 10000000,
+            "minimum": 0,
+            "title": "Offset",
+            "type": "integer"
+          },
+          "limit": {
+            "default": 30,
+            "maximum": 100,
+            "minimum": 1,
+            "title": "Limit",
+            "type": "integer"
+          }
+        },
+        "title": "ChatPageRequest",
+        "type": "object"
+      },
+      "ChatStatusRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "ids": {
+            "items": {
+              "maxLength": 200,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 100,
+            "title": "Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "ids"
+        ],
+        "title": "ChatStatusRequest",
+        "type": "object"
+      },
+      "ApiProject": {
+        "additionalProperties": true,
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "slug": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Slug"
+          },
+          "chatCount": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Chatcount"
+          },
+          "running": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Running"
+          },
+          "unread": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Unread"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "ApiProject",
+        "type": "object"
+      },
+      "ApiNavigation": {
+        "properties": {
+          "projects": {
+            "items": {
+              "$ref": "#/components/schemas/ApiProject"
+            },
+            "title": "Projects",
+            "type": "array"
+          },
+          "regent": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ApiChat"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          }
+        },
+        "required": [
+          "projects"
+        ],
+        "title": "ApiNavigation",
+        "type": "object"
+      },
+      "HostFieldsRequest": {
+        "additionalProperties": true,
+        "description": "Desktop-owned configuration stays opaque to the resource transport.",
+        "properties": {},
+        "title": "HostFieldsRequest",
+        "type": "object"
+      },
+      "ApiResult": {
+        "additionalProperties": true,
+        "properties": {
+          "ok": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Ok"
+          },
+          "chat_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Chat Id"
+          }
+        },
+        "title": "ApiResult",
+        "type": "object"
+      },
+      "ApiOverview": {
+        "properties": {
+          "goal": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Goal"
+          },
+          "tasks": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Tasks",
+            "type": "array"
+          },
+          "context": {
+            "additionalProperties": true,
+            "title": "Context",
+            "type": "object"
+          },
+          "workQueue": {
+            "anyOf": [
+              {
+                "items": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Workqueue"
+          }
+        },
+        "required": [
+          "tasks",
+          "context"
+        ],
+        "title": "ApiOverview",
+        "type": "object"
+      },
+      "ManageRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "chat_id": {
+            "maxLength": 200,
+            "minLength": 1,
+            "pattern": "^[^/]+$",
+            "title": "Chat Id",
+            "type": "string"
+          },
+          "action": {
+            "enum": [
+              "pin",
+              "unpin",
+              "rename",
+              "move",
+              "delete"
+            ],
+            "title": "Action",
+            "type": "string"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Value"
+          }
+        },
+        "required": [
+          "chat_id",
+          "action"
+        ],
+        "title": "ManageRequest",
+        "type": "object"
+      },
+      "MessageActionRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "chat_id": {
+            "maxLength": 200,
+            "minLength": 1,
+            "pattern": "^[^/]+$",
+            "title": "Chat Id",
+            "type": "string"
+          },
+          "action": {
+            "enum": [
+              "retry",
+              "edit",
+              "fork"
+            ],
+            "title": "Action",
+            "type": "string"
+          },
+          "message_index": {
+            "minimum": 0,
+            "title": "Message Index",
+            "type": "integer"
+          },
+          "text": {
+            "anyOf": [
+              {
+                "maxLength": 100000,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Text"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "maxLength": 300,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Model"
+          }
+        },
+        "required": [
+          "chat_id",
+          "action",
+          "message_index"
+        ],
+        "title": "MessageActionRequest",
+        "type": "object"
+      },
+      "SendRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "chat_id": {
+            "maxLength": 200,
+            "minLength": 1,
+            "pattern": "^[^/]+$",
+            "title": "Chat Id",
+            "type": "string"
+          },
+          "message": {
+            "default": "",
+            "maxLength": 100000,
+            "title": "Message",
+            "type": "string"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "maxLength": 300,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Model"
+          },
+          "client_message_id": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Client Message Id"
+          },
+          "attachments": {
+            "items": {
+              "pattern": "^[0-9a-f]{32}$",
+              "type": "string"
+            },
+            "maxItems": 10,
+            "title": "Attachments",
+            "type": "array"
+          }
+        },
+        "required": [
+          "chat_id"
+        ],
+        "title": "SendRequest",
+        "type": "object"
+      },
+      "ChatRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "chat_id": {
+            "maxLength": 200,
+            "minLength": 1,
+            "pattern": "^[^/]+$",
+            "title": "Chat Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "chat_id"
+        ],
+        "title": "ChatRequest",
+        "type": "object"
+      },
+      "SteerRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "chat_id": {
+            "maxLength": 200,
+            "minLength": 1,
+            "pattern": "^[^/]+$",
+            "title": "Chat Id",
+            "type": "string"
+          },
+          "message": {
+            "maxLength": 100000,
+            "minLength": 1,
+            "pattern": "\\S",
+            "title": "Message",
+            "type": "string"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "maxLength": 300,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Model"
+          }
+        },
+        "required": [
+          "chat_id",
+          "message"
+        ],
+        "title": "SteerRequest",
+        "type": "object"
+      },
+      "ObserveRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "chat_id": {
+            "maxLength": 200,
+            "minLength": 1,
+            "pattern": "^[^/]+$",
+            "title": "Chat Id",
+            "type": "string"
+          },
+          "wait_ms": {
+            "default": 1000,
+            "maximum": 1000,
+            "minimum": 0,
+            "title": "Wait Ms",
+            "type": "integer"
+          },
+          "protocol": {
+            "const": 1,
+            "default": 1,
+            "title": "Protocol",
+            "type": "integer"
+          },
+          "run_id": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Run Id"
+          },
+          "after_seq": {
+            "anyOf": [
+              {
+                "minimum": 0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "After Seq"
+          }
+        },
+        "required": [
+          "chat_id"
+        ],
+        "title": "ObserveRequest",
+        "type": "object"
+      },
+      "ApiUploads": {
+        "properties": {
+          "attachments": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Attachments",
+            "type": "array"
+          }
+        },
+        "required": [
+          "attachments"
+        ],
+        "title": "ApiUploads",
+        "type": "object"
+      },
+      "ApiProjects": {
+        "properties": {
+          "projects": {
+            "items": {
+              "$ref": "#/components/schemas/ApiProject"
+            },
+            "title": "Projects",
+            "type": "array"
+          }
+        },
+        "required": [
+          "projects"
+        ],
+        "title": "ApiProjects",
+        "type": "object"
+      },
+      "ApiTasks": {
+        "properties": {
+          "tasks": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Tasks",
+            "type": "array"
+          }
+        },
+        "required": [
+          "tasks"
+        ],
+        "title": "ApiTasks",
+        "type": "object"
+      },
+      "MailboxPageRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "offset": {
+            "default": 0,
+            "minimum": 0,
+            "title": "Offset",
+            "type": "integer"
+          },
+          "limit": {
+            "default": 50,
+            "maximum": 100,
+            "minimum": 1,
+            "title": "Limit",
+            "type": "integer"
+          },
+          "category": {
+            "default": "notifications",
+            "enum": [
+              "notifications",
+              "all",
+              "external",
+              "agent"
+            ],
+            "title": "Category",
+            "type": "string"
+          }
+        },
+        "title": "MailboxPageRequest",
+        "type": "object"
+      },
+      "ApiMailboxPage": {
+        "properties": {
+          "items": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "unread": {
+            "title": "Unread",
+            "type": "integer"
+          },
+          "hasMore": {
+            "title": "Hasmore",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "items",
+          "unread",
+          "hasMore"
+        ],
+        "title": "ApiMailboxPage",
+        "type": "object"
+      },
+      "MailboxReadRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "ids": {
+            "items": {
+              "exclusiveMinimum": 0,
+              "type": "integer"
+            },
+            "maxItems": 100,
+            "title": "Ids",
+            "type": "array"
+          },
+          "all": {
+            "default": false,
+            "title": "All",
+            "type": "boolean"
+          }
+        },
+        "title": "MailboxReadRequest",
+        "type": "object"
+      },
+      "ApiMailboxRead": {
+        "properties": {
+          "marked": {
+            "title": "Marked",
+            "type": "integer"
+          },
+          "unread": {
+            "title": "Unread",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "marked",
+          "unread"
+        ],
+        "title": "ApiMailboxRead",
+        "type": "object"
+      },
+      "ApiApprovals": {
+        "properties": {
+          "pending": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Pending",
+            "type": "array"
+          },
+          "isRunning": {
+            "title": "Isrunning",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "pending",
+          "isRunning"
+        ],
+        "title": "ApiApprovals",
+        "type": "object"
+      },
+      "ApprovalChoice": {
+        "additionalProperties": false,
+        "properties": {
+          "chat_id": {
+            "maxLength": 200,
+            "minLength": 1,
+            "pattern": "^[^/]+$",
+            "title": "Chat Id",
+            "type": "string"
+          },
+          "request_id": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Request Id",
+            "type": "string"
+          },
+          "action_id": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Action Id",
+            "type": "string"
+          },
+          "kind": {
+            "default": "tool",
+            "enum": [
+              "tool",
+              "acp"
+            ],
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "chat_id",
+          "request_id",
+          "action_id"
+        ],
+        "title": "ApprovalChoice",
+        "type": "object"
+      },
+      "ApprovalBatch": {
+        "additionalProperties": false,
+        "properties": {
+          "chat_id": {
+            "maxLength": 200,
+            "minLength": 1,
+            "pattern": "^[^/]+$",
+            "title": "Chat Id",
+            "type": "string"
+          },
+          "decisions": {
+            "items": {
+              "$ref": "#/components/schemas/ApprovalChoice"
+            },
+            "maxItems": 64,
+            "minItems": 1,
+            "title": "Decisions",
+            "type": "array"
+          }
+        },
+        "required": [
+          "chat_id",
+          "decisions"
+        ],
+        "title": "ApprovalBatch",
+        "type": "object"
+      },
+      "SurfaceAnswerRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "chat_id": {
+            "maxLength": 200,
+            "minLength": 1,
+            "pattern": "^[^/]+$",
+            "title": "Chat Id",
+            "type": "string"
+          },
+          "surface_id": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Surface Id",
+            "type": "string"
+          },
+          "answer": {
+            "additionalProperties": true,
+            "title": "Answer",
+            "type": "object"
+          }
+        },
+        "required": [
+          "chat_id",
+          "surface_id"
+        ],
+        "title": "SurfaceAnswerRequest",
+        "type": "object"
+      }
+    }
+  }
+}
