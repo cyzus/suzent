@@ -30,6 +30,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Collapse mobile model groups, share favorites with desktop, and refresh provider model lists from your phone.
 - Automatically discover models from configured providers in the chat model selector with collapsible provider groups, quick search, one-click refresh, and starred favorites.
 - The phone apps play the same Suzent bot animation as desktop, and the desktop mark rests when it is idle or reduced motion is on.
+- Projects in the sidebar show folder icons, and hovering a project offers a shortcut to start a new chat in it.
 
 ## [v0.27.0] - 2026-11-16
 

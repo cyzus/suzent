@@ -316,6 +316,7 @@
     ".releases/changes/sidebar-inline-rename.json",
     ".releases/changes/sidebar-keep-open-chat-collapsed.json",
     ".releases/changes/sidebar-message-preview.json",
+    ".releases/changes/sidebar-project-row-actions.json",
     ".releases/changes/sidebar-project-visual-hierarchy.json",
     ".releases/changes/sidebar-projects-recent-order.json",
     ".releases/changes/sidebar-resize-settle.json",
