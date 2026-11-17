@@ -1,0 +1,1 @@
+{"products":{"desktop":"patch","mobile":"patch"},"summary":"Open conversations more smoothly by avoiding unused agent-state reads and moving history processing off the UI thread."}

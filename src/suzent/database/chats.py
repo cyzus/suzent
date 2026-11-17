@@ -10,6 +10,7 @@ from sqlalchemy import func, or_, text, update
 from sqlalchemy import inspect as sa_inspect
 from sqlalchemy import select as sa_select
 from sqlalchemy.orm.attributes import flag_modified
+from sqlalchemy.orm import defer
 from sqlmodel import Session, col, delete, select
 
 from suzent.logger import get_logger
@@ -349,10 +350,13 @@ class ChatOperationsMixin:
             self.commit_chat_changes(session, [chat_id], created=True)
         return chat_id
 
-    def get_chat(self, chat_id: str) -> Optional[ChatModel]:
-        """Get a specific chat by ID."""
+    def get_chat(
+        self, chat_id: str, *, include_agent_state: bool = True
+    ) -> Optional[ChatModel]:
+        """Get a chat, optionally excluding the agent-state blob for transcript reads."""
         with self._session() as session:
-            return session.get(ChatModel, chat_id)
+            options = [] if include_agent_state else [defer(ChatModel.agent_state)]
+            return session.get(ChatModel, chat_id, options=options)
 
     def get_chat_config(self, chat_id: str) -> Optional[Dict[str, Any]]:
         """The chat's config without its messages and state, or None when it is gone."""

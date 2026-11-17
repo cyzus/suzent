@@ -108,6 +108,9 @@ def setup_client(tmp_path, monkeypatch, request):
             if chat_ids is None or record.id in chat_ids
         ][:limit],
     )
+    db.get_chat_config = lambda chat_id: (
+        row.config if (row := db.get_chat(chat_id)) is not None else None
+    )
     monkeypatch.setattr("suzent.api.resources.get_database", lambda: db)
     monkeypatch.setattr(
         "suzent.core.providers.get_default_chat_model", lambda: "test/model"
@@ -401,20 +404,18 @@ def test_transcript_excludes_backend_configuration(setup_client, monkeypatch):
     result = grant(store, chat_ids=["shared"])
     client.headers["Authorization"] = f"Bearer {result['token']}"
 
-    async def detail(request, *, include_runtime=True):
+    async def detail(chat_id, *, include_runtime=True):
         assert include_runtime is False
-        assert request.path_params["chat_id"] == "shared"
-        return JSONResponse(
-            {
-                "id": "shared",
-                "title": "Test",
-                "messages": [{"role": "assistant", "content": "Visible transcript"}],
-                "config": {"private": "must not be returned"},
-                "agent_state": "internal",
-            }
-        )
+        assert chat_id == "shared"
+        return {
+            "id": "shared",
+            "title": "Test",
+            "messages": [{"role": "assistant", "content": "Visible transcript"}],
+            "config": {"private": "must not be returned"},
+            "agent_state": "internal",
+        }
 
-    monkeypatch.setattr("suzent.routes.chat_routes.get_chat", detail)
+    monkeypatch.setattr("suzent.routes.chat_routes.load_chat_payload", detail)
     response = client.get("/mobile/client/chats/shared")
     assert response.status_code == 200
     assert set(response.json()) == {
@@ -483,7 +484,7 @@ def test_transcript_reports_current_run_without_loading_runtime(
     monkeypatch.setattr(
         "suzent.routes.chat_routes.get_database",
         lambda: SimpleNamespace(
-            get_chat=lambda _: record,
+            get_chat=lambda _, **kwargs: record,
             get_chat_project_id=lambda _: "p-shared",
         ),
     )
@@ -1618,12 +1619,10 @@ def test_regent_detail_and_send_reuse_desktop_singleton(
     )
     monkeypatch.setattr("suzent.api.resources.focal_status", lambda: {"waiting": 1})
 
-    async def detail(request: Request, *, include_runtime: bool = True) -> JSONResponse:
-        assert request.path_params["chat_id"] == focal.id
+    async def detail(chat_id: str, *, include_runtime: bool = True) -> dict:
+        assert chat_id == focal.id
         assert include_runtime is False
-        return JSONResponse(
-            {"id": focal.id, "title": "Regent", "messages": [], "isRunning": False}
-        )
+        return {"id": focal.id, "title": "Regent", "messages": [], "isRunning": False}
 
     sent: list[dict[str, object]] = []
 
@@ -1637,7 +1636,7 @@ def test_regent_detail_and_send_reuse_desktop_singleton(
         return True
 
     monkeypatch.setattr(db, "merge_chat_config", merge_config)
-    monkeypatch.setattr("suzent.routes.chat_routes.get_chat", detail)
+    monkeypatch.setattr("suzent.routes.chat_routes.load_chat_payload", detail)
     monkeypatch.setattr("suzent.routes.chat_routes.chat_send", send)
     result = grant(store, all_chats=True, send=True)
     client.headers["Authorization"] = f"Bearer {result['token']}"
@@ -2225,10 +2224,10 @@ def test_chat_poll_can_omit_models_without_rebuilding_catalog(
     result = grant(store, chat_ids=["shared"])
     client.headers["Authorization"] = f"Bearer {result['token']}"
 
-    async def detail(request, **kwargs):
-        return JSONResponse({"id": "shared", "title": "Shared", "messages": []})
+    async def detail(chat_id, **kwargs):
+        return {"id": "shared", "title": "Shared", "messages": []}
 
-    monkeypatch.setattr("suzent.routes.chat_routes.get_chat", detail)
+    monkeypatch.setattr("suzent.routes.chat_routes.load_chat_payload", detail)
 
     def unexpected():
         pytest.fail("Status/chat polling must not rebuild the model catalog")
@@ -2280,3 +2279,31 @@ def test_catalog_read_rechecks_revocation_after_loading(setup_client, monkeypatc
     )
     monkeypatch.setattr("suzent.core.providers.get_starred_models_from_db", lambda: [])
     assert client.get("/mobile/client/models").status_code == 401
+
+
+def test_transcript_rechecks_revocation_after_background_serialization(
+    setup_client, monkeypatch
+):
+    client, store = setup_client
+    result = grant(store, chat_ids=["shared"])
+    client.headers["Authorization"] = f"Bearer {result['token']}"
+
+    async def detail(chat_id, **kwargs):
+        return {
+            "id": "shared",
+            "title": "Shared",
+            "messages": [{"role": "assistant", "content": "Visible"}],
+        }
+
+    monkeypatch.setattr("suzent.routes.chat_routes.load_chat_payload", detail)
+
+    def render(payload, *args, **kwargs):
+        response = JSONResponse(payload)
+        store.revoke(result["device"]["device_id"])
+        return response
+
+    monkeypatch.setattr("suzent.api.resources.reply", render)
+    assert (
+        client.get("/mobile/client/chats/shared?include_models=false").status_code
+        == 401
+    )

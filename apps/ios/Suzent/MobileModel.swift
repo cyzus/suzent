@@ -239,6 +239,7 @@ import SuzentCore
     // Previously captured clients may still serve polling requests or the device socket.
     private var retiredClients: [SuzentClient] = []
     private var streamTask: Task<Void, Never>?
+    private var openingRequest: Task<Chat, Error>?
     private var nodeTask: Task<Void, Never>?
     private var socket: (any MobileSocket)?
     /// None of the invitation's origins answered, so pairing goes through the desktop's relay.
@@ -855,6 +856,7 @@ import SuzentCore
 
     func open(_ chat: Chat) async {
         guard let client, !busy else { return }
+        openingRequest?.cancel()
         voice.stop()
         if let id = selected?.id { drafts[id] = draft }
         generation = UUID()
@@ -868,17 +870,23 @@ import SuzentCore
         draft = drafts[chat.id] ?? ""
         liveParts = []
         let current = generation
-        defer { if current == generation { openingChatID = nil } }
+        let request = Task { try await client.chat(chat.id) }
+        openingRequest = request
+        defer { if current == generation { openingChatID = nil; openingRequest = nil } }
         do {
-            let saved = try await client.chat(chat.id)
+            let saved = try await withTaskCancellationHandler {
+                try await request.value
+            } onCancel: {
+                request.cancel()
+            }
             guard current == generation, selected?.id == chat.id else { return }
             selected = saved
-            if saved.isRegent { try await client.markRead(saved.id) } else { await clearUnread(saved.id, client: client) }
-            guard current == generation, selected?.id == saved.id else { return }
             restoreModel(saved)
             openedVersion += 1
-            syncRunning(saved)
             if saved.isRunning == true { observe(chat.id, client: client) }
+            if saved.isRegent { try await client.markRead(saved.id) } else { await clearUnread(saved.id, client: client) }
+            guard current == generation, selected?.id == saved.id else { return }
+            syncRunning(saved)
         } catch { if current == generation { handle(error) } }
     }
 
@@ -1428,6 +1436,7 @@ import SuzentCore
         generation = UUID()
         nodeEnabled = false
         disconnectNode()
+        openingRequest?.cancel(); openingRequest = nil; openingChatID = nil
         streamTask?.cancel()
         streaming = false
         liveParts = []
