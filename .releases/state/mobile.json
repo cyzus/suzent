@@ -15,6 +15,7 @@
     ".releases/changes/android-streaming-tables.json",
     ".releases/changes/android-table-inline-code-colors.json",
     ".releases/changes/android-zxing-only-scanner.json",
+    ".releases/changes/cache-model-catalog.json",
     ".releases/changes/citations-inside-bold.json",
     ".releases/changes/context-menu-actions.json",
     ".releases/changes/dark-yellow-inline-code.json",

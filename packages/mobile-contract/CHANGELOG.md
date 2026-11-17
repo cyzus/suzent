@@ -3,6 +3,7 @@
 ## [mobile-v0.10.1] - 2026-11-17
 
 ### Release notes
+- Reduce model-picker overhead by caching the model catalog and omitting it from routine mobile conversation polling.
 - Place the mobile robot and animate tool icons the way desktop does, and draw them off the UI thread on iOS and Android, pausing when hidden or settled.
 - Collapse mobile model groups, share favorites with desktop, and refresh provider model lists from your phone.
 - Find mobile chat models with search and provider groups, and see the conversation default model before choosing.
