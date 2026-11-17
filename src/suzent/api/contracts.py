@@ -182,8 +182,8 @@ class ApiModels(BaseModel):
     canManage: bool
     success: bool = True
     defaultModel: str | None = None
-    contextWindows: dict[str, int] | None = None
-    providers: dict[str, int] | None = None
+    contextWindows: dict[str, int] = Field(default_factory=dict)
+    providers: dict[str, int] = Field(default_factory=dict)
 
 
 class ApiMailboxPage(BaseModel):

@@ -45,8 +45,8 @@ export interface WireApiModels {
   canManage: boolean;
   success?: boolean;
   defaultModel?: string | null;
-  contextWindows?: Record<string, number> | null;
-  providers?: Record<string, number> | null;
+  contextWindows?: Record<string, number>;
+  providers?: Record<string, number>;
 }
 
 export interface WireApiNavigation {

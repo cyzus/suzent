@@ -1804,34 +1804,18 @@
             "title": "Defaultmodel"
           },
           "contextWindows": {
-            "anyOf": [
-              {
-                "additionalProperties": {
-                  "type": "integer"
-                },
-                "type": "object"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Contextwindows"
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Contextwindows",
+            "type": "object"
           },
           "providers": {
-            "anyOf": [
-              {
-                "additionalProperties": {
-                  "type": "integer"
-                },
-                "type": "object"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Providers"
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Providers",
+            "type": "object"
           }
         },
         "required": [
