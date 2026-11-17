@@ -1,5 +1,9 @@
-import { HEAD_C } from '../suzentBotGeometry';
-import { ActEvalContext, FullBodyActPose, createDefaultActPose } from './actTypes';
+import { HEAD_C } from "../suzentBotGeometry";
+import {
+  ActEvalContext,
+  FullBodyActPose,
+  createDefaultActPose,
+} from "./actTypes";
 
 /** S1: Sherlock large magnifying glass sweeping across the foreground */
 export function evalBigLoupe({ t, fade }: ActEvalContext): FullBodyActPose {
@@ -29,7 +33,11 @@ export function evalBigLoupe({ t, fade }: ActEvalContext): FullBodyActPose {
 }
 
 /** S2: Dual scout binoculars panning left & right */
-export function evalBinoculars({ t, fade, headPose }: ActEvalContext): FullBodyActPose {
+export function evalBinoculars({
+  t,
+  fade,
+  headPose,
+}: ActEvalContext): FullBodyActPose {
   const pose = createDefaultActPose();
   const cyc = (t / 2.2) % 1;
   let pan = 0;
@@ -114,7 +122,7 @@ export function evalPeekRadar({ t, fade }: ActEvalContext): FullBodyActPose {
   pose.y = py;
   pose.rot = prot;
 
-  let rings = '';
+  let rings = "";
   for (let i = 0; i < 2; i++) {
     const rp = (t * 0.9 + i * 0.5) % 1;
     const r = 118 + rp * 38;

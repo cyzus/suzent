@@ -280,6 +280,7 @@ struct MessageView: View {
     private var footer: some View {
         HStack(spacing: 5) {
             if user { Spacer(minLength: 0) }
+            if !user && botPlacement(message.parts, live: false, latest: isLatest, regent: regent) == .footer { SuzentBotBadge(parts: message.parts, streaming: false) }
             if isLatest {
                 if !message.text.isEmpty {
                     Button { copy() } label: { footerIcon(copied ? "checkmark" : "doc.on.doc") }
@@ -937,26 +938,6 @@ struct SuzentMarkdown: View {
     }
 }
 
-struct SuzentAssistantBadge: View {
-    var compact = false
-    var body: some View {
-        Group {
-            if compact {
-                HStack(spacing: 6) {
-                    SuzentLogoMark().frame(width: 16, height: 16).opacity(0.5)
-                    Text("SUZENT").suzentFont(PresentationTokens.typeSidebarSection, weight: .bold, design: .monospaced).foregroundStyle(Color.suzentMuted)
-                }
-            } else {
-                SuzentLogoMark().frame(width: 26, height: 26)
-                    .frame(width: 90, height: 40).background(Color.suzentSurface)
-                    .overlay(Rectangle().stroke(Color.suzentOutline, lineWidth: PresentationTokens.borderWidth))
-                    .background { Rectangle().fill(Color.suzentShadow).offset(x: PresentationTokens.shadowOffsetOverlay, y: PresentationTokens.shadowOffsetOverlay) }
-                    .padding(.trailing, PresentationTokens.shadowOffsetOverlay).padding(.bottom, PresentationTokens.shadowOffsetOverlay)
-            }
-        }.accessibilityElement(children: .ignore).accessibilityLabel("Suzent")
-    }
-}
-
 /// How surfaces in the transcript act; set once by the conversation so every reply shares it.
 struct SurfaceHandler {
     let interactive: (A2UISurface) -> Bool
@@ -981,6 +962,7 @@ struct ActivityContent: View {
     var live = false
     var citationSources: [CitationSource] = []
     var regent = false
+    var showBot = false
     /// Regent's reply actions, opened by a long press on its bubbles like the user's own messages.
     var bubbleMenu: AnyView?
     var body: some View {
@@ -1001,7 +983,7 @@ struct ActivityContent: View {
                         await surfaceHandler?.act(surface, action, context) ?? false
                     }
                 }
-                else { ActivityRail(parts: chunk, live: live, current: index == chunks.count - 1, expansionKey: railChunkKey(chunk, index: index)) }
+                else { ActivityRail(parts: chunk, live: live, current: index == chunks.count - 1, expansionKey: railChunkKey(chunk, index: index), showBot: showBot) }
             }
         }
     }
@@ -1363,136 +1345,39 @@ struct AssemblyBadge: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.scenePhase) private var scenePhase
     @State private var started = Date()
-    @State private var expanded = false
 
     var body: some View {
-        GeometryReader { geometry in
-            ZStack {
-                TimelineView(.animation(minimumInterval: 1.0 / 30, paused: !expanded || scenePhase != .active)) { timeline in
-                    Canvas { context, size in
-                        context.scaleBy(x: size.width / 320, y: size.height / 108)
-                        for mark in AssemblyScene.frame(seconds: timeline.date.timeIntervalSince(started), reduced: reduceMotion) {
-                            var path = Path()
-                            for (index, point) in mark.points.enumerated() {
-                                let position = CGPoint(x: point.x, y: point.y)
-                                if index == 0 { path.move(to: position) } else { path.addLine(to: position) }
-                            }
-                            if mark.points.count > 2 { path.closeSubpath() }
-                            let shading = GraphicsContext.Shading.color(Color(presentation: mark.color).opacity(mark.alpha))
-                            if mark.stroke { context.stroke(path, with: shading, lineWidth: mark.width) }
-                            else { context.fill(path, with: shading) }
+        if thinking {
+            TimelineView(.animation(minimumInterval: 1.0 / 30, paused: reduceMotion || scenePhase != .active)) { timeline in
+                Canvas { context, size in
+                    context.scaleBy(x: size.width / 320, y: size.height / 108)
+                    for mark in AssemblyScene.frame(seconds: timeline.date.timeIntervalSince(started), reduced: reduceMotion) {
+                        var path = Path()
+                        for (index, point) in mark.points.enumerated() {
+                            let position = CGPoint(x: point.x, y: point.y)
+                            if index == 0 { path.move(to: position) } else { path.addLine(to: position) }
                         }
+                        if mark.points.count > 2 { path.closeSubpath() }
+                        let shading = GraphicsContext.Shading.color(Color(presentation: mark.color).opacity(mark.alpha))
+                        if mark.stroke { context.stroke(path, with: shading, lineWidth: mark.width) }
+                        else { context.fill(path, with: shading) }
                     }
-                }.padding(2).opacity(expanded ? 1 : 0)
-                RobotBadge(parts: parts, streaming: streaming).opacity(expanded ? 0 : 1)
-            }
-            .frame(width: expanded ? min(320, max(90, geometry.size.width - 3)) : 90, height: expanded ? 108 : 40)
-            .background(Color.suzentSurface)
-            .clipped()
-            .overlay(Rectangle().stroke(Color.suzentOutline, lineWidth: PresentationTokens.borderWidth))
-            .background { Rectangle().fill(Color.suzentShadow).offset(x: PresentationTokens.shadowOffsetOverlay, y: PresentationTokens.shadowOffsetOverlay) }
-            .animation(reduceMotion ? nil : .timingCurve(0.22, 1, 0.36, 1, duration: 0.65), value: expanded)
-        }
-        .frame(height: expanded ? 111 : 43)
-        .animation(reduceMotion ? nil : .timingCurve(0.22, 1, 0.36, 1, duration: 0.65), value: expanded)
-        .task(id: thinking) {
-            if thinking { started = Date() }
-            if thinking && !reduceMotion {
-                // Let SwiftUI present the default badge before changing the target size.
-                try? await Task.sleep(for: .milliseconds(32))
-            }
-            guard !Task.isCancelled else { return }
-            expanded = thinking
-        }
-        .accessibilityElement(children: .ignore).accessibilityLabel("Suzent")
+                }
+            }.frame(maxWidth: 320).frame(height: 108)
+                .background(Color.suzentSurface).clipped()
+                .overlay(Rectangle().stroke(Color.suzentOutline, lineWidth: PresentationTokens.borderWidth))
+                .background { Rectangle().fill(Color.suzentShadow).offset(x: PresentationTokens.shadowOffsetOverlay, y: PresentationTokens.shadowOffsetOverlay) }
+                .padding(.trailing, PresentationTokens.shadowOffsetOverlay).padding(.bottom, PresentationTokens.shadowOffsetOverlay)
+                .accessibilityElement(children: .ignore).accessibilityLabel("Suzent")
+        } else { RobotBadge(parts: parts, streaming: streaming) }
     }
 }
 
-private let robotDrop = Curve(0.175, 0.885, 0.32, 1.275)
-
-/// Desktop's AgentBadge: a robot whose mood follows the turn. It keeps a random personality at rest, dozes off
-/// after ten idle seconds, is startled for a moment by each new failure, turns skeptical while approval waits,
-/// and wears a face per tool. Every change drops the new face in.
+/// Desktop's Suzent bot, drawn from the shared scene core. Pauses when motion is reduced or the app is backgrounded.
 struct RobotBadge: View {
     let parts: [MessagePart]
     let streaming: Bool
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Environment(\.scenePhase) private var scenePhase
-    @State private var base = robotPersonality(Double.random(in: 0..<1))
-    @State private var seenErrors: Int?
-    @State private var flash = 0
-    @State private var startled = false
-    @State private var dropped = Date.distantPast
-
-    private var pending: Bool { parts.contains { $0.type == "tool" && $0.state == "approval-requested" && ($0.output ?? "").isEmpty } }
-    private var errors: Int { parts.filter { $0.type == "tool" && toolCallFailed($0) }.count }
-    private var variant: RobotVariant {
-        robotBadgeVariant(base: base, startled: startled, pending: pending, streaming: streaming, tool: robotCurrentTool(parts))
-    }
-
-    private func color(_ role: RobotRole) -> Color {
-        switch role {
-        case .body: .black
-        case .eye: .white
-        case .ink: .suzentText
-        case .gray: Color(white: 0.4)
-        case .dark: Color(white: 0.15)
-        }
-    }
-
-    var body: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 30, paused: reduceMotion || scenePhase != .active)) { timeline in
-            let variant = variant
-            let drop = reduceMotion ? 1 : min(timeline.date.timeIntervalSince(dropped) / 0.3, 1)
-            Canvas { context, size in
-                context.scaleBy(x: size.width / RobotScene.slot, y: size.height / RobotScene.slot)
-                if RobotScene.clips(variant) { context.clip(to: Path(CGRect(x: 0, y: 0, width: RobotScene.slot, height: RobotScene.slot))) }
-                for mark in RobotScene.frame(variant, seconds: timeline.date.timeIntervalSinceReferenceDate, reduced: reduceMotion) {
-                    switch mark {
-                    case let .shape(points, role, alpha, stroke):
-                        var path = Path()
-                        for (index, point) in points.enumerated() {
-                            if index == 0 { path.move(to: CGPoint(x: point.x, y: point.y)) } else { path.addLine(to: CGPoint(x: point.x, y: point.y)) }
-                        }
-                        if stroke > 0 { context.stroke(path, with: .color(color(role).opacity(alpha)), style: StrokeStyle(lineWidth: stroke, lineCap: .round)) }
-                        else { path.closeSubpath(); context.fill(path, with: .color(color(role).opacity(alpha))) }
-                    case let .glyph(text, x, y, size, matrix, role, alpha):
-                        var glyph = context
-                        glyph.concatenate(CGAffineTransform(a: matrix.a, b: matrix.b, c: matrix.c, d: matrix.d, tx: matrix.e, ty: matrix.f))
-                        let resolved = glyph.resolve(Text(text).font(.system(size: size, weight: .bold)).foregroundStyle(color(role).opacity(alpha)))
-                        let measured = resolved.measure(in: CGSize(width: CGFloat.infinity, height: .infinity))
-                        glyph.draw(resolved, in: CGRect(x: x, y: y - resolved.firstBaseline(in: measured), width: measured.width, height: measured.height))
-                    }
-                }
-            }
-            .frame(width: 32, height: 32)
-            .scaleEffect(keyframe(drop, [0, 0.5, 1], [0.5, 1.05, 1], robotDrop))
-            .offset(y: keyframe(drop, [0, 0.5, 1], [15, -3, 0], robotDrop))
-            .opacity(min(max(keyframe(drop, [0, 0.5, 1], [0, 1, 1], robotDrop), 0), 1))
-        }
-        .onChange(of: errors, initial: true) { _, count in
-            if let seen = seenErrors, count > seen { flash += 1 }
-            seenErrors = count
-        }
-        // Keyed on the flash alone: a count that drops when parts reconcile must not cancel the reset and leave it shaking.
-        .task(id: flash) {
-            guard flash > 0 else { return }
-            startled = true
-            try? await Task.sleep(for: .milliseconds(2600))
-            guard !Task.isCancelled else { return }
-            startled = false
-        }
-        .task(id: "\(streaming):\(pending):\(base.rawValue)") {
-            if streaming || pending { if base == .snoozer { base = .idle } }
-            else if base == .idle {
-                try? await Task.sleep(for: .seconds(10))
-                guard !Task.isCancelled else { return }
-                base = .snoozer
-            }
-        }
-        .onChange(of: variant) { _, _ in dropped = Date() }
-        .accessibilityHidden(true)
-    }
+    var body: some View { SuzentBotBadge(parts: parts, streaming: streaming) }
 }
 
 private struct ChatContentFrameKey: PreferenceKey {

@@ -56,16 +56,15 @@ private struct ActivityReveal<Content: View>: View {
         .clipped()
         .opacity(expanded ? 1 : 0)
         .accessibilityHidden(!expanded)
-        .onChange(of: expanded, initial: true) { _, open in if open { rendered = true } }
+        .task(id: expanded) {
+            if expanded { rendered = true }
+            else {
+                if !reduceMotion { try? await Task.sleep(for: .milliseconds(300)) }
+                guard !Task.isCancelled else { return }
+                rendered = false
+            }
+        }
     }
-}
-
-/// Same rule as Android `turnAuthorMark`: Regent's chat header already names Regent.
-enum TurnAuthorMark { case assembly, assistant }
-
-func turnAuthorMark(regentChat: Bool, live: Bool, compact: Bool, pendingApproval: Bool) -> TurnAuthorMark? {
-    if regentChat { return nil }
-    return live || !compact || pendingApproval ? .assembly : .assistant
 }
 
 struct ActivityTurn: View {
@@ -85,33 +84,27 @@ struct ActivityTurn: View {
         let work = Array(parts.prefix(start)).filter { $0.regentBubble != true && $0.type != "a2ui" }
         let persistent = Array(parts.prefix(start)).filter { $0.regentBubble == true || $0.type == "a2ui" }
         let pending = work.contains { $0.state == "approval-requested" && ($0.output ?? "").isEmpty }
-        let author = turnAuthorMark(regentChat: regent, live: live, compact: compact, pendingApproval: pending)
+        let placement = botPlacement(parts, live: live, latest: !compact, regent: regent)
         let showDisclosure = !live && !work.isEmpty
         VStack(alignment: .leading, spacing: 10) {
-            if author != nil || showDisclosure {
-            HStack(spacing: 12) {
-                if author == .assembly { AssemblyBadge(thinking: showAssemblyBadge(parts, streaming: live), parts: parts, streaming: live) }
-                else if author == .assistant { SuzentAssistantBadge(compact: compact) }
-                else { Spacer(minLength: 0) }
-                if showDisclosure {
-                    Button {
-                        withAnimation(reduceMotion ? nil : activityDisclosureAnimation) { expanded.toggle() }
-                    } label: {
-                        HStack(spacing: 5) {
-                            Text(workedSeconds.map { String(localized: "Worked for \(activityDuration($0))") } ?? String(localized: "Activity"))
-                            Image(systemName: "chevron.right").rotationEffect(.degrees(expanded || pending ? 90 : 0))
-                        }.suzentFont(PresentationTokens.typeMeta, design: .monospaced).foregroundStyle(Color.suzentMuted)
-                            .frame(minHeight: 44).contentShape(Rectangle())
-                    }.buttonStyle(.plain).accessibilityValue(expanded || pending ? Text("Expanded") : Text("Collapsed"))
-                }
+            if placement == .assembly { AssemblyBadge(thinking: true) }
+            if showDisclosure {
+                Button {
+                    withAnimation(reduceMotion ? nil : activityDisclosureAnimation) { expanded.toggle() }
+                } label: {
+                    HStack(spacing: 5) {
+                        Text(workedSeconds.map { String(localized: "Worked for \(activityDuration($0))") } ?? String(localized: "Activity"))
+                        Image(systemName: "chevron.right").rotationEffect(.degrees(expanded || pending ? 90 : 0))
+                    }.suzentFont(PresentationTokens.typeMeta, design: .monospaced).foregroundStyle(Color.suzentMuted)
+                        .frame(minHeight: 44).contentShape(Rectangle())
+                }.buttonStyle(.plain).accessibilityValue(expanded || pending ? Text("Expanded") : Text("Collapsed"))
             }
-            }
-            if live { ActivityContent(parts: parts, live: true, citationSources: citationSources, regent: regent) }
+            if live { ActivityContent(parts: parts, live: true, citationSources: citationSources, regent: regent, showBot: placement == .rail) }
             else {
                 // The gap below the disclosed work lives inside the reveal, so a collapsed reveal adds no spacing.
                 VStack(alignment: .leading, spacing: 0) {
                     ActivityReveal(expanded: expanded || pending) {
-                        ActivityContent(parts: work, citationSources: citationSources, regent: regent).padding(.bottom, 10)
+                        ActivityContent(parts: work, citationSources: citationSources, regent: regent, showBot: placement == .rail).padding(.bottom, 10)
                     }
                     let media = mediaItems(parts)
                     if !media.isEmpty { MediaGallery(items: media).padding(.bottom, 10) }
@@ -119,6 +112,7 @@ struct ActivityTurn: View {
                                     bubbleMenu: bubbleMenu)
                 }
             }
+            if live && placement == .footer { SuzentBotBadge(parts: parts, streaming: true, toolOverride: "write_file") }
             let sent = sentMediaItems(parts)
             if !sent.isEmpty { SentFilesSection(items: sent) }
         }.frame(maxWidth: .infinity, alignment: .leading)
@@ -131,6 +125,7 @@ struct ActivityRail: View {
     let live: Bool
     let current: Bool
     var expansionKey = ""
+    var showBot = false
     @State private var localChoice: Bool?
     @Environment(\.railChoices) private var railChoices
     @Environment(\.railScope) private var railScope
@@ -188,7 +183,11 @@ struct ActivityRail: View {
                 withAnimation(reduceMotion ? nil : activityDisclosureAnimation) { localChoice = next }
             } label: {
                 HStack(spacing: 8) {
-                    if let tool = parts.last(where: { $0.type == "tool" }) { ActivityToolIcon(part: tool, running: running && tool.state == "running", color: accent).frame(width: 20, height: 20) }
+                    if showBot && current && (!expanded || waiting) {
+                        SuzentBotBadge(parts: parts, streaming: live)
+                    } else if !expanded && parts.last?.type != "reasoning", let tool = parts.last(where: { $0.type == "tool" }) {
+                        ActivityToolIcon(part: tool, running: running && tool.state == "running", color: accent).frame(width: 20, height: 20)
+                    }
                     // Desktop's collapsed header carries a streaming thought on the word itself.
                     if running && !expanded && !waiting && parts.last?.type == "reasoning" { ThinkingLabel(text: summary) }
                     else { Text(summary).lineLimit(1).truncationMode(.tail) }
@@ -333,25 +332,12 @@ struct ActivityToolIcon: View {
         if part.type != "tool" {
             Image(systemName: "sparkles").font(.system(size: 14)).foregroundStyle(color).accessibilityHidden(true)
         } else {
-            TimelineView(.animation(minimumInterval: 1.0 / 30, paused: reduceMotion || scenePhase != .active || animation == "none")) { context in
-                let pose = reduceMotion || animation == "none" ? ToolIconPose() : toolIconPose(animation, seconds: context.date.timeIntervalSinceReferenceDate)
-                GeometryReader { geometry in
-                    // Desktop draws these at 14px; its keyframe offsets are in those pixels.
-                    let unit = geometry.size.width / 14
-                    ZStack {
-                        Image("Tools/\(activityToolIcon(part.toolName ?? "", approval: approval))").resizable().renderingMode(.template)
-                            .foregroundStyle(color)
-                            .scaleEffect(pose.scale)
-                            .rotationEffect(.degrees(pose.rotation))
-                            .offset(x: pose.dx * unit, y: pose.dy * unit)
-                            .opacity(pose.alpha)
-                        if pose.sweepAlpha > 0 {
-                            Capsule().fill(color).frame(height: 1.5).padding(.horizontal, 1)
-                                .offset(y: pose.sweepY * unit).opacity(pose.sweepAlpha)
-                        }
-                    }
-                }
-            }.accessibilityHidden(true)
+            if animation != "none" {
+                SharedToolGlyph(tool: part.toolName ?? "", animation: animation, color: color)
+            } else {
+                Image("Tools/\(activityToolIcon(part.toolName ?? "", approval: approval))").resizable().renderingMode(.template)
+                    .foregroundStyle(color).accessibilityHidden(true)
+            }
         }
     }
 }

@@ -83,9 +83,15 @@ fun robotPersonality(roll: Double): RobotVariant {
     return RobotVariant.IDLE
 }
 
-/** The tool the badge reacts to: the first still without output, else the turn's last part when it is a tool. */
-fun robotCurrentTool(parts: List<MessagePart>): String? =
-    (parts.firstOrNull { it.type == "tool" && it.output.isEmpty() } ?: parts.lastOrNull()?.takeIf { it.type == "tool" })?.toolName
+/**
+ * The tool the badge reacts to while streaming: the latest still running, else the turn's last part when it is a tool.
+ * None while reasoning, so the badge thinks instead of replaying a finished tool.
+ */
+fun robotCurrentTool(parts: List<MessagePart>, streaming: Boolean): String? {
+    if (!streaming || parts.lastOrNull()?.type == "reasoning") return null
+    return parts.lastOrNull { it.type == "tool" && it.state == "running" && it.output.isEmpty() }?.toolName
+        ?: parts.lastOrNull()?.takeIf { it.type == "tool" }?.toolName
+}
 
 /** Desktop's AgentBadge variant: a fresh failure startles it, approval makes it skeptical, each tool has its face. */
 fun robotBadgeVariant(base: RobotVariant, startled: Boolean, pending: Boolean, streaming: Boolean, tool: String?): RobotVariant = when {

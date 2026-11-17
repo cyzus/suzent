@@ -1,5 +1,15 @@
-import { HEAD_C, PENCIL_GLYPH, PENCIL_RING, clamp, ringOutline } from '../suzentBotGeometry';
-import { ActEvalContext, FullBodyActPose, createDefaultActPose } from './actTypes';
+import {
+  HEAD_C,
+  PENCIL_GLYPH,
+  PENCIL_RING,
+  clamp,
+  ringOutline,
+} from "../suzentBotGeometry";
+import {
+  ActEvalContext,
+  FullBodyActPose,
+  createDefaultActPose,
+} from "./actTypes";
 
 const PENCIL_NIB_PATH: string = ringOutline(PENCIL_RING);
 
@@ -42,7 +52,7 @@ export function evalFountainPen({ t, fade }: ActEvalContext): FullBodyActPose {
 
   const drawProg = lift ? 1 : prog;
   const steps = Math.max(2, Math.round(drawProg * 36));
-  let trailPath = '';
+  let trailPath = "";
   if (!lift && drawProg > 0.03) {
     for (let i = 0; i <= steps; i++) {
       const s = (i / steps) * drawProg;
@@ -50,7 +60,7 @@ export function evalFountainPen({ t, fade }: ActEvalContext): FullBodyActPose {
       const w = (5.5 * Math.sin(26 * s) + 2.5 * Math.cos(13 * s)) * env;
       const tx = HEAD_C + 18 + s * 108;
       const ty = HEAD_C + 58 + 0.5 * w + 26;
-      trailPath += `${i === 0 ? 'M' : 'L'}${tx.toFixed(1)} ${ty.toFixed(1)}`;
+      trailPath += `${i === 0 ? "M" : "L"}${tx.toFixed(1)} ${ty.toFixed(1)}`;
     }
   }
 
@@ -65,7 +75,7 @@ export function evalFountainPen({ t, fade }: ActEvalContext): FullBodyActPose {
 
   pose.frontHtml = `
     <g opacity="${fade.toFixed(2)}">
-      ${trailPath ? `<path d="${trailPath}" fill="none" stroke="var(--fg)" stroke-width="10" stroke-linecap="round" stroke-linejoin="round" />` : ''}
+      ${trailPath ? `<path d="${trailPath}" fill="none" stroke="var(--fg)" stroke-width="10" stroke-linecap="round" stroke-linejoin="round" />` : ""}
       <g transform="translate(${gx.toFixed(1)} ${gy.toFixed(1)}) rotate(${penRot.toFixed(1)}) translate(${-HEAD_C} ${-HEAD_C})">
         <path d="${PENCIL_GLYPH}" fill="var(--bg)" stroke="var(--bg)" stroke-width="14" stroke-linejoin="round" />
         <path d="${PENCIL_GLYPH}" fill="var(--fg)" />
@@ -106,7 +116,9 @@ export function evalWorkout({ t, fade }: ActEvalContext): FullBodyActPose {
   const barY = HEAD_C - 96 - press * 44 + pose.y * 0.85;
   const armBottomY = HEAD_C - 20 + pose.y;
   const bend =
-    press > 0.5 ? Math.sin((cyc - 0.36) * 28) * 4.5 * Math.exp(-(cyc - 0.36) * 4) + 5 : -3 * squat;
+    press > 0.5
+      ? Math.sin((cyc - 0.36) * 28) * 4.5 * Math.exp(-(cyc - 0.36) * 4) + 5
+      : -3 * squat;
 
   pose.backHtml = `
     <g opacity="${fade.toFixed(2)}">
@@ -154,7 +166,10 @@ export function evalLaptopType({ t, fade }: ActEvalContext): FullBodyActPose {
 }
 
 /** E2: Full-throttle sprinter with pumping feet & trailing speed lines */
-export function evalTurboSprinter({ t, fade }: ActEvalContext): FullBodyActPose {
+export function evalTurboSprinter({
+  t,
+  fade,
+}: ActEvalContext): FullBodyActPose {
   const pose = createDefaultActPose();
   const stride = Math.sin(t * 22);
   const strideCos = Math.cos(t * 22);
@@ -166,7 +181,7 @@ export function evalTurboSprinter({ t, fade }: ActEvalContext): FullBodyActPose 
   pose.gazeX = 18;
   pose.gazeY = 2;
 
-  let windSvg = '';
+  let windSvg = "";
   for (let i = 0; i < 3; i++) {
     const wp = (t * 2.8 + i / 3) % 1;
     const wx = 8 - wp * 56;
@@ -190,7 +205,11 @@ export function evalTurboSprinter({ t, fade }: ActEvalContext): FullBodyActPose 
 }
 
 /** E4: Studio headphones + heavy bass squash-and-stretch headbanging */
-export function evalDjGroove({ t, fade, headPose }: ActEvalContext): FullBodyActPose {
+export function evalDjGroove({
+  t,
+  fade,
+  headPose,
+}: ActEvalContext): FullBodyActPose {
   const pose = createDefaultActPose();
   const beat = Math.abs(Math.sin(t * Math.PI * 3.2));
   pose.y = (1 - beat) * 14 - 6;

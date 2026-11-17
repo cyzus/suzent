@@ -82,37 +82,32 @@ fun ActivityTurn(parts: List<MessagePart>, live: Boolean = false, regent: Boolea
     val work = parts.take(start).filterNot { it.regentBubble || it.type == "a2ui" }
     val persistent = parts.take(start).filter { it.regentBubble || it.type == "a2ui" }
     val pending = work.any { it.state == "approval-requested" && it.output.isEmpty() }
-    val author = turnAuthorMark(regent, live, compact, pending)
+    val placement = botPlacement(parts, live, !compact, regent)
     val showDisclosure = !live && work.isNotEmpty()
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        if (author != null || showDisclosure) Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            if (author == null) Spacer(Modifier.weight(1f))
-            else Box(Modifier.weight(1f, fill = false)) {
-                if (author == TurnAuthorMark.Assembly) AssemblyBadge(thinking = showAssemblyBadge(parts, live), parts = parts, streaming = live)
-                else SuzentAssistantBadge(compact = compact)
-            }
-            if (showDisclosure) {
-                val visible = expanded || pending
-                val label = stringResource(if (visible) R.string.reminder_expanded else R.string.reminder_collapsed)
-                SuzentTextButton(onClick = { expanded = !expanded }, modifier = Modifier.semantics { stateDescription = label }, contentPadding = PaddingValues(0.dp)) {
-                    Text(if (workedSeconds != null) stringResource(R.string.activity_worked_for, activityDuration(workedSeconds)) else stringResource(R.string.activity_label),
-                        fontSize = PresentationTokens.typeMeta.sp, fontFamily = FontFamily.Monospace, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    ActivityChevron(visible)
-                }
+        if (placement == BotPlacement.Assembly) AssemblyBadge(thinking = true)
+        if (showDisclosure) {
+            val visible = expanded || pending
+            val label = stringResource(if (visible) R.string.reminder_expanded else R.string.reminder_collapsed)
+            SuzentTextButton(onClick = { expanded = !expanded }, modifier = Modifier.semantics { stateDescription = label }, contentPadding = PaddingValues(0.dp)) {
+                Text(if (workedSeconds != null) stringResource(R.string.activity_worked_for, activityDuration(workedSeconds)) else stringResource(R.string.activity_label),
+                    fontSize = PresentationTokens.typeMeta.sp, fontFamily = FontFamily.Monospace, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                ActivityChevron(visible)
             }
         }
-        if (live) ActivityContent(parts, true, citationSources, regent)
+        if (live) ActivityContent(parts, true, citationSources, regent, showBot = placement == BotPlacement.Rail)
         // The gap below the disclosed work lives inside it: as a separate Column child the spacing stayed
         // after the content shrank to zero and vanished in one frame when the disclosure left composition.
         else Column {
             ActivityDisclosure(expanded || pending) {
-                Box(Modifier.padding(bottom = 10.dp)) { ActivityContent(work, false, citationSources, regent) }
+                Box(Modifier.padding(bottom = 10.dp)) { ActivityContent(work, false, citationSources, regent, showBot = placement == BotPlacement.Rail) }
             }
             // What send_file handed over is the turn's deliverable: it goes under the reply, not here.
             val media = remember(parts) { parts.filter { it.toolName != "send_file" }.flatMap { it.media } }
             if (media.isNotEmpty()) Box(Modifier.padding(bottom = 10.dp)) { MediaGallery(media) }
             ActivityContent(persistent + parts.drop(start), false, citationSources, regent, onBubbleLongPress)
         }
+        if (live && placement == BotPlacement.Footer) RobotBadge(parts, streaming = true, toolOverride = "write_file")
         val sent = remember(parts) { parts.filter { it.toolName == "send_file" }.flatMap { it.media } }
         if (sent.isNotEmpty()) SentFilesSection(sent)
     }
@@ -145,7 +140,7 @@ private fun ActivityChevron(expanded: Boolean) {
 }
 
 @Composable
-fun ActivityRail(parts: List<MessagePart>, live: Boolean, current: Boolean, expansionKey: String = "") {
+fun ActivityRail(parts: List<MessagePart>, live: Boolean, current: Boolean, expansionKey: String = "", showBot: Boolean = false) {
     val store = LocalRailChoices.current
     val scope = LocalRailScope.current
     val storedKey = if (store != null && scope.isNotEmpty()) "$scope:$expansionKey" else ""
@@ -202,7 +197,12 @@ fun ActivityRail(parts: List<MessagePart>, live: Boolean, current: Boolean, expa
             if (storedKey.isNotEmpty()) store?.set(storedKey, next)
             localChoice = next
         }, modifier = Modifier.fillMaxWidth().runningSurface(headerSurface, ink).semantics { stateDescription = expandedLabel }, contentPadding = PaddingValues(horizontal = 2.dp)) {
-            parts.lastOrNull { it.type == "tool" }?.let { tool -> ActivityToolIcon(tool, tool.state == "running" && running, accent); Spacer(Modifier.width(8.dp)) }
+            if (showBot && current && (!expanded || waiting)) {
+                RobotBadge(parts, streaming = live)
+                Spacer(Modifier.width(8.dp))
+            } else if (!expanded && latest?.type != "reasoning") {
+                parts.lastOrNull { it.type == "tool" }?.let { tool -> ActivityToolIcon(tool, tool.state == "running" && running, accent); Spacer(Modifier.width(8.dp)) }
+            }
             // Desktop's collapsed header carries a streaming thought on the word itself.
             if (running && !expanded && !waiting && latest?.type == "reasoning") ThinkingLabel(status, accent, PresentationTokens.typeLabel.sp, FontWeight.Medium, Modifier.weight(1f))
             else Text(status, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis, fontSize = PresentationTokens.typeLabel.sp, fontWeight = FontWeight.Medium, color = accent)
@@ -311,44 +311,54 @@ private val toolIconDrawables = mapOf(
 @Composable
 private fun ActivityToolIcon(part: MessagePart, running: Boolean, color: Color) {
     val reduced = !ValueAnimator.areAnimatorsEnabled()
-    val lifecycle = LocalLifecycleOwner.current.lifecycle
     val approval = when {
         part.state == "approval-requested" && part.output.isEmpty() -> "pending"
         part.state in listOf("denied", "rejected") -> "denied"
         else -> null
     }
     val animation = if (part.type == "tool") activityToolAnimation(part.toolName, approval, running, part.output.isNotEmpty()) else "none"
-    var seconds by remember { mutableDoubleStateOf(0.0) }
-    LaunchedEffect(animation, reduced, lifecycle) {
-        if (!reduced && animation != "none") lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
-            var previous = 0L
-            while (true) withFrameNanos { now ->
-                if (previous != 0L) seconds += ((now - previous) / 1_000_000_000.0).coerceAtMost(.05)
-                previous = now
-            }
-        }
-    }
     if (part.type != "tool") {
         Canvas(Modifier.size(18.dp)) {
             scale(size.width / 24, size.height / 24, pivot = Offset.Zero) {
                 drawPath(Path().apply { moveTo(12f,2f); lineTo(15f,9f); lineTo(22f,12f); lineTo(15f,15f); lineTo(12f,22f); lineTo(9f,15f); lineTo(2f,12f); lineTo(9f,9f); close() }, color, style = Stroke(1.5f))
             }
         }
-        return
+    } else if (animation != "none") {
+        ToolGlyph(part.toolName, animation, color, reduced)
+    } else {
+        Icon(painterResource(toolIconDrawables[activityToolIcon(part.toolName, approval)] ?: R.drawable.ic_tool_wrench_screwdriver),
+            contentDescription = null, tint = color, modifier = Modifier.size(18.dp))
     }
-    // Desktop draws these at 14px; its keyframe offsets are in those pixels.
-    val unit = 18f / 14f
-    val pose = if (reduced || animation == "none") ToolIconPose() else toolIconPose(animation, seconds)
-    Box(Modifier.size(18.dp)) {
-        Icon(painterResource(toolIconDrawables[activityToolIcon(part.toolName, approval)] ?: R.drawable.ic_tool_wrench_screwdriver), contentDescription = null, tint = color,
-            modifier = Modifier.fillMaxSize().graphicsLayer {
-                translationX = (pose.dx * unit).dp.toPx(); translationY = (pose.dy * unit).dp.toPx()
-                rotationZ = pose.rotation.toFloat(); scaleX = pose.scale.toFloat(); scaleY = pose.scale.toFloat(); alpha = pose.alpha.toFloat()
-            })
-        if (pose.sweepAlpha > 0) Box(Modifier.align(Alignment.Center).padding(horizontal = 1.dp).fillMaxWidth().height(1.5.dp)
-            .graphicsLayer { translationY = (pose.sweepY * unit).dp.toPx(); alpha = pose.sweepAlpha.toFloat() }
-            .background(color, RoundedCornerShape(50)))
+}
+
+@Composable
+private fun ToolGlyph(tool: String, animation: String, color: Color, reduced: Boolean) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    val frame = remember { mutableStateOf<SuzentBotFrame?>(null) }
+    LaunchedEffect(tool, animation, reduced, lifecycle) {
+        kotlinx.coroutines.withContext(botDispatcher) {
+            val host = SharedBotEngine.host(context)
+            val glyph = SharedBotEngine.newGlyph()
+            try {
+                var seconds = 0.0
+                lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                    var previous = System.nanoTime()
+                    while (true) {
+                        val now = System.nanoTime()
+                        seconds += ((now - previous) / 1_000_000_000.0).coerceAtMost(.05)
+                        previous = now
+                        frame.value = host.toolFrame(tool, animation, seconds, reduced, glyph)
+                        if (reduced) break
+                        kotlinx.coroutines.delay(((33_333_334L - (System.nanoTime() - now)) / 1_000_000).coerceAtLeast(1))
+                    }
+                }
+            } finally {
+                host.destroyGlyph(glyph)
+            }
+        }
     }
+    Canvas(Modifier.size(18.dp)) { frame.value?.let { drawSuzentBot(it, color) } }
 }
 
 /** Desktop's brutal-running-* background: a sliding grid (ruler ticks for "mono", dots for "dots") under a sweeping wave. */

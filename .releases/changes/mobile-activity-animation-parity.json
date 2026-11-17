@@ -1,0 +1,1 @@
+{"products":{"desktop":"patch","mobile":"patch"},"summary":"Place the mobile robot and animate tool icons the way desktop does, and draw them off the UI thread on iOS and Android, pausing when hidden or settled."}

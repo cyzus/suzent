@@ -399,10 +399,14 @@ class LiveActivityBuffer {
 fun showAssemblyBadge(parts: List<MessagePart>, streaming: Boolean): Boolean =
     streaming && parts.none { it.type != "text" || it.text.isNotBlank() }
 
-/** Who a turn introduces itself as. Regent's own chat already does that in the header. */
-enum class TurnAuthorMark { Assembly, Assistant }
+enum class BotPlacement { None, Assembly, Rail, Footer }
 
-fun turnAuthorMark(regentChat: Boolean, live: Boolean, compact: Boolean, pendingApproval: Boolean): TurnAuthorMark? {
-    if (regentChat) return null
-    return if (live || !compact || pendingApproval) TurnAuthorMark.Assembly else TurnAuthorMark.Assistant
+fun botPlacement(parts: List<MessagePart>, live: Boolean, latest: Boolean, regent: Boolean): BotPlacement {
+    if (regent) return BotPlacement.None
+    val pending = parts.any { it.type == "tool" && it.state == "approval-requested" && it.output.isEmpty() }
+    if (!live && !latest && !pending) return BotPlacement.None
+    if (showAssemblyBadge(parts, live)) return BotPlacement.Assembly
+    val content = parts.filterNot { it.type in listOf("citation-sources", "incoming-message") || it.type == "text" && it.text.isBlank() }
+    if (pending || live && content.lastOrNull()?.type in listOf("tool", "reasoning")) return BotPlacement.Rail
+    return BotPlacement.Footer
 }

@@ -90,11 +90,11 @@ public func activityDuration(_ seconds: Int) -> String {
 
 /// Whether an activity rail is open.
 ///
-/// A missing choice follows the stream. Remembering the choice on the conversation,
+/// A missing choice keeps the rail collapsed, matching desktop. Remembering the choice on the conversation,
 /// not on the row, keeps a collapse across token updates and across the row leaving
 /// the screen. Approval still forces the rail open.
 public func railExpanded(choice: Bool?, live: Bool, current: Bool, waiting: Bool) -> Bool {
-    waiting || (choice ?? (live && current))
+    waiting || (choice ?? false)
 }
 
 /// A new stream gets a new generation so it does not inherit the previous rail's collapse.
@@ -176,10 +176,12 @@ public func robotPersonality(_ roll: Double) -> RobotVariant {
     return .idle
 }
 
-/// The tool the badge reacts to: the first still without output, else the turn's last part when it is a tool.
-public func robotCurrentTool(_ parts: [MessagePart]) -> String? {
-    let tool = parts.first { $0.type == "tool" && ($0.output ?? "").isEmpty } ?? parts.last.flatMap { $0.type == "tool" ? $0 : nil }
-    return tool?.toolName
+/// The tool the badge reacts to while streaming: the latest still running, else the turn's last part when it is a tool.
+/// None while reasoning, so the badge thinks instead of replaying a finished tool.
+public func robotCurrentTool(_ parts: [MessagePart], streaming: Bool) -> String? {
+    guard streaming, parts.last?.type != "reasoning" else { return nil }
+    let running = parts.last { $0.type == "tool" && $0.state == "running" && ($0.output ?? "").isEmpty }
+    return running?.toolName ?? parts.last.flatMap { $0.type == "tool" ? $0.toolName : nil }
 }
 
 /// Desktop's AgentBadge variant: a fresh failure startles it, approval makes it skeptical, each tool has its face.

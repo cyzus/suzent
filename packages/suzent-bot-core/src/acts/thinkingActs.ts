@@ -1,5 +1,9 @@
-import { HEAD_C, Point2D, clamp } from '../suzentBotGeometry';
-import { ActEvalContext, FullBodyActPose, createDefaultActPose } from './actTypes';
+import { HEAD_C, Point2D, clamp } from "../suzentBotGeometry";
+import {
+  ActEvalContext,
+  FullBodyActPose,
+  createDefaultActPose,
+} from "./actTypes";
 
 /**
  * 96-point 8-tooth precision mechanical gear contour (centered at HEAD_C = 114.2705)
@@ -19,7 +23,8 @@ export function evalThoughtCloud({ t, fade }: ActEvalContext): FullBodyActPose {
   const pose = createDefaultActPose();
   const cyc = (t / 2.4) % 1;
   const ponder = Math.sin(cyc * Math.PI * 2);
-  const ideaFlash = cyc > 0.58 && cyc < 0.88 ? Math.sin(((cyc - 0.58) / 0.3) * Math.PI) : 0;
+  const ideaFlash =
+    cyc > 0.58 && cyc < 0.88 ? Math.sin(((cyc - 0.58) / 0.3) * Math.PI) : 0;
 
   pose.x = -18 + ponder * 5;
   pose.y = 18 - ideaFlash * 16;
@@ -57,11 +62,19 @@ export function evalThoughtCloud({ t, fade }: ActEvalContext): FullBodyActPose {
 }
 
 /** T2: True spline morph into an 8-tooth mechanical gear cog with meshing companion gear */
-export function evalFullGear({ t, fade, headPose }: ActEvalContext): FullBodyActPose {
+export function evalFullGear({
+  t,
+  fade,
+  headPose,
+}: ActEvalContext): FullBodyActPose {
   const pose = createDefaultActPose();
   const cyc = (t / 3.4) % 1;
   const gearBlend =
-    cyc < 0.14 ? clamp(cyc / 0.14, 0, 1) : cyc < 0.84 ? 1 : clamp((1 - cyc) / 0.16, 0, 1);
+    cyc < 0.14
+      ? clamp(cyc / 0.14, 0, 1)
+      : cyc < 0.84
+        ? 1
+        : clamp((1 - cyc) / 0.16, 0, 1);
   const smoothBlend = gearBlend * gearBlend * (3 - 2 * gearBlend);
   const stepTick = Math.floor(t * 2.5) * 45 + ((t * 2.5) % 1) ** 3 * 45;
   const pulse = Math.sin(t * 5);
@@ -100,12 +113,15 @@ export function evalFullGear({ t, fade, headPose }: ActEvalContext): FullBodyAct
       <circle cx="${gx.toFixed(1)}" cy="${gy.toFixed(1)}" r="${(12 * smoothBlend).toFixed(1)}" fill="var(--fg)" />
     </g>
   `
-      : '';
+      : "";
   return pose;
 }
 
 /** T3: "?" puzzled wobble -> 360° "!" Eureka flip */
-export function evalQuestionEureka({ t, fade }: ActEvalContext): FullBodyActPose {
+export function evalQuestionEureka({
+  t,
+  fade,
+}: ActEvalContext): FullBodyActPose {
   const pose = createDefaultActPose();
   const cyc = (t / 2.6) % 1;
   if (cyc < 0.62) {
@@ -145,7 +161,10 @@ export function evalQuestionEureka({ t, fade }: ActEvalContext): FullBodyActPose
 }
 
 /** T4: Zero-G levitation + breathing ground shadow + 360° Eureka mid-air somersault */
-export function evalEurekaLevitate({ t, fade }: ActEvalContext): FullBodyActPose {
+export function evalEurekaLevitate({
+  t,
+  fade,
+}: ActEvalContext): FullBodyActPose {
   const pose = createDefaultActPose();
   const cyc = (t / 2.8) % 1;
   let liftY = 0;
@@ -187,7 +206,7 @@ export function evalEurekaLevitate({ t, fade }: ActEvalContext): FullBodyActPose
 
   const shadowScale = clamp(1 + liftY / 75, 0.45, 1.25);
   const shadowOp = 0.18 * shadowScale * fade;
-  let ringSvg = '';
+  let ringSvg = "";
   if (ringExpand > 0) {
     const r = 90 + ringExpand * 65;
     const rOp = (1 - ringExpand) * 0.75 * fade;

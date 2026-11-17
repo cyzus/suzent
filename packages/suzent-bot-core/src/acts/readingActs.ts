@@ -1,5 +1,9 @@
-import { HEAD_C } from '../suzentBotGeometry';
-import { ActEvalContext, FullBodyActPose, createDefaultActPose } from './actTypes';
+import { HEAD_C } from "../suzentBotGeometry";
+import {
+  ActEvalContext,
+  FullBodyActPose,
+  createDefaultActPose,
+} from "./actTypes";
 
 /** R1: Holding open book & page flipping (`read_file`, `agent_read`) */
 export function evalSpeedReader({ t, fade }: ActEvalContext): FullBodyActPose {
@@ -27,7 +31,7 @@ export function evalSpeedReader({ t, fade }: ActEvalContext): FullBodyActPose {
 
   const bx = HEAD_C + pose.x * 0.6;
   const by = 224;
-  let flipSvg = '';
+  let flipSvg = "";
   if (pageFlip >= 0) {
     const ang = pageFlip * Math.PI;
     const fx = bx + Math.cos(ang) * 68;
@@ -76,7 +80,7 @@ export function evalChompFile({ t, fade }: ActEvalContext): FullBodyActPose {
 
   const dx = HEAD_C + 104;
   const dy = HEAD_C + 6;
-  let docSvg = '';
+  let docSvg = "";
 
   if (biteIdx < 3) {
     const topY = biteIdx === 0 ? dy - 56 : biteIdx === 1 ? dy - 16 : dy + 20;
@@ -87,9 +91,9 @@ export function evalChompFile({ t, fade }: ActEvalContext): FullBodyActPose {
 
     docSvg += `
       <path d="${docPath}" fill="var(--bg)" stroke="var(--fg)" stroke-width="10" stroke-linejoin="round" />
-      ${hasDogEar ? `<path d="M ${dx + 12} ${topY} L ${dx + 12} ${topY + 22} L ${dx + 34} ${topY + 22}" fill="none" stroke="var(--fg)" stroke-width="8" stroke-linejoin="round" />` : ''}
-      ${biteIdx <= 0 ? `<line x1="${dx - 18}" y1="${dy - 24}" x2="${dx + 16}" y2="${dy - 24}" stroke="var(--fg)" stroke-width="7" stroke-linecap="round" />` : ''}
-      ${biteIdx <= 1 ? `<line x1="${dx - 18}" y1="${dy + 4}" x2="${dx + 18}" y2="${dy + 4}" stroke="var(--fg)" stroke-width="7" stroke-linecap="round" />` : ''}
+      ${hasDogEar ? `<path d="M ${dx + 12} ${topY} L ${dx + 12} ${topY + 22} L ${dx + 34} ${topY + 22}" fill="none" stroke="var(--fg)" stroke-width="8" stroke-linejoin="round" />` : ""}
+      ${biteIdx <= 0 ? `<line x1="${dx - 18}" y1="${dy - 24}" x2="${dx + 16}" y2="${dy - 24}" stroke="var(--fg)" stroke-width="7" stroke-linecap="round" />` : ""}
+      ${biteIdx <= 1 ? `<line x1="${dx - 18}" y1="${dy + 4}" x2="${dx + 18}" y2="${dy + 4}" stroke="var(--fg)" stroke-width="7" stroke-linecap="round" />` : ""}
       <line x1="${dx - 18}" y1="${dy + 32}" x2="${dx + 10}" y2="${dy + 32}" stroke="var(--fg)" stroke-width="7" stroke-linecap="round" />
     `;
 
@@ -111,7 +115,8 @@ export function evalChompFile({ t, fade }: ActEvalContext): FullBodyActPose {
 export function evalFloatingDoc({ t, fade }: ActEvalContext): FullBodyActPose {
   const pose = createDefaultActPose();
   const cyc = (t / 1.5) % 1;
-  const scanY = cyc < 0.78 ? -16 + (cyc / 0.78) * 32 : 16 - ((cyc - 0.78) / 0.22) * 32;
+  const scanY =
+    cyc < 0.78 ? -16 + (cyc / 0.78) * 32 : 16 - ((cyc - 0.78) / 0.22) * 32;
   const hop = cyc >= 0.78 ? Math.sin(((cyc - 0.78) / 0.22) * Math.PI) : 0;
 
   pose.x = -24 + Math.sin(t * 4) * 3;
