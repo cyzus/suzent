@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Release notes
 - Reduce model-picker overhead by caching the model catalog and omitting it from routine mobile conversation polling.
 - Open conversations more smoothly by avoiding unused agent-state reads and moving history processing off the UI thread.
+- The desktop app polls the backend less while idle: the sidebar no longer re-renders when nothing changed, scheduled and heartbeat chats reload only when they have new activity, Git and background task checks slow down when there is nothing running, and status checks pause while the window is hidden.
 - An MCP server that can't connect no longer fails every chat: its tools are skipped for that turn, first-launch installs run in the background, and the MCP settings page shows which servers are still preparing or failing.
 - Keep desktop and mobile actions consistent through a shared API while preserving device permissions and compatibility with older clients.
 
