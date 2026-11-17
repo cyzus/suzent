@@ -1,6 +1,6 @@
 """Full-text chat search infrastructure (SQLite FTS5).
 
-Chats persist their messages as a JSON array on ``ChatModel.messages`` rather than
+Chats persist their messages in a per-chat JSONL log rather than
 one row per message, so FTS5's external-content sync triggers cannot be used. Instead
 we maintain a plain FTS5 table (``chat_messages_fts``) and reindex a chat's rows from
 the application layer whenever its messages change (see ChatOperationsMixin write paths).
@@ -307,6 +307,8 @@ class ChatSearchMixin:
         from sqlmodel import select
         from suzent.database.models import ChatModel, messages_search_filter
 
+        if not self.fts_available():
+            return []
         try:
             with self._session() as session:
                 statement = (

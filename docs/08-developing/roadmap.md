@@ -71,12 +71,6 @@ chat's JSONL log is authoritative and `chats.db` is rebuilt from the logs.
 
 Not done yet:
 
-- **Slim chat rows.** The turn's real writes (snapshot, finalize, appended
-  display rows) still rewrite the whole `messages` and `agent_state` blobs in
-  the `chats` row under the SQLite write lock, about 0.2s each on a 600-message
-  chat; the diff against the log is cheap. Keeping only metadata and FTS in
-  the row, and reading messages from the log, removes that cost but touches
-  every reader of `chat.messages` and the downgrade path.
 - **Memory-extraction transcripts** (`transcripts/*.jsonl`) are still written
   separately. They double as the extraction queue, with per-chat cursors, so
   deriving them from the chat log means moving those cursors onto log `seq`s.

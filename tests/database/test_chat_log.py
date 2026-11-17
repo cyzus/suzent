@@ -179,11 +179,10 @@ def test_a_log_reads_one_message_per_line(temp_db) -> None:
 def test_streaming_drafts_stay_out_of_the_log(temp_db) -> None:
     db = temp_db
     chat_id = db.create_chat(title="Draft", config={})
-    before = len(_events(db, chat_id))
     draft = {"role": "assistant", "content": "par", "_streaming_draft": True}
     db.update_chat(chat_id, messages=[draft], reindex=False)
 
-    assert len(_events(db, chat_id)) == before
+    assert all(e["type"] != "messages.splice" for e in _events(db, chat_id))
     db.merge_chat_config(chat_id, {"k": 1})
     _assert_log_matches(db)
     assert all(
@@ -233,7 +232,7 @@ def test_events_a_crash_kept_out_of_sqlite_are_replayed_on_start(
         _crash_on_commit(db, patch)
         with pytest.raises(CrashBeforeCommit):
             db.append_chat_message(chat_id, {"role": "user", "content": "logged"})
-    assert db.get_chat(chat_id).messages == []
+    assert db.fts_match_chat_ids("logged") == []
 
     reopened = _reopen(db)
     assert reopened.get_chat(chat_id).messages == [
