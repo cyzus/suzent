@@ -3,6 +3,10 @@ from pathlib import Path
 from sqlalchemy import event
 from sqlmodel import Session, SQLModel, create_engine
 
+from suzent.logger import get_logger
+
+logger = get_logger(__name__)
+
 # How long a write waits for another writer before failing as locked.
 BUSY_TIMEOUT_MS = 15_000
 
@@ -75,6 +79,16 @@ class ChatDatabaseBase:
         # Before anything can write: a write diffs the row against its log, so
         # a log still ahead of its row from a crash would otherwise be undone.
         self.reconcile_chat_logs()
+        self._recover_live_turns()
+
+    def _recover_live_turns(self) -> None:
+        """Write back replies a crash left only in their live journal."""
+        from suzent.core.live_turn import LiveTurns
+
+        try:
+            LiveTurns(self.chat_log.root).recover_all(self)
+        except Exception as exc:
+            logger.warning(f"Live turn recovery failed: {exc}")
 
     def _session(self) -> Session:
         """Create a new database session."""

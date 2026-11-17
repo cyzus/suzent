@@ -1590,6 +1590,14 @@ class ChatProcessor:
                 logger.warning(
                     f"Failed to persist pre-postprocess state snapshot for {chat_id}: {e}"
                 )
+            if (
+                snapshot_revision is not None
+                and getattr(deps, "streamed_message", None) is not None
+            ):
+                from suzent.core.live_turn import settle_turn
+
+                # The reply is in the chat now; its live copy has done its job.
+                await settle_turn(chat_id, stream_run_id, landed=True)
 
             # The turn's prompt is still in the provider's cache now, so the
             # next compaction summary is cheapest and costs the user no wait.
@@ -1900,6 +1908,14 @@ class ChatProcessor:
                 error_message=str(e),
             )
             return False
+        finally:
+            run_id = getattr(deps, "display_run_id", None)
+            if run_id and getattr(deps, "streamed_message", None) is not None:
+                from suzent.core.live_turn import settle_turn
+
+                # Nothing writes this turn after here, so a reply that never
+                # reached the chat is written back from its journal.
+                await settle_turn(chat_id, run_id, landed=False, last_chance=True)
 
     def _handle_retry_command(
         self,

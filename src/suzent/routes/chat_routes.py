@@ -1118,6 +1118,14 @@ def _chat_payload(chat_id: str, include_runtime: bool) -> dict[str, Any] | None:
                 response_chat["messages"],
                 chat_log.events(chat_id),
             )
+            from suzent.core.display_log import merge_streamed_message
+            from suzent.core.live_turn import get_live_turns
+
+            # The reply still streaming is held in memory, not in the row.
+            if live := get_live_turns().overlay(chat_id):
+                response_chat["messages"] = merge_streamed_message(
+                    response_chat["messages"], live
+                )
         from suzent.core.chat_processor import _preserve_citation_sources
 
         response_chat["messages"] = _preserve_citation_sources(

@@ -1,4 +1,5 @@
 import asyncio
+from concurrent.futures import Future
 import math
 from contextlib import asynccontextmanager
 from types import SimpleNamespace
@@ -445,32 +446,41 @@ async def test_forced_persist_waits_for_a_write_already_in_flight(monkeypatch):
     ``dirty``. The forced flush at the end of a turn must still wait for it:
     reporting the stream finished while the write is in flight lets a reload
     read stale content, and lets the late write race the turn finalizer."""
-    started = asyncio.Event()
-    release = asyncio.Event()
-    finished = []
+    pending: list[Future] = []
 
-    async def slow_write(*args, **kwargs):
-        started.set()
-        await release.wait()
-        finished.append(args)
+    class _HeldLive:
+        def publish(self, chat_id, message):
+            pass
 
-    monkeypatch.setattr(streaming.asyncio, "to_thread", slow_write)
+        def record(self, *args, **kwargs) -> Future:
+            future: Future = Future()
+            pending.append(future)
+            return future
+
     monkeypatch.setattr(streaming, "_DRAFT_PERSIST_INTERVAL_SECONDS", 0)
 
-    acc = streaming._DraftDisplayAccumulator(chat_id="chat-1", run_id="run-1")
+    acc = streaming._DraftDisplayAccumulator(
+        chat_id="chat-1", run_id="run-1", live=_HeldLive()
+    )
     acc.parts = [{"type": "text", "text": "hello"}]
     acc.dirty = True
 
     await acc.maybe_persist()
-    await asyncio.wait_for(started.wait(), timeout=1)
+    assert len(pending) == 1
     assert acc.dirty is False  # scheduling the write cleared it
 
     forced = asyncio.create_task(acc.maybe_persist(force=True))
     await asyncio.sleep(0)
     assert not forced.done(), "forced flush returned while a write was in flight"
 
-    release.set()
+    pending[0].set_result(None)
+    for _ in range(20):
+        await asyncio.sleep(0)
+        if len(pending) == 2:
+            pending[1].set_result(None)
+            break
     await asyncio.wait_for(forced, timeout=1)
+    finished = [future for future in pending if future.done()]
     assert finished, "the in-flight write did not land"
 
 
