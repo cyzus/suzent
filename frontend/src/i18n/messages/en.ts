@@ -96,6 +96,7 @@ export const en = {
     },
     messages: 'Messages',
     empty: 'Nothing here yet',
+    loading: 'Loading…',
     filter: {
       all: 'All',
       notifications: 'Notifications',
