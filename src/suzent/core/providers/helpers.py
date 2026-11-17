@@ -72,8 +72,108 @@ def _load_user_provider_config() -> Optional[Dict[str, Any]]:
         return {}
 
 
+def _normalize_provider_model_id(provider_id: str, model_id: str) -> Optional[str]:
+    """Ensure a model ID belonging to ``provider_id`` carries its ``provider_id/`` prefix.
+
+    Drops bare entries that merely repeat the provider ID itself (e.g. ``"Gemini"``
+    inside ``gemini``).
+    """
+    if not isinstance(model_id, str):
+        return None
+    trimmed = model_id.strip()
+    if not trimmed:
+        return None
+    if "/" not in trimmed:
+        if trimmed.lower() == provider_id.lower():
+            return None
+        return f"{provider_id}/{trimmed}"
+    return trimmed
+
+
+def _provider_models(spec, custom_config: Optional[Dict[str, Any]]) -> List[str]:
+    """Return available chat models for a single provider spec.
+
+    * If ``custom_config`` is present and explicitly defines a ``disabled_models``
+      set, those IDs are excluded.
+    * If ``custom_config`` has a non-empty ``enabled_models`` list, include them.
+    * When a provider has valid credentials (``_provider_is_configured(spec)``)
+      and was not explicitly cleared to ``enabled_models == []`` (unless no
+      ``enabled_models`` key was set or auto-discovery is active), also include
+      models discovered/shipped in the capability registry and ``default_models``
+      plus ``custom_models`` so configured providers work immediately without a
+      manual check-box step.
+    """
+    from suzent.core.model_registry import list_provider_chat_models
+
+    if custom_config is None:
+        if not _provider_is_configured(spec):
+            return []
+        models = [m["id"] for m in spec.default_models]
+        models.extend(list_provider_chat_models(spec.id))
+        return list(dict.fromkeys(models))
+
+    entry = custom_config.get(spec.id)
+    if isinstance(entry, dict) and entry.get("enabled") is False:
+        return []
+
+    disabled = {
+        norm
+        for m in (
+            (entry or {}).get("disabled_models", []) if isinstance(entry, dict) else []
+        )
+        if (norm := _normalize_provider_model_id(spec.id, m)) is not None
+    }
+    custom_models = [
+        norm
+        for m in (
+            list(entry.get("custom_models") or []) if isinstance(entry, dict) else []
+        )
+        if (norm := _normalize_provider_model_id(spec.id, m)) is not None
+    ]
+
+    # Explicit empty enabled_models list in saved config (without starred_models)
+    # means the provider's chat models were explicitly cleared. When the user
+    # unstars all models in the UI, starred_models == [] is present and the
+    # provider still exposes its auto-discovered / catalog models.
+    if isinstance(entry, dict) and "enabled_models" in entry:
+        explicit_enabled = [
+            norm
+            for m in list(entry.get("enabled_models") or [])
+            if (norm := _normalize_provider_model_id(spec.id, m)) is not None
+        ]
+        if not explicit_enabled and not custom_models and "starred_models" not in entry:
+            return []
+    else:
+        explicit_enabled = []
+
+    models: List[str] = []
+    for m in explicit_enabled:
+        if m not in disabled:
+            models.append(m)
+    for m in custom_models:
+        if m not in disabled and m not in models:
+            models.append(m)
+
+    # For configured providers (excluding keyless local endpoints that were not
+    # explicitly enabled), also surface discovered/shipped chat models and catalog
+    # defaults so newly verified or env-configured providers appear automatically.
+    is_configured = _provider_is_configured(spec)
+    if is_configured and (
+        not spec.api_key_optional or explicit_enabled or custom_models
+    ):
+        for m in spec.default_models:
+            mid = m["id"]
+            if mid not in disabled and mid not in models:
+                models.append(mid)
+        for mid in list_provider_chat_models(spec.id):
+            if mid not in disabled and mid not in models:
+                models.append(mid)
+
+    return models
+
+
 def get_enabled_models_from_db() -> List[str]:
-    """Aggregate all enabled/available models from user provider config."""
+    """Aggregate all enabled/available models from user provider config and configured providers."""
     from suzent.config import CONFIG
 
     custom_config = _load_user_provider_config()
@@ -83,18 +183,48 @@ def get_enabled_models_from_db() -> List[str]:
             return CONFIG.model_options
         from suzent.core.providers.catalog import PROVIDER_REGISTRY
 
+        configured_models: List[str] = []
+        for p in PROVIDER_REGISTRY:
+            configured_models.extend(_provider_models(p, None))
+        if configured_models:
+            return sorted(set(configured_models))
+
         defaults = [m["id"] for p in PROVIDER_REGISTRY for m in p.default_models]
         return sorted(set(defaults))
 
     from suzent.core.providers.catalog import PROVIDER_REGISTRY
 
-    all_models = [
-        model_id
-        for p in PROVIDER_REGISTRY
-        for model_id in custom_config.get(p.id, {}).get("enabled_models", [])
-    ]
+    all_models: List[str] = []
+    for p in PROVIDER_REGISTRY:
+        all_models.extend(_provider_models(p, custom_config))
 
     return sorted(set(all_models))
+
+
+def get_starred_models_from_db() -> List[str]:
+    """Return user-starred (favorite) model IDs from ``_PROVIDER_CONFIG_``.
+
+    Reads ``starred_models`` per provider when present so legacy
+    ``enabled_models`` blobs (which previously stored every discovered model)
+    do not flood the Starred list.
+    """
+    custom_config = _load_user_provider_config()
+    if not custom_config:
+        return []
+
+    from suzent.core.providers.catalog import PROVIDER_REGISTRY
+
+    starred: List[str] = []
+    for p in PROVIDER_REGISTRY:
+        entry = custom_config.get(p.id)
+        if not isinstance(entry, dict) or entry.get("enabled") is False:
+            continue
+        raw_list = entry.get("starred_models") if "starred_models" in entry else []
+        for m in list(raw_list or []):
+            norm = _normalize_provider_model_id(p.id, m)
+            if norm and norm not in starred:
+                starred.append(norm)
+    return starred
 
 
 def _provider_is_configured(spec) -> bool:
@@ -182,9 +312,15 @@ def _compute_default_chat_model() -> Optional[str]:
             continue
 
         if blob_present:
-            enabled = user_provider_config.get(spec.id, {}).get("enabled_models") or []
-            if enabled:
-                return enabled[0]
+            entry = user_provider_config.get(spec.id)
+            if isinstance(entry, dict):
+                enabled = entry.get("enabled_models") or []
+                if enabled:
+                    return enabled[0]
+                if "starred_models" in entry and entry.get("enabled") is not False:
+                    models = _provider_models(spec, user_provider_config)
+                    if models:
+                        return models[0]
             continue
 
         # Fresh install: blob absent, fall back to catalog defaults.

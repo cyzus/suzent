@@ -19,6 +19,7 @@ interface BrutalMultiSelectProps {
   className?: string;
   dropdownClassName?: string;
   variant?: 'dropdown' | 'list';
+  indicator?: 'checkbox' | 'star';
   emptyMessage?: string;
   emptyAction?: React.ReactNode;
 }
@@ -34,6 +35,7 @@ export const BrutalMultiSelect: React.FC<BrutalMultiSelectProps> = ({
   className = '',
   dropdownClassName = '',
   variant = 'dropdown',
+  indicator = 'checkbox',
   emptyMessage,
   emptyAction,
 }) => {
@@ -166,25 +168,40 @@ export const BrutalMultiSelect: React.FC<BrutalMultiSelectProps> = ({
                 onClick={() => handleToggle(option.value)}
                 className={`flex items-center gap-3 px-3 py-2 border-2 text-xs font-bold uppercase transition-all duration-100 w-full min-w-0 text-left group disabled:cursor-not-allowed disabled:opacity-50 ${
                   active
-                    ? 'bg-brutal-green text-brutal-black dark:bg-emerald-400/10 dark:text-emerald-200 dark:border-emerald-400/30 border-brutal-black shadow-brutal-sm translate-x-[-1px] translate-y-[-1px]'
+                    ? indicator === 'star'
+                      ? 'bg-brutal-yellow/30 text-brutal-black dark:bg-amber-400/15 dark:text-amber-200 dark:border-amber-400/40 border-brutal-black shadow-brutal-sm translate-x-[-1px] translate-y-[-1px]'
+                      : 'bg-brutal-green text-brutal-black dark:bg-emerald-400/10 dark:text-emerald-200 dark:border-emerald-400/30 border-brutal-black shadow-brutal-sm translate-x-[-1px] translate-y-[-1px]'
                     : 'border-brutal-black text-brutal-black dark:text-white bg-white dark:bg-zinc-800 hover:bg-neutral-100 dark:hover:bg-zinc-700 brutal-btn shadow-brutal-sm'
                 }`}
               >
-                <div
-                  className={`w-4 h-4 shrink-0 border-2 border-brutal-black flex items-center justify-center transition-colors ${active ? 'bg-brutal-black' : 'bg-white dark:bg-zinc-900'}`}
-                >
-                  {active && (
-                    <svg
-                      className="w-3 h-3 text-white"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                      strokeWidth={4}
-                    >
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                    </svg>
-                  )}
-                </div>
+                {indicator === 'star' ? (
+                  <span
+                    aria-hidden="true"
+                    className={`w-5 h-5 shrink-0 inline-flex items-center justify-center text-sm leading-none transition-colors ${
+                      active
+                        ? 'text-amber-500 dark:text-amber-300'
+                        : 'text-neutral-300 dark:text-neutral-600 group-hover:text-neutral-500'
+                    }`}
+                  >
+                    {active ? '★' : '☆'}
+                  </span>
+                ) : (
+                  <div
+                    className={`w-4 h-4 shrink-0 border-2 border-brutal-black flex items-center justify-center transition-colors ${active ? 'bg-brutal-black' : 'bg-white dark:bg-zinc-900'}`}
+                  >
+                    {active && (
+                      <svg
+                        className="w-3 h-3 text-white"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                        strokeWidth={4}
+                      >
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                      </svg>
+                    )}
+                  </div>
+                )}
                 <span className="min-w-0 flex-1">
                   <span className="block truncate" title={option.value}>
                     {option.label}

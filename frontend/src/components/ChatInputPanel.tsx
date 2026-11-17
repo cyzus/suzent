@@ -23,7 +23,13 @@ import { ComposerAddMenu } from './chat/ComposerAddMenu';
 import { FOCAL_CHAT_ID } from '../lib/focalAgent';
 import { useI18n } from '../i18n';
 import { useSlashCommands } from '../hooks/useSlashCommands';
-import { getApiBase, setChatPermissionMode, setDefaultPermissionMode } from '../lib/api';
+import {
+  getApiBase,
+  refreshAllProviderModels,
+  setChatPermissionMode,
+  setDefaultPermissionMode,
+  toggleStarredModel,
+} from '../lib/api';
 import { buildMountedVolumes } from '../lib/volumeMounts';
 import { MentionTextArea, type MentionTextAreaHandle } from './chat/MentionTextArea';
 import { ghostRemainder } from '../lib/inputSuggestion';
@@ -237,21 +243,97 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
   // nothing to an external agent, so neither can be swapped mid-conversation.
   const canChooseRuntime = !currentChatId;
 
+  const [discoveredModels, setDiscoveredModels] = React.useState<string[] | null>(null);
+  const [starredModelsOverride, setStarredModelsOverride] = React.useState<string[] | null>(null);
+  const [refreshingModels, setRefreshingModels] = React.useState(false);
+  const autoRefreshedModelsRef = React.useRef(false);
+
+  React.useEffect(() => {
+    if (backendConfig?.models) {
+      setDiscoveredModels(null);
+    }
+  }, [backendConfig?.models]);
+
+  React.useEffect(() => {
+    if (backendConfig?.starredModels) {
+      setStarredModelsOverride(null);
+    }
+  }, [backendConfig?.starredModels]);
+
+  const handleRefreshModels = React.useCallback(async () => {
+    if (refreshingModels) return;
+    setRefreshingModels(true);
+    try {
+      const result = await refreshAllProviderModels();
+      if (result.success && Array.isArray(result.models)) {
+        setDiscoveredModels(result.models);
+      }
+      if (result.success && Array.isArray(result.starredModels)) {
+        setStarredModelsOverride(result.starredModels);
+      }
+    } finally {
+      setRefreshingModels(false);
+    }
+  }, [refreshingModels]);
+
+  React.useEffect(() => {
+    if (!configReady || autoRefreshedModelsRef.current) return;
+    autoRefreshedModelsRef.current = true;
+    void handleRefreshModels();
+  }, [configReady, handleRefreshModels]);
+
+  const effectiveModels = React.useMemo(() => {
+    const base = backendConfig?.models ?? [];
+    if (!discoveredModels) return base;
+    return Array.from(new Set([...base, ...discoveredModels]));
+  }, [backendConfig?.models, discoveredModels]);
+
+  const effectiveStarredModels = React.useMemo(
+    () => starredModelsOverride ?? backendConfig?.starredModels ?? [],
+    [backendConfig?.starredModels, starredModelsOverride]
+  );
+
+  const starredEngineValues = React.useMemo(
+    () => new Set(effectiveStarredModels.map((m) => `model:${m}`)),
+    [effectiveStarredModels]
+  );
+
+  const handleToggleStarEngine = React.useCallback(
+    async (engineOptionValue: string, nextStarred: boolean) => {
+      const parsed = parseEngineValue(engineOptionValue);
+      if (parsed.kind !== 'model' || !parsed.model) return;
+      const modelId = parsed.model;
+      setStarredModelsOverride((prev) => {
+        const current = prev ?? backendConfig?.starredModels ?? [];
+        return nextStarred
+          ? Array.from(new Set([...current, modelId]))
+          : current.filter((m) => m !== modelId);
+      });
+      const res = await toggleStarredModel(modelId, nextStarred);
+      if (res.success && Array.isArray(res.starredModels)) {
+        setStarredModelsOverride(res.starredModels);
+      }
+    },
+    [backendConfig?.starredModels]
+  );
+
   const engineOptions = React.useMemo(
     () =>
       buildEngineOptions({
-        models: backendConfig?.models ?? [],
+        models: effectiveModels,
+        starredModels: effectiveStarredModels,
         agents: acpAgents,
         canChooseRuntime,
         selectedAgentId: config.acp_agent_id,
         labels: {
           models: t('chatInput.engineGroups.models'),
           acp: t('chatInput.engineGroups.acp'),
+          starred: t('chatInput.engineGroups.starred'),
           notInstalled: t('chatInput.acpNotInstalled'),
           installHint: t('chatInput.acpInstallHint'),
         },
       }),
-    [acpAgents, backendConfig, canChooseRuntime, config.acp_agent_id, t]
+    [acpAgents, canChooseRuntime, config.acp_agent_id, effectiveModels, effectiveStarredModels, t]
   );
 
   const selectedEngine = engineValue({
@@ -975,9 +1057,18 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
                 placeholder={t('chatInput.modelPlaceholder').toUpperCase()}
                 dropUp={modelSelectDropUp}
                 variant="ghost"
+                collapsibleGroups={true}
+                collapsibleGroupsStorageKey="suzent_engine_picker_collapsed_groups"
+                searchable={true}
+                onRefresh={handleRefreshModels}
+                refreshing={refreshingModels}
+                starredValues={starredEngineValues}
+                onToggleStar={handleToggleStarEngine}
+                canStarOption={(val) => val.startsWith('model:')}
+                menuMinWidth={260}
                 className="h-9 text-sm max-w-[220px]"
                 buttonClassName="!h-9 !gap-1.5 !font-bold [&>svg]:!w-3.5 [&>svg]:!h-3.5 [&>svg]:shrink-0 [&>svg]:stroke-2 [&>svg]:text-neutral-400 dark:[&>svg]:text-neutral-500 !px-2 !py-1.5 hover:!bg-neutral-200 dark:hover:!bg-zinc-600 focus-visible:!ring-2 focus-visible:!ring-brutal-blue"
-                dropdownClassName="min-w-[min(240px,calc(100vw-16px))]"
+                dropdownClassName="min-w-[min(260px,calc(100vw-16px))]"
               />
             </div>
           )}

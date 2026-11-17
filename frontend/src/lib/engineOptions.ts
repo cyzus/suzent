@@ -17,6 +17,7 @@ const ACP_PREFIX = 'acp:';
 export interface EngineLabels {
   models: string;
   acp: string;
+  starred?: string;
   notInstalled: string;
   installHint: string;
 }
@@ -34,12 +35,29 @@ export interface EngineLabels {
  */
 export function buildEngineOptions(params: {
   models: string[];
+  starredModels?: string[];
   agents: AcpAgentDescriptor[];
   canChooseRuntime: boolean;
   selectedAgentId?: string;
   labels: EngineLabels;
 }): EngineOption[] {
-  const { models, agents, canChooseRuntime, selectedAgentId, labels } = params;
+  const { models, starredModels, agents, canChooseRuntime, selectedAgentId, labels } = params;
+
+  const modelSet = new Set(models);
+  const starredOptions: EngineOption[] = [];
+  if (starredModels && starredModels.length > 0 && labels.starred) {
+    for (const model of starredModels) {
+      if (!modelSet.has(model)) continue;
+      const separator = model.indexOf('/');
+      const provider = separator > 0 ? model.slice(0, separator) : '';
+      starredOptions.push({
+        value: `${MODEL_PREFIX}${model}`,
+        label: provider ? model.slice(separator + 1) : model,
+        group: labels.starred,
+        hint: provider ? provider : undefined,
+      });
+    }
+  }
 
   const modelGroups = new Map<string, EngineOption[]>();
   for (const model of models) {
@@ -53,7 +71,7 @@ export function buildEngineOptions(params: {
     });
     modelGroups.set(provider, options);
   }
-  const modelOptions = [...modelGroups.values()].flat();
+  const modelOptions = [...starredOptions, ...[...modelGroups.values()].flat()];
 
   const isInstalled = (agent: AcpAgentDescriptor) => agent.status !== 'not_installed';
 
