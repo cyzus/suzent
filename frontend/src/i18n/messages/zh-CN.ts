@@ -1973,6 +1973,7 @@ export const zhCN = {
     searchChatsPlaceholder: '搜索对话…',
     clearSearch: '清空搜索',
     newChat: '新对话',
+    newChatInProject: '在 {name} 中新建对话',
     search: '搜索',
     newProject: '新建项目',
     newProjectPlaceholder: '项目名称…',
