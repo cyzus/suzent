@@ -58,9 +58,109 @@ immutable and retained as an audit record; an incorrect *pending version decisio
 can be corrected through a release override. Do not delete old declarations.
 
 Conventional Commit titles remain useful development history, but new titles no
-longer control product versions. Follow the documented semantic meaning when
-choosing impacts. An explicit `major` is deliberate and can take `0.x` to `1.0.0`;
-choose `minor` if a pre-1.0 compatibility change should remain pre-1.0.
+longer control product versions.
+
+## Choosing the impact
+
+The impact is not a judgement of how much work went into the PR, how many files it
+touched, or how proud you are of it. It is a claim about **what changes for someone
+who already uses Suzent**. Ask one question and answer it honestly:
+
+> After this ships, can a user point at something and say "I could not do this before"?
+
+That single test separates `minor` from `patch`, and it is the one that goes wrong
+most often.
+
+### The one-line test
+
+Write the release note sentence for your change.
+
+- "Now you can **[a thing that was previously impossible]**." → **`minor`**
+- "**[An existing thing]** is now faster / clearer / more reliable." → **`patch`**
+
+If the only honest sentence is "this thing that already worked is now nicer to
+use", it is a patch. A refactor that happens to be visible on screen is still a
+patch if the screen already did that before.
+
+### The levels
+
+| Impact | Means | Typical triggers |
+| --- | --- | --- |
+| `major` | Users must act to keep working: stored data, configuration, or a published protocol changes incompatibly. | Chat storage format change, plugin API break, settings migration users must complete by hand |
+| `minor` | A **new surface, capability, channel, integration, or user-visible mode** that did not exist before. | A new tool or panel, a new place to have a conversation, a new mail/system integration, a new way to control the app |
+| `patch` | An existing capability gets faster, clearer, more reliable, better looking, or gets a real bug fixed. | Search added to an existing picker, animation parity across platforms, faster file opening, a misrendered element fixed |
+| `none` | Nothing a user can observe changes. | Internal refactor, dev-server or build config, tests, test-affecting only |
+
+### Worked examples
+
+These come from real PRs in this repository and show where the line sits.
+
+`minor`
+
+- A Mailbox that collects webhooks, scheduled runs and agent messages in one inbox
+  with learned routing. Nothing like it existed.
+- A side panel that lets you follow the chat Regent handed work to without leaving
+  Regent. A new way to work in the app.
+- Signing in to Gmail or Outlook through the browser instead of hand-entering IMAP
+  settings. A new connection path.
+
+`patch`
+
+- Adding search, collapsible groups and starred favourites to the model selector.
+  **Every model was already selectable** once enabled in Settings; this makes
+  choosing one faster. The list of things you can do with Suzent is unchanged.
+- Moving a bot animation into a shared package so iOS, Android and desktop play the
+  same one. The phone already showed a bot; it now shows the desktop's bot. Real
+  engineering, patch impact.
+- Delivering cross-chat agent messages in parallel instead of one at a time. The
+  messages already arrived; they arrive sooner.
+- Bumping a dependency, or prebundling packages for the Vite dev server.
+  `none`, or a patch if user-visible.
+
+### Judgement calls worth stating
+
+- **A new setting for existing behaviour is usually `patch`.** A toggle that turns
+  something already-possible on or off does not reveal a new capability. If the
+  setting unlocks something genuinely new, it is the unlock that decides, and that
+  unlock usually has its own declaration.
+- **`refactor` is not an impact level.** A refactor with no visible change is
+  `none`; one that also changes behaviour takes the impact of that behaviour.
+- **Cross-platform parity work is `patch` when the other platform already had it.**
+  Catching one client up to another does not add a capability to the product; it
+  evens it out.
+- **Performance is `patch` unless it enables something previously unusable.** Ten
+  times faster on an operation nobody could complete is a capability; twice as fast
+  on one everybody used is a patch.
+- **One PR, one impact.** Do not inflate to `minor` because the body is long. If a
+  PR genuinely contains an independent new capability, consider splitting it so the
+  release history stays readable.
+
+### When in doubt, go one level lower
+
+A `patch` that should have been `minor` costs a version number and is corrected in
+the next release. A `minor` that should have been `patch` publishes a version bump
+that promises users something new and delivers a nicety, and once published it
+cannot be undone. Under-claim and let several patches ride together; a release does
+not need to be large to be frequent.
+
+Reviewers should treat the impact value as part of the code review, not as
+bookkeeping. If the summary and the impact disagree, that is a review comment.
+
+### Correcting a merged mistake
+
+Declarations are immutable once merged. If a pending release is over-levelled,
+correct the *pending version decision* with an override rather than editing the
+declaration:
+
+```bash
+git fetch origin main
+uv run python scripts/release_plan.py override \
+  --product desktop --source origin/main --version patch \
+  --reason "Model picker is a usability refinement of an existing selector, not a new capability"
+uv run python scripts/release_plan.py apply --product desktop --source origin/main
+```
+
+See [Persistent version overrides](#persistent-version-overrides) for the full rules.
 
 ## What happens after merging
 
