@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [v0.27.2] - 2026-11-17
 
 ### Release notes
+- An MCP server that can't connect no longer fails every chat: its tools are skipped for that turn, first-launch installs run in the background, and the MCP settings page shows which servers are still preparing or failing.
 - Keep desktop and mobile actions consistent through a shared API while preserving device permissions and compatibility with older clients.
 
 ## [v0.27.1] - 2026-11-17
