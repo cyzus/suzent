@@ -2,6 +2,7 @@
 Heartbeat system API routes.
 """
 
+import asyncio
 import json
 from typing import Optional
 from datetime import datetime
@@ -69,7 +70,8 @@ async def get_heartbeat_status(request: Request) -> JSONResponse:
     chat_id = request.query_params.get("chat_id")
     if not (runner := _get_runner()):
         return JSONResponse({"enabled": False, "running": False})
-    return JSONResponse(runner.get_status(chat_id))
+    # Database reads on the event loop stall every chat stream in flight.
+    return JSONResponse(await asyncio.to_thread(runner.get_status, chat_id))
 
 
 async def enable_heartbeat(request: Request) -> JSONResponse:
@@ -82,28 +84,32 @@ async def enable_heartbeat(request: Request) -> JSONResponse:
     body = await request.json()
     chat_id = body.get("chat_id")
     if chat_id:
-        db = get_database()
-        project_id = db.get_chat_project_id(chat_id)
-        if project_id:
-            existing = db.find_heartbeat_enabled_chat_in_project(
-                project_id, exclude_chat_id=chat_id
-            )
-            if existing is not None:
-                return JSONResponse(
-                    {
-                        "error": (
-                            f"Heartbeat is already enabled on chat '{existing.title}' "
-                            f"in this project. Disable it there first."
-                        ),
-                        "conflicting_chat_id": existing.id,
-                        "conflicting_chat_title": existing.title,
-                    },
-                    status_code=409,
-                )
 
-        ok = _update_chat_config(chat_id, {"heartbeat_enabled": True})
-        if not ok:
-            return JSONResponse({"error": "Chat not found"}, status_code=404)
+        def enable_for_chat() -> Optional[JSONResponse]:
+            db = get_database()
+            project_id = db.get_chat_project_id(chat_id)
+            if project_id:
+                existing = db.find_heartbeat_enabled_chat_in_project(
+                    project_id, exclude_chat_id=chat_id
+                )
+                if existing is not None:
+                    return JSONResponse(
+                        {
+                            "error": (
+                                f"Heartbeat is already enabled on chat '{existing.title}' "
+                                f"in this project. Disable it there first."
+                            ),
+                            "conflicting_chat_id": existing.id,
+                            "conflicting_chat_title": existing.title,
+                        },
+                        status_code=409,
+                    )
+            if not _update_chat_config(chat_id, {"heartbeat_enabled": True}):
+                return JSONResponse({"error": "Chat not found"}, status_code=404)
+            return None
+
+        if (error := await asyncio.to_thread(enable_for_chat)) is not None:
+            return error
 
     # Always ensure the global runner is spinning
     if runner := _get_runner():
@@ -117,7 +123,9 @@ async def disable_heartbeat(request: Request) -> JSONResponse:
     body = await request.json()
     chat_id = body.get("chat_id")
     if chat_id:
-        ok = _update_chat_config(chat_id, {"heartbeat_enabled": False})
+        ok = await asyncio.to_thread(
+            _update_chat_config, chat_id, {"heartbeat_enabled": False}
+        )
         if not ok:
             return JSONResponse({"error": "Chat not found"}, status_code=404)
         return JSONResponse({"success": True})
@@ -143,13 +151,18 @@ async def get_heartbeat_md(request: Request) -> JSONResponse:
     """Get heartbeat instructions for a chat."""
     chat_id = request.query_params.get("chat_id")
     if chat_id:
-        hb_path = get_database().get_project_dir(chat_id) / "heartbeat.md"
-        if hb_path.exists():
-            try:
-                content = hb_path.read_text(encoding="utf-8")
-                return JSONResponse({"content": content, "exists": True})
-            except Exception:
-                pass
+
+        def read() -> Optional[str]:
+            hb_path = get_database().get_project_dir(chat_id) / "heartbeat.md"
+            if hb_path.exists():
+                try:
+                    return hb_path.read_text(encoding="utf-8")
+                except Exception:
+                    pass
+            return None
+
+        if (content := await asyncio.to_thread(read)) is not None:
+            return JSONResponse({"content": content, "exists": True})
     return JSONResponse({"content": "", "exists": False})
 
 
@@ -162,14 +175,16 @@ async def save_heartbeat_md(request: Request) -> JSONResponse:
     if not chat_id:
         return JSONResponse({"error": "chat_id required"}, status_code=400)
 
-    hb_path = get_database().get_project_dir(chat_id) / "heartbeat.md"
-    try:
+    def save() -> None:
+        hb_path = get_database().get_project_dir(chat_id) / "heartbeat.md"
         hb_path.parent.mkdir(parents=True, exist_ok=True)
         hb_path.write_text(content, encoding="utf-8")
 
         # Ensure heartbeat_instructions is removed from DB config (file is source of truth)
         _update_chat_config(chat_id, {"heartbeat_instructions": None})
 
+    try:
+        await asyncio.to_thread(save)
         return JSONResponse({"success": True})
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
@@ -190,7 +205,9 @@ async def set_heartbeat_interval(request: Request) -> JSONResponse:
     if not chat_id:
         return JSONResponse({"error": "chat_id required"}, status_code=400)
 
-    ok = _update_chat_config(chat_id, {"heartbeat_interval_minutes": minutes})
+    ok = await asyncio.to_thread(
+        _update_chat_config, chat_id, {"heartbeat_interval_minutes": minutes}
+    )
     if not ok:
         return JSONResponse({"error": "Chat not found"}, status_code=404)
     return JSONResponse({"success": True, "interval_minutes": minutes})

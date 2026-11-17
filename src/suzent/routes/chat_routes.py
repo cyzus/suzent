@@ -1198,9 +1198,14 @@ async def get_chat(request: Request, *, include_runtime: bool = True) -> JSONRes
 
 async def get_focal_agent(request: Request) -> JSONResponse:
     """Ensure the Focal Agent chat exists and return its presence telemetry."""
-    try:
+
+    def build() -> dict:
         get_or_create_focal_chat()
-        return JSONResponse(focal_status())
+        return focal_status()
+
+    try:
+        # Polled by every view showing Regent: keep its scans off the event loop.
+        return JSONResponse(await asyncio.to_thread(build))
     except Exception as e:
         logger.error(f"Error in get_focal_agent: {e}")
         return JSONResponse({"error": str(e)}, status_code=500)
@@ -1208,9 +1213,13 @@ async def get_focal_agent(request: Request) -> JSONResponse:
 
 async def get_focal_panel(request: Request) -> JSONResponse:
     """The Focal Agent's fixed tools and the wake-ups it has scheduled."""
-    try:
+
+    def build() -> dict:
         get_or_create_focal_chat()
-        return JSONResponse({"tools": focal_tools(), "wakeups": focal_wakeups()})
+        return {"tools": focal_tools(), "wakeups": focal_wakeups()}
+
+    try:
+        return JSONResponse(await asyncio.to_thread(build))
     except Exception as e:
         logger.error(f"Error in get_focal_panel: {e}")
         return JSONResponse({"error": str(e)}, status_code=500)
@@ -1326,8 +1335,6 @@ async def update_chat(request: Request) -> JSONResponse:
         chat_id = request.path_params["chat_id"]
         data = await request.json()
 
-        db = get_database()
-
         title = data.get("title")
         config = data.get("config")
         messages = data.get("messages")
@@ -1342,47 +1349,53 @@ async def update_chat(request: Request) -> JSONResponse:
             return JSONResponse(
                 {"error": "'pinned' and 'archived' must be booleans"}, status_code=400
             )
-        success = db.update_chat(
-            chat_id,
-            title=title,
-            config=config,
-            messages=messages,
-            pinned=flags.pinned,
-            archived=flags.archived,
-        )
-        if not success:
-            return JSONResponse({"error": "Chat not found"}, status_code=404)
 
-        if instructions is not None:
-            hb_path = get_database().get_project_dir(chat_id) / "heartbeat.md"
-            try:
-                hb_path.parent.mkdir(parents=True, exist_ok=True)
-                hb_path.write_text(instructions, encoding="utf-8")
-            except Exception as e:
-                logger.error(f"Failed to write heartbeat.md during update: {e}")
+        def apply() -> JSONResponse:
+            db = get_database()
+            success = db.update_chat(
+                chat_id,
+                title=title,
+                config=config,
+                messages=messages,
+                pinned=flags.pinned,
+                archived=flags.archived,
+            )
+            if not success:
+                return JSONResponse({"error": "Chat not found"}, status_code=404)
 
-        chat = db.get_chat(chat_id)
-        if not chat:
-            return JSONResponse(
-                {"error": "Failed to retrieve updated chat"}, status_code=500
+            if instructions is not None:
+                hb_path = get_database().get_project_dir(chat_id) / "heartbeat.md"
+                try:
+                    hb_path.parent.mkdir(parents=True, exist_ok=True)
+                    hb_path.write_text(instructions, encoding="utf-8")
+                except Exception as e:
+                    logger.error(f"Failed to write heartbeat.md during update: {e}")
+
+            chat = db.get_chat(chat_id)
+            if not chat:
+                return JSONResponse(
+                    {"error": "Failed to retrieve updated chat"}, status_code=500
+                )
+
+            response_chat = chat.model_dump(
+                mode="json", by_alias=True, exclude={"agent_state"}
             )
 
-        response_chat = chat.model_dump(
-            mode="json", by_alias=True, exclude={"agent_state"}
-        )
+            hb_path = get_database().get_project_dir(chat_id) / "heartbeat.md"
+            if hb_path.exists():
+                try:
+                    if "config" not in response_chat:
+                        response_chat["config"] = {}
+                    response_chat["config"]["heartbeat_instructions"] = (
+                        hb_path.read_text(encoding="utf-8")
+                    )
+                except Exception:
+                    pass
 
-        hb_path = get_database().get_project_dir(chat_id) / "heartbeat.md"
-        if hb_path.exists():
-            try:
-                if "config" not in response_chat:
-                    response_chat["config"] = {}
-                response_chat["config"]["heartbeat_instructions"] = hb_path.read_text(
-                    encoding="utf-8"
-                )
-            except Exception:
-                pass
+            return JSONResponse(response_chat)
 
-        return JSONResponse(response_chat)
+        # SQLite work on the event loop stalls every chat stream in flight.
+        return await asyncio.to_thread(apply)
     except Exception as e:
         logger.error(f"Error in update_chat: {e}")
         traceback.print_exc()
@@ -1431,8 +1444,7 @@ async def mark_chat_read(request: Request) -> JSONResponse:
     """POST /chats/{chat_id}/mark-read — reset unread counter for a chat."""
     try:
         chat_id = request.path_params["chat_id"]
-        db = get_database()
-        db.mark_chat_read(chat_id)
+        await asyncio.to_thread(get_database().mark_chat_read, chat_id)
         return JSONResponse({"ok": True})
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)

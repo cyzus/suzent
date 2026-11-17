@@ -88,6 +88,7 @@ class AgentInboxDispatcher:
         self.worker_id = f"{os.getpid()}-{uuid.uuid4().hex[:12]}"
         self._running = False
         self._task: Optional[asyncio.Task[None]] = None
+        self._loop: Optional[asyncio.AbstractEventLoop] = None
         self._wake_event = asyncio.Event()
         self._deliveries: set[asyncio.Task[None]] = set()
 
@@ -95,6 +96,7 @@ class AgentInboxDispatcher:
         if self._running:
             return
         self._running = True
+        self._loop = asyncio.get_running_loop()
         self._task = asyncio.create_task(
             self._run(), name=f"agent_inbox_{self.worker_id}"
         )
@@ -118,7 +120,16 @@ class AgentInboxDispatcher:
 
     def notify(self) -> None:
         """Wake the local worker after a producer inserts a message."""
-        self._wake_event.set()
+        loop = self._loop
+        try:
+            current = asyncio.get_running_loop()
+        except RuntimeError:
+            current = None
+        # Producers also run in worker threads; asyncio.Event is not thread-safe.
+        if loop is None or loop is current or loop.is_closed():
+            self._wake_event.set()
+        else:
+            loop.call_soon_threadsafe(self._wake_event.set)
 
     async def _run(self) -> None:
         while self._running:
