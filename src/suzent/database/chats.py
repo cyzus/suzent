@@ -857,6 +857,26 @@ class ChatOperationsMixin:
             self.commit_chat_changes(session, [chat_id])
         return True
 
+    def merge_streamed_display_message(
+        self, chat_id: str, message: Dict[str, Any]
+    ) -> bool:
+        """Upsert one run's assistant row, as the turn's own write would."""
+        from suzent.core.display_log import merge_streamed_message
+
+        with self._session() as session:
+            chat = session.get(ChatModel, chat_id)
+            if not chat:
+                return False
+
+            messages = merge_streamed_message(list(chat.messages or []), message)
+            chat.messages = messages
+            _set_config_keys(session, chat_id, _message_summary(messages))
+            chat.updated_at = datetime.now()
+            session.add(chat)
+            self._reindex_in_session(session, chat_id, messages)
+            self.commit_chat_changes(session, [chat_id])
+        return True
+
     def append_voice_log(
         self, chat_id: str, entries: List[Dict[str, Any]], limit: int = 1000
     ) -> bool:
