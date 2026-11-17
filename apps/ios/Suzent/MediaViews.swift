@@ -69,8 +69,9 @@ private struct FileRow: View {
                 Text(verbatim: ".\(item.fileExtension)".uppercased())
                     .font(.system(size: 10, weight: .bold, design: .monospaced))
                     .foregroundStyle(Color.suzentText).lineLimit(1).minimumScaleFactor(0.7)
-                    .frame(width: 40, height: 40).background(Color.suzentFileCover(item.fileExtension))
-                    .overlay(Rectangle().stroke(Color.suzentOutline, lineWidth: 1))
+                    .frame(width: 40, height: 40)
+                    .background(Color.suzentFileCover(item.fileExtension), in: RoundedRectangle(cornerRadius: PresentationTokens.radiusBadge, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: PresentationTokens.radiusBadge, style: .continuous).stroke(Color.suzentOutline, lineWidth: 1))
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(item.name).suzentFont(PresentationTokens.typeChat, weight: .semibold)
@@ -101,7 +102,9 @@ private struct FileRow: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .overlay(Rectangle().stroke(Color.suzentOutline, lineWidth: 1.5))
+        .background(Color.suzentSurface, in: RoundedRectangle(cornerRadius: PresentationTokens.radiusControl, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: PresentationTokens.radiusControl, style: .continuous)
+            .stroke(Color.suzentOutline, lineWidth: 1.5))
     }
 
     private func download() {
@@ -235,9 +238,10 @@ private struct ImageViewer: View {
     }
 
     private var pan: some Gesture {
-        DragGesture()
+        DragGesture(minimumDistance: scale > 1 ? SwipeAxisLock.minTravel : 10_000)
             .onChanged { value in
                 guard scale > 1 else { return }
+                // A one-finger drag while zoomed pans. Below 1x the gesture is not installed, so scrolling and back win.
                 offset = CGSize(width: settledOffset.width + value.translation.width,
                                 height: settledOffset.height + value.translation.height)
             }

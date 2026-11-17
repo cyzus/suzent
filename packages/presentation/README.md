@@ -41,14 +41,18 @@ never reuse the light text color for a shadow. Code blocks follow the active the
 and links use a lighter blue in dark mode while primary action fills retain blue.
 
 Yellow is the accent: pressed rows, the selected option, the New conversation
-action, the demo banner and the approval header. Dark mode uses `yellow-dark`
-for that same accent, on desktop and both phones, so large yellow fills are
-quieter on the charcoal background. Light mode keeps `yellow`. Inline code is
-a yellow chip with black text and a 2 px black border on every platform. Errors never use it: they appear
-as a transient bottom toast on `error-surface` (`error-surface-dark`), auto-dismissed
-after 6 seconds. Every surface is square (`radius`); only Regent's message bubbles
-use `radiusBubble`. Meta text uses `typeMeta` and small labels `typeLabel`; pressed
-fills use `pressedAlpha` and disabled controls `disabledAlpha`.
+action, the demo banner, the approval header and the user's message bubble.
+Dark mode uses `yellow-dark` for that same accent, on desktop and both phones, so
+large yellow fills are quieter on the charcoal background. Light mode keeps `yellow`.
+Inline code is a yellow chip with black text and a 2 px black border on every platform.
+Errors never use it: they appear as a transient bottom toast on `error-surface`
+(`error-surface-dark`), auto-dismissed after 6 seconds. Desktop surfaces stay square
+(`radius`). Mobile uses `radiusControl`, `radiusCard`, `radiusBubble` and `radiusSheet`
+so controls, cards, bubbles and sheets follow continuous corners; `canvas-*` is the
+page, `card-*` is a raised surface, and `line-*` is a hairline rule. Hard offset
+shadows stay on primary actions, the composer and menus. Meta text uses `typeMeta`
+and small labels `typeLabel`; pressed fills use `pressedAlpha` and disabled controls
+`disabledAlpha`.
 
 SwiftUI and Compose implement the same primitives in their `PresentationViews`
 files. Reuse these for branded surfaces (chat, composer, messages, pickers):
@@ -61,7 +65,7 @@ files. Reuse these for branded surfaces (chat, composer, messages, pickers):
 | Quiet/destructive action | Same target and typography, without border or shadow; destructive text is red |
 | Text input | 15 pt/sp, padding 12, minimum height 44, 2 px outline turning blue on focus; invitation accepts 3–6 lines |
 | Error toast | Bottom overlay, `error-surface` fill, 2 px outline, 13 pt/sp text, Dismiss target at least 44 high, 6 s auto-dismiss, announced to accessibility |
-| User message | Right aligned, intrinsic width up to 320, 40 minimum leading space, 12 padding, yellow fill, 2 border and hard shadow; no redundant author label |
+| User message | Right aligned, intrinsic width up to 320, 40 minimum leading space, 12 padding, yellow fill (`yellow` / `yellow-dark`), `radiusBubble`, 2 px border and hard shadow; no redundant author label |
 | Selection trigger | Shared model/project control, 15 semibold, 44 minimum height, 12 horizontal padding, neutral text, optional muted prefix, truncating value, separate chevron |
 | Selection panel | System bottom sheet (square, drag to dismiss), black header, white title, yellow selected row, minimum row height 48 |
 | Approval card | Pinned above the composer, at most 40% of the viewport and scrollable; arguments collapse to 3 lines |
@@ -73,8 +77,8 @@ retain native keyboard, focus, and accessibility. Sidebar chrome reads its rules
 the same source: `spaceRow` for the 10 pt vertical rhythm shared by chat rows,
 scheduled rows, project headers and section spacing, `borderWidthHeavy` for the rule under the sidebar header and along the
 drawer edge, `typeSidebarSection` for the uppercase tracked section headings,
-`selection-light`/`selection-dark` for the selected row fill, and `radius` for the
-square corners every surface uses. Sidebar chrome follows the desktop exactly: a 3 px
+`selection-light`/`selection-dark` for the selected row fill, and `radiusControl` for
+the selected row. Sidebar chrome keeps the desktop's type and rules: a 3 px
 rule under the header and along the drawer's trailing edge, 10 pt uppercase tracked
 section headings, and plain icon/row actions built from the shared primitives rather
 than platform controls. Conversation rows and project headers carry no border or

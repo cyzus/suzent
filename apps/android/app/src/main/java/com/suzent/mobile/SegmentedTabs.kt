@@ -1,9 +1,12 @@
 package com.suzent.mobile
 
+import android.animation.ValueAnimator
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.selection.selectable
@@ -35,13 +38,17 @@ fun <T> SuzentSegmentedTabs(
     val dark = isSystemInDarkTheme()
     val block = if (dark) suzentYellow() else Color(PresentationTokens.black)
     val blockText = if (dark) Color.Black else Color.White
+    val shape = RoundedCornerShape(PresentationTokens.radiusControl.dp)
+    val motion = ValueAnimator.areAnimatorsEnabled()
     BoxWithConstraints(modifier.fillMaxWidth().alpha(if (enabled) 1f else PresentationTokens.disabledAlpha.toFloat())
-        .background(Color(if (dark) PresentationTokens.code_header_dark else PresentationTokens.code_bg))
-        .border(1.dp, MaterialTheme.colorScheme.outline).padding(3.dp)) {
+        .background(Color(if (dark) PresentationTokens.code_header_dark else PresentationTokens.code_bg), shape)
+        .border(1.dp, MaterialTheme.colorScheme.outline, shape).padding(3.dp)) {
         val segment = maxWidth / options.size
-        val slider by animateDpAsState(segment * options.indexOf(selection), tween(300), label = "segmented tab selection")
+        val slider by animateDpAsState(segment * options.indexOf(selection),
+            if (motion) tween(300) else snap(), label = "segmented tab selection")
         Box(Modifier.matchParentSize()) {
-            Box(Modifier.offset(x = slider).width(segment).fillMaxHeight().background(block))
+            Box(Modifier.offset(x = slider).width(segment).fillMaxHeight()
+                .background(block, RoundedCornerShape((PresentationTokens.radiusControl - 3).dp)))
         }
         Row(Modifier.fillMaxWidth().selectableGroup()) {
             options.forEach { option ->

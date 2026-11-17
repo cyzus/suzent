@@ -31,8 +31,9 @@ import androidx.compose.ui.unit.sp
 /** The desktop's unread count: a yellow block with black figures, used by the tab bar and the filters. */
 @Composable
 internal fun SuzentCountBadge(count: Int, modifier: Modifier = Modifier) {
-    Text(if (count > 99) "99+" else count.toString(), modifier.background(suzentYellow()).border(1.dp, Color.Black)
-        .padding(horizontal = 4.dp), fontSize = 10.sp, lineHeight = 15.sp, fontWeight = FontWeight.Bold,
+    val shape = androidx.compose.foundation.shape.RoundedCornerShape(PresentationTokens.radiusBadge.dp)
+    Text(if (count > 99) "99+" else count.toString(), modifier.background(suzentYellow(), shape).border(1.dp, Color.Black, shape)
+        .padding(horizontal = 5.dp), fontSize = 10.sp, lineHeight = 16.sp, fontWeight = FontWeight.Bold,
         fontFamily = FontFamily.Monospace, color = Color.Black, maxLines = 1)
 }
 
@@ -48,8 +49,9 @@ internal fun MailboxSourceMark(item: MailboxItem, size: Dp = 32.dp) {
         "email" -> R.drawable.ic_mail
         else -> if (item.display.icon == "code") R.drawable.ic_event_branch else null
     }
-    Box(Modifier.size(size).background(MaterialTheme.colorScheme.surface)
-        .border(1.dp, if (muted) suzentRowDivider else MaterialTheme.colorScheme.outline), contentAlignment = Alignment.Center) {
+    val shape = androidx.compose.foundation.shape.RoundedCornerShape(PresentationTokens.radiusControl.dp)
+    Box(Modifier.size(size).background(MaterialTheme.colorScheme.surface, shape)
+        .border(1.dp, if (muted) suzentLine else MaterialTheme.colorScheme.outline, shape), contentAlignment = Alignment.Center) {
         if (icon != null) Icon(painterResource(icon), null, Modifier.size(size * .5f), tint = tint)
         else Text(item.source.filter { it.isLetterOrDigit() }.take(2).uppercase().ifEmpty { "?" }, fontSize = 11.sp,
             fontWeight = FontWeight.SemiBold, fontFamily = FontFamily.Monospace, color = tint)
@@ -109,7 +111,7 @@ internal fun MailboxThreadRow(thread: MailboxThread, target: Chat?, open: () -> 
             MailboxSourceMark(latest)
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                    if (unread) Box(Modifier.padding(top = 6.dp).size(7.dp).background(suzentYellow()).border(1.dp, MaterialTheme.colorScheme.outline))
+                    if (unread) Box(Modifier.padding(top = 6.dp).size(7.dp).background(suzentYellow(), androidx.compose.foundation.shape.CircleShape))
                     Text(latest.display.title, fontSize = 14.sp, lineHeight = 19.sp, fontWeight = if (unread) FontWeight.SemiBold else FontWeight.Normal,
                         color = if (latest.status == "unrouted") muted else MaterialTheme.colorScheme.onSurface, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 }
@@ -130,7 +132,7 @@ internal fun MailboxThreadDetail(model: MobileModel, key: String, back: () -> Un
     LaunchedEffect(key) { thread?.unreadIds?.takeIf { it.isNotEmpty() }?.let { model.readMailbox(it) } }
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
     val ink = MaterialTheme.colorScheme.onSurface
-    Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface)) {
+    Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         Row(Modifier.fillMaxWidth().heightIn(min = 52.dp).padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             IconButton(back) { Icon(painterResource(R.drawable.ic_chat_back), stringResource(R.string.mailbox_title), tint = ink) }
             Text(thread?.latest?.display?.source.orEmpty(), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, maxLines = 1)

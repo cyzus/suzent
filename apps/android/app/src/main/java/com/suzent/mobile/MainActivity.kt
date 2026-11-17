@@ -18,6 +18,7 @@ import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -53,7 +54,6 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
@@ -73,6 +73,8 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.ProgressBarRangeInfo
+import androidx.compose.ui.semantics.progressBarRangeInfo
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -132,7 +134,7 @@ private fun MobileScreen(model: MobileModel) {
         tab = HomeTab.CHATS
         if (model.connected) model.watchNavigation()
     }
-    BoxWithConstraints(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface)
+    BoxWithConstraints(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)
         .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))) {
         val wide = maxWidth >= WideLayoutWidth
         LaunchedEffect(showHome, showSettings, model.selected?.id, wide) {
@@ -149,7 +151,7 @@ private fun MobileScreen(model: MobileModel) {
         }
         val home: @Composable () -> Unit = {
             pageState.SaveableStateProvider("home") {
-                Surface(Modifier.fillMaxSize()) {
+                Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
                     if (wide) Column {
                         val inboxLabel = stringResource(R.string.mailbox_title)
                         SuzentSegmentedTabs(listOf(false, true), mailboxWide, { mailboxWide = it },
@@ -240,10 +242,10 @@ private fun DetailPane(model: MobileModel, showSettings: Boolean, desktopsOpen: 
     var infoOpen by rememberSaveable { mutableStateOf(false) }
     val wide = back == null
     if (infoOpen && infoAvailable && !wide && selected != null) ModalBottomSheet(onDismissRequest = { infoOpen = false },
-        shape = RectangleShape, containerColor = MaterialTheme.colorScheme.surface) {
+        shape = suzentSheetShape(), containerColor = MaterialTheme.colorScheme.surface) {
         ChatInfoPanel(model, selected.id, Modifier.fillMaxWidth())
     }
-    Scaffold(topBar = {
+    Scaffold(containerColor = MaterialTheme.colorScheme.background, topBar = {
         Column(Modifier.statusBarsPadding()) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                 if (model.connected && back != null) {
@@ -362,7 +364,7 @@ private fun ReconnectView(model: MobileModel, repair: () -> Unit) {
             }
         }
     }
-    if (helpOpen) ModalBottomSheet(onDismissRequest = { helpOpen = false }, shape = RectangleShape,
+    if (helpOpen) ModalBottomSheet(onDismissRequest = { helpOpen = false }, shape = suzentSheetShape(),
         containerColor = MaterialTheme.colorScheme.surface) {
         Column(Modifier.fillMaxWidth().padding(bottom = PresentationTokens.spacePage.dp)) {
             Text(stringResource(R.string.connection_help), Modifier.padding(horizontal = 16.dp),
@@ -409,7 +411,7 @@ private fun SearchPage(model: MobileModel, open: (Chat) -> Unit, close: () -> Un
         if (term.isNotEmpty()) { kotlinx.coroutines.delay(300); model.loadPage(query) }
     }
     val focus = LocalFocusManager.current
-    Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface).statusBarsPadding().navigationBarsPadding().imePadding()) {
+    Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).statusBarsPadding().navigationBarsPadding().imePadding()) {
         Row(Modifier.padding(start = 16.dp, end = 8.dp, top = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             OutlinedTextField(value = search, onValueChange = { search = it },
                 placeholder = { Text(stringResource(R.string.search_chats)) },
@@ -419,7 +421,7 @@ private fun SearchPage(model: MobileModel, open: (Chat) -> Unit, close: () -> Un
                         Icon(painterResource(R.drawable.ic_close), contentDescription = stringResource(R.string.clear_search), modifier = Modifier.size(18.dp))
                     }
                 }),
-                singleLine = true, shape = RectangleShape,
+                singleLine = true, shape = androidx.compose.foundation.shape.RoundedCornerShape(PresentationTokens.radiusControl.dp),
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                 keyboardActions = androidx.compose.foundation.text.KeyboardActions(onSearch = { focus.clearFocus() }),
                 colors = OutlinedTextFieldDefaults.colors(
@@ -442,7 +444,7 @@ private fun SearchPage(model: MobileModel, open: (Chat) -> Unit, close: () -> Un
                 }
                 item(key = "search-more") { ChatPageFooter(model, query) }
                 if (results.isEmpty() && query in model.chatPages) item(key = "search-empty") {
-                    Text(stringResource(R.string.sidebar_no_results), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    SuzentEmptyState(stringResource(R.string.sidebar_no_results), R.drawable.ic_tool_magnifying_glass)
                 }
             }
         }
@@ -543,7 +545,7 @@ private fun Sidebar(model: MobileModel, hideSelection: Boolean, tabs: Boolean, o
         HorizontalDivider(Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.onSurface.copy(alpha = .08f))
         if (openSearch == null) Button(onClick = { create(null) },
             enabled = !model.busy && model.device?.permissions?.createChats == true,
-            shape = RectangleShape,
+            shape = androidx.compose.foundation.shape.RoundedCornerShape(PresentationTokens.radiusControl.dp),
             colors = ButtonDefaults.buttonColors(containerColor = suzentYellow(), contentColor = Color.Black),
             modifier = Modifier.padding(horizontal = 16.dp).padding(top = 12.dp).fillMaxWidth().heightIn(min = 48.dp)) {
             Icon(painterResource(R.drawable.ic_new_chat), contentDescription = null, modifier = Modifier.size(20.dp))
@@ -552,7 +554,7 @@ private fun Sidebar(model: MobileModel, hideSelection: Boolean, tabs: Boolean, o
         }
         if (openSearch == null) OutlinedTextField(value = search, onValueChange = { search = it },
             placeholder = { Text(stringResource(R.string.search_chats)) },
-            singleLine = true, shape = RectangleShape,
+            singleLine = true, shape = androidx.compose.foundation.shape.RoundedCornerShape(PresentationTokens.radiusControl.dp),
             colors = OutlinedTextFieldDefaults.colors(
                 focusedBorderColor = Color.Transparent, unfocusedBorderColor = Color.Transparent,
                 focusedContainerColor = MaterialTheme.colorScheme.onSurface.copy(alpha = .04f),
@@ -572,7 +574,7 @@ private fun Sidebar(model: MobileModel, hideSelection: Boolean, tabs: Boolean, o
                 }
                 item(key = "search-more") { ChatPageFooter(model, searchQuery) }
                 if (results.isEmpty() && searchQuery in model.chatPages) item(key = "search-empty") {
-                    Text(stringResource(R.string.sidebar_no_results), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    SuzentEmptyState(stringResource(R.string.sidebar_no_results), R.drawable.ic_tool_magnifying_glass)
                 }
             } else if (listMode == HomeListMode.RECENT) {
                 if (pinnedRows.isNotEmpty()) {
@@ -588,7 +590,7 @@ private fun Sidebar(model: MobileModel, hideSelection: Boolean, tabs: Boolean, o
                 }
                 item(key = "recent-more") { ChatPageFooter(model, ChatPageQuery()) }
             } else if (projects.isEmpty()) item(key = "projects-empty") {
-                Text(stringResource(R.string.sidebar_no_projects), modifier = Modifier.padding(vertical = 24.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                SuzentEmptyState(stringResource(R.string.sidebar_no_projects), R.drawable.ic_tool_folder)
             }
             visibleProjects.forEach { project ->
                 val projectRows = sidebarChats(model.pageChats(ChatPageQuery("project", project.id)), "", expandedAgents)
@@ -619,7 +621,7 @@ private fun Sidebar(model: MobileModel, hideSelection: Boolean, tabs: Boolean, o
                 if (isOpen) item(key = "project-more:${project.id}") { ChatPageFooter(model, ChatPageQuery("project", project.id)) }
             }
             if (search.isEmpty() && listMode == HomeListMode.RECENT && recentRows.isEmpty() && pinnedRows.isEmpty()) item(key = "empty") {
-                Text(stringResource(R.string.sidebar_empty), modifier = Modifier.padding(vertical = 24.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                SuzentEmptyState(stringResource(R.string.sidebar_empty), R.drawable.ic_tool_chat_bubble_left_right)
             }
             if (scheduledGroups.isNotEmpty() && !tabs && search.isNotEmpty()) {
                 item(key = "scheduled-heading") {
@@ -700,7 +702,9 @@ private fun SidebarFoldControl(childCount: Int, expanded: Boolean, toggle: () ->
 private fun ScheduledTaskRow(task: ScheduledTask, model: MobileModel, selected: Boolean,
                              childCount: Int, expanded: Boolean, toggle: () -> Unit, open: () -> Unit) {
     val selection = suzentSelection
-    Row(Modifier.fillMaxWidth().background(if (selected) selection else MaterialTheme.colorScheme.surface)
+    Row(Modifier.fillMaxWidth().background(if (selected) selection else Color.Transparent,
+        androidx.compose.foundation.shape.RoundedCornerShape(PresentationTokens.radiusControl.dp))
+        .padding(horizontal = 8.dp)
         .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null,
             enabled = !model.busy && task.chatId != null, onClick = open)
         .heightIn(min = 44.dp).padding(horizontal = 12.dp, vertical = PresentationTokens.spaceRow.dp),
@@ -752,43 +756,30 @@ private fun SidebarChat(chat: Chat, selected: Boolean, model: MobileModel, open:
     val foreground = if (pressed) Color.Black else MaterialTheme.colorScheme.onSurface
     val selection = suzentSelection
     val view = LocalView.current
-    val scope = rememberCoroutineScope()
     val canManage = model.device?.permissions?.manageChats == true
-    val swipe = rememberSwipeToDismissBoxState()
+    val swipeable = canManage && !chat.running && !model.busy
     fun togglePin() = model.manageChat(chat, if (chat.pinned) "unpin" else "pin")
-    // A tick as the swipe crosses the action threshold, the way a full swipe arms on iOS.
-    LaunchedEffect(swipe) {
-        snapshotFlow { swipe.targetValue }.collect { if (it != SwipeToDismissBoxValue.Settled) view.suzentHaptic(SuzentHaptic.Light) }
-    }
     Box {
     // Swipes never remove the row: they trigger the action, then the row springs back.
-    SwipeToDismissBox(swipe, backgroundContent = {
-        val direction = swipe.dismissDirection
-        val delete = direction == SwipeToDismissBoxValue.EndToStart
-        Row(Modifier.fillMaxSize().background(when (direction) {
-            SwipeToDismissBoxValue.StartToEnd -> if (chat.pinned) selection else suzentYellow()
-            SwipeToDismissBoxValue.EndToStart -> MaterialTheme.colorScheme.error
-            SwipeToDismissBoxValue.Settled -> Color.Transparent
-        }).padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = if (delete) Arrangement.End else Arrangement.Start) {
-            if (direction != SwipeToDismissBoxValue.Settled) Icon(painterResource(when {
-                delete -> R.drawable.ic_chat_delete
-                chat.pinned -> R.drawable.ic_chat_unpin
-                else -> R.drawable.ic_chat_pin
-            }), contentDescription = null, modifier = Modifier.size(20.dp), tint = when {
-                delete -> MaterialTheme.colorScheme.onError
-                chat.pinned -> MaterialTheme.colorScheme.onSurface
-                else -> Color.Black
-            })
-        }
-    }, enableDismissFromStartToEnd = canManage && !chat.running && !model.busy,
-        enableDismissFromEndToStart = canManage && !chat.running && !model.busy,
-        onDismiss = { value ->
-            if (value == SwipeToDismissBoxValue.StartToEnd) { view.suzentHaptic(SuzentHaptic.Confirm); togglePin() }
-            if (value == SwipeToDismissBoxValue.EndToStart) { view.suzentHaptic(SuzentHaptic.Reject); deleting = true }
-            scope.launch { swipe.reset() }
+    SuzentSwipeRow(enableLeading = swipeable, enableTrailing = swipeable,
+        leadingColor = if (chat.pinned) selection else suzentYellow(),
+        trailingColor = MaterialTheme.colorScheme.error,
+        onLeading = { view.suzentHaptic(SuzentHaptic.Confirm); togglePin() },
+        onTrailing = { view.suzentHaptic(SuzentHaptic.Reject); deleting = true },
+        leading = {
+            Icon(painterResource(if (chat.pinned) R.drawable.ic_chat_unpin else R.drawable.ic_chat_pin),
+                contentDescription = null, modifier = Modifier.size(20.dp),
+                tint = if (chat.pinned) MaterialTheme.colorScheme.onSurface else Color.Black)
+        },
+        trailing = {
+            Icon(painterResource(R.drawable.ic_chat_delete), contentDescription = null, modifier = Modifier.size(20.dp),
+                tint = MaterialTheme.colorScheme.onError)
         }) {
-    Row(Modifier.fillMaxWidth().background(if (pressed) suzentYellow() else if (selected) selection else MaterialTheme.colorScheme.surface)
+    Row(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.background)
+        .padding(horizontal = 8.dp, vertical = 2.dp)) {
+    Row(Modifier.fillMaxWidth().background(
+        if (pressed) suzentYellow() else if (selected) selection else Color.Transparent,
+        androidx.compose.foundation.shape.RoundedCornerShape(PresentationTokens.radiusControl.dp))
         .recordPressInWindow {
             menuAnchor = it
             pressAt = android.os.SystemClock.uptimeMillis()
@@ -828,6 +819,7 @@ private fun SidebarChat(chat: Chat, selected: Boolean, model: MobileModel, open:
             }
         }
         if (chat.running) Box(Modifier.padding(start = 8.dp)) { StreamingPulse() }
+    }
     }
     }
     SuzentMenu(expanded = menu, onDismissRequest = { menu = false }, anchorInWindow = menuAnchor) {
@@ -1193,12 +1185,16 @@ private fun ColumnScope.Conversation(model: MobileModel) {
     SuzentErrorHost(model)
     val composerOutline = MaterialTheme.colorScheme.outline
     val composerShadow = suzentShadow
+    val composerShape = androidx.compose.foundation.shape.RoundedCornerShape(PresentationTokens.radiusCard.dp)
     Box(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp).drawBehind {
         val offset = PresentationTokens.shadowOffset.dp.toPx()
-        drawRect(composerShadow, topLeft = androidx.compose.ui.geometry.Offset(offset, offset), size = Size(size.width - offset, size.height - offset))
+        val radius = PresentationTokens.radiusCard.dp.toPx()
+        drawRoundRect(composerShadow, topLeft = androidx.compose.ui.geometry.Offset(offset, offset),
+            size = androidx.compose.ui.geometry.Size((size.width - offset).coerceAtLeast(0f), (size.height - offset).coerceAtLeast(0f)),
+            cornerRadius = androidx.compose.ui.geometry.CornerRadius(radius, radius))
     }.padding(end = PresentationTokens.shadowOffset.dp, bottom = PresentationTokens.shadowOffset.dp)) {
-    Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface)
-        .border(PresentationTokens.borderWidth.dp, composerOutline)
+    Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface, composerShape)
+        .border(PresentationTokens.borderWidth.dp, composerOutline, composerShape)
         .animateContentSize(
             animationSpec = spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMediumLow),
             alignment = Alignment.BottomCenter
@@ -1282,14 +1278,19 @@ private fun ColumnScope.Conversation(model: MobileModel) {
 @Composable
 private fun HistoryLoadingIndicator() {
     var visible by remember { mutableStateOf(false) }
+    val motion = android.animation.ValueAnimator.areAnimatorsEnabled()
     LaunchedEffect(Unit) {
         kotlinx.coroutines.delay(180)
         visible = true
     }
-    Box(Modifier.fillMaxWidth().height(68.dp), contentAlignment = Alignment.Center) {
-        AnimatedVisibility(visible, enter = fadeIn(tween(140)), exit = fadeOut(tween(90))) {
-            CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant)
+    AnimatedVisibility(visible, enter = if (motion) fadeIn(tween(180)) else fadeIn(snap()), exit = fadeOut(snap())) {
+        Column(Modifier.fillMaxWidth().heightIn(min = 68.dp).padding(vertical = 4.dp).semantics {
+            progressBarRangeInfo = ProgressBarRangeInfo.Indeterminate
+        }, verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            listOf(0.72f, 0.94f, 0.48f).forEach { fraction ->
+                Box(Modifier.fillMaxWidth(fraction).height(12.dp).background(suzentLine,
+                    androidx.compose.foundation.shape.RoundedCornerShape(PresentationTokens.radiusBadge.dp)))
+            }
         }
     }
 }
@@ -1356,8 +1357,8 @@ private fun ComposerButton(action: ComposerAction, model: MobileModel, chat: Cha
             ComposerAction.QUEUE -> MaterialTheme.colorScheme.onSurface
             else -> Color.White
         }
-        Box(Modifier.size(36.dp).background(fill)
-            .border(2.dp, MaterialTheme.colorScheme.outline), contentAlignment = Alignment.Center) {
+        Box(Modifier.size(36.dp).background(fill, androidx.compose.foundation.shape.CircleShape)
+            .border(1.5.dp, MaterialTheme.colorScheme.outline, androidx.compose.foundation.shape.CircleShape), contentAlignment = Alignment.Center) {
             if (loading || action == ComposerAction.CONNECTING) CircularProgressIndicator(Modifier.size(18.dp), color = tint, strokeWidth = 2.dp)
             else Icon(painterResource(when (action) {
                 ComposerAction.STOP -> R.drawable.ic_stop
@@ -1430,16 +1431,22 @@ private enum class HomeTab(val label: Int, val icon: Int) {
 private fun TabHome(tab: HomeTab, select: (HomeTab) -> Unit, unread: Int = 0, page: @Composable (HomeTab) -> Unit) {
     // The keyboard covers the bar anyway; dropping it keeps the page's own ime padding exact.
     val keyboardVisible = WindowInsets.ime.getBottom(LocalDensity.current) > 0
+    val indicator = suzentYellow()
     Column(Modifier.fillMaxSize()) {
         Box(Modifier.weight(1f).fillMaxWidth()) { page(tab) }
         if (!keyboardVisible) {
-            HorizontalDivider(thickness = PresentationTokens.borderWidth.dp, color = MaterialTheme.colorScheme.outline)
+            HorizontalDivider(thickness = 1.dp, color = suzentLine)
             Row(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface).navigationBarsPadding().selectableGroup()) {
                 HomeTab.entries.forEach { item ->
                     val selected = item == tab
                     val color = if (selected) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant
                     Column(Modifier.weight(1f).heightIn(min = 56.dp).selectable(selected, role = Role.Tab) { select(item) }
-                        .drawBehind { if (selected) drawRect(color, androidx.compose.ui.geometry.Offset((size.width - 32.dp.toPx()) / 2, 0f), Size(32.dp.toPx(), 3.dp.toPx())) }
+                        .drawBehind {
+                            if (selected) drawRoundRect(indicator,
+                                topLeft = androidx.compose.ui.geometry.Offset((size.width - 28.dp.toPx()) / 2, 0f),
+                                size = androidx.compose.ui.geometry.Size(28.dp.toPx(), 3.dp.toPx()),
+                                cornerRadius = androidx.compose.ui.geometry.CornerRadius(2.dp.toPx(), 2.dp.toPx()))
+                        }
                         .padding(vertical = 6.dp),
                         horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
                         Box {
@@ -1501,7 +1508,7 @@ internal fun InboxTasks(model: MobileModel, open: (Chat) -> Unit) {
         }) {
             LazyColumn(Modifier.fillMaxSize().padding(horizontal = 16.dp), contentPadding = PaddingValues(vertical = 12.dp)) {
                 if (groups.isEmpty()) item(key = "empty") {
-                    Text(stringResource(R.string.tasks_empty), Modifier.padding(vertical = 24.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    SuzentEmptyState(stringResource(R.string.tasks_empty), R.drawable.ic_clock)
                 }
                 items(groups, key = { it.id }) { group ->
                     Column {
@@ -1550,7 +1557,7 @@ private fun DesktopsView(model: MobileModel, back: () -> Unit) {
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             }
             OutlinedButton(onClick = { model.error = null; model.beginPairing(repairActive = false); scanner = true },
-                enabled = !model.busy && !model.streaming, shape = RectangleShape,
+                enabled = !model.busy && !model.streaming, shape = androidx.compose.foundation.shape.RoundedCornerShape(PresentationTokens.radiusControl.dp),
                 border = androidx.compose.foundation.BorderStroke(PresentationTokens.borderWidth.dp, MaterialTheme.colorScheme.outline),
                 modifier = Modifier.padding(PresentationTokens.spacePage.dp).fillMaxWidth().heightIn(min = 48.dp)) {
                 Text(stringResource(R.string.pair_another_desktop), fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface)
@@ -1563,21 +1570,19 @@ private fun DesktopsView(model: MobileModel, back: () -> Unit) {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun DesktopRow(model: MobileModel, desktop: SavedDesktop, forget: () -> Unit) {
+    val view = LocalView.current
     val active = desktop.id == model.desktops.activeId
     val checking = model.checkingDesktop == desktop.id
     val forgetLabel = stringResource(R.string.forget_desktop)
     val latestForget by rememberUpdatedState(forget)
     // The swipe only asks; the dialog does the forgetting, so the row always springs back.
-    val swipe = rememberSwipeToDismissBoxState(confirmValueChange = {
-        if (it == SwipeToDismissBoxValue.EndToStart) latestForget()
-        false
-    })
-    SwipeToDismissBox(swipe, enableDismissFromStartToEnd = false, backgroundContent = {
-        Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.error).padding(horizontal = PresentationTokens.spacePage.dp),
-            contentAlignment = Alignment.CenterEnd) {
+    SuzentSwipeRow(enableLeading = false, enableTrailing = !model.streaming,
+        leadingColor = Color.Transparent, trailingColor = MaterialTheme.colorScheme.error,
+        onLeading = {}, onTrailing = { view.suzentHaptic(SuzentHaptic.Reject); latestForget() },
+        leading = {},
+        trailing = {
             Text(forgetLabel, color = MaterialTheme.colorScheme.onError, fontWeight = FontWeight.SemiBold)
-        }
-    }) {
+        }) {
         ListItem(leadingContent = { DesktopSquare(desktop.id, 14.dp) },
             headlineContent = { Text(desktop.name, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis) },
             supportingContent = { Text(if (checking) stringResource(R.string.desktop_checking) else displayOrigin(desktop.connection.origin),
@@ -1589,6 +1594,7 @@ private fun DesktopRow(model: MobileModel, desktop: SavedDesktop, forget: () -> 
                         tint = suzentLink, modifier = Modifier.size(20.dp))
                 }
             },
+            colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.background),
             modifier = Modifier
                 .semantics { customActions = listOf(CustomAccessibilityAction(forgetLabel) { latestForget(); true }) }
                 .clickable(enabled = !active && model.checkingDesktop == null && !model.streaming, role = Role.Button) { model.switchDesktop(desktop.id) })

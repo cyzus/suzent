@@ -254,7 +254,12 @@ struct ToolActivityBlock: View {
                         Image(systemName: "chevron.right").font(.system(size: 9)).rotationEffect(.degrees(expanded ? 90 : 0)).foregroundStyle(Color.suzentMuted)
                     }.padding(.horizontal, 8).frame(minHeight: 46).contentShape(Rectangle())
                         .background { RunningSurface(kind: surface) }
-                        .overlay { if surface != nil { Rectangle().strokeBorder(Color.suzentText, lineWidth: 2) } }
+                        .overlay {
+                            if surface != nil {
+                                RoundedRectangle(cornerRadius: PresentationTokens.radiusControl, style: .continuous)
+                                    .strokeBorder(Color.suzentText, lineWidth: 2)
+                            }
+                        }
                 }.buttonStyle(.plain).accessibilityValue(Text(status))
                 if !expanded && failed {
                     Text(String(activityDetail(part.output, output: true).prefix(180))).suzentFont(PresentationTokens.typeMeta, design: .monospaced)

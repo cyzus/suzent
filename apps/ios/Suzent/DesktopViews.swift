@@ -28,7 +28,7 @@ struct HomeTabBar: View {
         .dynamicTypeSize(...DynamicTypeSize.accessibility2)
         .background(Color.suzentSurface.ignoresSafeArea(edges: .bottom))
         .overlay(alignment: .top) {
-            Rectangle().fill(Color.suzentOutline).frame(height: PresentationTokens.borderWidth)
+            Rectangle().fill(Color.suzentLine).frame(height: 1)
         }
     }
 
@@ -48,7 +48,9 @@ struct HomeTabBar: View {
             }.foregroundStyle(selected ? Color.suzentText : Color.suzentMuted)
                 .frame(maxWidth: .infinity, minHeight: 52).padding(.top, PresentationTokens.borderWidth)
                 .overlay(alignment: .top) {
-                    if selected { Rectangle().fill(Color.suzentText).frame(width: 32, height: 3).accessibilityHidden(true) }
+                    if selected {
+                        Capsule().fill(Color.suzentYellow).frame(width: 28, height: 3).accessibilityHidden(true)
+                    }
                 }
                 .contentShape(Rectangle())
         }.buttonStyle(.plain)
@@ -114,11 +116,10 @@ struct DesktopsPage: View {
             Section {
                 ForEach(model.desktops) { desktop in
                     row(desktop)
-                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                            // Not role: .destructive, which would animate the row away before the confirmation.
-                            Button { forgetting = desktop } label: { Label("Forget", systemImage: "trash") }
-                                .tint(Color.suzentDanger)
-                        }
+                        .directionalSwipe(enabled: model.checkingDesktopId == nil && !model.streaming,
+                            trailing: SuzentSwipeAction(title: "Forget", systemImage: "trash", tint: Color.suzentDanger) {
+                                forgetting = desktop
+                            })
                         .accessibilityActions {
                             Button("Forget") { forgetting = desktop }
                         }

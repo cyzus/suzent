@@ -46,10 +46,10 @@ fun MailboxView(model: MobileModel, openChat: (Chat) -> Unit) {
         Box(Modifier.fillMaxSize().statusBarsPadding()) { MailboxThreadDetail(model, key, back = { openThread = null }, openChat = openChat) }
         return
     }
-    Column(Modifier.fillMaxSize().statusBarsPadding().background(MaterialTheme.colorScheme.surface)) {
+    Column(Modifier.fillMaxSize().statusBarsPadding().background(MaterialTheme.colorScheme.background)) {
         InboxHeader(model, showTasks, toggleTasks = { showTasks = !showTasks })
         if (showTasks) InboxTasks(model, openChat)
-        else if (!model.mailboxSupported) InboxEmpty(stringResource(R.string.mailbox_unsupported))
+        else if (!model.mailboxSupported) SuzentEmptyState(stringResource(R.string.mailbox_unsupported), R.drawable.ic_inbox)
         else {
             InboxFilters(model)
             InboxList(model, open = { openThread = it })
@@ -115,7 +115,9 @@ private fun ColumnScope.InboxList(model: MobileModel, open: (String) -> Unit) {
                     TextButton({ model.refreshMailbox() }) { Text(stringResource(R.string.refresh), color = MaterialTheme.colorScheme.onSurface) }
                 }
             } }
-            if (threads.isEmpty() && model.mailboxError == null && !model.mailboxLoading) item { InboxEmpty(stringResource(R.string.mailbox_empty)) }
+            if (threads.isEmpty() && model.mailboxError == null && !model.mailboxLoading) item {
+                SuzentEmptyState(stringResource(R.string.mailbox_empty), R.drawable.ic_inbox)
+            }
             items(threads, key = { it.key }) { thread ->
                 MailboxThreadRow(thread, thread.latest.chatId?.let { model.mailboxChats[it] }) { open(thread.key) }
                 if (thread.key == threads.last().key) LaunchedEffect(thread.key, model.mailbox.hasMore) {
@@ -132,14 +134,5 @@ private fun ColumnScope.InboxList(model: MobileModel, open: (String) -> Unit) {
                     fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
             }
         }
-    }
-}
-
-@Composable
-private fun InboxEmpty(message: String) {
-    Column(Modifier.fillMaxWidth().padding(horizontal = 32.dp, vertical = 64.dp), horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        Icon(painterResource(R.drawable.ic_inbox), null, Modifier.size(32.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = .5f))
-        Text(message, fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }

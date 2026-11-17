@@ -75,7 +75,9 @@ private struct TextEntrySheet: View {
                     .focused($focused).submitLabel(.done)
                     .onSubmit { if valid { save(); dismiss() } }
                     .padding(PresentationTokens.spaceMedium).frame(minHeight: PresentationTokens.controlHeight)
-                    .overlay(Rectangle().stroke(focused ? Color.suzentLink : Color.suzentOutline, lineWidth: PresentationTokens.borderWidth))
+                    .background(Color.suzentSurface, in: RoundedRectangle(cornerRadius: PresentationTokens.radiusControl, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: PresentationTokens.radiusControl, style: .continuous)
+                        .stroke(focused ? Color.suzentLink : Color.suzentOutline, lineWidth: PresentationTokens.borderWidth))
                 Spacer()
             }.padding(20)
                 .navigationTitle(title).navigationBarTitleDisplayMode(.inline)
@@ -154,25 +156,25 @@ private struct ChatSidebarRow: View {
             }
             .contentShape(.contextMenuPreview, Rectangle())
             .contextMenu { if enabled { menuItems } }
-            .swipeActions(edge: .leading, allowsFullSwipe: true) {
-                if swipeable {
-                    Button { swipedPin += 1; manage(pinned ? "unpin" : "pin", nil) } label: {
-                        Label(pinned ? LocalizedStringKey("Unpin") : LocalizedStringKey("Pin"), systemImage: pinned ? "pin.slash" : "pin")
-                    }.tint(pinned ? Color.suzentMuted : Color(presentation: PresentationTokens.blue))
-                }
-            }
-            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                if swipeable {
-                    // Not role: .destructive, which would animate the row away before the confirmation.
-                    Button { swipedDelete += 1; deleting = true } label: { Label("Delete", systemImage: "trash") }
-                        .tint(Color.suzentDanger)
-                }
-            }
+            .directionalSwipe(enabled: swipeable,
+                leading: SuzentSwipeAction(title: pinned ? "Unpin" : "Pin", systemImage: pinned ? "pin.slash" : "pin",
+                    tint: pinned ? Color.suzentMuted : Color(presentation: PresentationTokens.blue),
+                    ink: pinned ? Color.suzentText : .white) {
+                    swipedPin += 1
+                    manage(pinned ? "unpin" : "pin", nil)
+                },
+                trailing: SuzentSwipeAction(title: "Delete", systemImage: "trash", tint: Color.suzentDanger) {
+                    // The dialog confirms; the row itself springs back.
+                    swipedDelete += 1
+                    deleting = true
+                })
             .suzentFeedback(.success, trigger: swipedPin)
             .suzentFeedback(.warning, trigger: swipedDelete)
             .accessibilityActions {
                 if enabled && canManage {
+                    Button(pinned ? "Unpin" : "Pin") { manage(pinned ? "unpin" : "pin", nil) }
                     Button("Rename") { startRename() }
+                    if !running { Button("Delete") { deleting = true } }
                 }
             }
             .sheet(isPresented: $renaming) {
@@ -310,7 +312,7 @@ struct ContentView: View {
                             }
                         }
                 } detail: {
-                    NavigationStack { detail }
+                    NavigationStack { detail.background(NavigationPopGuard()) }
                 }.navigationSplitViewStyle(.balanced)
             } else {
                 NavigationStack(path: $path) {
@@ -322,6 +324,7 @@ struct ContentView: View {
                         }
                         HomeTabBar(selection: $tab, unread: model.mailbox.unread)
                     }.ignoresSafeArea(.keyboard, edges: .bottom)
+                        .background(NavigationPopGuard())
                         .toolbar(.hidden, for: .navigationBar)
                         .navigationDestination(for: Route.self) { route in
                             switch route {
@@ -662,8 +665,9 @@ struct ContentView: View {
                             .buttonStyle(.plain).frame(minWidth: 28, minHeight: 36).accessibilityLabel("Clear search")
                     }
                 }.padding(.horizontal, 10).frame(minHeight: 38)
-                    .background(Color.suzentBackground)
-                    .overlay(Rectangle().strokeBorder(Color.suzentOutline, lineWidth: 1))
+                    .background(Color.suzentBackground, in: RoundedRectangle(cornerRadius: PresentationTokens.radiusControl, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: PresentationTokens.radiusControl, style: .continuous)
+                        .strokeBorder(Color.suzentOutline, lineWidth: 1))
                     .padding(.horizontal, 16).padding(.top, 8).padding(.bottom, 12)
             }
             if search.isEmpty {
@@ -679,7 +683,7 @@ struct ContentView: View {
                         conversationRows(rows, scope: "search")
                         pageFooter(searchQuery)
                         if rows.isEmpty && model.chatPages[searchQuery] != nil {
-                            Text("No matching chats").font(.subheadline).foregroundStyle(Color.suzentMuted).sidebarListRow()
+                            SuzentEmptyState(systemImage: "magnifyingglass", message: "No matching chats").sidebarListRow()
                         }
                     } else {
                         switch mode {
@@ -693,12 +697,12 @@ struct ContentView: View {
                             conversationRows(recentRows, scope: "recent")
                             pageFooter(ChatPageQuery())
                             if pinnedRows.isEmpty && recentRows.isEmpty {
-                                Text("No chats yet").font(.subheadline).foregroundStyle(Color.suzentMuted).padding(.vertical, 24).sidebarListRow()
+                                SuzentEmptyState(systemImage: "bubble.left.and.bubble.right", message: "No chats yet").sidebarListRow()
                             }
                         case .projects:
                             ForEach(projects) { project in projectSection(project) }
                             if projects.isEmpty {
-                                Text("No projects yet").font(.subheadline).foregroundStyle(Color.suzentMuted).padding(.vertical, 24).sidebarListRow()
+                                SuzentEmptyState(systemImage: "folder", message: "No projects yet").sidebarListRow()
                             }
                         }
                     }
@@ -722,7 +726,7 @@ struct ContentView: View {
                 }
             }
         }
-        .background(Color.suzentSurface)
+        .background(Color.suzentBackground)
         // The list keeps its branded header; pushed pages use the system bar and its back gesture.
         .toolbar(.hidden, for: .navigationBar)
     }
@@ -748,14 +752,13 @@ struct ContentView: View {
                 .dynamicTypeSize(...DynamicTypeSize.accessibility3)
             List {
                 if term.isEmpty {
-                    Text("Search the titles of every chat this phone can read.")
-                        .font(.subheadline).foregroundStyle(Color.suzentMuted).padding(.vertical, 24).sidebarListRow()
+                    SuzentEmptyState(systemImage: "magnifyingglass", message: "Search the titles of every chat this phone can read.").sidebarListRow()
                 } else {
                     let rows = sidebarChats(model.pageChats(query), search: term, expanded: expandedAgents)
                     conversationRows(rows, scope: "search")
                     pageFooter(query)
                     if rows.isEmpty && model.chatPages[query] != nil {
-                        Text("No matching chats").font(.subheadline).foregroundStyle(Color.suzentMuted).sidebarListRow()
+                        SuzentEmptyState(systemImage: "magnifyingglass", message: "No matching chats").sidebarListRow()
                     }
                 }
             }
@@ -770,7 +773,7 @@ struct ContentView: View {
                 await model.loadPage(query)
             }
         }
-        .background(Color.suzentSurface)
+        .background(Color.suzentBackground)
         .toolbar(.hidden, for: .navigationBar)
     }
 
@@ -1017,15 +1020,13 @@ struct ContentView: View {
             .scrollContentBackground(.hidden)
             .environment(\.defaultMinListRowHeight, 0)
             .refreshable { await model.refresh() }
-        }.background(Color.suzentSurface)
+        }.background(Color.suzentBackground)
     }
 
     @ViewBuilder private func taskRows(scope: String) -> some View {
         let groups = scheduledSidebarGroups(model.chats, tasks: model.scheduledTasks, search: "", expanded: expandedAgents)
         if groups.isEmpty {
-            Text("No scheduled tasks on \(model.activeDesktop?.name ?? model.origin)")
-                .font(.subheadline).foregroundStyle(Color.suzentMuted).multilineTextAlignment(.center)
-                .frame(maxWidth: .infinity).padding(.vertical, 40).sidebarListRow()
+            SuzentEmptyState(systemImage: "clock", message: "No scheduled tasks on \(model.activeDesktop?.name ?? model.origin)").sidebarListRow()
         }
         ForEach(groups) { group in
             if let task = group.task {
@@ -1195,7 +1196,7 @@ struct ContentView: View {
                 Spacer(minLength: 8)
                 Color.clear.frame(width: actionWidth, height: 44)
             }.transition(.opacity) }
-        }.padding(10).background(Color.suzentSurface)
+        }.padding(10).background(Color.suzentSurface, in: RoundedRectangle(cornerRadius: PresentationTokens.radiusCard, style: .continuous))
             .dynamicTypeSize(...DynamicTypeSize.accessibility3)
             .animation(reduceMotion ? nil : .smooth(duration: 0.28, extraBounce: 0), value: composing)
             .overlay(alignment: .bottomTrailing) {
@@ -1209,9 +1210,14 @@ struct ContentView: View {
                                    running: model.streaming || chat.isRunning == true, waiting: !model.pendingApprovals.isEmpty)) {
                 model.releaseQueued()
             }
-            .overlay(Rectangle().stroke(Color.suzentOutline, lineWidth: PresentationTokens.borderWidth))
-            .background { Rectangle().fill(Color.suzentShadow).offset(x: 2, y: 2) }
-            .padding(.trailing, 2).padding(.bottom, 2)
+            .overlay(RoundedRectangle(cornerRadius: PresentationTokens.radiusCard, style: .continuous)
+                .stroke(Color.suzentOutline, lineWidth: PresentationTokens.borderWidth))
+            .background {
+                RoundedRectangle(cornerRadius: PresentationTokens.radiusCard, style: .continuous)
+                    .fill(Color.suzentShadow)
+                    .offset(x: PresentationTokens.shadowOffset, y: PresentationTokens.shadowOffset)
+            }
+            .padding(.trailing, PresentationTokens.shadowOffset).padding(.bottom, PresentationTokens.shadowOffset)
             .padding(.horizontal, 12).padding(.bottom, 8)
     }
 
@@ -1302,9 +1308,9 @@ struct ContentView: View {
                 if loading || action == .connecting { ProgressView().tint(tint) }
                 else { Image(systemName: symbol).font(.system(size: action == .stop ? 14 : 20, weight: .bold)) }
             }.foregroundStyle(tint).frame(width: 36, height: 36)
-                .background(fill)
-                .overlay(Rectangle().stroke(Color.suzentOutline, lineWidth: 2))
-                .padding(4).contentShape(Rectangle())
+                .background(fill, in: Circle())
+                .overlay(Circle().stroke(Color.suzentOutline, lineWidth: 1.5))
+                .padding(4).contentShape(Circle())
         }.buttonStyle(.plain).disabled(loading).accessibilityLabel(label)
     }
 
@@ -1341,7 +1347,7 @@ private struct SearchPageField: View {
                 }.buttonStyle(.plain).frame(minWidth: 32, minHeight: 42).accessibilityLabel("Clear search")
             }
         }.padding(.horizontal, 12).frame(minHeight: 42)
-            .background(Color.suzentText.opacity(0.04))
+            .background(Color.suzentText.opacity(0.04), in: RoundedRectangle(cornerRadius: PresentationTokens.radiusControl, style: .continuous))
             // Only on the way in: coming back from a result should not raise the keyboard again. Focus set
             // during the push transition is dropped, so it waits for the page to settle.
             .task {
@@ -1357,15 +1363,30 @@ private struct HistoryLoadingIndicator: View {
     @State private var visible = false
 
     var body: some View {
-        ProgressView().tint(Color.suzentMuted)
-            .opacity(visible ? 1 : 0)
-            .frame(maxWidth: .infinity, minHeight: 68)
-            .animation(reduceMotion ? nil : .easeOut(duration: 0.14), value: visible)
-            .accessibilityHidden(!visible)
-            .task {
-                try? await Task.sleep(for: .milliseconds(180))
-                guard !Task.isCancelled else { return }
-                visible = true
-            }
+        VStack(alignment: .leading, spacing: 10) {
+            bar(0.72)
+            bar(0.94)
+            bar(0.48)
+        }
+        .opacity(visible ? 1 : 0)
+        .frame(maxWidth: .infinity, minHeight: 68, alignment: .topLeading)
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.18), value: visible)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Loading conversation")
+        .accessibilityHidden(!visible)
+        .task {
+            try? await Task.sleep(for: .milliseconds(180))
+            guard !Task.isCancelled else { return }
+            visible = true
+        }
+    }
+
+    private func bar(_ fraction: CGFloat) -> some View {
+        RoundedRectangle(cornerRadius: PresentationTokens.radiusBadge, style: .continuous)
+            .fill(Color.suzentLine)
+            .frame(height: 12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .scaleEffect(x: fraction, y: 1, anchor: .leading)
+            .opacity(reduceMotion ? 0.7 : 1)
     }
 }

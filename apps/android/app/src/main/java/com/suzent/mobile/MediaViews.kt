@@ -18,8 +18,11 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.calculatePan
+import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -127,10 +130,13 @@ private fun FileRow(item: MediaItem, loader: suspend (MediaItem) -> File?) {
         }
         Unit
     }
-    Column(Modifier.fillMaxWidth().border(1.5.dp, MaterialTheme.colorScheme.outline)) {
+    val shape = androidx.compose.foundation.shape.RoundedCornerShape(PresentationTokens.radiusControl.dp)
+    Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface, shape)
+        .border(1.5.dp, MaterialTheme.colorScheme.outline, shape)) {
         Row(Modifier.clickable(enabled = !busy, onClickLabel = stringResource(R.string.media_share, item.name), onClick = share)
             .padding(start = 10.dp, top = 10.dp, bottom = 10.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.size(40.dp).background(fileCover(extension)).border(1.dp, MaterialTheme.colorScheme.outline),
+            Box(Modifier.size(40.dp).background(fileCover(extension), androidx.compose.foundation.shape.RoundedCornerShape(PresentationTokens.radiusBadge.dp))
+                .border(1.dp, MaterialTheme.colorScheme.outline, androidx.compose.foundation.shape.RoundedCornerShape(PresentationTokens.radiusBadge.dp)),
                 contentAlignment = Alignment.Center) {
                 Text(if (extension.isEmpty()) "FILE" else ".${extension.uppercase()}", color = MaterialTheme.colorScheme.onSurface, fontSize = 10.sp,
                     fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold, maxLines = 1)
@@ -245,9 +251,29 @@ private fun ImageViewer(file: File, name: String, close: () -> Unit) {
                     modifier = Modifier.fillMaxSize()
                         .recordPressInWindow { menuAnchor = it }
                         .pointerInput(file) {
-                            detectTransformGestures { _, pan, zoom, _ ->
-                                scale = (scale * zoom).coerceIn(1f, 6f)
-                                offset = if (scale == 1f) Offset.Zero else offset + pan
+                            // A one-finger drag only pans once the image is zoomed. Until then it is
+                            // left unconsumed so a vertical move is not claimed as a horizontal swipe.
+                            awaitEachGesture {
+                                val down = awaitFirstDown(requireUnconsumed = false)
+                                val lock = SwipeAxisLock()
+                                var zooming = false
+                                do {
+                                    val event = awaitPointerEvent()
+                                    val pressed = event.changes.filter { it.pressed }
+                                    if (pressed.isEmpty()) break
+                                    val zoomChange = event.calculateZoom()
+                                    val panChange = event.calculatePan()
+                                    if (pressed.size > 1 || zoomChange != 1f) zooming = true
+                                    val total = pressed.first().position - down.position
+                                    val axis = if (zooming) SwipeAxisLock.Axis.HORIZONTAL
+                                    else lock.update(total.x.toDouble(), total.y.toDouble())
+                                    if (!zooming && axis == SwipeAxisLock.Axis.VERTICAL) break
+                                    if (zooming || scale > 1f) {
+                                        scale = (scale * zoomChange).coerceIn(1f, 6f)
+                                        offset = if (scale == 1f) Offset.Zero else offset + panChange
+                                        event.changes.forEach { if (it.pressed) it.consume() }
+                                    }
+                                } while (true)
                             }
                         }
                         .pointerInput(file) {

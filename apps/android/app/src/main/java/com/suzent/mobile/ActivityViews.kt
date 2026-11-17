@@ -249,7 +249,7 @@ fun ToolActivityBlock(part: MessagePart, live: Boolean, last: Boolean = true, cu
             val expandedLabel = stringResource(if (expanded) R.string.reminder_expanded else R.string.reminder_collapsed)
             val surface = if (part.type == "tool" && active && part.output.isEmpty()) activityRunningSurface(part.toolName) else null
             SuzentTextButton(onClick = { expanded = !expanded }, modifier = Modifier.fillMaxWidth().heightIn(min = 46.dp)
-                .then(if (surface != null) Modifier.border(2.dp, ink) else Modifier).runningSurface(surface, ink)
+                .then(if (surface != null) Modifier.border(2.dp, ink, androidx.compose.foundation.shape.RoundedCornerShape(PresentationTokens.radiusControl.dp)) else Modifier).runningSurface(surface, ink)
                 .semantics { stateDescription = "$status, $expandedLabel" }, contentPadding = PaddingValues(horizontal = 8.dp)) {
                 ActivityToolIcon(part, active, color)
                 Spacer(Modifier.width(8.dp))

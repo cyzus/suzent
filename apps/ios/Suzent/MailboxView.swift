@@ -31,7 +31,7 @@ struct MailboxView<TaskContent: View>: View {
                 filters
                 messages
             }
-        }.background(Color.suzentSurface)
+        }.background(Color.suzentBackground)
             .task { await model.refreshMailbox() }
     }
 

@@ -7,8 +7,9 @@ struct SuzentCountBadge: View {
 
     var body: some View {
         Text(count > 99 ? "99+" : String(count)).font(.system(size: 10, weight: .bold, design: .monospaced))
-            .foregroundStyle(Color.black).padding(.horizontal, 4).frame(minHeight: 15)
-            .background(Color.suzentYellow).overlay(Rectangle().strokeBorder(Color.black, lineWidth: 1))
+            .foregroundStyle(Color.black).padding(.horizontal, 5).frame(minHeight: 16)
+            .background(Color.suzentYellow, in: RoundedRectangle(cornerRadius: PresentationTokens.radiusBadge, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: PresentationTokens.radiusBadge, style: .continuous).strokeBorder(Color.black, lineWidth: 1))
             .fixedSize()
     }
 }
@@ -29,8 +30,9 @@ struct MailboxSourceMark: View {
         }
         .foregroundStyle(muted ? Color.suzentMuted : Color.suzentText)
         .frame(width: size, height: size)
-        .background(Color.suzentSurface)
-        .overlay(Rectangle().strokeBorder(muted ? Color.suzentRowDivider : Color.suzentOutline, lineWidth: 1))
+        .background(Color.suzentSurface, in: RoundedRectangle(cornerRadius: PresentationTokens.radiusControl, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: PresentationTokens.radiusControl, style: .continuous)
+            .strokeBorder(muted ? Color.suzentLine : Color.suzentOutline, lineWidth: 1))
         .accessibilityHidden(true)
     }
 
@@ -109,8 +111,8 @@ struct MailboxThreadRow: View {
             VStack(alignment: .leading, spacing: 6) {
                 HStack(alignment: .firstTextBaseline, spacing: 7) {
                     if unread {
-                        Rectangle().fill(Color.suzentYellow).frame(width: 7, height: 7)
-                            .overlay(Rectangle().strokeBorder(Color.suzentOutline, lineWidth: 1)).alignmentGuide(.firstTextBaseline) { $0[.bottom] - 1 }
+                        Circle().fill(Color.suzentYellow).frame(width: 7, height: 7)
+                            .alignmentGuide(.firstTextBaseline) { $0[.bottom] - 1 }
                             .accessibilityLabel("Unread")
                     }
                     Text(latest.display.title).suzentFont(14, weight: unread ? .semibold : .regular).lineSpacing(2)
@@ -149,7 +151,7 @@ struct MailboxThreadDetail: View {
             if let thread = mailboxThreads(model.mailbox.items).first(where: { $0.id == key }) { content(thread) }
             else { ContentUnavailableView("Event unavailable", systemImage: "tray") }
         }
-        .background(Color.suzentSurface)
+        .background(Color.suzentBackground)
         .navigationBarTitleDisplayMode(.inline)
         .task(id: key) {
             let unread = mailboxThreads(model.mailbox.items).first { $0.id == key }?.unreadIds ?? []
