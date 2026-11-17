@@ -1,0 +1,1 @@
+{"products": {"desktop": "patch"}, "summary": "Keep chat links clickable when followed by inline citation markers and prevent unlabelled tool results from triggering hallucinated citations."}

@@ -16,7 +16,14 @@ import { getApiBase } from '../../lib/api';
 import { splitStreamingBlocks } from '../../lib/streamingMarkdown';
 
 export function sanitizeMarkdownCodeFenceLanguages(markdown: string): string {
-  const repairedLooseUrlFences = markdown.replace(
+  // Keep citation markers out of bare GFM autolinks (`https://...cite...`)
+  // so remark-gfm closes the URL before the marker instead of percent-encoding
+  // the marker into `href`.
+  const separatedUrlCitations = markdown.replace(
+    /(https?:\/\/[^\s<>()[\]\ue200\ufffc]+)(?=\ue200|\ufffc|\[\[[a-zA-Z]+:)/g,
+    '$1 '
+  );
+  const repairedLooseUrlFences = separatedUrlCitations.replace(
     /^([ \t]{0,3})`{1,2}(https?:\/\/[^\n`]+)\n[ \t]*`{1,2}[ \t]*$/gm,
     '$1```\n$2\n$1```'
   );
@@ -84,7 +91,7 @@ function suzentSessionFileUrlToServeUrl(url: string): string | null {
 }
 
 function normalizeMarkdownUrl(url: string): string {
-  const trimmed = url.trim();
+  const trimmed = url.trim().replace(/(?:%EE%88%80|\ue200|%EF%BF%BC|\ufffc).*$/i, '');
   if (!trimmed) return '';
 
   if (/^file:/i.test(trimmed)) {
@@ -271,9 +278,13 @@ export const MarkdownRenderer = React.memo<MarkdownRendererProps>(
 
       try {
         if (window.__TAURI__) {
-          const { open } = await import('@tauri-apps/plugin-shell');
-          await open(link);
-          return;
+          try {
+            const { open } = await import('@tauri-apps/plugin-shell');
+            await open(link);
+            return;
+          } catch (tauriErr) {
+            console.warn('Tauri shell.open failed, falling back to window.open', tauriErr);
+          }
         }
 
         window.open(link, '_blank', 'noopener,noreferrer');
@@ -309,6 +320,13 @@ export const MarkdownRenderer = React.memo<MarkdownRendererProps>(
           }
           if (React.isValidElement(child) && child.props?.children) {
             if (child.type === 'code' || child.props?.node?.tagName === 'code') {
+              return child;
+            }
+            // Custom `a` component already calls applyCitations on its children.
+            // Do not clone `<a onClick={...}>` with transformed children or when
+            // `child.type` is the custom `a` renderer (whose props only carry
+            // `{ href, children }`, not `onClick`).
+            if (child.type === 'a' || child.props?.node?.tagName === 'a') {
               return child;
             }
             // Links and other custom renderers read their children as text, so
@@ -456,6 +474,7 @@ export const MarkdownRenderer = React.memo<MarkdownRendererProps>(
           return (
             <a
               href={hrefStr}
+              target="_blank"
               rel="noopener noreferrer"
               onClick={(e) => {
                 if (!isExternalLink(hrefStr)) return;
@@ -465,7 +484,7 @@ export const MarkdownRenderer = React.memo<MarkdownRendererProps>(
               }}
               className="text-brutal-blue hover:bg-brutal-yellow font-bold underline break-words transition-colors duration-100"
             >
-              {children}
+              {applyCitations(children, 'a')}
             </a>
           );
         },
