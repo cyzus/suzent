@@ -49,6 +49,13 @@ machine. Web searches go to DuckDuckGo, or to your own SearXNG. Suzent also
 checks GitHub for new releases. GitHub Sync and chat apps only send data once
 you set them up.
 
+### Can I use the phone app away from home without Tailscale?
+
+Yes. Deploy your own relay, for free on Cloudflare Workers or with Docker on
+any server, and add it under **Settings → Devices → Relay**. Suzent has no
+hosted relay, and phone traffic through yours is end-to-end encrypted. See
+[Your own relay](../03-features/relay.md).
+
 ### How do I back up Suzent, or move to a new computer?
 
 Turn on [GitHub Sync](../03-features/github-sync.md). It keeps your settings,

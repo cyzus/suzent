@@ -137,7 +137,7 @@ Sovereignty is not merely local execution. It is ownership of the agent's **mind
 | Who owns its memory? | **You.** Plain files on your disk are the source of truth. |
 | Who chooses its intelligence? | **You.** Sixteen providers built in, and any compatible endpoint you add. |
 | Who defines what it may do? | **You.** Permission modes, rules, and sandbox boundaries are explicit. |
-| Where does it live? | **On infrastructure you control.** |
+| Where does it live? | **On infrastructure you control.** Away from home, your phone reaches it through [a relay you deploy](docs/03-features/relay.md), end-to-end encrypted. There is no vendor cloud in between. |
 | Can it move? | Memory, skills, and configuration are portable; credentials stay local. |
 | Can you inspect it? | Tool calls, authorization decisions, files, and memory remain visible. |
 
@@ -228,7 +228,7 @@ One agent, one memory, reachable from every surface. Messaging channels are off 
 |---|---|---|---|
 | **Desktop app** | Local backend | Full UI, Canvas, memory and skills browsers | `suzent start` |
 | **Web console** | Local backend | The same UI in your browser | `suzent web` |
-| **Mobile app** (preview) | Paired with your desktop | Shared conversations | [Guide](docs/03-features/mobile.md) |
+| **Mobile app** (preview) | Paired with your desktop: direct at home, anywhere through Tailscale or [your own relay](docs/03-features/relay.md) | Shared conversations | [Guide](docs/03-features/mobile.md) |
 | **Your editor** | ACP | Use Suzent as the agent in Zed and other ACP clients | [Guide](docs/03-features/nodes.md#use-suzent-from-your-editor-acp) |
 | **Other agents** | A2A | Delegate work to other agents, or take work you grant them | [Guide](docs/03-features/nodes.md#work-with-other-agents-a2a) |
 | **Telegram** | Bot API | Text, photos, files | [Guide](docs/05-chat-apps/telegram.md) |
@@ -257,6 +257,7 @@ Each conversation becomes a persistent session, so history, working memory, and 
 | [Workspace & sandbox](docs/03-features/filesystem.md) | Folders, the Docker sandbox, and undoing a turn |
 | [Automation](docs/03-features/automation.md) | Scheduled tasks, heartbeats, goals, and the background service |
 | [Chat apps](docs/05-chat-apps/README.md) | Telegram, Slack, Discord, Feishu, WeChat |
+| [Your own relay](docs/03-features/relay.md) | Reach your agent from your phone anywhere, and receive webhooks, through a relay you self-host |
 | [Devices & other agents](docs/03-features/nodes.md) | Your phone, other computers, A2A agents, and your editor |
 | [GitHub Sync](docs/03-features/github-sync.md) | Carry your agent to another computer through a private repo |
 | [Development Guide](docs/08-developing/contributing/development-guide.md) | Setup, workflow, builds, architecture |
