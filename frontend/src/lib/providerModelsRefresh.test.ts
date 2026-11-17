@@ -14,6 +14,7 @@ const {
   forceRefreshProviderModels,
   markProviderModelsSuperseded,
   resetProviderModelsRefreshForTests,
+  syncCachedStarredModels,
 } = await import('./providerModelsRefresh');
 
 const ok = { success: true, models: ['m1'], starredModels: [] };
@@ -69,6 +70,13 @@ describe('providerModelsRefresh', () => {
     const pending = autoRefreshProviderModels();
     markProviderModelsSuperseded();
     expect(autoRefreshProviderModels()).toBe(pending);
+  });
+
+  it('replays starred models changed after discovery', async () => {
+    await autoRefreshProviderModels();
+    syncCachedStarredModels(['m1']);
+    expect((await autoRefreshProviderModels())?.starredModels).toEqual(['m1']);
+    expect(refresh).toHaveBeenCalledTimes(1);
   });
 
   it('forced refresh joins an in-flight one, otherwise starts anew', async () => {

@@ -55,6 +55,14 @@ export function forceRefreshProviderModels(): Promise<RefreshProviderModelsRespo
   return start(apiBase).result;
 }
 
+/** Keep a cached result from replaying favorites a star toggle has since changed. */
+export function syncCachedStarredModels(starredModels: string[]): void {
+  if (!record) return;
+  record.result = record.result.then((result) =>
+    result.success ? { ...result, starredModels } : result
+  );
+}
+
 /** Call after a successful /config fetch. */
 export function markProviderModelsSuperseded(): void {
   if (record?.settled) record.superseded = true;

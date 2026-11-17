@@ -34,6 +34,7 @@ import {
 import {
   autoRefreshProviderModels,
   forceRefreshProviderModels,
+  syncCachedStarredModels,
 } from '../lib/providerModelsRefresh';
 import { buildMountedVolumes } from '../lib/volumeMounts';
 import { MentionTextArea, type MentionTextAreaHandle } from './chat/MentionTextArea';
@@ -326,6 +327,7 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
       const res = await toggleStarredModel(modelId, nextStarred);
       if (res.success && Array.isArray(res.starredModels)) {
         setStarredModelsOverride(res.starredModels);
+        syncCachedStarredModels(res.starredModels);
       }
     },
     [backendConfig?.starredModels]
