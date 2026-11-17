@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The desktop app polls the backend less while idle: the sidebar no longer re-renders when nothing changed, scheduled and heartbeat chats reload only when they have new activity, Git and background task checks slow down when there is nothing running, and status checks pause while the window is hidden.
 - Streaming replies no longer rewrite the whole chat in the database every moment, so other parts of the app stay responsive during long answers, and a reply cut off by a crash is restored as interrupted.
 - An MCP server that can't connect no longer fails every chat: its tools are skipped for that turn, first-launch installs run in the background, and the MCP settings page shows which servers are still preparing or failing.
+- Switching chats no longer re-queries every model provider; model lists refresh at most every 15 minutes or when you press refresh.
 - Keep desktop and mobile actions consistent through a shared API while preserving device permissions and compatibility with older clients.
 
 ## [v0.27.1] - 2026-11-17
