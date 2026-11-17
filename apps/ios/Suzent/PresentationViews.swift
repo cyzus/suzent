@@ -1098,30 +1098,118 @@ struct SuzentSelectionPanel: View {
     let title: String
     let options: [(id: String, title: String)]
     let selected: String
+    var modelPicker: Bool = false
+    var defaultModel: String? = nil
+    var starredModels: Set<String> = []
+    var canManageModels = false
+    var modelsBusy = false
+    var modelsError: String? = nil
+    var refreshModels: (() -> Void)? = nil
+    var toggleStar: ((String) -> Void)? = nil
+    @AppStorage("suzent.modelPicker.collapsedGroups") private var collapsedJSON = "[]"
     let dismiss: () -> Void
     let choose: (String) -> Void
+    @State private var query = ""
     @AccessibilityFocusState private var titleFocused: Bool
+
+    private var groups: [(title: String, options: [(id: String, title: String)])] {
+        let search = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        let filtered = options.filter { $0.id.isEmpty || search.isEmpty || $0.title.localizedCaseInsensitiveContains(search) }
+        guard modelPicker else { return [(title: "", options: filtered)] }
+        let defaults = filtered.filter { $0.id.isEmpty }
+        let models = Dictionary(grouping: filtered.filter { !$0.id.isEmpty }) { option in
+            option.id.firstIndex(of: "/").map { String(option.id[..<$0]) } ?? String(localized: "Models")
+        }
+        let favorites = filtered.filter { starredModels.contains($0.id) }
+        return [(title: "", options: defaults)]
+            + (favorites.isEmpty ? [] : [(title: String(localized: "★ Favorites"), options: favorites)])
+            + models.keys.sorted().map { (title: $0, options: models[$0] ?? []) }
+    }
+
+    private var collapsedGroups: Set<String> {
+        Set((try? JSONDecoder().decode([String].self, from: Data(collapsedJSON.utf8))) ?? [])
+    }
+
+    private func toggleGroup(_ title: String) {
+        guard query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        var collapsed = collapsedGroups
+        if !collapsed.insert(title).inserted { collapsed.remove(title) }
+        if let data = try? JSONEncoder().encode(collapsed.sorted()) { collapsedJSON = String(decoding: data, as: UTF8.self) }
+    }
     var body: some View {
         VStack(spacing: 0) {
             HStack {
                 Text(title).suzentFont(15, weight: .bold, design: .monospaced)
                     .accessibilityAddTraits(.isHeader).accessibilityFocused($titleFocused)
                 Spacer()
+                if modelPicker && canManageModels {
+                    Button { refreshModels?() } label: {
+                        if modelsBusy { ProgressView().tint(.white).frame(width: 44, height: 44) }
+                        else { Image(systemName: "arrow.clockwise").frame(width: 44, height: 44) }
+                    }.disabled(modelsBusy).accessibilityLabel("Refresh models")
+                }
                 Button { dismiss() } label: { Image(systemName: "xmark").frame(width: 44, height: 44) }.accessibilityLabel("Dismiss")
             }.padding(.leading, 16).padding(.top, 12).foregroundStyle(.white).background(.black)
+            if modelPicker {
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("Applies to your next message in this conversation.").suzentFont(13).foregroundStyle(.secondary)
+                    if let modelsError {
+                        HStack {
+                            Text(modelsError).suzentFont(13).foregroundStyle(.red)
+                            Button("Try again") { refreshModels?() }.disabled(modelsBusy)
+                        }
+                    }
+                    TextField(String(localized: "Search models"), text: $query)
+                        .textFieldStyle(.roundedBorder).autocorrectionDisabled().textInputAutocapitalization(.never)
+                }.padding(16)
+            }
             ScrollView {
                 LazyVStack(spacing: 0) {
-                    ForEach(options, id: \.id) { option in
-                        Button { choose(option.id); dismiss() } label: {
-                            HStack(spacing: 12) {
-                                Text(option.title).suzentFont(15, weight: option.id == selected ? .semibold : .regular).multilineTextAlignment(.leading)
-                                Spacer(minLength: 8)
-                                Image(systemName: "checkmark").opacity(option.id == selected ? 1 : 0)
-                            }.padding(16).frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
-                                .foregroundStyle(option.id == selected ? Color.black : Color.primary)
-                                .background(option.id == selected ? Color.suzentYellow : Color.suzentSurface)
-                        }.buttonStyle(.plain).accessibilityAddTraits(option.id == selected ? .isSelected : [])
-                        Divider()
+                    if modelPicker && groups.allSatisfy({ $0.options.allSatisfy { $0.id.isEmpty } }) {
+                        Text("No matching models").foregroundStyle(.secondary).padding(16)
+                    }
+                    ForEach(groups, id: \.title) { group in
+                        if !group.title.isEmpty {
+                            Button { toggleGroup(group.title) } label: {
+                                HStack {
+                                    Image(systemName: !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !collapsedGroups.contains(group.title) ? "chevron.down" : "chevron.right")
+                                    Text(group.title).suzentFont(13, weight: .semibold, design: .monospaced)
+                                    Spacer()
+                                    Text("\(group.options.count)").suzentFont(13)
+                                }.padding(16).frame(minHeight: 48)
+                            }.buttonStyle(.plain)
+                                .accessibilityValue(!query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !collapsedGroups.contains(group.title) ? String(localized: "Expanded") : String(localized: "Collapsed"))
+                        }
+                        if group.title.isEmpty || !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !collapsedGroups.contains(group.title) {
+                            ForEach(group.options, id: \.id) { option in
+                                HStack(spacing: 0) {
+                                    Button { choose(option.id); dismiss() } label: {
+                                        HStack(spacing: 12) {
+                                            VStack(alignment: .leading, spacing: 4) {
+                                                Text(modelPicker && !option.id.isEmpty && option.title.contains("/") ? String(option.title.split(separator: "/", maxSplits: 1, omittingEmptySubsequences: false)[1]) : option.title)
+                                                    .suzentFont(15, weight: option.id == selected ? .semibold : .regular).multilineTextAlignment(.leading)
+                                                if modelPicker && option.id.isEmpty, let defaultModel {
+                                                    Text(defaultModel).suzentFont(13).multilineTextAlignment(.leading)
+                                                }
+                                            }
+                                            Spacer(minLength: 8)
+                                            Image(systemName: "checkmark").opacity(option.id == selected ? 1 : 0)
+                                        }.padding(16).frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
+                                            .foregroundStyle(option.id == selected ? Color.black : Color.primary)
+                                            .background(option.id == selected ? Color.suzentYellow : Color.suzentSurface)
+                                    }.buttonStyle(.plain).accessibilityAddTraits(option.id == selected ? .isSelected : [])
+                                    if modelPicker && !option.id.isEmpty && canManageModels {
+                                        Button { toggleStar?(option.id) } label: {
+                                            Image(systemName: starredModels.contains(option.id) ? "star.fill" : "star").frame(width: 48, height: 48)
+                                        }.buttonStyle(.plain).disabled(modelsBusy)
+                                            .accessibilityLabel(starredModels.contains(option.id) ? String(localized: "Remove favorite") : String(localized: "Add favorite"))
+                                            .accessibilityValue(option.title)
+                                    }
+                                }.foregroundStyle(option.id == selected ? Color.black : Color.primary)
+                                    .background(option.id == selected ? Color.suzentYellow : Color.suzentSurface)
+                                Divider()
+                            }
+                        }
                     }
                 }
             }

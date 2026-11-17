@@ -732,6 +732,56 @@ async def composer(request: Request) -> JSONResponse:
     )
 
 
+class StarModelRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    model: str = Field(min_length=1, max_length=300)
+    starred: StrictBool
+
+
+def model_catalog_payload(grant: ClientGrant) -> dict[str, object]:
+    from suzent.core.providers import (
+        get_enabled_models_from_db,
+        get_starred_models_from_db,
+    )
+
+    models = get_enabled_models_from_db()
+    return {
+        "models": models,
+        "starredModels": [m for m in get_starred_models_from_db() if m in models],
+        "canManage": grant.permissions.send,
+    }
+
+
+async def model_catalog(request: Request) -> JSONResponse:
+    return reply(model_catalog_payload(authorize(request)))
+
+
+async def star_model(request: Request) -> JSONResponse:
+    grant = authorize(request, action="send")
+    body = await parse(request, StarModelRequest)
+    from suzent.core.providers import get_enabled_models_from_db
+    from suzent.routes.config_routes import toggle_starred_model
+
+    if body.model not in get_enabled_models_from_db():
+        raise HTTPException(400, "Model unavailable")
+    response = await toggle_starred_model(forwarded(request, body.model_dump()))
+    if response.status_code != 200:
+        return reply({"error": "Could not update model favorite"}, response.status_code)
+    authorize(request, action="send")
+    return reply(model_catalog_payload(grant))
+
+
+async def refresh_models(request: Request) -> JSONResponse:
+    grant = authorize(request, action="send")
+    from suzent.routes.config_routes import refresh_all_provider_models
+
+    response = await refresh_all_provider_models(forwarded(request, {}))
+    if response.status_code != 200:
+        return reply({"error": "Could not refresh models"}, response.status_code)
+    authorize(request, action="send")
+    return reply(model_catalog_payload(grant))
+
+
 async def projects(request: Request) -> JSONResponse:
     return reply({"projects": allowed_projects(authorize(request))})
 
@@ -1132,6 +1182,9 @@ async def forget_pairing(request: Request) -> JSONResponse:
 
 
 client_routes = [
+    Route("/mobile/client/models", model_catalog, methods=["GET"]),
+    Route("/mobile/client/models/star", star_model, methods=["POST"]),
+    Route("/mobile/client/models/refresh", refresh_models, methods=["POST"]),
     Route("/mobile/client/mailbox/page", mailbox_page, methods=["POST"]),
     Route("/mobile/client/mailbox/read", mailbox_read, methods=["POST"]),
     WebSocketRoute("/mobile/client/voice", voice),
