@@ -1,0 +1,6 @@
+{
+  "products": {
+    "desktop": "patch"
+  },
+  "summary": "The desktop app polls the backend less while idle: the sidebar no longer re-renders when nothing changed, scheduled and heartbeat chats reload only when they have new activity, Git and background task checks slow down when there is nothing running, and status checks pause while the window is hidden."
+}

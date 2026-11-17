@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { memoryApi } from '../lib/memoryApi';
+import { isDocumentHidden } from '../lib/visiblePolling';
 import type { DreamStatus } from '../types/memory';
 
 interface DreamStatusState {
@@ -93,7 +94,7 @@ export function useDreamStatus(): DreamStatusState {
 
     let timerId: number | undefined;
     const tick = async () => {
-      await refresh();
+      if (!isDocumentHidden()) await refresh();
       if (!mountedRef.current) return;
       timerId = window.setTimeout(tick, status?.running ? ACTIVE_POLL_MS : IDLE_POLL_MS);
     };

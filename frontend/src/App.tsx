@@ -605,6 +605,11 @@ function AppInner(): React.ReactElement {
       playNotificationSound(preferences.sound);
     };
 
+    // The summary the open platform chat was last reloaded at. Reloading pulls
+    // the whole message history, so it waits until the sidebar list shows the
+    // chat moved on.
+    let reloadedSummary: { chatId: string; version: string } | null = null;
+
     const interval = setInterval(async () => {
       const hidden = typeof document !== 'undefined' && document.visibilityState === 'hidden';
       // Draining marks results delivered. A minimized desktop window can still
@@ -637,8 +642,17 @@ function AppInner(): React.ReactElement {
         refreshChatListSilentRef.current();
       }
 
-      if (chatId && (openChat?.platform || openChat?.heartbeatEnabled) && !openChat?.isRunning) {
-        loadChatRef.current(chatId, { force: true });
+      if (
+        chatId &&
+        openChat &&
+        (openChat.platform || openChat.heartbeatEnabled) &&
+        !openChat.isRunning
+      ) {
+        const version = `${openChat.updatedAt}|${openChat.messageCount}|${openChat.lastResultAt ?? ''}`;
+        if (reloadedSummary?.chatId !== chatId || reloadedSummary.version !== version) {
+          reloadedSummary = { chatId, version };
+          loadChatRef.current(chatId, { force: true });
+        }
       }
     }, 8000);
     return () => clearInterval(interval);

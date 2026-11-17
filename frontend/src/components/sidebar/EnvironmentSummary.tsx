@@ -7,11 +7,12 @@ import { useProjects } from '../../hooks/useProjects';
 import { useI18n } from '../../i18n';
 import { fetchChatGitStatus, type GitRepositoryStatus } from '../../lib/api';
 import { FOCAL_CHAT_ID } from '../../lib/focalAgent';
+import { pollWhileVisible } from '../../lib/visiblePolling';
 import { BrutalOnOff } from '../BrutalOnOff';
 import { HeartbeatPulse } from '../HeartbeatPulse';
 import { ProjectSettingsDialog, SYSTEM_PROJECT_SLUGS } from '../ProjectSettingsDialog';
 
-const GIT_STATUS_POLL_MS = 10_000;
+const GIT_STATUS_POLL_MS = 30_000;
 
 function folderName(path: string): string {
   return path.split(/[\\/]/).filter(Boolean).pop() ?? path;
@@ -60,10 +61,11 @@ function useChatGitRepositories(): GitRepositoryStatus[] {
     };
 
     void refresh();
-    const interval = window.setInterval(refresh, GIT_STATUS_POLL_MS);
+    // Each check runs several git processes on the host.
+    const stopPolling = pollWhileVisible(() => void refresh(), GIT_STATUS_POLL_MS);
     return () => {
       active = false;
-      window.clearInterval(interval);
+      stopPolling();
     };
   }, [currentChatId, volumesKey, projectFoldersKey]);
 

@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from 'react';
 import { subscribeToBusPayloads } from './useEventBus';
+import { pollWhileVisible } from '../lib/visiblePolling';
 import {
   countStates,
   fetchChatStates,
@@ -8,7 +9,9 @@ import {
   type ChatStates,
 } from '../lib/chatStates';
 
-const POLL_MS = 10_000;
+// Bus events refresh the board as chats change; the poll only covers a dropped
+// event stream.
+const POLL_MS = 30_000;
 const REFRESH_EVENTS = new Set([
   'chat_status_changed',
   'goal_tasks_changed',
@@ -90,12 +93,12 @@ export function subscribeToChatStates(listener: () => void): () => void {
   listeners.add(listener);
   if (listeners.size === 1) {
     void refreshChatStates();
-    const timer = setInterval(() => void refreshChatStates(), POLL_MS);
+    const stopPolling = pollWhileVisible(() => void refreshChatStates(), POLL_MS);
     const unsubscribe = subscribeToBusPayloads((payload) => {
       if (REFRESH_EVENTS.has(payload?.event)) void refreshChatStates();
     });
     stop = () => {
-      clearInterval(timer);
+      stopPolling();
       unsubscribe();
     };
   }
