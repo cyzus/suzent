@@ -10661,6 +10661,24 @@ schema discovery requires authentication at `/api/v1/openapi.json`; available
 operations can be queried at `/api/v1/capabilities`. A capability identifies an
 available operation; resource scope and conditional permissions still apply.
 
+## Model catalog reads
+
+The backend caches public model IDs and favorites in memory for up to 60 seconds.
+Provider configuration/default-model invalidation, favorite updates, discovery
+writes and registry reloads invalidate it immediately. Manual file/environment
+changes are bounded by the TTL. Credentials and device permissions are not cached;
+authorization is checked per request and again after asynchronous catalog loading.
+Cold catalog reads run off the event loop.
+
+`GET /api/v1/chats/{chat_id}?include_models=false` (also supported by the legacy
+alias) omits the catalog. Native foreground conversation polls use this query and
+retain the list already loaded for the conversation. Opening a chat and loading
+an empty composer retain the default behavior. Opening the model picker keeps its
+current contents while revalidating the dedicated catalog. Network discovery runs
+through explicit model refresh and the existing startup/configuration flows, not
+through routine chat polling. Query DTOs and request builders are generated from
+the operation's query model just like JSON request bodies.
+
 
 ---
 
