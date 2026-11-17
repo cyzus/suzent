@@ -254,6 +254,7 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
     }
 
     private var streamJob: Job? = null
+    private var openChatJob: Job? = null
     private var socket: WebSocket? = null
     private var foreground = false
     private var generation = 0
@@ -777,6 +778,7 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
 
     fun open(chat: Chat) {
         if (busy) return
+        openChatJob?.cancel()
         voice.stop()
         selected?.id?.let { drafts[it] = draft }
         generation++
@@ -791,19 +793,19 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
         selectedModel = modelPreferences.getString("chatModel.$origin.${chat.id}", null)
         draft = drafts[chat.id].orEmpty()
         liveParts = emptyList()
-        viewModelScope.launch {
+        openChatJob = viewModelScope.launch {
             try {
                 val api = client ?: return@launch
                 val current = openingGeneration
                 val saved = api.chat(chat.id)
                 if (current == generation && selected?.id == chat.id) {
                     selected = saved
-                    if (saved.isRegent) api.markRead(saved.id) else clearUnread(api, saved.id)
-                    if (current != generation || selected?.id != saved.id) return@launch
                     restoreModel(saved)
                     openedVersion++
-                    chats = chats.map { if (it.id == saved.id) saved.copy(messages = emptyList(), unread = 0) else it }
                     if (saved.running) observe(chat.id)
+                    if (saved.isRegent) api.markRead(saved.id) else clearUnread(api, saved.id)
+                    if (current != generation || selected?.id != saved.id) return@launch
+                    chats = chats.map { if (it.id == saved.id) saved.copy(messages = emptyList(), unread = 0) else it }
                 }
             } catch (failure: CancellationException) { throw failure }
             catch (failure: Exception) { if (openingGeneration == generation) handle(failure) }
@@ -1377,6 +1379,7 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
         generation++
         nodeEnabled = false
         disconnectNode()
+        openChatJob?.cancel(); openChatJob = null; openingChatId = null
         streamJob?.cancel()
         client?.close()
         client = null

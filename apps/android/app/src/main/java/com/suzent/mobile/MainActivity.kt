@@ -83,6 +83,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 class MainActivity : ComponentActivity() {
     private val model: MobileModel by viewModels()
@@ -1034,7 +1036,21 @@ private fun ColumnScope.Conversation(model: MobileModel) {
     var attachmentsExpanded by remember(chat.id) { mutableStateOf(false) }
     val keyboardVisible = WindowInsets.ime.getBottom(LocalDensity.current) > 0
     val expanded = keyboardVisible && !attachmentsExpanded
-    val loadingHistory = model.openingChatId == chat.id && chat.messages.isEmpty()
+    val liveTools = model.liveParts.filter { it.type == "tool" }.map { it.toolCallId }.toSet()
+    val prepared by produceState<PreparedMessages?>(null, chat.id, chat.messages, liveTools) {
+        val source = chat.messages
+        val id = chat.id
+        value = withContext(Dispatchers.Default) {
+            val started = System.nanoTime()
+            val rows = presentMessages(source, liveTools)
+            if (BuildConfig.DEBUG) android.util.Log.d("SuzentPerformance",
+                "chat prepare_ms=${(System.nanoTime() - started) / 1_000_000} messages=${source.size}")
+            PreparedMessages(id, source, rows)
+        }
+    }
+    val savedMessages = prepared?.takeIf { it.chatId == chat.id }?.rows.orEmpty()
+    val preparingHistory = chat.messages.isNotEmpty() && savedMessages.isEmpty() && prepared?.source !== chat.messages
+    val loadingHistory = (model.openingChatId == chat.id && chat.messages.isEmpty()) || preparingHistory
     val historyAlpha = animateFloatAsState(if (loadingHistory) 0f else 1f,
         animationSpec = tween(160, easing = FastOutSlowInEasing), label = "history reveal")
     LaunchedEffect(keyboardVisible) { if (keyboardVisible) attachmentsExpanded = false }
@@ -1119,8 +1135,6 @@ private fun ColumnScope.Conversation(model: MobileModel) {
     BoxWithConstraints(Modifier.weight(1f).fillMaxWidth().clipToBounds()) {
     val viewportHeight = maxHeight
     Column(Modifier.fillMaxWidth().requiredHeight(viewportHeight).offset(y = -trayHeight)) {
-    val liveTools = model.liveParts.filter { it.type == "tool" }.map { it.toolCallId }.toSet()
-    val savedMessages = remember(chat.messages, liveTools) { presentMessages(chat.messages, liveTools) }
     val messages = remember(savedMessages, chat.isRegent, model.liveParts) { if (chat.isRegent) regentMessages(savedMessages, model.liveParts) else savedMessages }
     val live = model.streaming || model.liveParts.isNotEmpty()
     lastItem = (if (chat.id.isEmpty()) 1 else 0) + (if (chat.isRegent && messages.isEmpty() && !model.streaming) 1 else 0) +

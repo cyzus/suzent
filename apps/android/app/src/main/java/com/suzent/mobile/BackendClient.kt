@@ -253,8 +253,17 @@ class BackendClient(val backend: Backend, private val token: String, probeOnly: 
         return ChatOverview.parse(json(ResourceRequests.overview(id)))
     }
     override suspend fun chat(id: String): Chat = chat(id, includeModels = true)
-    override suspend fun chat(id: String, includeModels: Boolean): Chat = Chat.parse(
-        json(ResourceRequests.chat(id, WireChatDetailQuery(if (includeModels) null else false))))
+    override suspend fun chat(id: String, includeModels: Boolean): Chat {
+        val started = System.nanoTime()
+        val body = json(ResourceRequests.chat(id, WireChatDetailQuery(if (includeModels) null else false)))
+        val received = System.nanoTime()
+        val result = withContext(Dispatchers.Default) { Chat.parse(body) }
+        if (BuildConfig.DEBUG) runCatching {
+            android.util.Log.d("SuzentPerformance",
+                "chat fetch_ms=${(received - started) / 1_000_000} decode_ms=${(System.nanoTime() - received) / 1_000_000} messages=${result.messages.size}")
+        }
+        return result
+    }
     override suspend fun media(chatId: String, mediaId: String, destination: File) = withContext(Dispatchers.IO) {
         require(!chatId.contains('/') && chatId != "." && chatId != "..")
         require(mediaId.matches(Regex("^[0-9a-f]{32}$")))
