@@ -62,14 +62,35 @@ struct HomeListPicker: View {
     @Binding var selection: HomeListMode
     let modes: [HomeListMode]
 
+    /// The list's section heading doubles as its view picker: tap it to choose Recent or By project.
     var body: some View {
-        SuzentSegmentedTabs(options: modes, selection: $selection, title: title)
+        Menu {
+            Picker("Show conversations", selection: $selection) {
+                ForEach(modes, id: \.self) { mode in
+                    Label(menuTitle(mode), systemImage: mode == .recent ? "clock" : "folder").tag(mode)
+                }
+            }
+        } label: {
+            HStack(spacing: 6) {
+                Text(title(selection)).textCase(.uppercase).suzentFont(PresentationTokens.typeSidebarSection, weight: .heavy)
+                    .tracking(1.6)
+                Image(systemName: "chevron.down").font(.system(size: 10, weight: .bold))
+            }.foregroundStyle(Color.suzentMuted).frame(minHeight: 44).padding(.horizontal, 12).contentShape(Rectangle())
+        }.buttonStyle(.plain).frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityLabel(Text("Show conversations")).accessibilityValue(Text(title(selection)))
     }
 
     private func title(_ mode: HomeListMode) -> LocalizedStringKey {
         switch mode {
         case .recent: "Recent"
         case .projects: "Projects"
+        }
+    }
+
+    private func menuTitle(_ mode: HomeListMode) -> LocalizedStringKey {
+        switch mode {
+        case .recent: "Recent"
+        case .projects: "By project"
         }
     }
 }

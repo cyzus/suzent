@@ -647,11 +647,10 @@ struct ContentView: View {
             }
             if let regent = model.chats.first(where: { $0.isRegent }) {
                 Button { openSidebarChat(regent) } label: {
-                    RegentIdentity(working: regent.isRunning == true || (model.selected?.isRegent == true && model.streaming),
-                                   waiting: regent.regent?.waiting ?? 0, unread: model.selected?.isRegent == true ? 0 : regent.regent?.unread ?? 0,
-                                   lastMessageAt: regent.regent?.lastMessageAt, expanded: false, coronation: regentPressed)
-                        .frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 14).padding(.horizontal, 4)
-                        .overlay(alignment: .trailing) { Image(systemName: "chevron.right").font(.system(size: 12)).foregroundStyle(Color.suzentMuted) }
+                    RegentHero(working: regent.isRunning == true || (model.selected?.isRegent == true && model.streaming),
+                               waiting: regent.regent?.waiting ?? 0, unread: model.selected?.isRegent == true ? 0 : regent.regent?.unread ?? 0,
+                               lastMessageAt: regent.regent?.lastMessageAt, coronation: regentPressed)
+                        .frame(maxWidth: .infinity).padding(.vertical, 18).contentShape(Rectangle())
                         .overlay(alignment: .bottom) { Rectangle().fill(Color.suzentText.opacity(0.08)).frame(height: 1) }
                 }.buttonStyle(PressReportingButtonStyle(pressed: $regentPressed)).disabled(model.busy).padding(.horizontal, 16)
             }
