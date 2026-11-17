@@ -256,19 +256,20 @@ private fun ImageViewer(file: File, name: String, close: () -> Unit) {
                             awaitEachGesture {
                                 val down = awaitFirstDown(requireUnconsumed = false)
                                 val lock = SwipeAxisLock()
-                                var zooming = false
+                                // A drag that starts zoomed pans both ways. The axis lock only applies at 1x.
+                                var pinching = scale > 1f
                                 do {
                                     val event = awaitPointerEvent()
                                     val pressed = event.changes.filter { it.pressed }
                                     if (pressed.isEmpty()) break
                                     val zoomChange = event.calculateZoom()
                                     val panChange = event.calculatePan()
-                                    if (pressed.size > 1 || zoomChange != 1f) zooming = true
+                                    if (pressed.size > 1 || zoomChange != 1f) pinching = true
                                     val total = pressed.first().position - down.position
-                                    val axis = if (zooming) SwipeAxisLock.Axis.HORIZONTAL
+                                    val axis = if (pinching) SwipeAxisLock.Axis.HORIZONTAL
                                     else lock.update(total.x.toDouble(), total.y.toDouble())
-                                    if (!zooming && axis == SwipeAxisLock.Axis.VERTICAL) break
-                                    if (zooming || scale > 1f) {
+                                    if (SwipeAxisLock.imageDragYieldsToScroll(scale, pinching, axis)) break
+                                    if (pinching || scale > 1f) {
                                         scale = (scale * zoomChange).coerceIn(1f, 6f)
                                         offset = if (scale == 1f) Offset.Zero else offset + panChange
                                         event.changes.forEach { if (it.pressed) it.consume() }

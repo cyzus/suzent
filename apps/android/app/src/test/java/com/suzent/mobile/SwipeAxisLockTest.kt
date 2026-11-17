@@ -46,6 +46,14 @@ class SwipeAxisLockTest {
         assertTrue(SwipeAxisLock.commits(-72.0, -100.0))
     }
 
+    @Test fun zoomedImageKeepsVerticalPanning() {
+        assertTrue(SwipeAxisLock.imageDragYieldsToScroll(1f, false, SwipeAxisLock.Axis.VERTICAL))
+        assertFalse(SwipeAxisLock.imageDragYieldsToScroll(1f, false, SwipeAxisLock.Axis.HORIZONTAL))
+        assertFalse(SwipeAxisLock.imageDragYieldsToScroll(1f, false, SwipeAxisLock.Axis.UNDECIDED))
+        assertFalse(SwipeAxisLock.imageDragYieldsToScroll(1f, true, SwipeAxisLock.Axis.VERTICAL))
+        assertFalse(SwipeAxisLock.imageDragYieldsToScroll(2.5f, false, SwipeAxisLock.Axis.VERTICAL))
+    }
+
     @Test fun systemRecognizerUsesTheSameAngleBeforeMinimumTravel() {
         assertTrue(SwipeAxisLock.angleIsHorizontal(12.0, 3.0))
         assertFalse(SwipeAxisLock.angleIsHorizontal(12.0, 10.0))

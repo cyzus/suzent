@@ -26,7 +26,6 @@ import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalView
@@ -113,11 +112,13 @@ fun SuzentSwipeRow(
                                 }
                                 SwipeAxisLock.Axis.HORIZONTAL -> {
                                     claimed = true
+                                    // positionChange() is zero after consume(), so the step is read first.
+                                    val raw = change.position - change.previousPosition
                                     change.consume()
                                     val next = logicalX.coerceIn(min, max)
                                     shift = next
                                     val elapsed = (change.uptimeMillis - lastTime).coerceAtLeast(1)
-                                    val step = if (rtl) -change.positionChange().x else change.positionChange().x
+                                    val step = if (rtl) -raw.x else raw.x
                                     velocity = step / elapsed * 1000f
                                     lastTime = change.uptimeMillis
                                     val past = abs(next) >= triggerPx

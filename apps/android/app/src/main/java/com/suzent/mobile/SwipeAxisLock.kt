@@ -52,6 +52,13 @@ class SwipeAxisLock {
         }
 
         /**
+         * A one-finger drag yields to scrolling only while the image is still at 1x.
+         * Pinching, or a drag that starts already zoomed, pans in both directions.
+         */
+        fun imageDragYieldsToScroll(scale: Float, pinching: Boolean, axis: Axis): Boolean =
+            scale <= 1f && !pinching && axis == Axis.VERTICAL
+
+        /**
          * Angle check for a recognizer that must accept or reject at the platform touch slop,
          * before [MIN_TRAVEL]. In-app swipes use [update], which also requires that travel.
          */
