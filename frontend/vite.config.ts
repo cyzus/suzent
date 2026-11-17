@@ -29,6 +29,20 @@ export default defineConfig(async ({ command }) => {
 
   return {
     plugins: [react()],
+    // These are only reached through dynamic import(), so Vite discovers them
+    // lazily and re-optimizes mid-session; the open page then requests the old
+    // `?v=` hash and the import fails (e.g. the folder picker never opens).
+    optimizeDeps: {
+      include: [
+        '@tauri-apps/api/core',
+        '@tauri-apps/api/event',
+        '@tauri-apps/api/window',
+        '@tauri-apps/plugin-dialog',
+        '@tauri-apps/plugin-global-shortcut',
+        '@tauri-apps/plugin-notification',
+        '@tauri-apps/plugin-shell',
+      ],
+    },
     define: {
       __FRONTEND_VERSION__: JSON.stringify(process.env.npm_package_version ?? 'unknown'),
       __FRONTEND_BUILD_COMMIT__: JSON.stringify(getBuildCommit()),
