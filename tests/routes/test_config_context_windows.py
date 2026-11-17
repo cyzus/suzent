@@ -89,7 +89,7 @@ def test_chat_load_reports_the_budget_of_that_chat_s_model(monkeypatch, tmp_path
 
     class _Db:
         @staticmethod
-        def get_chat(_id):
+        def get_chat(_id, *, include_agent_state=True):
             return chat
 
         @staticmethod

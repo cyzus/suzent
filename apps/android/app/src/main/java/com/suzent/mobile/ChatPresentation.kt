@@ -1,5 +1,7 @@
 package com.suzent.mobile
 
+data class PreparedMessages(val chatId: String, val source: List<ChatMessage>, val rows: List<DisplayMessage>)
+
 data class CitationSource(
     val id: String, val type: String, val title: String, val url: String = "",
     val snippet: String = "", val favicon: String = "",
