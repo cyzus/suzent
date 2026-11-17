@@ -40,8 +40,9 @@ memory and keys stay home. To get it and pair it, see
 has an [offline demo](../03-features/mobile.md#try-it-without-a-computer).
 
 On your home Wi-Fi the phone reaches your computer directly. Away from home,
-use [Tailscale](https://tailscale.com/) or a [relay you deploy
-yourself](../03-features/relay.md), so there's still no Suzent cloud in between.
+use [Tailscale](https://tailscale.com/) or
+[a relay you deploy yourself](../03-features/relay.md), so there's still no
+Suzent cloud in between.
 
 ## Browser
 
