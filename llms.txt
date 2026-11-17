@@ -23,6 +23,7 @@ Full documentation: https://suzent.com/llms-full.txt
 - [Devices & other agents](https://suzent.com/docs/features/nodes)
 - [Plugins](https://suzent.com/docs/features/plugins)
 - [Features](https://suzent.com/docs/features)
+- [Your own relay](https://suzent.com/docs/features/relay)
 - [Skills](https://suzent.com/docs/features/skills)
 - [Browser](https://suzent.com/docs/features/tools/browser)
 - [Code mode](https://suzent.com/docs/features/tools/code-mode)

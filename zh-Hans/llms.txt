@@ -23,6 +23,7 @@ Full documentation: https://suzent.com/zh-Hans/llms-full.txt
 - [Devices & other agents](https://suzent.com/zh-Hans/docs/features/nodes)
 - [Plugins](https://suzent.com/zh-Hans/docs/features/plugins)
 - [Features](https://suzent.com/zh-Hans/docs/features)
+- [你自己的中继](https://suzent.com/zh-Hans/docs/features/relay)
 - [Skills](https://suzent.com/zh-Hans/docs/features/skills)
 - [Browser](https://suzent.com/zh-Hans/docs/features/tools/browser)
 - [Code mode](https://suzent.com/zh-Hans/docs/features/tools/code-mode)
