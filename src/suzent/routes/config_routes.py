@@ -24,6 +24,7 @@ from suzent.core.providers import (
     get_default_chat_model,
     get_effective_memory_config,
     get_enabled_models_from_db,
+    get_starred_models_from_db,
     invalidate_default_model_cache,
 )
 from suzent.tools.registry import (
@@ -154,6 +155,7 @@ async def get_config(request: Request) -> JSONResponse:
     sandbox_enabled = getattr(CONFIG, "sandbox_enabled", False)
     sandbox_volumes = CONFIG.sandbox_volumes or []
     available_models = get_enabled_models_from_db()
+    starred_models = get_starred_models_from_db()
     default_model = get_default_chat_model()
     mem_config = get_effective_memory_config()
     embedding_model = mem_config["embedding_model"]
@@ -162,6 +164,7 @@ async def get_config(request: Request) -> JSONResponse:
     data: dict[str, Any] = {
         "title": CONFIG.title,
         "models": available_models,
+        "starredModels": starred_models,
         "defaultModel": default_model,
         "agents": CONFIG.agent_options,
         # SkillTool used to be filtered out of both lists because it had no
@@ -527,8 +530,47 @@ async def get_api_keys_status(request: Request) -> JSONResponse:
                     }
                 )
 
-            enabled_models = set(user_conf.get("enabled_models", []))
-            custom_models_list = user_conf.get("custom_models", [])
+            from suzent.core.providers.helpers import _normalize_provider_model_id
+
+            raw_starred = (
+                user_conf.get("starred_models", [])
+                if "starred_models" in user_conf
+                else []
+            )
+            enabled_models = {
+                norm
+                for m in raw_starred
+                if (norm := _normalize_provider_model_id(provider_id, m)) is not None
+            }
+            custom_models_list = [
+                norm
+                for m in user_conf.get("custom_models", [])
+                if (norm := _normalize_provider_model_id(provider_id, m)) is not None
+            ]
+
+            from suzent.core.model_registry import list_provider_chat_models
+            from suzent.core.providers.base import Model
+
+            known_ids = list_provider_chat_models(provider_id)
+            default_map = {m["id"]: m.get("name", m["id"]) for m in spec.default_models}
+            discovered_models = []
+            seen_ids: set[str] = set()
+            for m in spec.default_models:
+                mid = m["id"]
+                seen_ids.add(mid)
+                discovered_models.append(
+                    _model_details(Model(id=mid, name=m.get("name", mid)))
+                )
+            for mid in known_ids:
+                if mid in seen_ids:
+                    continue
+                seen_ids.add(mid)
+                short_name = default_map.get(
+                    mid,
+                    mid.split("/", 1)[1] if mid.startswith(f"{provider_id}/") else mid,
+                )
+                discovered_models.append(_model_details(Model(id=mid, name=short_name)))
+            provider_data["models"] = discovered_models
 
             provider_data["user_config"] = {
                 "enabled_models": list(enabled_models),
@@ -624,7 +666,18 @@ async def save_api_keys(request: Request) -> JSONResponse:
                     if defaults:
                         if pid not in custom_config:
                             custom_config[pid] = {}
-                        custom_config[pid]["enabled_models"] = defaults
+                        if not custom_config[pid].get("enabled_models"):
+                            custom_config[pid]["enabled_models"] = defaults
+
+            for pid, pconf in list(custom_config.items()):
+                if not isinstance(pconf, dict):
+                    continue
+                if "starred_models" in pconf:
+                    starred_list = list(pconf.get("starred_models") or [])
+                    if starred_list:
+                        pconf["enabled_models"] = starred_list
+                    else:
+                        pconf.pop("enabled_models", None)
 
             updated_blob = json.dumps(custom_config)
             db.save_api_key("_PROVIDER_CONFIG_", updated_blob)
@@ -659,6 +712,114 @@ def _model_details(model: Any) -> dict[str, Any]:
     return details
 
 
+def _ensure_provider_roles_autofilled(
+    provider_id: str, discovered_ids: list[str]
+) -> None:
+    """Fill empty chat roles when a provider first discovers models, without
+    bloating the user's starred ``enabled_models`` list with every model in the
+    provider's catalog.
+    """
+    if not discovered_ids:
+        return
+    try:
+        from suzent.core.model_registry import get_model_registry, DECISIONS_ENDPOINT
+
+        registry = get_model_registry()
+        chat_ids: list[str] = []
+        for mid in discovered_ids:
+            caps = registry.get_capabilities(mid)
+            if caps is not None:
+                if caps.mode != "chat":
+                    continue
+                if caps.supported_endpoints == (DECISIONS_ENDPOINT,):
+                    continue
+            chat_ids.append(mid)
+
+        if not chat_ids:
+            return
+
+        db = get_database()
+        invalidate_default_model_cache()
+        _autofill_chat_roles_from_models(db, chat_ids)
+    except Exception as exc:
+        logger.warning("Failed to autofill chat roles from discovered models: {}", exc)
+
+
+async def toggle_starred_model(request: Request) -> JSONResponse:
+    """POST /config/models/star — star or unstar a model ID in _PROVIDER_CONFIG_."""
+    try:
+        from suzent.core.providers.helpers import _normalize_provider_model_id
+
+        data = await request.json()
+        raw_model = str(data.get("model") or "").strip()
+        if not raw_model or "/" not in raw_model:
+            return JSONResponse({"error": "Invalid model ID"}, status_code=400)
+
+        provider_id = raw_model.split("/", 1)[0]
+        model_id = _normalize_provider_model_id(provider_id, raw_model)
+        if not model_id:
+            return JSONResponse({"error": "Invalid model ID"}, status_code=400)
+
+        starred_flag = data.get("starred")
+
+        db = get_database()
+        api_keys = db.get_api_keys() or {}
+        blob = api_keys.get("_PROVIDER_CONFIG_")
+        custom_config: dict[str, Any] = {}
+        if isinstance(blob, str) and blob:
+            try:
+                parsed = json.loads(blob)
+                if isinstance(parsed, dict):
+                    custom_config = parsed
+            except json.JSONDecodeError:
+                custom_config = {}
+
+        entry = custom_config.get(provider_id)
+        if not isinstance(entry, dict):
+            entry = {}
+
+        raw_starred = entry.get("starred_models") if "starred_models" in entry else []
+        current = [
+            norm
+            for m in list(raw_starred or [])
+            if (norm := _normalize_provider_model_id(provider_id, m)) is not None
+        ]
+        should_star = (
+            (model_id not in current) if starred_flag is None else bool(starred_flag)
+        )
+        if should_star:
+            if model_id not in current:
+                current.append(model_id)
+        else:
+            current = [m for m in current if m != model_id]
+
+        entry["starred_models"] = current
+        if current:
+            entry["enabled_models"] = current
+        else:
+            # Remove empty enabled_models key so the provider remains active for
+            # auto-discovered models rather than looking explicitly disabled.
+            entry.pop("enabled_models", None)
+
+        custom_config[provider_id] = entry
+        updated_blob = json.dumps(custom_config)
+        db.save_api_key("_PROVIDER_CONFIG_", updated_blob)
+        os.environ["_PROVIDER_CONFIG_"] = updated_blob
+        invalidate_default_model_cache()
+
+        return JSONResponse(
+            {
+                "success": True,
+                "model": model_id,
+                "starred": should_star,
+                "starredModels": get_starred_models_from_db(),
+            }
+        )
+    except Exception as e:
+        traceback.print_exc()
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
 async def verify_provider(request: Request) -> JSONResponse:
     """Verify provider credentials and fetch available models."""
     try:
@@ -691,6 +852,7 @@ async def verify_provider(request: Request) -> JSONResponse:
                 save_discovered_models("chatgpt", chatgpt_ids)
                 prune_stale_models("chatgpt", chatgpt_ids)
                 get_model_registry().reload()
+                _ensure_provider_roles_autofilled("chatgpt", chatgpt_ids)
             return JSONResponse(
                 {
                     "success": True,
@@ -719,6 +881,9 @@ async def verify_provider(request: Request) -> JSONResponse:
             save_discovered_models(provider_id, discovered_ids)
             prune_stale_models(provider_id, discovered_ids)
             get_model_registry().reload()
+            _ensure_provider_roles_autofilled(provider_id, discovered_ids)
+        elif models:
+            _ensure_provider_roles_autofilled(provider_id, [m.id for m in models])
 
         return JSONResponse(
             {
@@ -728,6 +893,98 @@ async def verify_provider(request: Request) -> JSONResponse:
                     provider, "used_catalog_fallback", False
                 ),
                 "discovery_error": getattr(provider, "discovery_error", None),
+            }
+        )
+    except Exception as e:
+        traceback.print_exc()
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+async def refresh_all_provider_models(request: Request) -> JSONResponse:
+    """POST /config/providers/refresh-models — concurrently discover models from
+    all configured providers and return the updated model list.
+    """
+    try:
+        from suzent.core.providers.helpers import (
+            _provider_is_configured,
+            _load_user_provider_config,
+        )
+        from suzent.core.model_registry import (
+            save_discovered_models,
+            prune_stale_models,
+            get_model_registry,
+        )
+        from suzent.core.context_compressor import resolve_context_limit
+
+        user_config = _load_user_provider_config() or {}
+        specs_to_refresh = []
+        for spec in PROVIDER_REGISTRY:
+            entry = user_config.get(spec.id, {})
+            if isinstance(entry, dict) and entry.get("enabled") is False:
+                continue
+            if spec.api_key_optional and not (
+                isinstance(entry, dict)
+                and (entry.get("enabled_models") or entry.get("custom_models"))
+            ):
+                continue
+            if _provider_is_configured(spec):
+                specs_to_refresh.append(spec)
+
+        async def _discover_one(spec) -> tuple[str, list[str]]:
+            pid = spec.id
+            try:
+                if pid == "chatgpt":
+                    from suzent.core.providers.chatgpt import ChatGPTProvider
+
+                    prov = ChatGPTProvider("chatgpt", {})
+                    connected = await asyncio.to_thread(
+                        prov.is_authenticated, refresh=False
+                    )
+                    if not connected:
+                        return pid, []
+                    models = await asyncio.wait_for(prov.list_models(), timeout=12.0)
+                    return pid, [m.id for m in models]
+
+                prov = ProviderFactory.get_provider(pid, {})
+                models = await asyncio.wait_for(prov.list_models(), timeout=12.0)
+                if getattr(prov, "used_catalog_fallback", False):
+                    return pid, []
+                return pid, [m.id for m in models]
+            except Exception as exc:
+                logger.debug("Background model discovery failed for {}: {}", pid, exc)
+                return pid, []
+
+        results = await asyncio.gather(*(_discover_one(s) for s in specs_to_refresh))
+
+        any_discovered = False
+        provider_counts: dict[str, int] = {}
+        for pid, model_ids in results:
+            if model_ids:
+                save_discovered_models(pid, model_ids)
+                prune_stale_models(pid, model_ids)
+                any_discovered = True
+                provider_counts[pid] = len(model_ids)
+
+        if any_discovered:
+            get_model_registry().reload()
+            for pid, model_ids in results:
+                if model_ids:
+                    _ensure_provider_roles_autofilled(pid, model_ids)
+
+        available_models = get_enabled_models_from_db()
+        starred_models = get_starred_models_from_db()
+        default_model = get_default_chat_model()
+        context_windows = {
+            model_id: resolve_context_limit(model_id) for model_id in available_models
+        }
+        return JSONResponse(
+            {
+                "success": True,
+                "models": available_models,
+                "starredModels": starred_models,
+                "defaultModel": default_model,
+                "contextWindows": context_windows,
+                "providers": provider_counts,
             }
         )
     except Exception as e:

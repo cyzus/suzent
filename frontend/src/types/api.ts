@@ -220,6 +220,7 @@ export interface Task {
 export interface ConfigOptions {
   title: string;
   models: string[];
+  starredModels?: string[];
   defaultModel?: string | null; // first model from a provider with credentials; null if none configured
   agents: string[];
   tools: string[]; // full list of tool options

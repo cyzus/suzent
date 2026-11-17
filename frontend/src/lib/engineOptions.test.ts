@@ -97,6 +97,25 @@ describe('buildEngineOptions', () => {
     const options = build({ agents: [{ id: 'x', name: '', status: 'ready' }] });
     expect(options.at(-1)!.label).toBe('ACP · x');
   });
+
+  it('pins starred models into a top Starred group while keeping provider groups below', () => {
+    const options = build({
+      models: ['openai/gpt-4.1', 'anthropic/claude-opus-5'],
+      starredModels: ['anthropic/claude-opus-5'],
+      agents: [],
+      labels: { ...LABELS, starred: '★ Starred' },
+    });
+    expect(options[0]).toEqual({
+      value: 'model:anthropic/claude-opus-5',
+      label: 'claude-opus-5',
+      group: '★ Starred',
+      hint: 'anthropic',
+    });
+    expect(options.slice(1)).toEqual([
+      { value: 'model:openai/gpt-4.1', label: 'gpt-4.1', group: 'openai' },
+      { value: 'model:anthropic/claude-opus-5', label: 'claude-opus-5', group: 'anthropic' },
+    ]);
+  });
 });
 
 describe('engineValue / parseEngineValue', () => {

@@ -1317,6 +1317,57 @@ export async function verifyProvider(
   }
 }
 
+export interface RefreshProviderModelsResponse {
+  success: boolean;
+  models?: string[];
+  starredModels?: string[];
+  defaultModel?: string | null;
+  contextWindows?: Record<string, number>;
+  providers?: Record<string, number>;
+  error?: string;
+}
+
+export async function refreshAllProviderModels(): Promise<RefreshProviderModelsResponse> {
+  try {
+    const res = await fetch(`${getApiBase()}/config/providers/refresh-models`, {
+      method: 'POST',
+    });
+    if (!res.ok) {
+      return { success: false, error: `HTTP ${res.status}` };
+    }
+    return await res.json();
+  } catch (e) {
+    console.error(e);
+    return { success: false, error: String(e) };
+  }
+}
+
+export async function toggleStarredModel(
+  model: string,
+  starred?: boolean
+): Promise<{
+  success: boolean;
+  model?: string;
+  starred?: boolean;
+  starredModels?: string[];
+  error?: string;
+}> {
+  try {
+    const res = await fetch(`${getApiBase()}/config/models/star`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model, starred }),
+    });
+    if (!res.ok) {
+      return { success: false, error: `HTTP ${res.status}` };
+    }
+    return await res.json();
+  } catch (e) {
+    console.error(e);
+    return { success: false, error: String(e) };
+  }
+}
+
 export interface CustomProviderPayload {
   id: string;
   label: string;
