@@ -150,6 +150,7 @@
     ".releases/changes/lighter-file-tool-blocks.json",
     ".releases/changes/litellm-proxy-discovery.json",
     ".releases/changes/live-trigger-on-wake.json",
+    ".releases/changes/live-turn-journal.json",
     ".releases/changes/macos-arrow-key-garbage.json",
     ".releases/changes/macos-installer-dmg.json",
     ".releases/changes/macos-native-traffic-lights.json",
