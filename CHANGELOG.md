@@ -5,6 +5,37 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v0.27.1] - 2026-11-17
+
+<!-- highlights -->
+### Highlights
+
+- **The model picker finds your models.** Every model your configured providers offer now appears in the chat composer without going to Settings to tick boxes first, grouped by provider with inline search, a refresh button, and a starred list that pins the ones you actually use to the top.
+- **Regent's messages no longer queue behind long turns.** A message Regent sent to another conversation used to wait for that session's whole running turn: on our own machine the average wait reached 55 minutes on 15 November and 103 minutes on 16 November, and one message to an idle chat waited 5.4 hours. Each chat now has its own delivery slot, up to eight at once, while messages to the same chat stay in order.
+- **The phone bot matches the desktop.** iOS and Android now play the same SuzentBot animation and tool-icon choreography as the desktop app, drawn off the UI thread and paused when hidden, settled, or when reduced motion is on.
+- **Smaller fixes worth having.** Chat links stay clickable next to citation markers, folders mounted in one chat no longer leak into others, and the Mailbox unread dot is no longer clipped.
+
+**这篇中文版：**
+
+- **模型选择器会自己找到你的模型。** 已配置供应商提供的模型现在直接出现在聊天输入框里，不用先去设置里一个个勾选；按供应商分组、支持行内搜索和一键刷新，加星的常用模型固定置顶。
+- **Regent 的消息不再排在长任务后面。** 以前 Regent 发给另一个会话的消息，要等那个会话把当前整轮跑完才送达——在我们自己的机器上，平均等待时间 11 月 15 日是 55 分钟、11 月 16 日涨到 103 分钟，其中一条发给空闲会话的消息等了 5.4 小时。现在每个会话各自占用一条投递通道、最多 8 条并行送达，同一会话内的消息仍保持先后顺序。
+- **手机端的机器人跟桌面端一致了。** iOS 与 Android 现在播放与桌面相同的 SuzentBot 动画和工具图标编排，绘制在 UI 线程之外，并在隐藏、静止或开启减弱动效时暂停。
+- **一些小但实在的修复。** 聊天里的链接在引用标记旁边仍可点击，某个会话挂载的文件夹不再串到其他会话，Mailbox 的未读圆点也不再被裁掉。
+
+**This is a patch on top of v0.27.0.** The Mobile side ships separately as mobile-v0.10.1.
+<!-- /highlights -->
+
+### Release notes
+- Messages from Regent and other agents reach their sessions promptly instead of waiting behind another session's long-running turn.
+- Keep chat links clickable when followed by inline citation markers and prevent unlabelled tool results from triggering hallucinated citations.
+- Folders mounted in one chat no longer carry over to other chats or projects.
+- The unread dot in the mailbox list is no longer partly cut off.
+- Place the mobile robot and animate tool icons the way desktop does, and draw them off the UI thread on iOS and Android, pausing when hidden or settled.
+- Collapse mobile model groups, share favorites with desktop, and refresh provider model lists from your phone.
+- Automatically discover models from configured providers in the chat model selector with collapsible provider groups, quick search, one-click refresh, and starred favorites.
+- The phone apps play the same Suzent bot animation as desktop, and the desktop mark rests when it is idle or reduced motion is on.
+- Projects in the sidebar show folder icons, and hovering a project offers a shortcut to start a new chat in it.
+
 ## [v0.27.0] - 2026-11-16
 
 ### Release notes
