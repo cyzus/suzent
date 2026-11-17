@@ -1,5 +1,11 @@
 # Mobile changelog
 
+## [mobile-v0.10.1] - 2026-11-17
+
+### Release notes
+- Place the mobile robot and animate tool icons the way desktop does, and draw them off the UI thread on iOS and Android, pausing when hidden or settled.
+- The phone apps play the same Suzent bot animation as desktop, and the desktop mark rests when it is idle or reduced motion is on.
+
 ## [mobile-v0.10.0] - 2026-11-16
 
 ### Release notes
