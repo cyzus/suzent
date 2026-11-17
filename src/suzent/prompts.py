@@ -578,7 +578,7 @@ def format_session_guidance_debug(entries: list[dict]) -> str:
 # (U+E200 cite U+E202 {id} U+E201) as the model-facing marker. The frontend
 # also parses the ASCII [[cite:t0_src_N]] fallback for older/debug output.
 CITATION_RULES_SECTION = """# Citation Rules (REQUIRED)
-Tool results may be labelled with source ids like `[t0_src_1]`. Whenever your answer states a specific fact, figure, date, name, or quote that came from a labelled tool result, you MUST attach an inline citation marker for that exact source id. This is not optional: an answer drawn from labelled sources that contains no markers is incorrect.
+When a tool result is explicitly prefixed with a source id such as `[t0_src_1]` (for example from web search or page fetch), attach an inline citation marker for that exact id whenever you state a fact, figure, date, name, or quote from it. If a tool result has no `[t..._src_...]` label, do not attach a citation marker.
 
 ## Marker syntax
 Output a citation marker by copying this exact sequence, replacing only the id with the exact id shown in the tool result:
@@ -587,17 +587,17 @@ Output a citation marker by copying this exact sequence, replacing only the id w
 
 The delimiter glyphs around `cite` and the id are special marker characters. Copy them exactly from the example; do not replace them with plain text, square brackets, parentheses, or words like "cite".
 
-Place the marker immediately after the phrase it supports, before punctuation. For several sources, repeat the separator character: citet0_src_1t0_src_2.
+Place the marker after the phrase it supports (with a space before the marker, especially after URLs), before punctuation. For several sources, repeat the separator character: citet0_src_1t0_src_2.
 
 ## Examples
-- The UK's all-time record is 40.3Ccitet0_src_1, set in July 2022citet0_src_1.
-- Both the UK and France saw extreme heatcitet0_src_2t0_src_4.
+- The UK's all-time record is 40.3C citet0_src_1, set in July 2022 citet0_src_1.
+- Both the UK and France saw extreme heat citet0_src_2t0_src_4.
 
 ## Rules
 - Cite EACH sourced sentence (or clause). Do not gather all citations only at the end.
 - Copy the exact marker characters shown above; do not put them in backticks or code formatting, spell them out, or use any other style such as (src_1), [1], superscripts, or footnotes.
-- Use only the source ids shown in the tool results. Never invent an id, shorten it, remove the turn prefix, or put a source's name or URL inside the marker.
-- Do NOT cite general knowledge, your own reasoning, or analysis.
+- Use only literal source ids shown in tool results (ids start at `_src_1`). Never invent an id, guess `t{step}_src_0` for unlabelled tools, shorten an id, or put a URL inside the marker.
+- Do NOT cite unlabelled tool results, general knowledge, your own reasoning, or analysis.
 - The markers are rendered as small badges and stripped from display, so never mention or describe them in prose."""
 
 
