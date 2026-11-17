@@ -245,7 +245,9 @@ const buildConfigFromPreferences = (
   memory_enabled: prefs?.memory_enabled,
   thinking: normalizeThinkingEffort(prefs?.thinking),
   sandbox_enabled: prefs?.sandbox_enabled ?? backendDefaults.sandboxEnabled ?? true,
-  sandbox_volumes: prefs?.sandbox_volumes || [],
+  // Mounted folders belong to one chat (project folders are added by the
+  // backend), so a new chat never starts with another chat's mounts.
+  sandbox_volumes: [],
   permission_mode: backendDefaults.defaultPermissionMode ?? 'auto',
   mcp_urls: [],
   mcp_enabled: {},
@@ -282,7 +284,6 @@ const extractSavedPreferences = (prefs: ConfigOptions['userPreferences']) => ({
   memory_enabled: prefs?.memory_enabled,
   thinking: normalizeThinkingEffort(prefs?.thinking),
   sandbox_enabled: prefs?.sandbox_enabled,
-  sandbox_volumes: prefs?.sandbox_volumes ?? [],
 });
 
 const configsEqual = (a?: ChatConfig | null, b?: ChatConfig | null): boolean => {
@@ -371,7 +372,6 @@ interface SavedPreferences {
   memory_enabled?: boolean;
   thinking?: ThinkingEffort;
   sandbox_enabled?: boolean;
-  sandbox_volumes?: string[];
 }
 
 const preferencesEqual = (a: SavedPreferences | null, b: SavedPreferences | null): boolean => {
@@ -383,8 +383,7 @@ const preferencesEqual = (a: SavedPreferences | null, b: SavedPreferences | null
     arraysEqual(a.tools, b.tools) &&
     a.memory_enabled === b.memory_enabled &&
     a.thinking === b.thinking &&
-    a.sandbox_enabled === b.sandbox_enabled &&
-    arraysEqual(a.sandbox_volumes, b.sandbox_volumes)
+    a.sandbox_enabled === b.sandbox_enabled
   );
 };
 
@@ -478,7 +477,6 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
     tools: string[];
     memory_enabled?: boolean;
     sandbox_enabled?: boolean;
-    sandbox_volumes?: string[];
   } | null>(null);
 
   // Keep refs in sync with state
@@ -1052,7 +1050,6 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
           memory_enabled: resolved.memory_enabled,
           thinking: resolved.thinking,
           sandbox_enabled: resolved.sandbox_enabled,
-          sandbox_volumes: resolved.sandbox_volumes,
         };
 
         const lastSaved = lastSavedPreferencesRef.current;
