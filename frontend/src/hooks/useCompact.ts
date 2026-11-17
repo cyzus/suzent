@@ -1,3 +1,4 @@
+import { resourcePaths } from '../lib/resourceAPI.generated';
 import { useState, useCallback } from 'react';
 import { getApiBase } from '../lib/api';
 
@@ -26,7 +27,7 @@ export function useCompact() {
     setProgress({ stage: 'loading' });
 
     try {
-      const res = await fetch(`${getApiBase()}/chat/compact`, {
+      const res = await fetch(`${getApiBase()}${resourcePaths.compactChat()}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ chat_id: chatId, focus: focus || undefined }),

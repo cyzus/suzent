@@ -1,3 +1,4 @@
+import { resourcePaths } from '../lib/resourceAPI.generated';
 import React from 'react';
 import { BrutalSelect } from './BrutalSelect';
 import { BrutalDialog } from './BrutalDialog';
@@ -468,7 +469,7 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
                 signal: controller.signal,
               }).then(async (res) => (res.ok ? (await res.json()).items : []))
             : Promise.resolve([]),
-          fetch(`${getApiBase()}/chats?${chatParams}`, {
+          fetch(`${getApiBase()}${resourcePaths.chats()}?${chatParams}`, {
             signal: controller.signal,
           }).then(async (res) => (res.ok ? (await res.json()).chats : [])),
         ]);

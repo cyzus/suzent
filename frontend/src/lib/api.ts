@@ -1,3 +1,5 @@
+import { createResourceClient } from './resources';
+import { resourcePaths } from './resourceAPI.generated';
 import {
   AcpAgentDescriptor,
   ChatGPTLoginResponse,
@@ -242,7 +244,7 @@ export async function setChatPermissionMode(
   chatId: string,
   mode: PermissionMode
 ): Promise<PermissionModeState> {
-  const response = await fetch(`${getApiBase()}/chats/${chatId}/permission-mode`, {
+  const response = await fetch(`${getApiBase()}${resourcePaths.permissionMode(chatId)}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ mode }),
@@ -268,7 +270,7 @@ export async function setDefaultPermissionMode(
 }
 
 export async function restoreChatPermissionMode(chatId: string): Promise<PermissionModeState> {
-  const response = await fetch(`${getApiBase()}/chats/${chatId}/permission-mode`, {
+  const response = await fetch(`${getApiBase()}${resourcePaths.permissionMode(chatId)}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ restorePrevious: true }),
@@ -296,7 +298,7 @@ export interface ChatPermissionState {
 }
 
 export async function getChatPermissionState(chatId: string): Promise<ChatPermissionState> {
-  const response = await fetch(`${getApiBase()}/chats/${chatId}/permission-state`);
+  const response = await fetch(`${getApiBase()}${resourcePaths.permissionState(chatId)}`);
   if (!response.ok) {
     throw new Error(`Failed to load permission state: ${response.status}`);
   }
@@ -1329,13 +1331,8 @@ export interface RefreshProviderModelsResponse {
 
 export async function refreshAllProviderModels(): Promise<RefreshProviderModelsResponse> {
   try {
-    const res = await fetch(`${getApiBase()}/config/providers/refresh-models`, {
-      method: 'POST',
-    });
-    if (!res.ok) {
-      return { success: false, error: `HTTP ${res.status}` };
-    }
-    return await res.json();
+    const result = await createResourceClient(getApiBase).refreshModels({});
+    return { ...result, success: true };
   } catch (e) {
     console.error(e);
     return { success: false, error: String(e) };
@@ -1353,15 +1350,10 @@ export async function toggleStarredModel(
   error?: string;
 }> {
   try {
-    const res = await fetch(`${getApiBase()}/config/models/star`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model, starred }),
-    });
-    if (!res.ok) {
-      return { success: false, error: `HTTP ${res.status}` };
-    }
-    return await res.json();
+    const api = createResourceClient(getApiBase);
+    const intended = starred ?? !(await api.models()).starredModels.includes(model);
+    const result = await api.starModel({ model, starred: intended });
+    return { success: true, model, starred: intended, starredModels: result.starredModels };
   } catch (e) {
     console.error(e);
     return { success: false, error: String(e) };
@@ -1764,7 +1756,7 @@ export interface BindableChat {
  * chat is never what someone means, and it would make the list mostly noise.
  */
 export async function fetchBindableChats(limit = 100): Promise<BindableChat[]> {
-  const res = await fetch(`${getApiBase()}/chats?limit=${limit}`);
+  const res = await fetch(`${getApiBase()}${resourcePaths.chats()}?limit=${limit}`);
   if (!res.ok) throw new Error('Failed to fetch chats');
   const data = await res.json();
   return (data.chats || [])
@@ -1940,13 +1932,9 @@ export async function fetchMailboxUnread(): Promise<number> {
 }
 
 export async function markMailboxRead(ids?: number[]): Promise<number> {
-  const res = await fetch(`${getApiBase()}/mailbox/read`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(ids ? { ids } : {}),
-  });
-  if (!res.ok) throw new Error('Failed to mark notifications read');
-  const unread = (await res.json()).unread ?? 0;
+  const { unread } = await createResourceClient(getApiBase).readMailbox(
+    ids ? { ids } : { all: true }
+  );
   window.dispatchEvent(new CustomEvent(MAILBOX_UNREAD_EVENT, { detail: unread }));
   return unread;
 }
@@ -2032,7 +2020,7 @@ export async function rotateMailboxEndpoint(): Promise<WebhookUrls> {
 
 export async function markChatRead(chatId: string): Promise<void> {
   try {
-    await fetch(`${getApiBase()}/chats/${chatId}/mark-read`, {
+    await fetch(`${getApiBase()}${resourcePaths.markRead(chatId)}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: '{}',
@@ -2072,9 +2060,7 @@ export interface ChatGitStatusResponse {
 }
 
 export async function fetchChatGitStatus(chatId: string): Promise<ChatGitStatusResponse> {
-  const response = await fetch(
-    `${getApiBase()}/api/chats/${encodeURIComponent(chatId)}/git-status`
-  );
+  const response = await fetch(`${getApiBase()}${resourcePaths.chatGitStatus(chatId)}`);
   if (!response.ok) throw new Error('Failed to load git status');
   return response.json();
 }
@@ -2085,7 +2071,7 @@ export interface ForkChatResponse {
 }
 
 export async function forkChat(chatId: string, messageIndex?: number): Promise<ForkChatResponse> {
-  const response = await fetch(`${getApiBase()}/api/chats/${encodeURIComponent(chatId)}/fork`, {
+  const response = await fetch(`${getApiBase()}${resourcePaths.forkChat(chatId)}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(messageIndex === undefined ? {} : { message_index: messageIndex }),

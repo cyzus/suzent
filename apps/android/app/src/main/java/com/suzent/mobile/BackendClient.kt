@@ -61,6 +61,15 @@ class BackendClient(val backend: Backend, private val token: String, probeOnly: 
         .apply { if (body != null) post(body.toString().toRequestBody("application/json".toMediaType())) }
         .build()
 
+    @Volatile private var sharedResources = false
+
+    private fun request(call: ResourceRequest): Request = request(call.path(sharedResources), call.body)
+        .newBuilder().method(call.method, call.body?.toString()?.toRequestBody("application/json".toMediaType())).build()
+
+    private suspend fun json(call: ResourceRequest): JSONObject = execute(request(call), if (call.readOnly) reads else http)
+
+    override val resourceAPI: ResourceClient get() = ResourceClient { json(it) }
+
     // `readOnly` marks a POST that only reads, so a stale pooled connection can be retried safely.
     private suspend fun json(path: String, body: JSONObject? = null, readOnly: Boolean = body == null): JSONObject =
         execute(request(path, body), if (readOnly) reads else http)
@@ -126,8 +135,8 @@ class BackendClient(val backend: Backend, private val token: String, probeOnly: 
         private set
 
     fun voiceSocket(chatId: String, listener: WebSocketListener): WebSocket {
-        val url = backend.endpoint("mobile/client/voice").newBuilder().addQueryParameter("chat_id", chatId).build()
-        val voice = request("mobile/client/voice").newBuilder().url(url).build()
+        val url = backend.endpoint(ResourceRequests.voice().path(sharedResources)).newBuilder().addQueryParameter("chat_id", chatId).build()
+        val voice = request(ResourceRequests.voice()).newBuilder().url(url).build()
         return tunnel?.webSocket(voice, listener) ?: http.newWebSocket(voice, listener)
     }
 
@@ -138,8 +147,9 @@ class BackendClient(val backend: Backend, private val token: String, probeOnly: 
         private set
 
     override suspend fun session(): ClientDevice {
-        val value = json("mobile/client/session")
+        val value = json(ResourceRequests.session())
         validateMobileCapabilities(value)
+        sharedResources = value.optInt("resource_api") == 1
         supportsAttachments = value.optInt("attachments") == 1
         supportsMailbox = value.optInt("mailbox") == 1
         supportsScheduledTasks = value.optInt("scheduled_tasks") == 1
@@ -166,12 +176,12 @@ class BackendClient(val backend: Backend, private val token: String, probeOnly: 
 
     override suspend fun chatPage(query: ChatPageQuery, offset: Int, limit: Int): ChatPage {
         if (!supportsPagination) return super.chatPage(query, offset, limit)
-        return ChatPage.parse(json("mobile/client/chat-page", JSONObject().put("kind", query.kind)
-            .put("value", query.value).put("offset", offset).put("limit", limit), readOnly = true))
+        return ChatPage.parse(json(ResourceRequests.chatPage(WireChatPageRequest(query.kind, query.value, offset, limit))))
     }
+
     override suspend fun navigationMetadata(): NavigationMetadata {
         if (!supportsPagination) return super.navigationMetadata()
-        val value = json("mobile/client/navigation")
+        val value = json(ResourceRequests.navigation())
         val array = value.getJSONArray("projects")
         return NavigationMetadata(value.optJSONObject("regent")?.let(Chat::parse), (0 until array.length()).map {
             val project = array.getJSONObject(it)
@@ -182,70 +192,69 @@ class BackendClient(val backend: Backend, private val token: String, probeOnly: 
         if (ids.isEmpty()) return emptyList()
         if (!supportsPagination) return super.chatStatuses(ids)
         return ids.chunked(100).flatMap { batch ->
-            val array = json("mobile/client/chat-status", JSONObject().put("ids", org.json.JSONArray(batch)), readOnly = true).getJSONArray("chats")
+            val array = json(ResourceRequests.chatStatuses(WireChatStatusRequest(batch))).getJSONArray("chats")
             (0 until array.length()).map { Chat.parse(array.getJSONObject(it)) }
         }
     }
 
     override suspend fun chats(): List<Chat> {
-        val array = json("mobile/client/chats").getJSONArray("chats")
+        val array = json(ResourceRequests.chats()).getJSONArray("chats")
         return (0 until array.length()).map { Chat.parse(array.getJSONObject(it)) }
     }
     override suspend fun mailboxPage(category: String, offset: Int): MailboxPage = MailboxPage.parse(
-        json("mobile/client/mailbox/page", JSONObject().put("category", category).put("offset", offset).put("limit", 50), readOnly = true))
+        json(ResourceRequests.mailboxPage(WireMailboxPageRequest(offset, 50, category))))
+
     override suspend fun readMailbox(ids: List<Int>?, all: Boolean) {
-        json("mobile/client/mailbox/read", JSONObject().put("ids", org.json.JSONArray(ids ?: emptyList<Int>())).put("all", all))
+        json(ResourceRequests.readMailbox(WireMailboxReadRequest(ids ?: emptyList(), all)))
     }
+
     override suspend fun scheduledTasks(): List<ScheduledTask> {
         if (!supportsScheduledTasks) return emptyList()
-        val array = json("mobile/client/scheduled-tasks").getJSONArray("tasks")
+        val array = json(ResourceRequests.scheduledTasks()).getJSONArray("tasks")
         return (0 until array.length()).map { ScheduledTask.parse(array.getJSONObject(it)) }
     }
     override suspend fun projects(): List<Project> {
-        val array = json("mobile/client/projects").getJSONArray("projects")
+        val array = json(ResourceRequests.projects()).getJSONArray("projects")
         return (0 until array.length()).map { val item = array.getJSONObject(it); Project(item.getString("id"), item.getString("name")) }
     }
     override suspend fun modelCatalog(refresh: Boolean): ModelCatalog = ModelCatalog.parse(
-        if (refresh) json("mobile/client/models/refresh", JSONObject()) else json("mobile/client/models"))
+        json(if (refresh) ResourceRequests.refreshModels(WireEmptyRequest()) else ResourceRequests.models()))
 
     override suspend fun starModel(model: String, starred: Boolean): ModelCatalog = ModelCatalog.parse(
-        json("mobile/client/models/star", JSONObject().put("model", model).put("starred", starred)))
+        json(ResourceRequests.starModel(WireStarModelRequest(model, starred))))
 
-    override suspend fun composer(): Chat = Chat.parse(json("mobile/client/composer"))
-    override suspend fun create(title: String, projectId: String?): Chat = Chat.parse(json("mobile/client/chats", JSONObject().put("title", title).apply { if (projectId != null) put("project_id", projectId) }))
+    override suspend fun composer(): Chat = Chat.parse(json(ResourceRequests.composer()))
+
+    override suspend fun create(title: String, projectId: String?): Chat = Chat.parse(
+        json(ResourceRequests.createChat(WireCreateRequest(title, projectId))))
+
     override suspend fun manageChat(id: String, action: String, value: String?) {
-        json("mobile/client/manage", JSONObject().put("chat_id", id).put("action", action).apply { if (value != null) put("value", value) })
+        json(ResourceRequests.manageChat(WireManageRequest(id, action, value)))
     }
 
     override suspend fun messageAction(id: String, index: Int, action: String, text: String?, model: String?): String {
-        val result = json("mobile/client/message-action", JSONObject().put("chat_id", id)
-            .put("message_index", index).put("action", action).apply {
-                if (text != null) put("text", text)
-                if (model != null) put("model", model)
-            })
+        val result = json(ResourceRequests.messageAction(WireMessageActionRequest(id, action, index, text, model)))
         return result.optString("chat_id", id)
     }
 
-    override suspend fun markRead(id: String) {
-        require(!id.contains('/') && id != "." && id != "..")
-        json("mobile/client/chats/$id/read", JSONObject())
-    }
+    override suspend fun markRead(id: String) { json(ResourceRequests.markRead(id, WireEmptyRequest())) }
+
     override suspend fun answerSurface(id: String, surfaceId: String, answer: Map<String, Any?>) {
-        json("mobile/client/surface-answer", JSONObject().put("chat_id", id).put("surface_id", surfaceId)
-            .put("answer", JSONObject(compactJson(answer))))
+        json(ResourceRequests.answerSurface(WireSurfaceAnswerRequest(id, surfaceId, answer)))
     }
+
     override suspend fun overview(id: String): ChatOverview {
         require(!id.contains('/') && id != "." && id != "..")
-        return ChatOverview.parse(json("mobile/client/chats/$id/overview"))
+        return ChatOverview.parse(json(ResourceRequests.overview(id)))
     }
     override suspend fun chat(id: String): Chat {
         require(!id.contains('/') && id != "." && id != "..")
-        return Chat.parse(json("mobile/client/chats/$id"))
+        return Chat.parse(json(ResourceRequests.chat(id)))
     }
     override suspend fun media(chatId: String, mediaId: String, destination: File) = withContext(Dispatchers.IO) {
         require(!chatId.contains('/') && chatId != "." && chatId != "..")
         require(mediaId.matches(Regex("^[0-9a-f]{32}$")))
-        val call = reads.newCall(request("mobile/client/chats/$chatId/media/$mediaId"))
+        val call = reads.newCall(request(ResourceRequests.media(chatId, mediaId)))
         val partial = File(destination.parentFile, destination.name + ".part")
         try {
             currentCoroutineContext()[kotlinx.coroutines.Job]?.invokeOnCompletion { if (it != null) call.cancel() }
@@ -264,46 +273,43 @@ class BackendClient(val backend: Backend, private val token: String, probeOnly: 
         val form = MultipartBody.Builder().setType(MultipartBody.FORM).apply {
             attachments.forEach { addFormDataPart("files", it.name, it.file.asRequestBody(it.mimeType.toMediaTypeOrNull())) }
         }.build()
-        val url = backend.endpoint("mobile/client/upload").newBuilder().addQueryParameter("chat_id", id).build()
+        val url = backend.endpoint(ResourceRequests.upload().path(sharedResources)).newBuilder().addQueryParameter("chat_id", id).build()
         val request = Request.Builder().url(url).apply { if (token.isNotEmpty()) header("Authorization", "Bearer $token") }.post(form).build()
         val issued = execute(request, http).getJSONArray("attachments")
         return (0 until issued.length()).map { issued.getJSONObject(it).getString("id") }
     }
 
     override suspend fun send(id: String, text: String, model: String?, attachments: List<String>) {
-        val messageId = UUID.randomUUID().toString()
-        val body = JSONObject().put("chat_id", id).put("message", text)
-            .put("client_message_id", messageId)
-            .apply { if (model != null) put("model", model) }
-            .apply { if (attachments.isNotEmpty()) put("attachments", org.json.JSONArray(attachments)) }
-        try {
-            json("mobile/client/send", body)
-        } catch (failure: Exception) {
+        val call = ResourceRequests.send(WireSendRequest(id, text, model, UUID.randomUUID().toString(), attachments))
+        try { json(call) }
+        catch (failure: Exception) {
             if (failure is HttpFailure || failure is CancellationException) throw failure
-            json("mobile/client/send", body)
+            json(call)
         }
     }
+
     override suspend fun approvals(id: String): ApprovalState {
         require(!id.contains('/') && id != "." && id != "..")
-        val value = json("mobile/client/chats/$id/approvals")
+        val value = json(ResourceRequests.approvals(id))
         val pending = value.getJSONArray("pending")
         return ApprovalState((0 until pending.length()).map { ApprovalRequest.parse(pending.getJSONObject(it)) }, value.optBoolean("isRunning"))
     }
     override suspend fun decideApprovals(id: String, pending: List<ApprovalRequest>, choices: Map<String, String>) {
-        val decisions = org.json.JSONArray()
-        pending.forEach { item -> decisions.put(JSONObject().put("chat_id", id).put("request_id", item.id).put("kind", item.kind).put("action_id", choices.getValue(item.id))) }
-        json("mobile/client/approvals", JSONObject().put("chat_id", id).put("decisions", decisions))
+        val decisions = pending.map { WireApprovalChoice(id, it.id, choices.getValue(it.id), it.kind) }
+        json(ResourceRequests.decideApprovals(WireApprovalBatch(id, decisions)))
     }
-    override suspend fun stop(id: String) { json("mobile/client/stop", JSONObject().put("chat_id", id)) }
+
+    override suspend fun stop(id: String) { json(ResourceRequests.stop(WireChatRequest(id))) }
+
     override suspend fun steer(id: String, text: String, model: String?) {
-        json("mobile/client/steer", JSONObject().put("chat_id", id).put("message", text).apply { if (model != null) put("model", model) })
+        json(ResourceRequests.steer(WireSteerRequest(id, text, model)))
     }
 
     override suspend fun observe(id: String, event: suspend (JSONObject) -> Unit) = withContext(Dispatchers.IO) {
         var recovery = StreamRecovery()
         repeat(5) { attempt ->
             currentCoroutineContext().ensureActive()
-            val call = http.newCall(request("mobile/client/live", recovery.request(id)))
+            val call = http.newCall(request(ResourceRequests.observe(WireObserveRequest(id)).copy(body = recovery.request(id))))
             liveCall = call
             try {
                 call.execute().use { response ->

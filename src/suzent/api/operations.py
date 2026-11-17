@@ -1,0 +1,387 @@
+"""One operation registry drives routing, authorization metadata and client generation."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Literal
+from pydantic import BaseModel
+from suzent.api import contracts as c
+
+
+@dataclass(frozen=True)
+class Operation:
+    name: str
+    method: str
+    path: str
+    handler: str
+    request: type[BaseModel] | None = None
+    response: type[BaseModel] = c.ApiResult
+    actions: tuple[str, ...] = ()
+    chat: Literal["body", "path", "query"] | None = None
+    host_only: bool = False
+    transport: Literal["json", "sse", "multipart", "binary", "websocket"] = "json"
+    read_only: bool = False
+    host_handler: str | None = None
+
+
+OPERATIONS = (
+    Operation("session", "GET", "/session", "session", response=c.ApiSession),
+    Operation("composer", "GET", "/composer", "composer", response=c.ApiChat),
+    Operation("models", "GET", "/models", "model_catalog", response=c.ApiModels),
+    Operation(
+        "starModel",
+        "POST",
+        "/models/star",
+        "star_model",
+        c.StarModelRequest,
+        c.ApiModels,
+        ("send",),
+    ),
+    Operation(
+        "refreshModels",
+        "POST",
+        "/models/refresh",
+        "refresh_models",
+        c.EmptyRequest,
+        c.ApiModels,
+        ("send",),
+    ),
+    Operation(
+        "chats",
+        "GET",
+        "/chats",
+        "chats",
+        response=c.ApiChatList,
+        host_handler="chat_routes.get_chats",
+    ),
+    Operation(
+        "createChat",
+        "POST",
+        "/chats",
+        "create",
+        c.CreateRequest,
+        c.ApiChat,
+        ("create_chats",),
+        host_handler="chat_routes.create_chat",
+    ),
+    Operation(
+        "chatPage",
+        "POST",
+        "/chat-page",
+        "chat_page",
+        c.ChatPageRequest,
+        c.ApiChatList,
+        read_only=True,
+    ),
+    Operation(
+        "chatStatuses",
+        "POST",
+        "/chat-status",
+        "chat_status",
+        c.ChatStatusRequest,
+        c.ApiChatList,
+        read_only=True,
+    ),
+    Operation(
+        "navigation", "GET", "/navigation", "navigation", response=c.ApiNavigation
+    ),
+    Operation(
+        "chat", "GET", "/chats/{chat_id}", "chat", response=c.ApiChat, chat="path"
+    ),
+    Operation(
+        "updateChat",
+        "PUT",
+        "/chats/{chat_id}",
+        "chat_routes.update_chat",
+        c.HostFieldsRequest,
+        chat="path",
+        host_only=True,
+    ),
+    Operation(
+        "deleteChat",
+        "DELETE",
+        "/chats/{chat_id}",
+        "chat_routes.delete_chat",
+        chat="path",
+        host_only=True,
+    ),
+    Operation(
+        "markRead",
+        "POST",
+        "/chats/{chat_id}/read",
+        "mark_read",
+        c.EmptyRequest,
+        chat="path",
+    ),
+    Operation(
+        "overview",
+        "GET",
+        "/chats/{chat_id}/overview",
+        "overview",
+        response=c.ApiOverview,
+        chat="path",
+    ),
+    Operation(
+        "manageChat",
+        "POST",
+        "/manage",
+        "manage",
+        c.ManageRequest,
+        actions=("manage_chats",),
+        chat="body",
+    ),
+    Operation(
+        "messageAction",
+        "POST",
+        "/message-action",
+        "message_action",
+        c.MessageActionRequest,
+        chat="body",
+    ),
+    Operation(
+        "send",
+        "POST",
+        "/send",
+        "send",
+        c.SendRequest,
+        actions=("send",),
+        chat="body",
+        host_handler="chat_routes.chat_send",
+    ),
+    Operation(
+        "stop",
+        "POST",
+        "/stop",
+        "stop",
+        c.ChatRequest,
+        actions=("stop",),
+        chat="body",
+        host_handler="chat_routes.stop_chat",
+    ),
+    Operation(
+        "steer",
+        "POST",
+        "/steer",
+        "steer",
+        c.SteerRequest,
+        actions=("send", "stop"),
+        chat="body",
+        host_handler="chat_routes.steer_chat_send",
+    ),
+    Operation(
+        "observe",
+        "POST",
+        "/live",
+        "observe",
+        c.ObserveRequest,
+        chat="body",
+        transport="sse",
+        read_only=True,
+    ),
+    Operation(
+        "upload",
+        "POST",
+        "/upload",
+        "upload",
+        response=c.ApiUploads,
+        actions=("send",),
+        chat="query",
+        transport="multipart",
+    ),
+    Operation(
+        "media",
+        "GET",
+        "/chats/{chat_id}/media/{media_id}",
+        "media",
+        chat="path",
+        transport="binary",
+    ),
+    Operation("projects", "GET", "/projects", "projects", response=c.ApiProjects),
+    Operation(
+        "createProject",
+        "POST",
+        "/projects",
+        "project_routes.create_project",
+        c.HostFieldsRequest,
+        c.ApiProject,
+        host_only=True,
+    ),
+    Operation(
+        "updateProject",
+        "PATCH",
+        "/projects/{project_id}",
+        "project_routes.update_project",
+        c.HostFieldsRequest,
+        c.ApiProject,
+        host_only=True,
+    ),
+    Operation(
+        "deleteProject",
+        "DELETE",
+        "/projects/{project_id}",
+        "project_routes.delete_project",
+        host_only=True,
+    ),
+    Operation(
+        "projectFolders",
+        "GET",
+        "/projects/{project_id}/folders",
+        "project_routes.list_project_folders",
+        host_only=True,
+    ),
+    Operation(
+        "moveProjectChats",
+        "POST",
+        "/projects/{project_id}/move-chats",
+        "project_routes.move_all_chats",
+        c.HostFieldsRequest,
+        host_only=True,
+    ),
+    Operation(
+        "moveChat",
+        "POST",
+        "/chats/{chat_id}/project",
+        "project_routes.move_chat_to_project",
+        c.HostFieldsRequest,
+        chat="path",
+        host_only=True,
+    ),
+    Operation(
+        "scheduledTasks",
+        "GET",
+        "/scheduled-tasks",
+        "scheduled_tasks",
+        response=c.ApiTasks,
+    ),
+    Operation(
+        "mailboxPage",
+        "POST",
+        "/mailbox/page",
+        "mailbox_page",
+        c.MailboxPageRequest,
+        c.ApiMailboxPage,
+        read_only=True,
+    ),
+    Operation(
+        "readMailbox",
+        "POST",
+        "/mailbox/read",
+        "mailbox_read",
+        c.MailboxReadRequest,
+        c.ApiMailboxRead,
+    ),
+    Operation(
+        "approvals",
+        "GET",
+        "/chats/{chat_id}/approvals",
+        "list_approvals",
+        response=c.ApiApprovals,
+        chat="path",
+    ),
+    Operation(
+        "decideApprovals",
+        "POST",
+        "/approvals",
+        "decide_approvals",
+        c.ApprovalBatch,
+        actions=("approve_tools",),
+        chat="body",
+    ),
+    Operation(
+        "answerSurface",
+        "POST",
+        "/surface-answer",
+        "surface_answer",
+        c.SurfaceAnswerRequest,
+        actions=("send",),
+        chat="body",
+    ),
+    Operation(
+        "voice",
+        "GET",
+        "/voice",
+        "voice",
+        actions=("send", "stop"),
+        chat="query",
+        transport="websocket",
+    ),
+    Operation(
+        "chatStates",
+        "GET",
+        "/chat-states",
+        "chat_routes.get_chat_states",
+        response=c.HostFieldsRequest,
+        host_only=True,
+    ),
+    Operation(
+        "setResolved",
+        "POST",
+        "/chats/{chat_id}/resolved",
+        "chat_routes.set_chat_resolved",
+        c.HostFieldsRequest,
+        chat="path",
+        host_only=True,
+    ),
+    Operation(
+        "permissionMode",
+        "GET",
+        "/chats/{chat_id}/permission-mode",
+        "chat_routes.get_permission_mode",
+        response=c.HostFieldsRequest,
+        chat="path",
+        host_only=True,
+    ),
+    Operation(
+        "setPermissionMode",
+        "PUT",
+        "/chats/{chat_id}/permission-mode",
+        "chat_routes.set_permission_mode",
+        c.HostFieldsRequest,
+        c.HostFieldsRequest,
+        chat="path",
+        host_only=True,
+    ),
+    Operation(
+        "permissionState",
+        "GET",
+        "/chats/{chat_id}/permission-state",
+        "permission_routes.get_chat_permission_state",
+        response=c.HostFieldsRequest,
+        chat="path",
+        host_only=True,
+    ),
+    Operation(
+        "chatGitStatus",
+        "GET",
+        "/chats/{chat_id}/git-status",
+        "chat_routes.get_chat_git_status_route",
+        response=c.HostFieldsRequest,
+        chat="path",
+        host_only=True,
+    ),
+    Operation(
+        "forkChat",
+        "POST",
+        "/chats/{chat_id}/fork",
+        "chat_routes.fork_chat_route",
+        c.HostFieldsRequest,
+        c.HostFieldsRequest,
+        chat="path",
+        host_only=True,
+    ),
+    Operation(
+        "compactChat",
+        "POST",
+        "/compact",
+        "compact_routes.compact_chat",
+        c.HostFieldsRequest,
+        c.HostFieldsRequest,
+        chat="body",
+        host_only=True,
+    ),
+)
+
+LEGACY_PATHS = {
+    op.name: "/mobile/client" + op.path for op in OPERATIONS if not op.host_only
+}
+LEGACY_PATHS["manageChat"] = "/mobile/client/manage"

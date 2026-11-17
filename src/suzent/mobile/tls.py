@@ -178,6 +178,9 @@ class MobileGateway:
         self.app = app
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] not in {"http", "websocket"}:
+            await self.app(scope, receive, send)
+            return
         path = scope.get("path", "")
         allowed = path in {
             "/mobile/capabilities",
@@ -186,7 +189,7 @@ class MobileGateway:
             "/mobile/pairing/collect",
             "/ws/node",
         }
-        if not allowed and not path.startswith("/mobile/client/"):
+        if not allowed and not path.startswith(("/mobile/client/", "/api/v1/")):
             if scope["type"] == "websocket":
                 await send({"type": "websocket.close", "code": 1008})
             else:
