@@ -69,16 +69,20 @@ class ChatDatabaseBase:
         self._migrate_static_config_from_db()
         self._ensure_default_project()
         self._migrate_legacy_session_dirs()
-        self._init_chat_search()
-        self._repair_stale_chat_summaries()
 
         from .chat_log import ChatEventLog, default_log_root
 
-        # Each chat's JSONL log is its source of truth; chats.db indexes them.
+        # Each chat's JSONL log is its source of truth and holds its messages
+        # and agent state; chats.db indexes the rest. Reads of messages go to
+        # the log, so it is opened before the search backfill below.
         self.chat_log = ChatEventLog(default_log_root(self.db_path))
+        self._adopt_legacy_log_positions()
+        self._init_chat_search()
+        self._repair_stale_chat_summaries()
         # Before anything can write: a write diffs the row against its log, so
         # a log still ahead of its row from a crash would otherwise be undone.
         self.reconcile_chat_logs()
+        self._slim_logged_rows()
         self._recover_live_turns()
 
     def _recover_live_turns(self) -> None:

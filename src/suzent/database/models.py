@@ -5,35 +5,23 @@ from datetime import datetime, timezone
 from typing import Any, List, Optional
 
 from pydantic import BaseModel
-from sqlalchemy import Text, cast, or_
+from sqlalchemy import literal_column
+from sqlalchemy import table as sa_table
 from sqlmodel import Column, Field, JSON, Relationship, Session, SQLModel, select
 
 
-def _json_escape_for_like(s: str) -> str:
-    """Return the \\uXXXX form of any non-ASCII chars in s.
-
-    SQLAlchemy's JSON column stores non-ASCII characters as \\uXXXX escape
-    sequences (ensure_ascii=True default). A plain LIKE '%中文%' therefore
-    never matches; we must search for '\\u4e2d\\u6587' instead.
-    ASCII characters are left unchanged so English searches still work.
-    """
-    result = []
-    for ch in s:
-        if ord(ch) > 127:
-            result.append(f"\\u{ord(ch):04x}")
-        else:
-            result.append(ch)
-    return "".join(result)
-
-
 def messages_search_filter(search: str) -> Any:
-    """Build an OR filter that matches search in the messages JSON column."""
-    escaped = _json_escape_for_like(search)
-    if escaped == search:
-        return cast(ChatModel.messages, Text).contains(search)
-    return or_(
-        cast(ChatModel.messages, Text).contains(search),
-        cast(ChatModel.messages, Text).contains(escaped),
+    """Match chats whose indexed message text contains *search*.
+
+    For queries the FTS ``MATCH`` cannot serve (shorter than a trigram). The
+    ``chats`` row no longer holds messages, so the scan reads the text the
+    search index already extracted from each chat's log.
+    """
+    escaped = search.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    return ChatModel.id.in_(
+        select(literal_column("chat_id"))
+        .select_from(sa_table("chat_messages_fts"))
+        .where(literal_column("text").like(f"%{escaped}%", escape="\\"))
     )
 
 
@@ -219,12 +207,29 @@ class AgentInboxMessageModel(SQLModel, table=True):
     last_error: Optional[str] = None
 
 
-class ChatLogIndexModel(SQLModel, table=True):
-    """How far each chat's JSONL log has been applied to its ``chats`` row.
+class ChatLogPositionModel(SQLModel, table=True):
+    """How far each chat's JSONL log has been applied to SQLite.
 
     Written in the same transaction as the row, so a log whose size or mtime
     no longer matches has events SQLite never committed (a crash between the
-    append and the commit) or was edited by hand, and is replayed on start.
+    append and the commit), was edited by hand, or was written by an older
+    version, and is replayed on start.
+    """
+
+    __tablename__ = "chat_log_positions"
+
+    chat_id: str = Field(primary_key=True)
+    seq: int
+    size: int
+    mtime_ns: int
+
+
+class ChatLogIndexModel(SQLModel, table=True):
+    """The log positions kept by versions that stored full rows.
+
+    Read once on upgrade, then emptied. An older version that opens this
+    database later finds no position for any chat and replays every log back
+    into full ``messages`` and ``agent_state`` instead of showing them empty.
     """
 
     __tablename__ = "chat_log_index"

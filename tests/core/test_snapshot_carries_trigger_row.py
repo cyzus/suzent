@@ -239,25 +239,9 @@ def test_a_part_without_a_timestamp_still_yields_a_row():
 # --- ordering and derived state ---------------------------------------------
 
 
-def test_the_trigger_lands_before_the_streamed_answer(chat_db):
-    """Streaming has already flushed the turn's draft as the last stored message
-    by the time the snapshot runs, so appending would order the trigger after
-    the answer it prompted — and the reloaded transcript would keep that."""
-    db = chat_db
-    chat_id = _new_chat(db)
-    db.update_chat(chat_id, messages=[_draft("done", "run-1")])
-
-    db.commit_snapshot_state(
-        chat_id, b"state", append_display_messages=[_row()], draft_run_id="run-1"
-    )
-
-    assert [r["role"] for r in db.get_chat(chat_id).messages] == [
-        "system_triggered",
-        "assistant",
-    ]
-
-
-def test_earlier_turns_stay_before_the_trigger(chat_db):
+def test_a_streamed_draft_is_not_stored_ahead_of_the_trigger(chat_db):
+    """The turn's draft lives in the live overlay, not the chat, so the trigger
+    appended by the snapshot lands before the answer the turn writes later."""
     db = chat_db
     chat_id = _new_chat(db)
     db.update_chat(
@@ -274,8 +258,7 @@ def test_earlier_turns_stay_before_the_trigger(chat_db):
     )
 
     roles = [r["role"] for r in db.get_chat(chat_id).messages]
-    # Only this run's draft is stepped over; the earlier answer keeps its place.
-    assert roles == ["user", "assistant", "system_triggered", "assistant"]
+    assert roles == ["user", "assistant", "system_triggered"]
 
 
 def test_the_appended_row_is_searchable(chat_db):
@@ -316,36 +299,6 @@ def test_a_previous_turns_answer_is_not_stepped_over(chat_db):
     db.commit_snapshot_state(
         chat_id, b"state", append_display_messages=[_row()], draft_run_id="run-1"
     )
-
-    assert [r["role"] for r in db.get_chat(chat_id).messages] == [
-        "assistant",
-        "system_triggered",
-    ]
-
-
-def test_a_draft_from_another_run_is_not_stepped_over(chat_db):
-    """Two turns in a row losing post-processing leaves a stale draft last. It
-    still belongs to the earlier turn."""
-    db = chat_db
-    chat_id = _new_chat(db)
-    db.update_chat(chat_id, messages=[_draft("stale", "run-0")])
-
-    db.commit_snapshot_state(
-        chat_id, b"state", append_display_messages=[_row()], draft_run_id="run-1"
-    )
-
-    assert [r["role"] for r in db.get_chat(chat_id).messages] == [
-        "assistant",
-        "system_triggered",
-    ]
-
-
-def test_without_a_run_id_nothing_is_stepped_over(chat_db):
-    db = chat_db
-    chat_id = _new_chat(db)
-    db.update_chat(chat_id, messages=[_draft("done", "run-1")])
-
-    db.commit_snapshot_state(chat_id, b"state", append_display_messages=[_row()])
 
     assert [r["role"] for r in db.get_chat(chat_id).messages] == [
         "assistant",
