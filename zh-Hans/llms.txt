@@ -92,6 +92,7 @@ Full documentation: https://suzent.com/zh-Hans/llms-full.txt
 - [Model capabilities and roles](https://suzent.com/zh-Hans/docs/developing/architecture/model-capabilities)
 - [Plugins](https://suzent.com/zh-Hans/docs/developing/architecture/plugins)
 - [Chat Post-Processing](https://suzent.com/zh-Hans/docs/developing/architecture/postprocess)
+- [Shared resource API](https://suzent.com/zh-Hans/docs/developing/architecture/resource-api)
 - [Stream recovery protocol](https://suzent.com/zh-Hans/docs/developing/architecture/stream-recovery-protocol)
 - [System Reminders & File Citations](https://suzent.com/zh-Hans/docs/developing/architecture/system-reminders)
 - [Tool system](https://suzent.com/zh-Hans/docs/developing/architecture/tool-system)
