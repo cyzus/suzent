@@ -1,3 +1,4 @@
+import { resourcePaths } from '../lib/resourceAPI.generated';
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import type { Project } from '../types/api';
 import { getApiBase } from '../lib/api';
@@ -58,12 +59,12 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   const refresh = useCallback(async () => {
     try {
-      const res = await fetch(`${getApiBase()}/projects`);
+      const res = await fetch(`${getApiBase()}${resourcePaths.projects()}`);
       if (!res.ok) {
         setProjects([]);
         return;
       }
-      const data: Project[] = await res.json();
+      const data: Project[] = (await res.json()).projects;
       setProjects(data);
 
       // If the stored currentProjectId doesn't exist anymore, fall back to default
@@ -94,7 +95,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const createProject = useCallback(
     async (name: string, slug?: string): Promise<Project | null> => {
       try {
-        const res = await fetch(`${getApiBase()}/projects`, {
+        const res = await fetch(`${getApiBase()}${resourcePaths.projects()}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ name, slug }),
@@ -120,7 +121,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
       const previousProjects = projects;
       setProjects((prev) => prev.map((p) => (p.id === id ? { ...p, name } : p)));
       try {
-        const res = await fetch(`${getApiBase()}/projects/${id}`, {
+        const res = await fetch(`${getApiBase()}${resourcePaths.updateProject(id)}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ name }),
@@ -142,7 +143,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
       const previousProjects = projects;
       setProjects((prev) => prev.map((p) => (p.id === id ? { ...p, archived } : p)));
       try {
-        const res = await fetch(`${getApiBase()}/projects/${id}`, {
+        const res = await fetch(`${getApiBase()}${resourcePaths.updateProject(id)}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ archived }),
@@ -169,7 +170,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
       if (update.workingDirectory !== undefined) body.working_directory = update.workingDirectory;
       if (update.extraFolders !== undefined) body.extra_folders = update.extraFolders;
       try {
-        const res = await fetch(`${getApiBase()}/projects/${id}`, {
+        const res = await fetch(`${getApiBase()}${resourcePaths.updateProject(id)}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(body),
@@ -202,7 +203,9 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const deleteProject = useCallback(
     async (id: string): Promise<{ success: boolean; error?: string }> => {
       try {
-        const res = await fetch(`${getApiBase()}/projects/${id}`, { method: 'DELETE' });
+        const res = await fetch(`${getApiBase()}${resourcePaths.updateProject(id)}`, {
+          method: 'DELETE',
+        });
         if (!res.ok) {
           const err = await res.json().catch(() => ({}));
           return { success: false, error: err.error || `HTTP ${res.status}` };
@@ -219,7 +222,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const moveAllChats = useCallback(
     async (fromProjectId: string, toProjectId: string) => {
       try {
-        const res = await fetch(`${getApiBase()}/projects/${fromProjectId}/move-chats`, {
+        const res = await fetch(`${getApiBase()}${resourcePaths.moveProjectChats(fromProjectId)}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ target_project_id: toProjectId }),
@@ -241,7 +244,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const moveChat = useCallback(
     async (chatId: string, projectId: string, fromProjectId?: string | null): Promise<boolean> => {
       try {
-        const res = await fetch(`${getApiBase()}/chats/${chatId}/project`, {
+        const res = await fetch(`${getApiBase()}${resourcePaths.moveChat(chatId)}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ project_id: projectId }),

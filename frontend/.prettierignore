@@ -2,3 +2,6 @@ dist
 coverage
 node_modules
 package-lock.json
+
+# Deterministic output checked by generate_resource_api.py --check.
+src/lib/resourceAPI.generated.ts

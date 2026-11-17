@@ -1,3 +1,4 @@
+import { resourcePaths } from '../lib/resourceAPI.generated';
 import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
@@ -72,7 +73,7 @@ export const ProjectSettingsDialog: React.FC<ProjectSettingsDialogProps> = ({
 
   useEffect(() => {
     let cancelled = false;
-    fetch(`${getApiBase()}/projects/${project.id}/folders`)
+    fetch(`${getApiBase()}${resourcePaths.projectFolders(project.id)}`)
       .then((res) => (res.ok ? res.json() : { folders: [] }))
       .then((data: { folders?: string[] }) => {
         if (!cancelled) setProjectFolders(data.folders ?? []);

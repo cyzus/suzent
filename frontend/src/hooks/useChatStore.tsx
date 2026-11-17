@@ -1,3 +1,4 @@
+import { resourcePaths } from '../lib/resourceAPI.generated';
 import React, {
   createContext,
   useContext,
@@ -748,7 +749,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
         const apiBase = getApiBase();
         // Re-fetch enough rows to cover what the user has already loaded via "load more"
         const limit = chatOffsetRef.current + 50;
-        let url = `${apiBase}/chats?limit=${limit}`;
+        let url = `${apiBase}${resourcePaths.chats()}?limit=${limit}`;
         if (searchParam) url += `&search=${encodeURIComponent(searchParam)}`;
         const res = await fetch(url);
         if (res.ok) {
@@ -868,7 +869,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
       const apiBase = getApiBase();
       const nextOffset = chatOffset + 50;
       const searchParam = searchQuery;
-      let url = `${apiBase}/chats?limit=50&offset=${nextOffset}`;
+      let url = `${apiBase}${resourcePaths.chats()}?limit=50&offset=${nextOffset}`;
       if (searchParam) url += `&search=${encodeURIComponent(searchParam)}`;
       const res = await fetch(url);
       if (res.ok) {
@@ -916,7 +917,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
         if (chatMessages.length === 0) return;
         const chatTitle = 'New Chat';
         try {
-          const res = await fetch(`${getApiBase()}/chats`, {
+          const res = await fetch(`${getApiBase()}${resourcePaths.chats()}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -955,7 +956,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
       try {
         const payload: any = { config: stripDenyApprovalPolicies(chatConfig) };
 
-        const res = await fetch(`${getApiBase()}/chats/${chatId}`, {
+        const res = await fetch(`${getApiBase()}${resourcePaths.chat(chatId)}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
@@ -1111,7 +1112,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
           : chat
       )
     );
-    const res = await fetch(`${getApiBase()}/chats/${chatId}`, {
+    const res = await fetch(`${getApiBase()}${resourcePaths.chat(chatId)}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ config: stripDenyApprovalPolicies(nextConfig) }),
@@ -1339,7 +1340,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
 
       try {
         const projectId = currentProjectIdRef.current;
-        const res = await fetch(`${getApiBase()}/chats`, {
+        const res = await fetch(`${getApiBase()}${resourcePaths.chats()}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -1444,7 +1445,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
       // Task links can outlive their chat. Validate before changing the active conversation.
       let validatedResponse: Response | undefined;
       if (options?.validateBeforeSwitch) {
-        validatedResponse = await fetch(`${getApiBase()}/chats/${encodeURIComponent(chatId)}`);
+        validatedResponse = await fetch(`${getApiBase()}${resourcePaths.chat(chatId)}`);
         if (!validatedResponse.ok)
           throw new Error(`Failed to load chat: HTTP ${validatedResponse.status}`);
       }
@@ -1501,7 +1502,8 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
       }
 
       try {
-        const res = validatedResponse ?? (await fetch(`${getApiBase()}/chats/${chatId}`));
+        const res =
+          validatedResponse ?? (await fetch(`${getApiBase()}${resourcePaths.chat(chatId)}`));
         if (res.ok) {
           const chat: Chat = await res.json();
           markChatLoad(chatId, false);
@@ -1895,8 +1897,8 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
 
       try {
         const url = cascade
-          ? `${getApiBase()}/chats/${chatId}?cascade=true`
-          : `${getApiBase()}/chats/${chatId}`;
+          ? `${getApiBase()}${resourcePaths.chat(chatId)}?cascade=true`
+          : `${getApiBase()}${resourcePaths.chat(chatId)}`;
         const res = await fetch(url, { method: 'DELETE' });
         if (!res.ok) {
           throw new Error(`Failed to delete chat: ${res.status} ${res.statusText}`);
@@ -1944,7 +1946,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
       const prev = chats.find((c) => c.id === chatId) ?? pinnedChats.find((c) => c.id === chatId);
       updateChatTitleLocally(chatId, title);
       try {
-        const res = await fetch(`${getApiBase()}/chats/${chatId}`, {
+        const res = await fetch(`${getApiBase()}${resourcePaths.chat(chatId)}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ title }),

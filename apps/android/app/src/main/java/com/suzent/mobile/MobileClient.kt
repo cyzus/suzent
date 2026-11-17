@@ -5,6 +5,7 @@ import org.json.JSONObject
 
 /** Conversation operations shared by the real transport and the offline demonstration. */
 interface MobileClient {
+    val resourceAPI: ResourceClient get() = ResourceClient { throw UnsupportedOperationException() }
     val supportsMailbox: Boolean get() = false
     suspend fun mailboxPage(category: String, offset: Int): MailboxPage = MailboxPage()
     suspend fun readMailbox(ids: List<Int>?, all: Boolean): Unit = throw UnsupportedOperationException()

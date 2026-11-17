@@ -1,3 +1,4 @@
+import { resourcePaths } from './resourceAPI.generated';
 /**
  * Asking the backend to stop a turn.
  *
@@ -20,7 +21,7 @@ export async function requestStopTurn(
 ): Promise<StopRequestResult> {
   let res: Response;
   try {
-    res = await fetchImpl(`${apiBase}/chat/stop`, {
+    res = await fetchImpl(`${apiBase}${resourcePaths.stop()}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       // Naming the run keeps a slow stop from landing on the turn that

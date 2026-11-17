@@ -1,3 +1,4 @@
+import { resourcePaths } from './resourceAPI.generated';
 import { getApiBase } from './api';
 
 export type ChatState = 'waiting' | 'running' | 'idle' | 'resolved';
@@ -28,7 +29,7 @@ export interface ChatStates {
 }
 
 export async function fetchChatStates(): Promise<ChatStates> {
-  const response = await fetch(`${getApiBase()}/focal/chats`, {
+  const response = await fetch(`${getApiBase()}${resourcePaths.chatStates()}`, {
     signal: AbortSignal.timeout(15000),
   });
   if (!response.ok) throw new Error('Chat states fetch failed');
@@ -38,7 +39,7 @@ export async function fetchChatStates(): Promise<ChatStates> {
 /** One chat's row, however long it has been quiet, or null when the board doesn't track it. */
 export async function fetchChatState(chatId: string): Promise<ChatStateRow | null> {
   const response = await fetch(
-    `${getApiBase()}/focal/chats?chat_id=${encodeURIComponent(chatId)}`,
+    `${getApiBase()}${resourcePaths.chatStates()}?chat_id=${encodeURIComponent(chatId)}`,
     { signal: AbortSignal.timeout(15000) }
   );
   if (!response.ok) throw new Error('Chat state fetch failed');
@@ -78,7 +79,7 @@ export function countStates(rows: ChatStateRow[]): Record<ChatState, number> {
 }
 
 export async function setChatResolved(chatId: string, resolved: boolean): Promise<void> {
-  const response = await fetch(`${getApiBase()}/chats/${encodeURIComponent(chatId)}/resolved`, {
+  const response = await fetch(`${getApiBase()}${resourcePaths.setResolved(chatId)}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ resolved }),

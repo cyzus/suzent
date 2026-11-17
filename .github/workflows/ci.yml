@@ -101,6 +101,9 @@ jobs:
         uv pip install ruff
         ruff check .
 
+    - name: Check shared resource API contract and clients
+      run: uv run python scripts/generate_resource_api.py --check
+
     # --with-deps pulls fonts from the runner's apt mirror, which can be
     # unreachable; the image already has Chromium's libraries, so fall back.
     - name: Install browser test runtime
