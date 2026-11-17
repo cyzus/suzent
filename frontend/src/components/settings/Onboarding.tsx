@@ -164,10 +164,26 @@ export function Onboarding({
         },
       }));
       if (result.success) {
+        const fetchedIds = result.models
+          .filter((m) => !m.mode || m.mode === 'chat')
+          .map((m) => m.id);
         setProviders((ps) =>
           ps.map((p) => (p.id === provider.id ? { ...p, models: result.models } : p))
         );
-        setTabs((ts) => ({ ...ts, [provider.id]: 'models' }));
+        if (fetchedIds.length > 0) {
+          setConfigs((prev) => {
+            const current = prev[provider.id] || { enabled_models: [], custom_models: [] };
+            if (current.enabled_models.length > 0) return prev;
+            return {
+              ...prev,
+              [provider.id]: {
+                ...current,
+                enabled_models: [fetchedIds[0]],
+              },
+            };
+          });
+          setModel((current) => (current ? current : fetchedIds[0]));
+        }
       }
     });
   }
@@ -311,8 +327,9 @@ export function Onboarding({
                   invalidate();
                 }}
                 onAddCustomModel={(id, value) => {
-                  const name = value.trim();
-                  if (!name) return;
+                  const raw = value.trim();
+                  if (!raw) return;
+                  const name = raw.includes('/') ? raw : `${id}/${raw}`;
                   setConfigs((s) => {
                     const c = s[id];
                     return {

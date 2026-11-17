@@ -17,6 +17,7 @@ from suzent.core.providers.helpers import (
     get_default_chat_model,
     get_effective_memory_config,
     get_enabled_models_from_db,
+    get_starred_models_from_db,
     invalidate_default_model_cache,
     resolve_api_key,
 )
@@ -51,6 +52,7 @@ __all__ = [
     "ProviderFactory",
     "resolve_api_key",
     "get_enabled_models_from_db",
+    "get_starred_models_from_db",
     "get_default_chat_model",
     "invalidate_default_model_cache",
     "get_effective_memory_config",

@@ -141,6 +141,8 @@ def _parse_model_entry(attrs: dict) -> ModelCapabilities:
         supports_reasoning=attrs.get("supports_reasoning", False),
         supports_prompt_caching=attrs.get("supports_prompt_caching", False),
         supports_response_schema=attrs.get("supports_response_schema", False),
+        input_cost_per_token=float(attrs.get("input_cost_per_token", 0.0) or 0.0),
+        output_cost_per_token=float(attrs.get("output_cost_per_token", 0.0) or 0.0),
     )
 
 
@@ -244,6 +246,28 @@ def _read_provider_models(provider_id: str) -> dict[str, dict]:
     merged: dict[str, dict] = dict(_local_provider_models(provider_id))
     merged.update(_shipped_provider_models(provider_id))  # curated wins
     return merged
+
+
+def list_provider_chat_models(provider_id: str) -> list[str]:
+    """Return known chat model IDs for ``provider_id`` (shipped + local overlay).
+
+    Excludes non-chat modes (embedding, image/video generation, tts) and
+    decisions-only endpoints so the chat model selector only receives chat
+    models.
+    """
+    models = _read_provider_models(provider_id)
+    chat_ids: list[str] = []
+    for mid, attrs in models.items():
+        if mid.startswith("_") or not isinstance(attrs, dict):
+            continue
+        mode = attrs.get("mode", "chat")
+        if mode != "chat":
+            continue
+        endpoints = tuple(attrs.get("supported_endpoints") or ())
+        if endpoints == (DECISIONS_ENDPOINT,):
+            continue
+        chat_ids.append(mid)
+    return chat_ids
 
 
 def _write_provider(provider_id: str, models: dict[str, dict]) -> None:
@@ -358,10 +382,13 @@ async def sync_from_litellm() -> dict[str, int]:
                 entry["supported_endpoints"] = info["supported_endpoints"]
 
             # Context window — overwrite from LiteLLM
+            # Context window and pricing — overwrite from LiteLLM
             for src, dst in (
                 ("max_input_tokens", "max_input_tokens"),
                 ("max_output_tokens", "max_output_tokens"),
                 ("output_vector_size", "output_vector_size"),
+                ("input_cost_per_token", "input_cost_per_token"),
+                ("output_cost_per_token", "output_cost_per_token"),
             ):
                 val = info.get(src)
                 if val is not None:
