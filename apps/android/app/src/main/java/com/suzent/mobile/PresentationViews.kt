@@ -7,6 +7,7 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.contentDescription
 import android.widget.TextView
 import android.content.Intent
@@ -1123,9 +1124,24 @@ fun SuzentSelectionTrigger(value: String, onClick: () -> Unit, enabled: Boolean 
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SuzentSelectionPanel(title: String, options: List<Pair<String, String>>, selected: String, dismiss: () -> Unit, choose: (String) -> Unit) {
+fun SuzentSelectionPanel(title: String, options: List<Pair<String, String>>, selected: String, dismiss: () -> Unit, modelPicker: Boolean = false, defaultModel: String? = null,
+    starredModels: Set<String> = emptySet(), canManageModels: Boolean = false, modelsBusy: Boolean = false,
+    modelsError: String? = null, refreshModels: () -> Unit = {}, toggleStar: (String) -> Unit = {}, choose: (String) -> Unit) {
     val outline = MaterialTheme.colorScheme.outline
     val shadowColor = suzentShadow
+    var query by remember { mutableStateOf("") }
+    val filtered = options.filter { it.first.isEmpty() || query.isBlank() || it.second.contains(query.trim(), ignoreCase = true) }
+    val preferences = LocalContext.current.getSharedPreferences("suzent.modelPicker", android.content.Context.MODE_PRIVATE)
+    var collapsedGroups by remember { mutableStateOf(preferences.getStringSet("collapsedGroups", emptySet())?.toSet() ?: emptySet()) }
+    val fallbackGroup = stringResource(R.string.models_group)
+    val favoritesTitle = stringResource(R.string.favorite_models)
+    val groups = if (modelPicker) {
+        listOf("" to filtered.filter { it.first.isEmpty() }) +
+            filtered.filter { it.first in starredModels }.takeIf { it.isNotEmpty() }?.let { listOf(favoritesTitle to it) }.orEmpty() +
+            filtered.filter { it.first.isNotEmpty() }
+            .groupBy { if ('/' in it.first) it.first.substringBefore('/') else fallbackGroup }
+            .toSortedMap().map { it.key to it.value }
+    } else listOf("" to options)
     ModalBottomSheet(onDismissRequest = dismiss, containerColor = Color.Transparent,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), dragHandle = null, shape = RectangleShape) {
         Column(Modifier.fillMaxWidth().padding(16.dp).drawBehind {
@@ -1135,22 +1151,75 @@ fun SuzentSelectionPanel(title: String, options: List<Pair<String, String>>, sel
             val dismissLabel = stringResource(R.string.dismiss)
             Row(Modifier.fillMaxWidth().background(Color.Black).padding(start = 16.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
                 Text(title, Modifier.weight(1f), fontFamily = FontFamily.Monospace, fontSize = 15.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                if (modelPicker && canManageModels) {
+                    TextButton(onClick = refreshModels, enabled = !modelsBusy) {
+                        Text(stringResource(if (modelsBusy) R.string.refreshing_models else R.string.refresh_models), color = Color.White)
+                    }
+                }
                 SuzentIconButton(onClick = dismiss, label = dismissLabel) {
                     Icon(painterResource(R.drawable.ic_close), contentDescription = null, tint = Color.White, modifier = Modifier.size(20.dp))
                 }
             }
-            androidx.compose.foundation.lazy.LazyColumn(Modifier.fillMaxWidth().heightIn(max = 480.dp)) {
-                items(options.size) { index ->
-                    val (id, label) = options[index]
-                    val active = id == selected
-                    Row(Modifier.fillMaxWidth().background(if (active) suzentYellow() else MaterialTheme.colorScheme.surface)
-                        .selectable(selected = active, onClick = { choose(id) }, role = androidx.compose.ui.semantics.Role.RadioButton)
-                        .heightIn(min = 48.dp).padding(16.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-                        Text(label, Modifier.weight(1f), fontSize = 15.sp, fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal,
-                            color = if (active) Color.Black else MaterialTheme.colorScheme.onSurface)
-                        if (active) Icon(painterResource(R.drawable.ic_message_check), contentDescription = null, tint = Color.Black, modifier = Modifier.size(18.dp))
+            if (modelPicker) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(stringResource(R.string.model_selection_scope), fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    if (modelsError != null) {
+                        Text(modelsError, color = MaterialTheme.colorScheme.error, modifier = Modifier.semantics { liveRegion = androidx.compose.ui.semantics.LiveRegionMode.Polite })
+                        TextButton(onClick = refreshModels, enabled = !modelsBusy) { Text(stringResource(R.string.retry_models)) }
                     }
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    OutlinedTextField(value = query, onValueChange = { query = it }, singleLine = true,
+                        placeholder = { Text(stringResource(R.string.search_models)) }, modifier = Modifier.fillMaxWidth())
+                }
+            }
+            androidx.compose.foundation.lazy.LazyColumn(Modifier.fillMaxWidth().heightIn(max = 480.dp)) {
+                if (modelPicker && filtered.none { it.first.isNotEmpty() }) {
+                    item { Text(stringResource(R.string.no_matching_models), Modifier.padding(16.dp)) }
+                }
+                groups.forEach { (group, entries) ->
+                    val expanded = group.isEmpty() || query.isNotBlank() || group !in collapsedGroups
+                    if (group.isNotEmpty()) item {
+                        val expandedLabel = stringResource(if (expanded) R.string.models_expanded else R.string.models_collapsed)
+                        Row(Modifier.fillMaxWidth().clickable(enabled = query.isBlank()) {
+                            collapsedGroups = if (group in collapsedGroups) collapsedGroups - group else collapsedGroups + group
+                            preferences.edit().putStringSet("collapsedGroups", collapsedGroups).apply()
+                        }.semantics { stateDescription = expandedLabel }.heightIn(min = 48.dp).padding(16.dp),
+                            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                            SuzentChevron(expanded, modifier = Modifier.padding(end = 12.dp), size = 14.dp,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(group, Modifier.weight(1f), fontSize = 13.sp, fontWeight = FontWeight.SemiBold, fontFamily = FontFamily.Monospace)
+                            Text(entries.size.toString(), fontSize = 13.sp)
+                        }
+                    }
+                    if (expanded) items(entries.size) { index ->
+                        val (id, label) = entries[index]
+                        val active = id == selected
+                        Row(Modifier.fillMaxWidth().background(if (active) suzentYellow() else MaterialTheme.colorScheme.surface),
+                            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                            Row(Modifier.weight(1f).selectable(selected = active, onClick = { choose(id) }, role = androidx.compose.ui.semantics.Role.RadioButton)
+                                .heightIn(min = 48.dp).padding(16.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Text(if (modelPicker && id.isNotEmpty()) label.substringAfter('/') else label,
+                                    fontSize = 15.sp, fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal,
+                                    color = if (active) Color.Black else MaterialTheme.colorScheme.onSurface)
+                                if (modelPicker && id.isEmpty() && defaultModel != null) {
+                                    Text(defaultModel, fontSize = 13.sp, color = if (active) Color.Black else MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                            }
+                            if (active) Icon(painterResource(R.drawable.ic_message_check), contentDescription = null, tint = Color.Black, modifier = Modifier.size(18.dp))
+                            }
+                            if (modelPicker && id.isNotEmpty() && canManageModels) {
+                                val starred = id in starredModels
+                                val favoriteAction = stringResource(if (starred) R.string.remove_model_favorite else R.string.add_model_favorite)
+                                TextButton(onClick = { toggleStar(id) }, enabled = !modelsBusy,
+                                    modifier = Modifier.sizeIn(minWidth = 48.dp, minHeight = 48.dp).semantics {
+                                        contentDescription = "$favoriteAction: $label"
+                                    }) {
+                                    Text(if (starred) "★" else "☆", color = if (active) Color.Black else MaterialTheme.colorScheme.onSurface)
+                                }
+                            }
+                        }
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    }
                 }
             }
         }

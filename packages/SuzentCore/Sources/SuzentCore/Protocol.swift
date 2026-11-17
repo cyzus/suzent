@@ -320,3 +320,9 @@ public enum NodeProtocol {
         }
     }
 }
+
+public struct ModelCatalog: Decodable, Sendable {
+    public let models: [String]
+    public let starredModels: [String]
+    public let canManage: Bool
+}

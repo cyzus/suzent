@@ -313,6 +313,19 @@ public final class SuzentClient: Sendable {
         return try JSONDecoder().decode(Listing.self, from: await data("mobile/client/projects")).projects
     }
 
+    public func modelCatalog(refresh: Bool = false) async throws -> ModelCatalog {
+        try JSONDecoder().decode(ModelCatalog.self, from: await data(
+            refresh ? "mobile/client/models/refresh" : "mobile/client/models", body: refresh ? [:] : nil))
+    }
+
+    public func starModel(_ model: String, starred: Bool) async throws -> ModelCatalog {
+        var request = try request("mobile/client/models/star", body: [:])
+        request.httpBody = try JSONSerialization.data(withJSONObject: ["model": model, "starred": starred])
+        let (data, response) = try await session.data(for: request)
+        try validate(response)
+        return try JSONDecoder().decode(ModelCatalog.self, from: data)
+    }
+
     public func composer() async throws -> Chat {
         try JSONDecoder().decode(Chat.self, from: await data("mobile/client/composer"))
     }
