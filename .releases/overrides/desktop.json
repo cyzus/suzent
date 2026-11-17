@@ -1,0 +1,5 @@
+{
+  "baseline": "0.27.0",
+  "version": "0.27.1",
+  "reason": "Review: the model picker work is a usability refinement of the existing selector, not a new capability; ships as a patch"
+}

@@ -1,5 +1,5 @@
 {
-  "version": "0.28.0",
+  "version": "0.27.1",
   "consumed": [
     ".releases/changes/3d-loading-redesign.json",
     ".releases/changes/about-install-identity.json",
