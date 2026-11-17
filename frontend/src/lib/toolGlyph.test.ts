@@ -1,12 +1,17 @@
 import { describe, expect, it } from 'vitest';
-import { ToolGlyphScene, pickToolSvgGlyphKind, toolGlyphMarkup, type ToolSvgGlyphKind } from '../../../packages/suzent-bot-core/src/toolGlyph';
+import {
+  ToolGlyphScene,
+  pickToolSvgGlyphKind,
+  toolGlyphMarkup,
+  type ToolSvgGlyphKind,
+} from '../../../packages/suzent-bot-core/src/toolGlyph';
 
 describe('shared mechanical tool glyphs', () => {
   for (const kind of Object.keys(toolGlyphMarkup) as ToolSvgGlyphKind[]) {
     it(`${kind} animates internal shapes and freezes for reduced motion`, () => {
       const glyph = new ToolGlyphScene(kind);
       const first = glyph.frame(0, false);
-      const later = glyph.frame(.8, false);
+      const later = glyph.frame(0.8, false);
       expect(first.viewBox).toBe('0 0 24 24');
       expect(first.nodes.length).toBeGreaterThan(0);
       expect(later.nodes).not.toEqual(first.nodes);

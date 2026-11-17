@@ -1,7 +1,12 @@
 import React, { useEffect, useRef } from 'react';
 import type { ApprovalState } from './ToolCallBlock';
 import { normalizeToolName } from './toolSummary';
-import { createToolGlyphAnimator, pickToolSvgGlyphKind, toolGlyphMarkup, type ToolSvgGlyphKind } from '../../../../packages/suzent-bot-core/src/toolGlyph';
+import {
+  createToolGlyphAnimator,
+  pickToolSvgGlyphKind,
+  toolGlyphMarkup,
+  type ToolSvgGlyphKind,
+} from '../../../../packages/suzent-bot-core/src/toolGlyph';
 export type { ToolSvgGlyphKind } from '../../../../packages/suzent-bot-core/src/toolGlyph';
 import {
   ArrowDownOnSquareIcon,
@@ -343,10 +348,21 @@ const AnimatedToolGlyphSvg: React.FC<{ kind: ToolSvgGlyphKind }> = React.memo(({
     frameId = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(frameId);
   }, [kind]);
-  return <svg ref={svgRef} viewBox="0 0 24 24" fill="none" stroke="currentColor"
-    strokeWidth={2.25} strokeLinecap="round" strokeLinejoin="round"
-    className="w-3.5 h-3.5 overflow-visible" data-tool-svg={kind} aria-hidden="true"
-    dangerouslySetInnerHTML={{ __html: toolGlyphMarkup[kind] }} />;
+  return (
+    <svg
+      ref={svgRef}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2.25}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="w-3.5 h-3.5 overflow-visible"
+      data-tool-svg={kind}
+      aria-hidden="true"
+      dangerouslySetInnerHTML={{ __html: toolGlyphMarkup[kind] }}
+    />
+  );
 });
 AnimatedToolGlyphSvg.displayName = 'AnimatedToolGlyphSvg';
 
