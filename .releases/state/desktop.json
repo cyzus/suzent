@@ -138,6 +138,7 @@
     ".releases/changes/image-zoom-frame-updates.json",
     ".releases/changes/ime-safe-keyboard.json",
     ".releases/changes/inbound-webhooks.json",
+    ".releases/changes/inbox-open-lag.json",
     ".releases/changes/inchat-task-navigation.json",
     ".releases/changes/inline-canvas-default.json",
     ".releases/changes/input-suggestion-persist.json",
