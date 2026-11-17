@@ -112,6 +112,8 @@ from suzent.routes.config_routes import (
     save_preferences,
     save_global_sandbox_config,
     verify_provider,
+    refresh_all_provider_models,
+    toggle_starred_model,
     get_social_config,
     save_social_config,
     get_global_cost,
@@ -1359,6 +1361,12 @@ app = Starlette(
         Route(
             "/config/providers/{provider_id}/verify", verify_provider, methods=["POST"]
         ),
+        Route(
+            "/config/providers/refresh-models",
+            refresh_all_provider_models,
+            methods=["POST"],
+        ),
+        Route("/config/models/star", toggle_starred_model, methods=["POST"]),
         Route("/config/embedding-models", get_embedding_models, methods=["GET"]),
         Route("/config/cost/global", get_global_cost, methods=["GET"]),
         Route("/config/cost/daily", get_daily_cost, methods=["GET"]),

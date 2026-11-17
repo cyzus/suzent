@@ -288,9 +288,17 @@ export function SettingsModal({
       keysToSave[key] = value;
     }
 
+    const normalizedConfigs: Record<string, UserConfig & { starred_models?: string[] }> = {};
+    for (const [pid, conf] of Object.entries(userConfigs)) {
+      normalizedConfigs[pid] = {
+        ...conf,
+        starred_models: conf.enabled_models,
+      };
+    }
+
     const saved = await saveApiKeys({
       ...keysToSave,
-      _PROVIDER_CONFIG_: JSON.stringify(userConfigs),
+      _PROVIDER_CONFIG_: JSON.stringify(normalizedConfigs),
     });
     if (!saved) throw new Error('Failed to save provider settings');
 
@@ -450,8 +458,9 @@ export function SettingsModal({
   }
 
   function addCustomModel(providerId: string, modelId: string): void {
-    const trimmed = modelId.trim();
-    if (!trimmed) return;
+    const raw = modelId.trim();
+    if (!raw) return;
+    const trimmed = raw.includes('/') ? raw : `${providerId}/${raw}`;
 
     setUserConfigs((prev) => {
       const current = prev[providerId] || { enabled_models: [], custom_models: [] };
@@ -503,7 +512,7 @@ export function SettingsModal({
         setProviders((prev) =>
           prev.map((p) => (p.id === provider.id ? { ...p, models: result.models } : p))
         );
-        setActiveTabs((prev) => ({ ...prev, [provider.id]: 'models' }));
+        await refreshBackendConfig();
       }
     } catch {
       setVerification((prev) => ({

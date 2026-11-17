@@ -10,7 +10,6 @@ import {
   fetchChatGPTStatus,
   logoutChatGPT,
   startChatGPTLogin,
-  syncCapabilities,
   UserConfig,
 } from '../../lib/api';
 import type { ChatGPTLoginResponse, ChatGPTStatusResponse } from '../../types/api';
@@ -700,6 +699,7 @@ function ChatGPTProviderCard({
           )}
           <BrutalMultiSelect
             variant="list"
+            indicator="star"
             value={config.enabled_models}
             onChange={(newVal) =>
               onConfigChange(provider.id, { ...config, enabled_models: newVal })
@@ -844,8 +844,6 @@ export function ProvidersTab({
   const [keyDrafts, setKeyDrafts] = useState<Record<string, string>>({});
   const [showAddForm, setShowAddForm] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
-  const [syncing, setSyncing] = useState(false);
-  const [syncResult, setSyncResult] = useState<string | null>(null);
   // Tracks which secret field keys are currently in edit mode (user clicked "Change")
   const [editingFields, setEditingFields] = useState<Set<string>>(new Set());
   // Providers whose Base URL is being typed by hand rather than picked.
@@ -923,27 +921,6 @@ export function ProvidersTab({
       await onDeleteProvider(providerId);
     } finally {
       setDeletingId(null);
-    }
-  };
-
-  const handleSync = async () => {
-    setSyncing(true);
-    setSyncResult(null);
-    try {
-      const result = await syncCapabilities();
-      if (result.success) {
-        setSyncResult(
-          t('settings.providers.syncDone', {
-            providers: String(result.providers ?? 0),
-            models: String(result.models ?? 0),
-          })
-        );
-      } else {
-        setSyncResult(result.error || t('settings.providers.syncFailed'));
-      }
-    } finally {
-      setSyncing(false);
-      setTimeout(() => setSyncResult(null), 5000);
     }
   };
 
@@ -1331,6 +1308,7 @@ export function ProvidersTab({
               {/* Models List (Scrollable) */}
               <BrutalMultiSelect
                 variant="list"
+                indicator="star"
                 value={conf.enabled_models}
                 onChange={(newVal) =>
                   onConfigChange(provider.id, { ...conf, enabled_models: newVal })
@@ -1396,31 +1374,7 @@ export function ProvidersTab({
 
   return (
     <SettingsPage>
-      {!onboarding && (
-        <SettingsHeader
-          title={t('settings.providers.title')}
-          actions={
-            !onboarding && (
-              <>
-                {syncResult && (
-                  <span className="text-[10px] font-bold text-neutral-300 max-w-[200px] truncate">
-                    {syncResult}
-                  </span>
-                )}
-                <BrutalButton
-                  onClick={handleSync}
-                  disabled={syncing}
-                  title={t('settings.providers.syncTooltip')}
-                  variant="primary"
-                  size="sm"
-                >
-                  {syncing ? t('settings.providers.syncing') : t('settings.providers.sync')}
-                </BrutalButton>
-              </>
-            )
-          }
-        />
-      )}
+      {!onboarding && <SettingsHeader title={t('settings.providers.title')} />}
 
       <details className="border-2 border-brutal-black bg-white shadow-brutal-sm dark:border-zinc-600 dark:bg-zinc-800 dark:text-white dark:shadow-none">
         <summary className="cursor-pointer p-3 text-sm font-bold focus-visible:outline focus-visible:outline-2 focus-visible:outline-brutal-blue">
