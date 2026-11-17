@@ -20,13 +20,13 @@ def runner(temp_db, monkeypatch):
 
 
 def answers(runner, text, *, streamed=False, temp_db=None):
-    """Stub the turn itself, optionally simulating a streaming draft row."""
+    """Stub the turn itself, optionally writing the answer as a streamed turn does."""
 
     async def _turn(chat_id, reminder, **kwargs):
         if streamed:
             temp_db.append_chat_message(
                 chat_id,
-                {"role": "assistant", "content": text, "_streaming_draft": True},
+                {"role": "assistant", "content": text},
             )
         return text
 
@@ -66,7 +66,7 @@ async def test_a_no_op_answer_leaves_the_chat_untouched(runner, temp_db, monkeyp
 async def test_an_answer_someone_watched_stream_is_not_written_twice(
     runner, temp_db, monkeypatch
 ):
-    """With a frontend attached the streaming draft already landed."""
+    """A streamed turn already wrote its answer into the chat."""
     monkeypatch.setattr(
         "suzent.core.heartbeat.get_database",
         lambda: temp_db,
