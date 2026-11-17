@@ -137,7 +137,7 @@ suzent update
 | 谁拥有它的记忆？ | **你。** 你磁盘上的普通文件就是唯一可信来源。 |
 | 谁选择它的智能？ | **你。** 内置 26 家提供商，还能接入任何兼容的端点。 |
 | 谁定义它能做什么？ | **你。** 权限模式、规则和沙盒边界都是明确的。 |
-| 它住在哪里？ | **在你掌控的基础设施上。** |
+| 它住在哪里？ | **在你掌控的基础设施上。** 在外面时，手机通过[你自己部署的中继](docs/03-features/relay.md)连回来，全程端到端加密，中间没有厂商云端。 |
 | 它能迁移吗？ | 记忆、技能和配置可以迁移；凭证留在本机。 |
 | 你能检查它吗？ | 工具调用、授权决定、文件和记忆始终可见。 |
 
@@ -228,7 +228,7 @@ GitHub 同步通过私有仓库携带可迁移的配置、用户技能和 Markdo
 |---|---|---|---|
 | **桌面应用** | 本地后端 | 完整界面、Canvas、记忆与技能浏览器 | `suzent start` |
 | **网页控制台** | 本地后端 | 在浏览器里使用同一套界面 | `suzent web` |
-| **移动应用**（预览） | 与桌面端配对 | 共享对话 | [指南](docs/03-features/mobile.md) |
+| **移动应用**（预览） | 与桌面端配对：在家直连，在外通过 Tailscale 或[你自己的中继](docs/03-features/relay.md) | 共享对话 | [指南](docs/03-features/mobile.md) |
 | **你的编辑器** | ACP | 在 Zed 等 ACP 客户端里把 Suzent 当作智能体使用 | [指南](docs/03-features/nodes.md#use-suzent-from-your-editor-acp) |
 | **其他智能体** | A2A | 把工作委派给其他智能体，或接受你授权的工作 | [指南](docs/03-features/nodes.md#work-with-other-agents-a2a) |
 | **Telegram** | Bot API | 文字、图片、文件 | [指南](docs/05-chat-apps/telegram.md) |
@@ -257,6 +257,7 @@ GitHub 同步通过私有仓库携带可迁移的配置、用户技能和 Markdo
 | [工作区与沙盒](docs/03-features/filesystem.md) | 文件夹、Docker 沙盒，以及撤销一轮对话 |
 | [自动化](docs/03-features/automation.md) | 定时任务、心跳、目标和后台服务 |
 | [聊天应用](docs/05-chat-apps/README.md) | Telegram、Slack、Discord、飞书、微信 |
+| [你自己的中继](docs/03-features/relay.md) | 自己部署中继（relay），手机在任何网络都能连上智能体，还能接收 webhook |
 | [设备与其他智能体](docs/03-features/nodes.md) | 手机、其他电脑、A2A 智能体和你的编辑器 |
 | [GitHub 同步](docs/03-features/github-sync.md) | 通过私有仓库把智能体带到另一台电脑 |
 | [开发指南](docs/08-developing/contributing/development-guide.md) | 环境搭建、工作流、构建与架构 |

@@ -49,6 +49,7 @@ on a computer you own: that is what makes it a
 | Page | What you'll learn |
 |---|---|
 | [Mobile app](./mobile.md) | Chatting with your agent and answering its approvals from your phone. |
+| [Your own relay](./relay.md) | Reaching your agent from your phone on any network, and webhooks from the internet, through a relay you deploy. |
 | [Devices & other agents](./nodes.md) | Your phone and other computers, other Suzents, A2A agents, and your editor. |
 | [GitHub Sync](./github-sync.md) | Carrying your agent's settings, skills, and memory to another computer. |
 | [Chat apps](../05-chat-apps/README.md) | Telegram, Slack, Discord, Feishu, and WeChat. |
