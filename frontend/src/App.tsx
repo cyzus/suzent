@@ -650,8 +650,12 @@ function AppInner(): React.ReactElement {
       ) {
         const version = `${openChat.updatedAt}|${openChat.messageCount}|${openChat.lastResultAt ?? ''}`;
         if (reloadedSummary?.chatId !== chatId || reloadedSummary.version !== version) {
-          reloadedSummary = { chatId, version };
-          loadChatRef.current(chatId, { force: true });
+          const attempt = { chatId, version };
+          reloadedSummary = attempt;
+          // A failed reload forgets the version so the next tick retries it.
+          loadChatRef.current(chatId, { force: true, throwOnError: true }).catch(() => {
+            if (reloadedSummary === attempt) reloadedSummary = null;
+          });
         }
       }
     }, 8000);
