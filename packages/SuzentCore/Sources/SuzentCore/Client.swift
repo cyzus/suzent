@@ -160,6 +160,12 @@ public final class SuzentClient: Sendable {
 
     private func request(_ call: ResourceRequest) throws -> URLRequest {
         var value = try request(call.path(shared: resourceRouting.enabled))
+        if !call.query.isEmpty {
+            guard let endpoint = value.url, var components = URLComponents(url: endpoint, resolvingAgainstBaseURL: false) else { throw ClientError.invalidAddress }
+            components.queryItems = call.query.sorted { $0.key < $1.key }.map { URLQueryItem(name: $0.key, value: $0.value) }
+            guard let url = components.url else { throw ClientError.invalidAddress }
+            value.url = url
+        }
         value.httpMethod = call.method
         value.httpBody = call.body
         if call.body != nil { value.setValue("application/json", forHTTPHeaderField: "Content-Type") }
@@ -333,9 +339,11 @@ public final class SuzentClient: Sendable {
     }
 
     public func chat(_ id: String) async throws -> Chat {
-        // IDs are backend-issued. Reject path separators instead of treating them as routes.
-        guard !id.contains("/"), id != ".", id != ".." else { throw ClientError.invalidResponse }
-        return try JSONDecoder().decode(Chat.self, from: await data(ResourceRequests.chat(chatId: id)))
+        try await chat(id, includeModels: true)
+    }
+
+    public func chat(_ id: String, includeModels: Bool) async throws -> Chat {
+        try JSONDecoder().decode(Chat.self, from: await data(ResourceRequests.chat(chatId: id, query: .init(includeModels: includeModels ? nil : false))))
     }
 
     public func media(_ chatID: String, mediaID: String, to destination: URL) async throws {

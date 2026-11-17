@@ -18,6 +18,7 @@ public protocol MobileClient: Sendable {
     func composer() async throws -> Chat
     func createChat(title: String, projectID: String?) async throws -> Chat
     func chat(_ id: String) async throws -> Chat
+    func chat(_ id: String, includeModels: Bool) async throws -> Chat
     func markRead(_ id: String) async throws
     func overview(_ id: String) async throws -> ChatOverview
     func manageChat(_ id: String, action: String, value: String?) async throws
@@ -36,6 +37,7 @@ public protocol MobileClient: Sendable {
 }
 
 public extension MobileClient {
+    func chat(_ id: String, includeModels: Bool) async throws -> Chat { try await chat(id) }
     var resourceAPI: ResourceClient { ResourceClient { _ in throw ClientError.invalidResponse } }
     func modelCatalog(refresh: Bool) async throws -> ModelCatalog { throw ClientError.invalidResponse }
     func starModel(_ model: String, starred: Bool) async throws -> ModelCatalog { throw ClientError.invalidResponse }

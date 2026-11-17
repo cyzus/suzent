@@ -25,6 +25,16 @@ describe('shared resource transport', () => {
     });
   });
 
+  it('serializes generated query parameters without adding a request body', async () => {
+    const fetcher = vi
+      .fn()
+      .mockImplementation(async () => new Response(JSON.stringify({ id: 'chat', title: 'Chat' })));
+    vi.stubGlobal('fetch', fetcher);
+    await createResourceClient(() => '').chat('chat', { include_models: false });
+    expect(fetcher.mock.calls[0][0]).toBe('/api/v1/chats/chat?include_models=false');
+    expect(fetcher.mock.calls[0][1].body).toBeUndefined();
+  });
+
   it('does not retry an ambiguous mutation', async () => {
     const fetcher = vi.fn().mockRejectedValue(new TypeError('connection lost'));
     vi.stubGlobal('fetch', fetcher);
