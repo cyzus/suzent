@@ -58,7 +58,7 @@ import Testing
     let choices = RailChoices()
     let chunk = [MessagePart(type: "reasoning", text: "Looking")]
     let key = "\(railScope(chatId: "chat", messageKey: "live1")):\(railChunkKey(chunk, index: 0))"
-    #expect(railExpanded(choice: choices.choice(key), live: true, current: true, waiting: false))
+    #expect(!railExpanded(choice: choices.choice(key), live: true, current: true, waiting: false))
     choices.set(key, expanded: false)
     // A recycled row has no local choice and reads the same conversation store.
     #expect(railExpanded(choice: choices.choice(key), live: true, current: true, waiting: false) == false)
@@ -82,7 +82,7 @@ import Testing
     #expect(second.generation == 2)
     let nextKey = "\(railScope(chatId: "chat", messageKey: "live\(second.generation)")):i0"
     #expect(choices.choice(nextKey) == nil)
-    #expect(railExpanded(choice: choices.choice(nextKey), live: true, current: true, waiting: false))
+    #expect(!railExpanded(choice: choices.choice(nextKey), live: true, current: true, waiting: false))
 }
 
 @Test @MainActor func aNewChatDoesNotReuseRailChoices() {
@@ -90,7 +90,7 @@ import Testing
     previous.set("\(railScope(chatId: "a", messageKey: "m0")):i0", expanded: false)
     let next = RailChoices()
     #expect(next.choice("\(railScope(chatId: "b", messageKey: "m0")):i0") == nil)
-    #expect(railExpanded(choice: next.choice("\(railScope(chatId: "b", messageKey: "m0")):i0"), live: true, current: true, waiting: false))
+    #expect(!railExpanded(choice: next.choice("\(railScope(chatId: "b", messageKey: "m0")):i0"), live: true, current: true, waiting: false))
 }
 
 @Test func approvalKeepsTheRailOpenAndAFinishedUntouchedRailCloses() {

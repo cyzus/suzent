@@ -32,9 +32,13 @@ import Testing
     #expect(robotBadgeVariant(base: .idle, startled: false, pending: false, streaming: true, tool: "Bash") == .workout)
     #expect(robotBadgeVariant(base: .love, startled: false, pending: false, streaming: true, tool: nil) == .observer)
     #expect(robotBadgeVariant(base: .love, startled: false, pending: false, streaming: false, tool: nil) == .love)
-    let parts = [MessagePart(type: "tool", toolName: "grep_search", output: "done"), MessagePart(type: "tool", toolName: "web_search"), MessagePart(type: "text", text: "Hi")]
-    #expect(robotCurrentTool(parts) == "web_search")
-    #expect(robotCurrentTool([MessagePart(type: "tool", toolName: "grep_search", output: "done"), MessagePart(type: "text", text: "Hi")]) == nil)
+    let running = MessagePart(type: "tool", toolName: "web_search", state: "running")
+    let done = MessagePart(type: "tool", toolName: "grep_search", output: "done")
+    #expect(robotCurrentTool([done, running, MessagePart(type: "text", text: "Hi")], streaming: true) == "web_search")
+    #expect(robotCurrentTool([done], streaming: true) == "grep_search")
+    #expect(robotCurrentTool([done, MessagePart(type: "text", text: "Hi")], streaming: true) == nil)
+    #expect(robotCurrentTool([running, MessagePart(type: "reasoning", text: "Hmm")], streaming: true) == nil)
+    #expect(robotCurrentTool([running], streaming: false) == nil)
     #expect(!toolCallFailed(MessagePart(type: "tool", toolName: "Bash", state: "error")))
 }
 

@@ -494,3 +494,15 @@ public actor LiveActivityAccumulator {
         return rows
     }
 }
+
+public enum BotPlacement { case none, assembly, rail, footer }
+
+public func botPlacement(_ parts: [MessagePart], live: Bool, latest: Bool, regent: Bool) -> BotPlacement {
+    if regent { return .none }
+    let pending = parts.contains { $0.type == "tool" && $0.state == "approval-requested" && ($0.output ?? "").isEmpty }
+    if !live && !latest && !pending { return .none }
+    if showAssemblyBadge(parts, streaming: live) { return .assembly }
+    let content = parts.filter { !["citation-sources", "incoming-message"].contains($0.type) && !($0.type == "text" && ($0.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) }
+    if pending || live && ["tool", "reasoning"].contains(content.last?.type ?? "") { return .rail }
+    return .footer
+}

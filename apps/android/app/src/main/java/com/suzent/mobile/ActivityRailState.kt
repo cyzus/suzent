@@ -3,13 +3,12 @@ package com.suzent.mobile
 /**
  * Whether an activity rail is open.
  *
- * A missing choice follows the stream: the rail the agent is in opens, and the
- * others stay shut. Remembering the choice on the conversation, not on the row,
+ * A missing choice keeps the rail collapsed, matching desktop. Remembering the choice on the conversation, not on the row,
  * keeps a collapse across token updates and across the row leaving the screen.
  * Approval still forces the rail open so the request is not hidden.
  */
 fun railExpanded(choice: Boolean?, live: Boolean, current: Boolean, waiting: Boolean): Boolean =
-    waiting || (choice ?: (live && current))
+    waiting || (choice ?: false)
 
 /** A new stream gets a new generation so it does not inherit the previous rail's collapse. */
 fun nextStreamGeneration(generation: Int, wasStreaming: Boolean, streaming: Boolean): Pair<Int, Boolean> =

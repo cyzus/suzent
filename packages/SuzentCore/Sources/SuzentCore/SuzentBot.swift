@@ -3,16 +3,24 @@ import Foundation
 import JavaScriptCore
 
 /// The desktop Suzent bot engine, hosted in JavaScriptCore so iOS draws the same scene data.
-public final class SuzentBotSession: @unchecked Sendable {
+public final class SuzentBotSession {
     private let context = JSContext()!
-    private let id: Int32
+    private var functions: [String: JSValue] = [:]
+    private lazy var id: Int32 = call("create", [seed, "{}"]).toInt32()
+    private let seed: UInt32
 
     public init(seed: UInt32 = 1) {
+        self.seed = seed
         context.exceptionHandler = { _, _ in }
         let url = Bundle.module.url(forResource: "suzent-bot-core", withExtension: "js")!
         let source = try! String(contentsOf: url, encoding: .utf8)
         context.evaluateScript(source)
-        id = context.evaluateScript("SuzentBot.create(\(seed))").toInt32()
+        let api = context.objectForKeyedSubscript("SuzentBot")!
+        for name in ["create", "resolveStage", "step", "destroy", "toolFrame", "destroyGlyph"] { functions[name] = api.forProperty(name) }
+    }
+
+    private func call(_ name: String, _ args: [Any]) -> JSValue {
+        functions[name]!.call(withArguments: args)!
     }
 
     public func resolveStage(hasPending: Bool, isError: Bool, isThinking: Bool, tool: String?, isActive: Bool) -> String {
@@ -20,24 +28,32 @@ public final class SuzentBotSession: @unchecked Sendable {
         if let tool { payload["toolName"] = tool }
         let data = try! JSONSerialization.data(withJSONObject: payload)
         let json = String(data: data, encoding: .utf8)!
-        return context.evaluateScript("SuzentBot.resolveStage(\(jsString(json)))").toString() ?? ""
+        return call("resolveStage", [json]).toString() ?? ""
     }
 
     @discardableResult
     public func create(seed: UInt32, options: String) -> Int32 {
-        context.evaluateScript("SuzentBot.create(\(seed), \(jsString(options)))").toInt32()
+        call("create", [seed, options]).toInt32()
     }
 
     public func step(_ json: String) -> String {
-        context.evaluateScript("SuzentBot.step(\(id), \(jsString(json)))").toString() ?? ""
+        call("step", [id, json]).toString() ?? ""
     }
 
     public func step(session: Int32, _ json: String) -> String {
-        context.evaluateScript("SuzentBot.step(\(session), \(jsString(json)))").toString() ?? ""
+        call("step", [session, json]).toString() ?? ""
     }
 
     public func destroy(session: Int32) {
-        context.evaluateScript("SuzentBot.destroy(\(session))")
+        _ = call("destroy", [session])
+    }
+
+    public func toolFrame(tool: String, animation: String, seconds: Double, reduced: Bool, instance: Int = 0) -> SuzentBotFrame {
+        SuzentBotFrame.parse(call("toolFrame", [tool, animation, seconds, reduced, instance]).toString()!)
+    }
+
+    public func destroyGlyph(_ instance: Int) {
+        _ = call("destroyGlyph", [instance])
     }
 
     public func frame(json: String) -> SuzentBotFrame {
@@ -45,10 +61,49 @@ public final class SuzentBotSession: @unchecked Sendable {
     }
 }
 
-private func jsString(_ value: String) -> String {
-    let data = try! JSONSerialization.data(withJSONObject: [value])
-    let encoded = String(data: data, encoding: .utf8)!
-    return String(encoded.dropFirst().dropLast())
+/// Runs the bot engine off the main thread. Views share ``shared`` so the bundle is evaluated once,
+/// and each view opens its own bot session or glyph so their animation state stays apart.
+public actor SuzentBotRenderer {
+    public static let shared = SuzentBotRenderer()
+    public init() {}
+    private var session: SuzentBotSession?
+    private var defaultBot: Int32?
+    private var nextGlyph = 1
+
+    private func engine() -> SuzentBotSession {
+        if let session { return session }
+        let value = SuzentBotSession()
+        session = value
+        return value
+    }
+
+    public func openBot() -> Int32 { engine().create(seed: 1, options: "{}") }
+    public func closeBot(_ bot: Int32) { engine().destroy(session: bot) }
+    public func openGlyph() -> Int {
+        defer { nextGlyph += 1 }
+        return nextGlyph
+    }
+    public func closeGlyph(_ glyph: Int) { engine().destroyGlyph(glyph) }
+
+    /// Steps `bot`, or a renderer-owned bot when none is given.
+    public func frame(bot: Int32? = nil, pending: Bool, error: Bool, thinking: Bool, tool: String?, active: Bool,
+                      time: Double, reduced: Bool, dark: Bool) -> SuzentBotFrame {
+        let engine = engine()
+        let id: Int32
+        if let bot { id = bot } else if let defaultBot { id = defaultBot } else {
+            id = engine.create(seed: 1, options: "{}")
+            defaultBot = id
+        }
+        let stage = engine.resolveStage(hasPending: pending, isError: error, isThinking: thinking, tool: tool, isActive: active)
+        let input: [String: Any] = ["stage": stage, "time": time, "reducedMotion": reduced, "dark": dark,
+                                   "size": 32, "holdWhenIdle": true, "particlesEnabled": !reduced, "autoMorphCycle": !reduced]
+        let json = String(data: try! JSONSerialization.data(withJSONObject: input), encoding: .utf8)!
+        return SuzentBotFrame.parse(engine.step(session: id, json))
+    }
+
+    public func toolFrame(glyph: Int = 0, tool: String, animation: String, seconds: Double, reduced: Bool) -> SuzentBotFrame {
+        engine().toolFrame(tool: tool, animation: animation, seconds: seconds, reduced: reduced, instance: glyph)
+    }
 }
 
 public struct SuzentBotNode: Equatable, Sendable {

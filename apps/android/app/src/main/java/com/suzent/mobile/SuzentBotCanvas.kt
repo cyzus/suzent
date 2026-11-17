@@ -14,14 +14,14 @@ import kotlin.math.abs
 
 private const val KAPPA = 0.5522847498307936
 
-fun DrawScope.drawSuzentBot(frame: SuzentBotFrame) {
+fun DrawScope.drawSuzentBot(frame: SuzentBotFrame, foreground: Color? = null) {
     if (frame.viewBox.size < 4) return
     val minX = frame.viewBox[0].toFloat()
     val minY = frame.viewBox[1].toFloat()
     val width = frame.viewBox[2].toFloat()
     val height = frame.viewBox[3].toFloat()
     if (width == 0f || height == 0f) return
-    val fg = parseBotColor(frame.fg) ?: Color.Black
+    val fg = foreground ?: parseBotColor(frame.fg) ?: Color.Black
     val bg = parseBotColor(frame.bg) ?: Color.White
     scale(size.width / width, size.height / height, pivot = Offset.Zero) {
         translate(-minX, -minY) {
@@ -74,7 +74,9 @@ private fun DrawScope.drawNode(
                 val width = node.attrs["stroke-width"]?.toFloatOrNull() ?: 1f
                 val dashes = node.attrs["stroke-dasharray"]?.split(Regex("[ ,]+"))?.mapNotNull { it.toFloatOrNull() }
                 val effect = dashes?.takeIf { it.isNotEmpty() }?.let {
-                    PathEffect.dashPathEffect(it.toFloatArray(), node.attrs["stroke-dashoffset"]?.toFloatOrNull() ?: 0f)
+                    // SVG repeats odd dash lists; Android requires an even number of intervals.
+                    val intervals = if (it.size % 2 == 0) it else it + it
+                    PathEffect.dashPathEffect(intervals.toFloatArray(), node.attrs["stroke-dashoffset"]?.toFloatOrNull() ?: 0f)
                 }
                 drawPath(
                     path,

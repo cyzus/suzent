@@ -13,6 +13,47 @@ class SuzentBotCoreTest {
 
     @After fun close() { host.close() }
 
+    @Test fun callsReleaseThreadContextAndKeepSessionsIndependent() {
+        assertEquals(null, org.mozilla.javascript.Context.getCurrentContext())
+        SuzentBotHost(script, 2).use { other ->
+            host.step("""{"stage":"thinking","time":100}""")
+            other.step("""{"stage":"reading","time":100}""")
+            assertEquals(null, org.mozilla.javascript.Context.getCurrentContext())
+        }
+        assertTrue(SuzentBotFrame.parse(host.step("""{"stage":"idle","time":200,"reducedMotion":true}""")).settled)
+        assertEquals(null, org.mozilla.javascript.Context.getCurrentContext())
+    }
+
+    @Test fun toolGlyphsMatchDesktopFramesAndFreeze() {
+        val fixtures = JSONArray(javaClass.getResource("/tool-glyph-frames.json")!!.readText())
+        for (index in 0 until fixtures.length()) {
+            val fixture = fixtures.getJSONObject(index)
+            val frames = fixture.getJSONArray("frames")
+            for (j in 0 until frames.length()) {
+                val entry = frames.getJSONObject(j)
+                val actual = host.toolFrame(fixture.getString("tool"), fixture.getString("animation"), entry.getDouble("time"), false)
+                val expected = SuzentBotFrame.parse(entry.getJSONObject("scene").toString())
+                assertEquals(expected, actual)
+                fun checkPaths(nodes: List<SuzentBotNode>) {
+                    for (node in nodes) {
+                        if (node.tag == "path") assertTrue(parseSvgPath(node.attrs.getValue("d")).isNotEmpty())
+                        checkPaths(node.children)
+                    }
+                }
+                checkPaths(actual.nodes)
+                assertEquals(actual.nodes, host.toolFrame(fixture.getString("tool"), fixture.getString("animation"), 10.0, true).nodes)
+            }
+        }
+    }
+
+    @Test fun glyphInstancesOnOneHostKeepTheirOwnSprings() {
+        for (step in 1..15) host.toolFrame("grep_search", "radar", step / 30.0, false, 1)
+        val alone = SuzentBotHost(script).use { it.toolFrame("grep_search", "radar", 0.1, false) }
+        assertEquals(alone, host.toolFrame("grep_search", "radar", 0.1, false, 2))
+        host.destroyGlyph(1)
+        host.destroyGlyph(2)
+    }
+
     @Test fun resolveStageMatchesDesktop() {
         assertEquals("approval", host.resolveStage(true, true, false, "run_command", true))
         assertEquals("error", host.resolveStage(false, true, false, "write_file", true))

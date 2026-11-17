@@ -1,3 +1,4 @@
+import { ToolGlyphScene, pickToolSvgGlyphKind } from './toolGlyph';
 /**
  * String-in, string-out host for JavaScriptCore (iOS) and Rhino (Android).
  * Desktop imports the TypeScript modules directly and does not use this entry.
@@ -121,7 +122,19 @@ export function destroy(id: number): void {
   sessions.delete(id);
 }
 
-const suzentBotApi = { resolveStage, create, step, destroy };
+// Glyph scenes keep spring state, so each on-screen icon needs its own.
+const glyphs = new Map<string, ToolGlyphScene>();
+export function toolFrame(tool: string, animation: string, seconds: number, reduced: boolean, instance = 0): string {
+  const kind = pickToolSvgGlyphKind(tool, animation);
+  const key = `${instance}:${kind}`;
+  let glyph = glyphs.get(key);
+  if (!glyph) { glyph = new ToolGlyphScene(kind); glyphs.set(key, glyph); }
+  return JSON.stringify(glyph.frame(seconds, reduced));
+}
+export function destroyGlyph(instance: number): void {
+  for (const key of [...glyphs.keys()]) if (key.startsWith(`${instance}:`)) glyphs.delete(key);
+}
+const suzentBotApi = { resolveStage, create, step, destroy, toolFrame, destroyGlyph };
 
 /** Rhino and JavaScriptCore read a plain object. esbuild's export getters are not reliable there. */
 function publishSuzentBot(): void {

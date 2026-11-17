@@ -1,12 +1,6 @@
 package com.suzent.mobile
 
 import android.animation.ValueAnimator
-import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.CubicBezierEasing
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.animateDpAsState
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.ui.platform.LocalContext
@@ -15,20 +9,14 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.drawscope.scale
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.graphics.nativeCanvas
-import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
@@ -36,26 +24,20 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.repeatOnLifecycle
 import kotlin.math.min
-import kotlin.random.Random
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.asCoroutineDispatcher
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.withContext
+import java.util.concurrent.Executors
 
 @Composable
 fun AssemblyBadge(thinking: Boolean, parts: List<MessagePart> = emptyList(), streaming: Boolean = false) {
+    if (!thinking) { RobotBadge(parts, streaming); return }
     val reduced = !ValueAnimator.areAnimatorsEnabled()
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val seconds = remember { mutableDoubleStateOf(0.0) }
-    var expanded by remember { mutableStateOf(false) }
-    LaunchedEffect(thinking, reduced) {
-        if (thinking) seconds.doubleValue = 0.0
-        if (thinking && !reduced) {
-            // Commit the default badge before animating its first expansion.
-            withFrameNanos { }
-            withFrameNanos { }
-        }
-        expanded = thinking
-    }
-    LaunchedEffect(thinking, reduced, lifecycle) {
-        if (thinking) lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+    LaunchedEffect(reduced, lifecycle) {
+        if (!reduced) lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
             var previous = 0L
             while (true) withFrameNanos { now ->
                 if (previous != 0L) seconds.doubleValue += min((now - previous) / 1_000_000_000.0, .05)
@@ -64,12 +46,6 @@ fun AssemblyBadge(thinking: Boolean, parts: List<MessagePart> = emptyList(), str
         }
     }
     BoxWithConstraints(Modifier.fillMaxWidth()) {
-        val width by animateDpAsState(if (expanded) minOf(320.dp, maxWidth - 3.dp) else 90.dp,
-            tween(if (reduced) 0 else 650, easing = CubicBezierEasing(.22f, 1f, .36f, 1f)), label = "badge width")
-        val height by animateDpAsState(if (expanded) 108.dp else 40.dp,
-            tween(if (reduced) 0 else 650, easing = CubicBezierEasing(.22f, 1f, .36f, 1f)), label = "badge height")
-        val reveal by animateFloatAsState(if (expanded) 1f else 0f,
-            tween(if (reduced) 0 else 350), label = "assembly reveal")
         val outline = MaterialTheme.colorScheme.outline
         val shadowColor = suzentShadow
         Box(Modifier.padding(end = PresentationTokens.shadowOffsetOverlay.dp,
@@ -77,9 +53,10 @@ fun AssemblyBadge(thinking: Boolean, parts: List<MessagePart> = emptyList(), str
             val offset = PresentationTokens.shadowOffsetOverlay.dp.toPx()
             // Full-size rect offset into the reserved padding; without `size` it stayed inside the face and was painted over.
             drawRect(shadowColor, topLeft = Offset(offset, offset), size = size)
-        }.size(width, height).background(MaterialTheme.colorScheme.surface)
-            .border(PresentationTokens.borderWidth.dp, outline).clipToBounds(), contentAlignment = Alignment.Center) {
-            if (reveal > 0f) Canvas(Modifier.fillMaxSize().padding(2.dp).graphicsLayer { alpha = reveal }) {
+        }.size(minOf(320.dp, maxWidth - 3.dp), 108.dp).background(MaterialTheme.colorScheme.surface)
+            .border(PresentationTokens.borderWidth.dp, outline).clipToBounds()
+            .semantics { contentDescription = "Suzent" }) {
+            Canvas(Modifier.fillMaxSize().padding(2.dp)) {
                 val marks = AssemblyScene.frame(seconds.doubleValue, reduced)
                 scale(size.width / 320f, size.height / 108f, pivot = Offset.Zero) {
                     marks.forEach { mark ->
@@ -92,27 +69,20 @@ fun AssemblyBadge(thinking: Boolean, parts: List<MessagePart> = emptyList(), str
                     }
                 }
             }
-            Box(Modifier.graphicsLayer { alpha = 1f - reveal }.semantics { contentDescription = "Suzent" }) { RobotBadge(parts, streaming) }
         }
     }
 }
 
-private val robotDrop = Curve(.175, .885, .32, 1.275)
-
 /**
- * Desktop's Suzent bot: the same stage resolver and scene the desktop mark draws, capped at 30fps and
- * paused while animations are disabled or the screen is in the background.
+ * Desktop's Suzent bot: the same stage resolver and scene the desktop mark draws, computed off the UI thread,
+ * capped at 30fps, and stopped once the scene settles, animations are disabled or the screen is in the background.
  */
 @Composable
-fun RobotBadge(parts: List<MessagePart>, streaming: Boolean) {
+fun RobotBadge(parts: List<MessagePart>, streaming: Boolean, visible: Boolean = true, toolOverride: String? = null) {
     val reduced = !ValueAnimator.areAnimatorsEnabled()
     val dark = isSystemInDarkTheme()
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val context = LocalContext.current
-    val host = remember {
-        SuzentBotHost(context.assets.open("suzent-bot-core.js").bufferedReader().use { it.readText() })
-    }
-    DisposableEffect(host) { onDispose { host.close() } }
     val pending = parts.any { it.type == "tool" && it.state == "approval-requested" && it.output.isEmpty() }
     val errors = parts.count { it.type == "tool" && toolCallFailed(it) }
     var seenErrors by remember { mutableIntStateOf(errors) }
@@ -128,44 +98,56 @@ fun RobotBadge(parts: List<MessagePart>, streaming: Boolean) {
         delay(2600)
         startled = false
     }
-    val tool = robotCurrentTool(parts)
-    val stage = host.resolveStage(pending, startled, streaming && tool == null, tool, streaming || pending)
-    var timeMs by remember { mutableDoubleStateOf(0.0) }
-    var frame by remember { mutableStateOf(host.step("""{"stage":"idle","time":0,"reducedMotion":true,"size":32}""").let(SuzentBotFrame::parse)) }
-    LaunchedEffect(reduced, dark, stage, lifecycle) {
-        frame = SuzentBotFrame.parse(host.step(botStep(stage, timeMs, reduced, dark)))
-        if (reduced) return@LaunchedEffect
-        lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
-            var previous = 0L
-            var accumulator = 0.0
-            while (true) withFrameNanos { now ->
-                if (previous != 0L) {
-                    accumulator += ((now - previous) / 1_000_000_000.0).coerceAtMost(0.05)
-                    if (accumulator >= 1.0 / 30.0) {
-                        timeMs += accumulator * 1000.0
-                        accumulator = 0.0
-                        frame = SuzentBotFrame.parse(host.step(botStep(stage, timeMs, false, dark)))
+    val tool = toolOverride ?: robotCurrentTool(parts, streaming)
+    val input by rememberUpdatedState(BotInput(pending, startled, streaming, tool, reduced, dark, visible))
+    val frame = remember { mutableStateOf<SuzentBotFrame?>(null) }
+    LaunchedEffect(context, lifecycle) {
+        withContext(botDispatcher) {
+            val host = SharedBotEngine.host(context)
+            val session = host.create(1, "{}")
+            try {
+                var timeMs = 0.0
+                lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                    snapshotFlow { input }.collectLatest { current ->
+                        if (!current.visible) return@collectLatest
+                        val stage = host.resolveStage(current.pending, current.startled,
+                            current.streaming && current.tool == null, current.tool, current.streaming || current.pending)
+                        var previous = System.nanoTime()
+                        while (true) {
+                            val now = System.nanoTime()
+                            timeMs += ((now - previous) / 1_000_000.0).coerceAtMost(50.0)
+                            previous = now
+                            val next = SuzentBotFrame.parse(host.step(session, botStep(stage, timeMs, current.reduced, current.dark)))
+                            frame.value = next
+                            if (current.reduced || next.settled) break
+                            // Backpressure: never queue frames when computation exceeds the budget.
+                            val remaining = 33_333_334L - (System.nanoTime() - now)
+                            delay((remaining / 1_000_000L).coerceAtLeast(1))
+                        }
                     }
                 }
-                previous = now
+            } finally {
+                host.destroy(session)
             }
         }
     }
-    val drop = remember { Animatable(1f) }
-    LaunchedEffect(stage, reduced) {
-        if (reduced) return@LaunchedEffect
-        drop.snapTo(0f)
-        drop.animateTo(1f, tween(300, easing = LinearEasing))
-    }
-    Canvas(Modifier.size(32.dp).graphicsLayer {
-        val progress = drop.value.toDouble()
-        val stops = doubleArrayOf(0.0, .5, 1.0)
-        translationY = keyframe(progress, stops, doubleArrayOf(15.0, -3.0, 0.0), robotDrop).dp.toPx()
-        scaleX = keyframe(progress, stops, doubleArrayOf(.5, 1.05, 1.0), robotDrop).toFloat()
-        scaleY = scaleX
-        alpha = keyframe(progress, stops, doubleArrayOf(0.0, 1.0, 1.0), robotDrop).toFloat().coerceIn(0f, 1f)
-    }) { drawSuzentBot(frame) }
+    Canvas(Modifier.size(32.dp)) { frame.value?.let { drawSuzentBot(it) } }
 }
 
 private fun botStep(stage: String, timeMs: Double, reduced: Boolean, dark: Boolean) =
     """{"stage":"$stage","time":$timeMs,"reducedMotion":$reduced,"dark":$dark,"size":32,"holdWhenIdle":true,"particlesEnabled":${!reduced},"autoMorphCycle":${!reduced},"isActive":true}"""
+
+private data class BotInput(
+    val pending: Boolean,
+    val startled: Boolean,
+    val streaming: Boolean,
+    val tool: String?,
+    val reduced: Boolean,
+    val dark: Boolean,
+    val visible: Boolean,
+)
+
+// One serial worker keeps JS scopes confined without allocating a thread per badge.
+internal val botDispatcher = Executors.newSingleThreadExecutor { task ->
+    Thread(task, "SuzentBot").apply { isDaemon = true }
+}.asCoroutineDispatcher()

@@ -503,7 +503,7 @@ fun MessageView(message: DisplayMessage, regent: Boolean = false, isLatest: Bool
             .semantics { contentDescription = label })
     }
     if (message.role in listOf("user", "assistant")) MessageFooter(message, fallbackModel, canRetry, canEdit, canFork,
-        showActions = isLatest, menu = menu, menuAnchor = menuAnchor, onMenu = { menu = it },
+        showActions = isLatest, showBot = message.role == "assistant" && botPlacement(message.parts, false, isLatest, regent) == BotPlacement.Footer, menu = menu, menuAnchor = menuAnchor, onMenu = { menu = it },
         onAnchor = { menuAnchor = it }, onAction = onAction)
     }
 }
@@ -606,7 +606,7 @@ private fun TriggerReferenceView(entries: List<TriggerEntry>, sources: List<Cita
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun MessageFooter(message: DisplayMessage, fallbackModel: String?, canRetry: Boolean, canEdit: Boolean,
-                          canFork: Boolean, showActions: Boolean, menu: Boolean, menuAnchor: Offset?,
+                          canFork: Boolean, showActions: Boolean, showBot: Boolean, menu: Boolean, menuAnchor: Offset?,
                           onMenu: (Boolean) -> Unit, onAnchor: (Offset?) -> Unit,
                           onAction: (String, String?) -> Unit) {
     val context = LocalContext.current
@@ -644,6 +644,7 @@ private fun MessageFooter(message: DisplayMessage, fallbackModel: String?, canRe
             .semantics { if (hasMenu) onLongClick(actionsLabel) { onAnchor(footerCoords?.positionInWindow()); onMenu(true); true } },
             verticalAlignment = androidx.compose.ui.Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             if (user) Spacer(Modifier.weight(1f))
+            if (showBot) RobotBadge(message.parts, streaming = false)
             if (showActions) {
                 if (hasText) IconButton(modifier = Modifier.size(32.dp), onClick = { copy() }) {
                     Icon(painterResource(if (copied) R.drawable.ic_message_check else R.drawable.ic_message_copy), stringResource(if (copied) R.string.message_copied else R.string.message_copy), Modifier.size(18.dp), tint = ink)
@@ -990,29 +991,6 @@ fun SuzentWordmark(leading: Boolean = false) {
 }
 
 @Composable
-fun SuzentAssistantBadge(compact: Boolean = false) {
-    if (compact) Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        Image(painterResource(R.drawable.suzent_logo), contentDescription = null,
-            modifier = Modifier.size(16.dp).graphicsLayer { alpha = .5f })
-        Text("SUZENT", fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold, fontSize = 10.sp,
-            color = MaterialTheme.colorScheme.onSurfaceVariant)
-    } else {
-        val outline = MaterialTheme.colorScheme.outline
-        val shadowColor = suzentShadow
-        Box(Modifier.padding(end = PresentationTokens.shadowOffsetOverlay.dp,
-            bottom = PresentationTokens.shadowOffsetOverlay.dp).drawBehind {
-            val offset = PresentationTokens.shadowOffsetOverlay.dp.toPx()
-            // Full-size rect offset into the reserved padding; without `size` it stayed inside the face and was painted over.
-            drawRect(shadowColor, topLeft = Offset(offset, offset), size = size)
-        }.size(90.dp, 40.dp).background(MaterialTheme.colorScheme.surface)
-            .border(PresentationTokens.borderWidth.dp, outline), contentAlignment = androidx.compose.ui.Alignment.Center) {
-            Image(painterResource(R.drawable.suzent_logo), contentDescription = "Suzent", modifier = Modifier.size(26.dp))
-        }
-    }
-}
-
-@Composable
 private fun ActivityText(text: String, citationSources: List<CitationSource>, regent: Boolean,
                          onBubbleLongPress: ((Offset) -> Unit)?) {
     val bubbleMenu = onBubbleLongPress.takeIf { regent }
@@ -1034,7 +1012,7 @@ private fun ActivityText(text: String, citationSources: List<CitationSource>, re
 
 @Composable
 fun ActivityContent(parts: List<MessagePart>, live: Boolean, citationSources: List<CitationSource> = emptyList(), regent: Boolean = false,
-                    onBubbleLongPress: ((Offset) -> Unit)? = null) {
+                    onBubbleLongPress: ((Offset) -> Unit)? = null, showBot: Boolean = false) {
     val chunks = remember(parts) { activityChunks(parts) }
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         chunks.forEachIndexed { index, chunk ->
@@ -1043,7 +1021,7 @@ fun ActivityContent(parts: List<MessagePart>, live: Boolean, citationSources: Li
                     ActivityText(chunk.first().text, citationSources, regent, onBubbleLongPress)
                 }
                 else if (chunk.first().type == "a2ui") chunk.first().surface?.let { SurfaceBlock(it) }
-                else ActivityRail(chunk, live, index == chunks.lastIndex, expansionKey = railChunkKey(chunk, index))
+                else ActivityRail(chunk, live, index == chunks.lastIndex, expansionKey = railChunkKey(chunk, index), showBot = showBot)
             }
         }
     }

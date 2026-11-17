@@ -43,9 +43,13 @@ class RobotSceneTest {
         assertEquals(RobotVariant.WORKOUT, robotBadgeVariant(RobotVariant.IDLE, startled = false, pending = false, streaming = true, tool = "Bash"))
         assertEquals(RobotVariant.OBSERVER, robotBadgeVariant(RobotVariant.LOVE, startled = false, pending = false, streaming = true, tool = null))
         assertEquals(RobotVariant.LOVE, robotBadgeVariant(RobotVariant.LOVE, startled = false, pending = false, streaming = false, tool = null))
-        val parts = listOf(MessagePart("tool", toolName = "grep_search", output = "done"), MessagePart("tool", toolName = "web_search"), MessagePart("text", text = "Hi"))
-        assertEquals("web_search", robotCurrentTool(parts))
-        assertEquals(null, robotCurrentTool(listOf(MessagePart("tool", toolName = "grep_search", output = "done"), MessagePart("text", text = "Hi"))))
+        val running = MessagePart("tool", toolName = "web_search", state = "running")
+        val done = MessagePart("tool", toolName = "grep_search", output = "done")
+        assertEquals("web_search", robotCurrentTool(listOf(done, running, MessagePart("text", text = "Hi")), true))
+        assertEquals("grep_search", robotCurrentTool(listOf(done), true))
+        assertEquals(null, robotCurrentTool(listOf(done, MessagePart("text", text = "Hi")), true))
+        assertEquals(null, robotCurrentTool(listOf(running, MessagePart("reasoning", text = "Hmm")), true))
+        assertEquals(null, robotCurrentTool(listOf(running), false))
         assertTrue(!toolCallFailed(MessagePart("tool", toolName = "Bash", state = "error")))
     }
 }

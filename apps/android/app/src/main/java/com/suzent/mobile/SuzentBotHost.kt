@@ -3,6 +3,7 @@ package com.suzent.mobile
 import org.json.JSONArray
 import org.json.JSONObject
 import org.mozilla.javascript.Context
+import org.mozilla.javascript.Function
 import org.mozilla.javascript.Scriptable
 import kotlin.math.PI
 import kotlin.math.abs
@@ -13,17 +14,19 @@ import kotlin.math.sqrt
 
 /** One shared Suzent bot engine, running the same bundle desktop tests lock. */
 class SuzentBotHost(script: String, seed: Int = 1) : AutoCloseable {
-    private val context: Context = Context.enter().also { it.optimizationLevel = -1 }
-    private val scope: Scriptable = context.initStandardObjects()
-    private val id: Int
-
-    init {
-        context.evaluateString(scope, script, "suzent-bot-core.js", 1, null)
-        id = Context.toNumber(context.evaluateString(scope, "SuzentBot.create($seed)", "create", 1, null)).toInt()
+    private val scope: Scriptable = inContext { context ->
+        context.initStandardObjects().also {
+            context.evaluateString(it, script, "suzent-bot-core.js", 1, null)
+        }
     }
+    private val api = scope.get("SuzentBot", scope) as Scriptable
+    private val functions = listOf("create", "resolveStage", "step", "destroy", "toolFrame", "destroyGlyph").associateWith {
+        api.get(it, api) as Function
+    }
+    private val botId = lazy { create(seed, "{}") }
+    private val id by botId
 
-    fun create(seed: Int, options: String): Int =
-        Context.toNumber(eval("SuzentBot.create($seed, ${JSONObject.quote(options)})")).toInt()
+    fun create(seed: Int, options: String): Int = Context.toNumber(call("create", seed, options)).toInt()
 
     fun resolveStage(hasPending: Boolean, isError: Boolean, isThinking: Boolean, tool: String?, isActive: Boolean): String {
         val payload = JSONObject()
@@ -32,22 +35,57 @@ class SuzentBotHost(script: String, seed: Int = 1) : AutoCloseable {
             .put("isThinking", isThinking)
             .put("isActive", isActive)
         if (tool != null) payload.put("toolName", tool)
-        return eval("SuzentBot.resolveStage(${JSONObject.quote(payload.toString())})")
+        return Context.toString(call("resolveStage", payload.toString()))
+    }
+
+    fun toolFrame(tool: String, animation: String, seconds: Double, reduced: Boolean, instance: Int = 0): SuzentBotFrame =
+        SuzentBotFrame.parse(Context.toString(call("toolFrame", tool, animation, seconds, reduced, instance)))
+
+    fun destroyGlyph(instance: Int) {
+        call("destroyGlyph", instance)
     }
 
     fun step(json: String): String = step(id, json)
 
-    fun step(session: Int, json: String): String = eval("SuzentBot.step($session, ${JSONObject.quote(json)})")
+    fun step(session: Int, json: String): String = Context.toString(call("step", session, json))
 
     fun destroy(session: Int) {
-        eval("SuzentBot.destroy($session)")
+        call("destroy", session)
     }
 
-    private fun eval(source: String): String = Context.toString(context.evaluateString(scope, source, "suzent-bot", 1, null))
+    private fun call(name: String, vararg args: Any): Any? = inContext { context ->
+        functions.getValue(name).call(context, scope, api, args)
+    }
+
+    // Coroutine suspension must never leave a Rhino context attached to its thread.
+    private fun <T> inContext(block: (Context) -> T): T {
+        val context = Context.enter()
+        try {
+            context.optimizationLevel = -1
+            return block(context)
+        } finally {
+            Context.exit()
+        }
+    }
 
     override fun close() {
-        Context.exit()
+        if (botId.isInitialized()) destroy(id)
     }
+}
+
+/**
+ * The app's one engine. Evaluating the bundle per badge cost a full script load for every icon on screen.
+ * Only touch it from [botDispatcher]: Rhino scopes are not thread-safe.
+ */
+internal object SharedBotEngine {
+    private var host: SuzentBotHost? = null
+    private var nextGlyph = 1
+
+    fun host(context: android.content.Context): SuzentBotHost = host ?: SuzentBotHost(
+        context.applicationContext.assets.open("suzent-bot-core.js").bufferedReader().use { it.readText() }
+    ).also { host = it }
+
+    fun newGlyph(): Int = nextGlyph++
 }
 
 data class SuzentBotNode(

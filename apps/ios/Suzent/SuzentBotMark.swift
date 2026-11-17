@@ -1,50 +1,71 @@
 import SuzentCore
 import SwiftUI
 
+private struct BotInput: Equatable {
+    let pending: Bool
+    let startled: Bool
+    let thinking: Bool
+    let tool: String?
+    let active: Bool
+    let reduced: Bool
+    let dark: Bool
+    let visible: Bool
+}
+
 struct SuzentBotBadge: View {
     let parts: [MessagePart]
     let streaming: Bool
+    var toolOverride: String?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.scenePhase) private var scenePhase
-    @State private var session = SuzentBotSession()
-    @State private var started = Date()
-    @State private var frame = SuzentBotFrame.parse(##"{"viewBox":"-46 -46 320.54 320.54","fg":"#000000","bg":"#ffffff","settled":true,"nodes":[]}"##)
+    @State private var bot: Int32?
+    @State private var time = 0.0
+    @State private var frame: SuzentBotFrame?
     @State private var seenErrors: Int?
     @State private var flash = 0
     @State private var startled = false
-    @State private var dropped = Date.distantPast
 
-    private var pending: Bool { parts.contains { $0.type == "tool" && $0.state == "approval-requested" && ($0.output ?? "").isEmpty } }
     private var errors: Int { parts.filter { $0.type == "tool" && toolCallFailed($0) }.count }
-    private var stage: String {
-        let tool = robotCurrentTool(parts)
-        return session.resolveStage(hasPending: pending, isError: startled, isThinking: streaming && tool == nil, tool: tool, isActive: streaming || pending)
+    private var input: BotInput {
+        let tool = toolOverride ?? robotCurrentTool(parts, streaming: streaming)
+        let pending = parts.contains { $0.type == "tool" && $0.state == "approval-requested" && ($0.output ?? "").isEmpty }
+        return BotInput(pending: pending, startled: startled, thinking: streaming && tool == nil, tool: tool,
+                        active: streaming || pending, reduced: reduceMotion, dark: colorScheme == .dark, visible: scenePhase == .active)
     }
-
     var body: some View {
-        let stage = stage
-        TimelineView(.animation(minimumInterval: 1.0 / 30, paused: reduceMotion || scenePhase != .active)) { timeline in
-            Canvas { context, size in
-                drawSuzentBot(frame, in: &context, size: size)
+        Canvas { context, size in
+            if let frame { drawSuzentBot(frame, in: &context, size: size) }
+        }
+        .frame(width: 32, height: 32)
+        .task(id: input) {
+            let config = input
+            guard config.visible else { return }
+            let renderer = SuzentBotRenderer.shared
+            let id: Int32
+            if let bot { id = bot } else {
+                id = await renderer.openBot()
+                guard !Task.isCancelled else { await renderer.closeBot(id); return }
+                bot = id
             }
-            .frame(width: 32, height: 32)
-            .onChange(of: timeline.date) { _, date in
-                frame = renderedFrame(at: date)
+            var previous = ContinuousClock.now
+            while !Task.isCancelled {
+                let now = ContinuousClock.now
+                time += min(durationSeconds(previous.duration(to: now)), 0.05) * 1000
+                previous = now
+                let next = await renderer.frame(bot: id, pending: config.pending, error: config.startled, thinking: config.thinking,
+                    tool: config.tool, active: config.active, time: time, reduced: config.reduced, dark: config.dark)
+                guard !Task.isCancelled else { return }
+                frame = next
+                if next.settled || config.reduced { return }
+                do { try await Task.sleep(for: .seconds(max(0.001, 1.0 / 30 - durationSeconds(now.duration(to: .now))))) }
+                catch { return }
             }
         }
-        .onAppear {
-            frame = renderedFrame(at: started)
+        .onDisappear {
+            if let bot { Task { await SuzentBotRenderer.shared.closeBot(bot) } }
+            bot = nil
         }
-        .onChange(of: stage) { _, _ in
-            dropped = Date()
-            frame = renderedFrame(at: Date())
-        }
-        .onChange(of: reduceMotion) { _, _ in frame = renderedFrame(at: Date()) }
-        .onChange(of: colorScheme) { _, _ in frame = renderedFrame(at: Date()) }
-        .scaleEffect(dropScale)
-        .offset(y: dropOffset)
-        .opacity(dropOpacity)
         .onChange(of: errors, initial: true) { _, count in
             if let seen = seenErrors, count > seen { flash += 1 }
             seenErrors = count
@@ -58,27 +79,57 @@ struct SuzentBotBadge: View {
         }
         .accessibilityHidden(true)
     }
+}
 
-    private func renderedFrame(at date: Date) -> SuzentBotFrame {
-        session.frame(json: stepJSON(stage: stage, time: date.timeIntervalSince(started) * 1000, reduced: reduceMotion, dark: colorScheme == .dark))
+func durationSeconds(_ duration: Duration) -> Double {
+    Double(duration.components.seconds) + Double(duration.components.attoseconds) / 1e18
+}
+
+struct SharedToolGlyph: View {
+    let tool: String
+    let animation: String
+    let color: Color
+    @Environment(\.accessibilityReduceMotion) private var reduced
+    @Environment(\.scenePhase) private var scenePhase
+    @State private var glyph: Int?
+    @State private var frame: SuzentBotFrame?
+    private var key: String { "\(tool)|\(animation)|\(reduced)|\(scenePhase == .active)" }
+    var body: some View {
+        Canvas { context, size in
+            if let frame { drawSuzentBot(frame, in: &context, size: size, foreground: color) }
+        }.task(id: key) {
+            guard scenePhase == .active else { return }
+            let renderer = SuzentBotRenderer.shared
+            let id: Int
+            if let glyph { id = glyph } else {
+                id = await renderer.openGlyph()
+                guard !Task.isCancelled else { return }
+                glyph = id
+            }
+            let start = ContinuousClock.now
+            while !Task.isCancelled {
+                let now = ContinuousClock.now
+                let next = await renderer.toolFrame(glyph: id, tool: tool, animation: animation,
+                    seconds: durationSeconds(start.duration(to: now)), reduced: reduced)
+                guard !Task.isCancelled else { return }
+                frame = next
+                if reduced { return }
+                do { try await Task.sleep(for: .seconds(max(0.001, 1.0 / 30 - durationSeconds(now.duration(to: .now))))) }
+                catch { return }
+            }
+        }.onDisappear {
+            if let glyph { Task { await SuzentBotRenderer.shared.closeGlyph(glyph) } }
+            glyph = nil
+        }
     }
-
-    private var drop: Double { reduceMotion ? 1 : min(Date().timeIntervalSince(dropped) / 0.3, 1) }
-    private var dropScale: CGFloat { CGFloat(keyframe(drop, [0, 0.5, 1], [0.5, 1.05, 1], Curve(0.175, 0.885, 0.32, 1.275))) }
-    private var dropOffset: CGFloat { CGFloat(keyframe(drop, [0, 0.5, 1], [15, -3, 0], Curve(0.175, 0.885, 0.32, 1.275))) }
-    private var dropOpacity: Double { min(max(keyframe(drop, [0, 0.5, 1], [0, 1, 1], Curve(0.175, 0.885, 0.32, 1.275)), 0), 1) }
 }
 
-private func stepJSON(stage: String, time: Double, reduced: Bool, dark: Bool) -> String {
-    #"{"stage":"\#(stage)","time":\#(time),"reducedMotion":\#(reduced),"dark":\#(dark),"size":32,"holdWhenIdle":true,"particlesEnabled":\#(!reduced),"autoMorphCycle":\#(!reduced),"isActive":true}"#
-}
-
-private func drawSuzentBot(_ frame: SuzentBotFrame, in context: inout GraphicsContext, size: CGSize) {
+private func drawSuzentBot(_ frame: SuzentBotFrame, in context: inout GraphicsContext, size: CGSize, foreground: Color? = nil) {
     guard frame.viewBox.count >= 4, frame.viewBox[2] != 0, frame.viewBox[3] != 0 else { return }
     let minX = frame.viewBox[0], minY = frame.viewBox[1], width = frame.viewBox[2], height = frame.viewBox[3]
     context.scaleBy(x: size.width / width, y: size.height / height)
     context.translateBy(x: -minX, y: -minY)
-    let fg = botColor(frame.fg) ?? .black
+    let fg = foreground ?? botColor(frame.fg) ?? .black
     let bg = botColor(frame.bg) ?? .white
     drawNodes(frame.nodes, fg: fg, bg: bg, matrix: BotAffine(), opacity: 1, root: frame.nodes, context: &context)
 }
@@ -114,7 +165,11 @@ private func drawNode(_ node: SuzentBotNode, fg: Color, bg: Color, matrix: BotAf
         }
         if let stroke = botColor(node.attrs["stroke"], fg: fg, bg: bg) {
             let width = Double(node.attrs["stroke-width"] ?? "") ?? 1
-            context.stroke(path, with: .color(stroke.opacity(alpha)), style: StrokeStyle(lineWidth: width, lineCap: .round))
+            let dashText = node.attrs["stroke-dasharray"] ?? ""
+            let dashes: [CGFloat] = dashText.split { $0 == " " || $0 == "," }.compactMap { Double($0) }.map { CGFloat($0) }
+            let phase = CGFloat(Double(node.attrs["stroke-dashoffset"] ?? "") ?? 0)
+            let style = StrokeStyle(lineWidth: CGFloat(width), lineCap: .round, dash: dashes, dashPhase: phase)
+            context.stroke(path, with: .color(stroke.opacity(alpha)), style: style)
         }
     }
 }
@@ -133,7 +188,9 @@ private func append(_ node: SuzentBotNode, _ matrix: BotAffine, to path: inout P
     case "rect":
         let x = Double(node.attrs["x"] ?? "") ?? 0, y = Double(node.attrs["y"] ?? "") ?? 0
         let w = Double(node.attrs["width"] ?? "") ?? 0, h = Double(node.attrs["height"] ?? "") ?? 0
-        move(x, y, matrix, &path); line(x + w, y, matrix, &path); line(x + w, y + h, matrix, &path); line(x, y + h, matrix, &path); path.closeSubpath()
+        let radius = min(Double(node.attrs["rx"] ?? "") ?? 0, min(w, h) / 2)
+        path.addPath(Path(roundedRect: CGRect(x: x, y: y, width: w, height: h), cornerRadius: radius),
+                     transform: CGAffineTransform(a: matrix.a, b: matrix.b, c: matrix.c, d: matrix.d, tx: matrix.e, ty: matrix.f))
     default:
         break
     }
