@@ -388,7 +388,6 @@ struct ContentView: View {
                 dismiss: { showModelPicker = false }) {
                     model.selectModel($0.isEmpty ? nil : $0)
                 }.onAppear {
-                    model.modelCatalog = nil
                     Task { await model.loadModelCatalog() }
                 }
         }

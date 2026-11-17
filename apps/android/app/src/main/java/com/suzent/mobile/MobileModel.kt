@@ -713,9 +713,9 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
             scheduledTasks = taskList
             val id = selected?.id
             if (!id.isNullOrEmpty() && !streaming) {
-                val chat = api.chat(id)
+                val chat = api.chat(id, includeModels = !poll)
                 if (current == generation && selected?.id == id && !streaming) {
-                    selected = chat
+                    selected = if (poll && chat.model != null && chat.models.isEmpty()) chat.copy(models = selected?.models.orEmpty()) else chat
                     if (chatVisible && foreground) clearUnread(api, id)
                     if (chat.isRegent) {
                         if (regentVisible && (chat.regent?.unread ?: 0) > 0) api.markRead(id)
@@ -832,6 +832,7 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
         val api = client ?: return@launch
         if (isDemo || (modelCatalogBusy && modelCatalogGeneration == generation)) return@launch
         val current = generation
+        if (modelCatalogGeneration != current) modelCatalog = null
         modelCatalogBusy = true
         modelCatalogGeneration = current
         modelCatalogError = null

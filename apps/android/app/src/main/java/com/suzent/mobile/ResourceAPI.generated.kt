@@ -30,6 +30,7 @@ private fun resourceEncodeValue(value: Any?): Any = when (value) {
     is WireApiUploads -> value.json()
     is WireApprovalBatch -> value.json()
     is WireApprovalChoice -> value.json()
+    is WireChatDetailQuery -> value.json()
     is WireChatPageRequest -> value.json()
     is WireChatRequest -> value.json()
     is WireChatStatusRequest -> value.json()
@@ -283,6 +284,15 @@ data class WireApprovalChoice(val chatId: String, val requestId: String, val act
     ) }
 }
 
+data class WireChatDetailQuery(val includeModels: Boolean? = true) {
+    fun json(): JSONObject = JSONObject().apply {
+        includeModels?.let { put("include_models", resourceEncodeValue(it)) }
+    }
+    companion object { fun fromJson(value: JSONObject): WireChatDetailQuery = WireChatDetailQuery(
+        includeModels = if (value.has("include_models") && !value.isNull("include_models")) (value.get("include_models") as Boolean) else true,
+    ) }
+}
+
 data class WireChatPageRequest(val kind: String? = "recent", val value: String? = "", val offset: Int? = 0, val limit: Int? = 30) {
     fun json(): JSONObject = JSONObject().apply {
         kind?.let { put("kind", resourceEncodeValue(it)) }
@@ -463,7 +473,7 @@ data class WireSurfaceAnswerRequest(val chatId: String, val surfaceId: String, v
 }
 
 
-data class ResourceRequest(val path: String, val legacyPath: String?, val method: String, val body: JSONObject?, val readOnly: Boolean) {
+data class ResourceRequest(val path: String, val legacyPath: String?, val method: String, val body: JSONObject?, val readOnly: Boolean, val query: Map<String, String> = emptyMap()) {
     fun path(shared: Boolean): String = if (shared) path else legacyPath ?: path
 }
 object ResourceRequests {
@@ -488,7 +498,7 @@ object ResourceRequests {
     fun chatPage(body: WireChatPageRequest): ResourceRequest = ResourceRequest(path("api/v1/chat-page", mapOf()), path("mobile/client/chat-page", mapOf()), "POST", body.json(), true)
     fun chatStatuses(body: WireChatStatusRequest): ResourceRequest = ResourceRequest(path("api/v1/chat-status", mapOf()), path("mobile/client/chat-status", mapOf()), "POST", body.json(), true)
     fun navigation(): ResourceRequest = ResourceRequest(path("api/v1/navigation", mapOf()), path("mobile/client/navigation", mapOf()), "GET", null, true)
-    fun chat(chatId: String): ResourceRequest = ResourceRequest(path("api/v1/chats/{chat_id}", mapOf("chat_id" to chatId)), path("mobile/client/chats/{chat_id}", mapOf("chat_id" to chatId)), "GET", null, true)
+    fun chat(chatId: String, query: WireChatDetailQuery = WireChatDetailQuery()): ResourceRequest = ResourceRequest(path("api/v1/chats/{chat_id}", mapOf("chat_id" to chatId)), path("mobile/client/chats/{chat_id}", mapOf("chat_id" to chatId)), "GET", null, true, query.json().let { value -> value.keys().asSequence().associateWith { value.get(it).toString() } })
     fun updateChat(chatId: String, body: WireHostFieldsRequest): ResourceRequest = ResourceRequest(path("api/v1/chats/{chat_id}", mapOf("chat_id" to chatId)), null, "PUT", body.json(), false)
     fun deleteChat(chatId: String): ResourceRequest = ResourceRequest(path("api/v1/chats/{chat_id}", mapOf("chat_id" to chatId)), null, "DELETE", null, false)
     fun markRead(chatId: String, body: WireEmptyRequest): ResourceRequest = ResourceRequest(path("api/v1/chats/{chat_id}/read", mapOf("chat_id" to chatId)), path("mobile/client/chats/{chat_id}/read", mapOf("chat_id" to chatId)), "POST", body.json(), false)
@@ -535,7 +545,7 @@ class ResourceClient(private val transport: suspend (ResourceRequest) -> JSONObj
     suspend fun chatPage(body: WireChatPageRequest): WireApiChatList = WireApiChatList.fromJson(transport(ResourceRequests.chatPage(body)))
     suspend fun chatStatuses(body: WireChatStatusRequest): WireApiChatList = WireApiChatList.fromJson(transport(ResourceRequests.chatStatuses(body)))
     suspend fun navigation(): WireApiNavigation = WireApiNavigation.fromJson(transport(ResourceRequests.navigation()))
-    suspend fun chat(chatId: String): WireApiChat = WireApiChat.fromJson(transport(ResourceRequests.chat(chatId)))
+    suspend fun chat(chatId: String, query: WireChatDetailQuery = WireChatDetailQuery()): WireApiChat = WireApiChat.fromJson(transport(ResourceRequests.chat(chatId, query)))
     suspend fun updateChat(chatId: String, body: WireHostFieldsRequest): WireApiResult = WireApiResult.fromJson(transport(ResourceRequests.updateChat(chatId, body)))
     suspend fun deleteChat(chatId: String): WireApiResult = WireApiResult.fromJson(transport(ResourceRequests.deleteChat(chatId)))
     suspend fun markRead(chatId: String, body: WireEmptyRequest): WireApiResult = WireApiResult.fromJson(transport(ResourceRequests.markRead(chatId, body)))

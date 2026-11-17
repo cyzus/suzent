@@ -386,6 +386,16 @@ public struct WireApprovalChoice: Codable, Sendable {
     }
 }
 
+public struct WireChatDetailQuery: Codable, Sendable {
+    public var includeModels: Bool?
+    public init(includeModels: Bool? = true) {
+        self.includeModels = includeModels
+    }
+    enum CodingKeys: String, CodingKey {
+        case includeModels = "include_models"
+    }
+}
+
 public struct WireChatPageRequest: Codable, Sendable {
     public var kind: String?
     public var value: String?
@@ -615,6 +625,7 @@ public struct ResourceRequest: Sendable {
     public let method: String
     public let body: Data?
     public let readOnly: Bool
+    public var query: [String: String] = [:]
     public func path(shared: Bool) -> String { shared ? path : (legacyPath ?? path) }
 }
 
@@ -658,8 +669,10 @@ public enum ResourceRequests {
     public static func navigation() throws -> ResourceRequest {
         ResourceRequest(path: try path("api/v1/navigation", [:]), legacyPath: try path("mobile/client/navigation", [:]), method: "GET", body: nil, readOnly: true)
     }
-    public static func chat(chatId: String) throws -> ResourceRequest {
-        ResourceRequest(path: try path("api/v1/chats/{chat_id}", ["chat_id": chatId]), legacyPath: try path("mobile/client/chats/{chat_id}", ["chat_id": chatId]), method: "GET", body: nil, readOnly: true)
+    public static func chat(chatId: String, query: WireChatDetailQuery = .init()) throws -> ResourceRequest {
+        var call = ResourceRequest(path: try path("api/v1/chats/{chat_id}", ["chat_id": chatId]), legacyPath: try path("mobile/client/chats/{chat_id}", ["chat_id": chatId]), method: "GET", body: nil, readOnly: true)
+        call.query = try JSONDecoder().decode([String: JSONValue].self, from: JSONEncoder().encode(query)).mapValues(\.text)
+        return call
     }
     public static func updateChat(chatId: String, body: WireHostFieldsRequest) throws -> ResourceRequest {
         ResourceRequest(path: try path("api/v1/chats/{chat_id}", ["chat_id": chatId]), legacyPath: nil, method: "PUT", body: try JSONEncoder().encode(body), readOnly: false)
@@ -799,8 +812,8 @@ public struct ResourceClient: Sendable {
     public func navigation() async throws -> WireApiNavigation {
         try JSONDecoder().decode(WireApiNavigation.self, from: await transport(ResourceRequests.navigation()))
     }
-    public func chat(chatId: String) async throws -> WireApiChat {
-        try JSONDecoder().decode(WireApiChat.self, from: await transport(ResourceRequests.chat(chatId: chatId)))
+    public func chat(chatId: String, query: WireChatDetailQuery = .init()) async throws -> WireApiChat {
+        try JSONDecoder().decode(WireApiChat.self, from: await transport(ResourceRequests.chat(chatId: chatId, query: query)))
     }
     public func updateChat(chatId: String, body: WireHostFieldsRequest) async throws -> WireApiResult {
         try JSONDecoder().decode(WireApiResult.self, from: await transport(ResourceRequests.updateChat(chatId: chatId, body: body)))

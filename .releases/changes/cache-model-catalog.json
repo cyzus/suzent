@@ -1,0 +1,1 @@
+{"products":{"desktop":"patch","mobile":"patch"},"summary":"Reduce model-picker overhead by caching the model catalog and omitting it from routine mobile conversation polling."}

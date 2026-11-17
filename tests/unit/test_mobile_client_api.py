@@ -2216,3 +2216,67 @@ def test_model_refresh_rechecks_revoked_grant(setup_client, monkeypatch):
         "suzent.routes.config_routes.refresh_all_provider_models", revoke_during_refresh
     )
     assert client.post("/mobile/client/models/refresh", json={}).status_code == 401
+
+
+def test_chat_poll_can_omit_models_without_rebuilding_catalog(
+    setup_client, monkeypatch
+):
+    client, store = setup_client
+    result = grant(store, chat_ids=["shared"])
+    client.headers["Authorization"] = f"Bearer {result['token']}"
+
+    async def detail(request, **kwargs):
+        return JSONResponse({"id": "shared", "title": "Shared", "messages": []})
+
+    monkeypatch.setattr("suzent.routes.chat_routes.get_chat", detail)
+
+    def unexpected():
+        pytest.fail("Status/chat polling must not rebuild the model catalog")
+
+    monkeypatch.setattr("suzent.core.providers.get_enabled_models_from_db", unexpected)
+    response = client.get("/mobile/client/chats/shared?include_models=false")
+    assert response.status_code == 200
+    assert response.json()["model"] == "test/model"
+    assert "models" not in response.json()
+    assert (
+        client.get("/mobile/client/chats/private?include_models=false").status_code
+        == 403
+    )
+    assert (
+        client.get("/mobile/client/chats/shared?include_models=invalid").status_code
+        == 400
+    )
+
+
+def test_model_catalog_cache_does_not_cache_device_permissions(
+    setup_client, monkeypatch
+):
+    client, store = setup_client
+    counts = []
+    monkeypatch.setattr(
+        "suzent.core.providers.get_enabled_models_from_db",
+        lambda: counts.append(True) or ["test/model"],
+    )
+    monkeypatch.setattr("suzent.core.providers.get_starred_models_from_db", lambda: [])
+    result = grant(store, send=True)
+    client.headers["Authorization"] = f"Bearer {result['token']}"
+    assert client.get("/mobile/client/models").json()["canManage"] is True
+    store.set_permissions(result["device"]["device_id"], ClientPermissions())
+    assert client.get("/mobile/client/models").json()["canManage"] is False
+    assert len(counts) == 1
+
+
+def test_catalog_read_rechecks_revocation_after_loading(setup_client, monkeypatch):
+    client, store = setup_client
+    result = grant(store, send=True)
+    client.headers["Authorization"] = f"Bearer {result['token']}"
+
+    def revoke_while_reading():
+        store.revoke(result["device"]["device_id"])
+        return ["test/model"]
+
+    monkeypatch.setattr(
+        "suzent.core.providers.get_enabled_models_from_db", revoke_while_reading
+    )
+    monkeypatch.setattr("suzent.core.providers.get_starred_models_from_db", lambda: [])
+    assert client.get("/mobile/client/models").status_code == 401

@@ -35,6 +35,7 @@ interface MobileClient {
     suspend fun composer(): Chat
     suspend fun create(title: String, projectId: String? = null): Chat
     suspend fun chat(id: String): Chat
+    suspend fun chat(id: String, includeModels: Boolean): Chat = chat(id)
     suspend fun markRead(id: String)
     suspend fun overview(id: String): ChatOverview
     suspend fun manageChat(id: String, action: String, value: String? = null)

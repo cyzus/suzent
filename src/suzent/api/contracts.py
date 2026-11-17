@@ -233,3 +233,7 @@ class ApprovalChoice(ChatRequest):
 
 class ApprovalBatch(ChatRequest):
     decisions: list[ApprovalChoice] = Field(min_length=1, max_length=64)
+
+
+class ChatDetailQuery(BaseModel):
+    include_models: bool = True
