@@ -67,6 +67,8 @@
     ".releases/changes/mobile-mailbox-event-cards.json",
     ".releases/changes/mobile-mailbox-read-sync.json",
     ".releases/changes/mobile-model-memory.json",
+    ".releases/changes/mobile-model-picker-favorites.json",
+    ".releases/changes/mobile-model-picker-search.json",
     ".releases/changes/mobile-multiple-desktops.json",
     ".releases/changes/mobile-native-polish.json",
     ".releases/changes/mobile-offline-demo.json",
