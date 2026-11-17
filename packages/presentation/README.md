@@ -47,8 +47,8 @@ large yellow fills are quieter on the charcoal background. Light mode keeps `yel
 Inline code is a yellow chip with black text and a 2 px black border on every platform.
 Errors never use it: they appear as a transient bottom toast on `error-surface`
 (`error-surface-dark`), auto-dismissed after 6 seconds. Desktop surfaces stay square
-(`radius`). Mobile uses `radiusControl`, `radiusCard`, `radiusBubble` and `radiusSheet`
-so controls, cards, bubbles and sheets follow continuous corners; `canvas-*` is the
+(`radius`), and so does mobile: `radiusControl`, `radiusCard`, `radiusBubble`,
+`radiusSheet` and `radiusBadge` are 0, kept as tokens so each surface can be tuned on its own; `canvas-*` is the
 page, `card-*` is a raised surface, and `line-*` is a hairline rule. Hard offset
 shadows stay on primary actions, the composer and menus. Meta text uses `typeMeta`
 and small labels `typeLabel`; pressed fills use `pressedAlpha` and disabled controls
