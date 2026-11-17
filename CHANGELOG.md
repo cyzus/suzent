@@ -24,6 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Release notes
 - Messages from Regent and other agents reach their sessions promptly instead of waiting behind another session's long-running turn.
 - Keep chat links clickable when followed by inline citation markers and prevent unlabelled tool results from triggering hallucinated citations.
+- Folders mounted in one chat no longer carry over to other chats or projects.
 - The unread dot in the mailbox list is no longer partly cut off.
 - Place the mobile robot and animate tool icons the way desktop does, and draw them off the UI thread on iOS and Android, pausing when hidden or settled.
 - Automatically discover models from configured providers in the chat model selector with collapsible provider groups, quick search, one-click refresh, and starred favorites.
