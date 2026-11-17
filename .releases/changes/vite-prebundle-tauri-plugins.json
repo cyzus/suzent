@@ -1,0 +1,5 @@
+{
+  "products": {"desktop": "none"},
+  "summary": "Prebundle the dynamically imported Tauri packages in the Vite dev server so the folder picker keeps working in dev.",
+  "reason": "Only the Vite dev-server config changes; production builds are unaffected."
+}
