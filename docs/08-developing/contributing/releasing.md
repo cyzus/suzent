@@ -75,8 +75,8 @@ most often.
 
 Write the release note sentence for your change.
 
-- "Now you can **<verb a thing that was previously impossible>**." → **`minor`**
-- "**<An existing thing>** is now faster / clearer / more reliable." → **`patch`**
+- "Now you can **[a thing that was previously impossible]**." → **`minor`**
+- "**[An existing thing]** is now faster / clearer / more reliable." → **`patch`**
 
 If the only honest sentence is "this thing that already worked is now nicer to
 use", it is a patch. A refactor that happens to be visible on screen is still a
