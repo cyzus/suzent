@@ -22,7 +22,7 @@ struct MailboxView<TaskContent: View>: View {
     var body: some View {
         VStack(spacing: 0) {
             header
-            Rectangle().fill(Color.suzentOutline).frame(height: PresentationTokens.borderWidth)
+            Rectangle().fill(Color.suzentLine).frame(height: 1)
             if showTasks {
                 tasks()
             } else if !model.mailboxSupported {
@@ -31,14 +31,14 @@ struct MailboxView<TaskContent: View>: View {
                 filters
                 messages
             }
-        }.background(Color.suzentSurface)
+        }.background(Color.suzentBackground)
             .task { await model.refreshMailbox() }
     }
 
     private var header: some View {
         ZStack {
             VStack(spacing: 4) {
-                Text(showTasks ? "Tasks" : "Inbox").suzentFont(15, weight: .semibold)
+                Text(showTasks ? "Tasks" : "Inbox").suzentFont(18, weight: .bold)
                 if let desktop = model.activeDesktop, !model.isDemo {
                     Text(desktop.name).suzentFont(11).foregroundStyle(Color.suzentMuted).lineLimit(1)
                 }
@@ -53,7 +53,7 @@ struct MailboxView<TaskContent: View>: View {
                 Spacer()
                 if !showTasks { headerButton("clock", label: "Tasks") { showTasks = true } }
             }.padding(.horizontal, 6)
-        }.frame(maxWidth: .infinity, minHeight: 52)
+        }.frame(maxWidth: .infinity, minHeight: 60)
     }
 
     private func headerButton(_ icon: String, label: LocalizedStringKey, action: @escaping () -> Void) -> some View {
@@ -65,7 +65,7 @@ struct MailboxView<TaskContent: View>: View {
 
     private var filters: some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 6) {
+            HStack(spacing: 4) {
                 ForEach(InboxFilter.allCases, id: \.self) { filter in
                     let selected = model.mailboxCategory == filter.rawValue
                     Button {
@@ -73,18 +73,19 @@ struct MailboxView<TaskContent: View>: View {
                         Task { await model.changeMailbox(category: filter.rawValue) }
                     } label: {
                         HStack(spacing: 5) {
-                            Text(filter.title).suzentFont(PresentationTokens.typeMeta, weight: selected ? .semibold : .regular, design: .monospaced)
+                            Text(filter.title).suzentFont(13, weight: selected ? .bold : .medium)
                             if filter == .notifications && model.mailbox.unread > 0 { SuzentCountBadge(count: model.mailbox.unread) }
                         }
-                        .foregroundStyle(selected ? Color.suzentTabBlockText : Color.suzentMuted)
-                        .padding(.horizontal, 10).frame(minHeight: 30)
-                        .background(selected ? Color.suzentTabBlock : Color.suzentSurface)
-                        .overlay(Rectangle().strokeBorder(selected ? Color.suzentTabBlock : Color.suzentRowDivider, lineWidth: 1))
+                        .foregroundStyle(selected ? Color.suzentText : Color.suzentMuted)
+                        .padding(.horizontal, 12).frame(minHeight: 48)
+                        .overlay(alignment: .bottom) {
+                            if selected { Rectangle().fill(Color.suzentYellow).frame(height: 3).padding(.horizontal, 12) }
+                        }
                         .contentShape(Rectangle())
                     }.buttonStyle(.plain).disabled(model.mailboxBusy)
                         .accessibilityAddTraits(selected ? [.isSelected, .isButton] : .isButton)
                 }
-            }.padding(.horizontal, 16).padding(.vertical, 10)
+            }.padding(.horizontal, 12).padding(.top, 4)
         }.dynamicTypeSize(...DynamicTypeSize.accessibility2)
     }
 
@@ -92,7 +93,6 @@ struct MailboxView<TaskContent: View>: View {
         let threads = mailboxThreads(model.mailbox.items)
         return ScrollView {
             LazyVStack(spacing: 0) {
-                Rectangle().fill(Color.suzentRowDivider).frame(height: 1)
                 if let error = model.mailboxError {
                     VStack(alignment: .leading, spacing: 8) {
                         Text(error).foregroundStyle(Color.suzentDanger).suzentFont(13)

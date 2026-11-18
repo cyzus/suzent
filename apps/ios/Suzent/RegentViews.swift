@@ -164,7 +164,7 @@ struct RegentIdentity: View {
         HStack(spacing: 12) {
             RegentMark(working: working, waiting: waiting > 0, size: expanded ? 44 : 24, lastMessageAt: lastMessageAt, coronation: coronation)
             VStack(alignment: .leading, spacing: 4) {
-                Text("SUZENT Regent").suzentFont(14, weight: .semibold)
+                Text("Regent").suzentFont(14, weight: .semibold)
                 if showStatus {
                     Text(working ? String(localized: "Regent is working") : waiting > 0 ? String(localized: "Needs your attention") : String(localized: "Across all your projects"))
                         .suzentFont(PresentationTokens.typeLabel).foregroundStyle(waiting > 0 && !working ? Color.orange : Color.suzentMuted)
@@ -175,11 +175,37 @@ struct RegentIdentity: View {
     }
 }
 
+/// The home list's Regent entry: a centred mark with the name and status beneath it.
+struct RegentHero: View {
+    var working = false
+    var waiting = 0
+    var unread = 0
+    var lastMessageAt: String?
+    var coronation: Bool?
+
+    var body: some View {
+        VStack(spacing: 6) {
+            RegentMark(working: working, waiting: waiting > 0, size: 40, lastMessageAt: lastMessageAt, coronation: coronation)
+                .overlay(alignment: .topTrailing) {
+                    if unread > 0 {
+                        Text("(unread)").font(.caption2.bold()).foregroundStyle(Color.suzentBackground)
+                            .padding(.horizontal, 5).padding(.vertical, 1).background(Color.suzentText).offset(x: 14)
+                            .accessibilityLabel(Text("(unread) unread messages"))
+                    }
+                }
+            Text("Regent").suzentFont(17, weight: .bold)
+            Text(working ? String(localized: "Regent is working") : waiting > 0 ? String(localized: "Needs your attention") : String(localized: "Across all your projects"))
+                .suzentFont(PresentationTokens.typeLabel).multilineTextAlignment(.center)
+                .foregroundStyle(waiting > 0 && !working ? Color.orange : Color.suzentMuted)
+        }.foregroundStyle(Color.suzentText)
+    }
+}
+
 struct RegentGreeting: View {
     var body: some View {
         VStack(spacing: 16) {
             RegentMark(size: 64)
-            Text("SUZENT Regent").font(.title2.bold())
+            Text("Regent").font(.title2.bold())
             Text("One conversation for all your projects. Ask what needs you, or hand me your next task.")
                 .foregroundStyle(Color.suzentMuted).multilineTextAlignment(.center)
         }.frame(maxWidth: .infinity).padding(.vertical, 36)

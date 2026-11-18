@@ -87,7 +87,9 @@ struct ActivityTurn: View {
         let placement = botPlacement(parts, live: live, latest: !compact, regent: regent)
         let showDisclosure = !live && !work.isEmpty
         VStack(alignment: .leading, spacing: 10) {
-            if placement == .assembly { AssemblyBadge(thinking: true) }
+            if placement == .assembly {
+                AssemblyBadge(thinking: true).transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .topLeading)))
+            }
             if showDisclosure {
                 Button {
                     withAnimation(reduceMotion ? nil : activityDisclosureAnimation) { expanded.toggle() }
@@ -112,10 +114,14 @@ struct ActivityTurn: View {
                                     bubbleMenu: bubbleMenu)
                 }
             }
-            if live && placement == .footer { SuzentBotBadge(parts: parts, streaming: true, toolOverride: "write_file") }
+            if live && placement == .footer {
+                SuzentBotBadge(parts: parts, streaming: true, toolOverride: "write_file", size: 40).frame(minHeight: 40)
+                    .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .topLeading)))
+            }
             let sent = sentMediaItems(parts)
             if !sent.isEmpty { SentFilesSection(items: sent) }
         }.frame(maxWidth: .infinity, alignment: .leading)
+            .animation(reduceMotion ? nil : .easeInOut(duration: 0.3), value: placement)
             .onChange(of: live) { old, new in if old && !new { expanded = false } }
     }
 }
@@ -254,7 +260,12 @@ struct ToolActivityBlock: View {
                         Image(systemName: "chevron.right").font(.system(size: 9)).rotationEffect(.degrees(expanded ? 90 : 0)).foregroundStyle(Color.suzentMuted)
                     }.padding(.horizontal, 8).frame(minHeight: 46).contentShape(Rectangle())
                         .background { RunningSurface(kind: surface) }
-                        .overlay { if surface != nil { Rectangle().strokeBorder(Color.suzentText, lineWidth: 2) } }
+                        .overlay {
+                            if surface != nil {
+                                RoundedRectangle(cornerRadius: PresentationTokens.radiusControl, style: .continuous)
+                                    .strokeBorder(Color.suzentText, lineWidth: 2)
+                            }
+                        }
                 }.buttonStyle(.plain).accessibilityValue(Text(status))
                 if !expanded && failed {
                     Text(String(activityDetail(part.output, output: true).prefix(180))).suzentFont(PresentationTokens.typeMeta, design: .monospaced)

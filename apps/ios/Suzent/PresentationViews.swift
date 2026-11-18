@@ -5,8 +5,9 @@ import SafariServices
 import ImageIO
 
 extension Color {
-    static let suzentBackground = Color(uiColor: .suzentAdaptive(light: PresentationTokens.white, dark: PresentationTokens.background_dark))
-    static let suzentSurface = Color(uiColor: .suzentAdaptive(light: PresentationTokens.white, dark: PresentationTokens.surface_dark))
+    static let suzentBackground = Color(uiColor: .suzentAdaptive(light: PresentationTokens.canvas_light, dark: PresentationTokens.canvas_dark))
+    static let suzentSurface = Color(uiColor: .suzentAdaptive(light: PresentationTokens.card_light, dark: PresentationTokens.card_dark))
+    static let suzentLine = Color(uiColor: .suzentAdaptive(light: PresentationTokens.line_light, dark: PresentationTokens.line_dark))
     static let suzentText = Color(uiColor: .suzentAdaptive(light: PresentationTokens.black, dark: PresentationTokens.text_dark))
     static let suzentMuted = Color(uiColor: .suzentAdaptive(light: PresentationTokens.muted_light, dark: PresentationTokens.muted_dark))
     static let suzentOutline = Color(uiColor: .suzentAdaptive(light: PresentationTokens.black, dark: PresentationTokens.outline_dark))
@@ -14,7 +15,7 @@ extension Color {
     static let userMessageText = Color(uiColor: .suzentAdaptive(light: 0x000000, dark: 0xE4E4E7))
     static let regentUserBackground = Color(uiColor: .suzentAdaptive(light: 0xF5F5F5, dark: 0x27272A))
     static let suzentSelection = Color(uiColor: .suzentAdaptive(light: PresentationTokens.selection_light, dark: PresentationTokens.selection_dark))
-    static let suzentRowDivider = Color(uiColor: .suzentAdaptive(light: PresentationTokens.selection_light, dark: PresentationTokens.selection_dark))
+    static let suzentRowDivider = Color(uiColor: .suzentAdaptive(light: PresentationTokens.line_light, dark: PresentationTokens.line_dark))
     static let suzentLink = Color(uiColor: .suzentAdaptive(light: PresentationTokens.blue, dark: PresentationTokens.link_dark))
     static let suzentCodeBackground = Color(uiColor: .suzentAdaptive(light: PresentationTokens.code_bg, dark: PresentationTokens.surface_dark))
     static let suzentCodeText = Color(uiColor: .suzentAdaptive(light: PresentationTokens.code_text, dark: PresentationTokens.text_dark))
@@ -112,9 +113,30 @@ private struct RegentMessageBubble: ViewModifier {
     func body(content: Content) -> some View {
         if enabled {
             content
-                .background(Color.regentUserBackground, in: RoundedRectangle(cornerRadius: 10))
-                .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(
-                    colorScheme == .dark ? Color.white.opacity(0.14) : Color.black.opacity(0.18), lineWidth: 1))
+                .background(Color.suzentSurface, in: RoundedRectangle(cornerRadius: PresentationTokens.radiusBubble, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: PresentationTokens.radiusBubble, style: .continuous).strokeBorder(
+                    colorScheme == .dark ? Color.white.opacity(0.14) : Color.suzentLine, lineWidth: 1))
+        } else { content }
+    }
+}
+
+private struct UserMessageBubble: ViewModifier {
+    var enabled = true
+    @Environment(\.colorScheme) private var colorScheme
+
+    func body(content: Content) -> some View {
+        if enabled {
+            content
+                .background(Color.suzentYellow, in: RoundedRectangle(cornerRadius: PresentationTokens.radiusBubble, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: PresentationTokens.radiusBubble, style: .continuous)
+                    .strokeBorder(colorScheme == .dark ? Color.black.opacity(0.35) : Color.black, lineWidth: PresentationTokens.borderWidth))
+                .background {
+                    RoundedRectangle(cornerRadius: PresentationTokens.radiusBubble, style: .continuous)
+                        .fill(Color.suzentShadow)
+                        .offset(x: PresentationTokens.shadowOffset, y: PresentationTokens.shadowOffset)
+                }
+                .padding(.trailing, PresentationTokens.shadowOffset)
+                .padding(.bottom, PresentationTokens.shadowOffset)
         } else { content }
     }
 }
@@ -166,18 +188,11 @@ struct MessageView: View {
                     if !message.text.isEmpty {
                         Text(message.text).suzentFont(PresentationTokens.typeChat)
                             .padding(.horizontal, 16).padding(.vertical, 10)
-                            .foregroundStyle(Color.userMessageText)
+                            .foregroundStyle(regent ? Color.userMessageText : Color.black)
                             .modifier(RegentMessageBubble(enabled: regent))
-                            .background(regent ? Color.clear : Color.regentUserBackground)
-                            .overlay {
-                                if !regent { Rectangle().strokeBorder(colorScheme == .dark ? Color.white.opacity(0.10) : Color.black, lineWidth: 2) }
-                            }
-                            .background {
-                                if !regent { Rectangle().fill(Color.black.opacity(colorScheme == .dark ? 0.30 : 1)).offset(x: 3, y: 3) }
-                            }
-                            .contentShape(.contextMenuPreview, RoundedRectangle(cornerRadius: regent ? 10 : 0))
+                            .modifier(UserMessageBubble(enabled: !regent))
+                            .contentShape(.contextMenuPreview, RoundedRectangle(cornerRadius: PresentationTokens.radiusBubble, style: .continuous))
                             .contextMenu { menuItems }
-                            .padding(.trailing, regent ? 0 : 3).padding(.bottom, regent ? 0 : 3)
                     }
                 }
                 .frame(maxWidth: 320, alignment: .trailing)
@@ -278,9 +293,13 @@ struct MessageView: View {
     }
 
     private var footer: some View {
+        HStack(alignment: .center, spacing: 12) {
+            if !user && botPlacement(message.parts, live: false, latest: isLatest, regent: regent) == .footer {
+                SuzentBotBadge(parts: message.parts, streaming: false, size: 40).frame(width: 48, height: 48, alignment: .leading)
+            }
+        VStack(alignment: .trailing, spacing: 2) {
         HStack(spacing: 5) {
-            if user { Spacer(minLength: 0) }
-            if !user && botPlacement(message.parts, live: false, latest: isLatest, regent: regent) == .footer { SuzentBotBadge(parts: message.parts, streaming: false) }
+            Spacer(minLength: 0)
             if isLatest {
                 if !message.text.isEmpty {
                     Button { copy() } label: { footerIcon(copied ? "checkmark" : "doc.on.doc") }
@@ -304,13 +323,15 @@ struct MessageView: View {
                         .suzentFont(PresentationTokens.typeMeta).lineLimit(1).fixedSize().frame(minHeight: 36)
                 }.accessibilityLabel(Text("Sources")).accessibilityValue(Text("\(message.citationSources.count)"))
             }
+        }
+        HStack(spacing: 6) {
+            Spacer(minLength: 0)
             if isLatest, !user, let model = message.model ?? fallbackModel, !model.isEmpty {
                 Button { modelDetails = model } label: {
                     HStack(spacing: 4) {
                         Image(systemName: "cpu").font(.system(size: 10))
                         Text(model.split(separator: "/", maxSplits: 1).last.map(String.init) ?? model)
                             .suzentFont(PresentationTokens.typeMeta, weight: .medium).lineLimit(1).truncationMode(.tail)
-                        if message.timestamp != nil { Text("·").suzentFont(PresentationTokens.typeMeta) }
                     }.frame(minHeight: 36).contentShape(Rectangle())
                 }.layoutPriority(-1).accessibilityLabel(model)
                     .accessibilityHint(String(localized: "View full model name"))
@@ -321,7 +342,8 @@ struct MessageView: View {
                 }
                 if user { Text("You") }
             }.suzentFont(PresentationTokens.typeMeta).lineLimit(1).layoutPriority(1)
-            if !user { Spacer(minLength: 0) }
+        }
+        }.frame(maxWidth: .infinity, alignment: .trailing)
         }.buttonStyle(.plain).foregroundStyle(Color.suzentMuted)
             .frame(maxWidth: .infinity, minHeight: isLatest ? 36 : 20, alignment: user ? .trailing : .leading)
     }
@@ -453,9 +475,14 @@ struct ChatRowButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .foregroundStyle(configuration.isPressed ? (destructive ? Color.white : Color.black) : (destructive ? Color.suzentDanger : Color.primary))
-            .background(configuration.isPressed ? (destructive ? Color.suzentDanger : Color.suzentYellow) : selected ? Color.suzentSelection : .clear)
+            .background {
+                RoundedRectangle(cornerRadius: PresentationTokens.radiusControl, style: .continuous)
+                    .fill(configuration.isPressed ? (destructive ? Color.suzentDanger : Color.suzentYellow) : selected ? Color.suzentSelection : Color.clear)
+                    .padding(.horizontal, 8).padding(.vertical, 2)
+            }
+            .background(Color.suzentBackground)
             .overlay(alignment: .bottom) {
-                if divider { Rectangle().fill(Color.suzentRowDivider).frame(height: 1) }
+                if divider { Rectangle().fill(Color.suzentLine).frame(height: 1) }
             }
             .opacity(enabled ? 1 : PresentationTokens.disabledAlpha)
     }
@@ -476,9 +503,10 @@ struct SuzentButtonStyle: ButtonStyle {
             .padding(.vertical, PresentationTokens.spaceSmall)
             .frame(maxWidth: compact ? nil : .infinity, minHeight: PresentationTokens.controlHeight)
             .foregroundStyle(destructive ? Color.suzentDanger : prominent ? .white : Color.suzentText)
-            .background(prominent ? Color(presentation: PresentationTokens.blue)
-                : Color.suzentSurface)
-            .overlay(Rectangle().strokeBorder(quiet ? .clear : outline, lineWidth: PresentationTokens.borderWidth))
+            .background(prominent ? Color(presentation: PresentationTokens.blue) : Color.suzentSurface,
+                        in: RoundedRectangle(cornerRadius: PresentationTokens.radiusControl, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: PresentationTokens.radiusControl, style: .continuous)
+                .strokeBorder(quiet ? .clear : outline, lineWidth: PresentationTokens.borderWidth))
             .compositingGroup()
             .shadow(color: quiet ? .clear : Color.suzentShadow, radius: 0, x: configuration.isPressed ? 0 : PresentationTokens.shadowOffset,
                     y: configuration.isPressed ? 0 : PresentationTokens.shadowOffset)
@@ -497,7 +525,7 @@ struct SuzentIconButtonStyle: ButtonStyle {
         configuration.label
             .foregroundStyle(Color.suzentText)
             .frame(width: PresentationTokens.controlHeight, height: PresentationTokens.controlHeight)
-            .background(configuration.isPressed ? Color.suzentText.opacity(PresentationTokens.pressedAlpha) : Color.clear)
+            .background(configuration.isPressed ? Color.suzentText.opacity(PresentationTokens.pressedAlpha) : Color.clear, in: Rectangle())
             .opacity(enabled ? 1 : PresentationTokens.disabledAlpha)
     }
 }
@@ -511,7 +539,8 @@ struct SuzentRowButtonStyle: ButtonStyle {
             .padding(.horizontal, 8)
             .padding(.vertical, 6)
             .frame(maxWidth: .infinity, minHeight: 40, alignment: .leading)
-            .background(configuration.isPressed ? Color.suzentText.opacity(PresentationTokens.pressedAlpha) : Color.clear)
+            .background(configuration.isPressed ? Color.suzentText.opacity(PresentationTokens.pressedAlpha) : Color.clear,
+                        in: RoundedRectangle(cornerRadius: PresentationTokens.radiusControl, style: .continuous))
             .opacity(enabled ? 1 : PresentationTokens.disabledAlpha)
     }
 }
@@ -528,7 +557,9 @@ struct SuzentTextInput: View {
             .textInputAutocapitalization(.never).autocorrectionDisabled()
             .focused($focused).padding(PresentationTokens.spaceMedium)
             .frame(minHeight: PresentationTokens.controlHeight)
-            .overlay(Rectangle().stroke(focused ? Color.suzentLink : Color.suzentOutline, lineWidth: PresentationTokens.borderWidth))
+            .background(Color.suzentSurface, in: RoundedRectangle(cornerRadius: PresentationTokens.radiusControl, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: PresentationTokens.radiusControl, style: .continuous)
+                .stroke(focused ? Color.suzentLink : Color.suzentOutline, lineWidth: PresentationTokens.borderWidth))
     }
 }
 
@@ -543,10 +574,27 @@ struct SuzentErrorToast: View {
             Button("Dismiss", action: dismiss).suzentFont(PresentationTokens.typeCaption, weight: .semibold)
                 .frame(minWidth: 44, minHeight: PresentationTokens.controlHeight).contentShape(Rectangle()).buttonStyle(.plain)
         }.padding(.leading, 12).padding(.trailing, 8).padding(.vertical, 2)
-            .foregroundStyle(Color.suzentText).background(Color.suzentErrorSurface)
-            .overlay(Rectangle().strokeBorder(Color.suzentOutline, lineWidth: PresentationTokens.borderWidth))
+            .foregroundStyle(Color.suzentText)
+            .background(Color.suzentErrorSurface, in: RoundedRectangle(cornerRadius: PresentationTokens.radiusCard, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: PresentationTokens.radiusCard, style: .continuous)
+                .strokeBorder(Color.suzentOutline, lineWidth: PresentationTokens.borderWidth))
             .padding(.horizontal, 12).padding(.bottom, 8)
             .accessibilityElement(children: .contain)
+    }
+}
+
+struct SuzentEmptyState: View {
+    var systemImage: String
+    var message: LocalizedStringKey
+
+    var body: some View {
+        VStack(spacing: 12) {
+            Image(systemName: systemImage).font(.system(size: 32, weight: .medium)).foregroundStyle(Color.suzentMuted)
+            Text(message).suzentFont(PresentationTokens.typeCaption).foregroundStyle(Color.suzentMuted)
+                .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity).padding(.horizontal, 32).padding(.vertical, 36)
+        .accessibilityElement(children: .combine)
     }
 }
 
@@ -1029,7 +1077,9 @@ private struct ApprovalCard: View {
                 } else { Text("Approve on desktop, or pair again with tool approval access.").font(.footnote) }
             }.padding(12)
         }.background(Color.suzentSurface)
-            .overlay(Rectangle().stroke(Color.suzentOutline, lineWidth: PresentationTokens.borderWidth))
+            .clipShape(RoundedRectangle(cornerRadius: PresentationTokens.radiusCard, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: PresentationTokens.radiusCard, style: .continuous)
+                .stroke(Color.suzentOutline, lineWidth: PresentationTokens.borderWidth))
             .suzentFeedback(trigger: choices) { _, _ in allowed ? .success : .warning }
     }
 
@@ -1217,7 +1267,7 @@ struct SuzentSelectionPanel: View {
             .onAppear { titleFocused = true }
             .presentationDetents([.medium, .large])
             .presentationDragIndicator(.visible)
-            .presentationCornerRadius(PresentationTokens.radius)
+            .presentationCornerRadius(PresentationTokens.radiusSheet)
             .presentationBackground(Color.suzentSurface)
     }
 }
@@ -1479,6 +1529,7 @@ private final class ChatScrollTracking {
     var following = true
     var dragging = false
     var contentFrame = CGRect.zero
+    var axis = SwipeAxisLock()
 }
 
 private extension View {
@@ -1520,14 +1571,22 @@ struct FollowingChatScrollView<Content: View>: View {
                 .scrollDismissesKeyboard(.interactively)
                 .chatScrollAnchor(startsAtBottom: startsAtBottom)
                 .simultaneousGesture(TapGesture().onEnded(dismissKeyboard))
-                .simultaneousGesture(DragGesture(minimumDistance: 4)
-                    .onChanged { _ in
-                        tracking.dragging = true
-                        tracking.following = false
+                .simultaneousGesture(DragGesture(minimumDistance: SwipeAxisLock.minTravel)
+                    .onChanged { value in
+                        // A horizontal-dominant drag is a back swipe or row action, not the reader leaving the tail.
+                        let axis = tracking.axis.update(dx: value.translation.width, dy: value.translation.height)
+                        if axis == .vertical {
+                            tracking.dragging = true
+                            tracking.following = false
+                        }
                     }
                     .onEnded { _ in
+                        let vertical = tracking.axis.axis == .vertical
+                        tracking.axis.reset()
                         tracking.dragging = false
-                        tracking.following = tracking.contentFrame.maxY <= viewport.size.height + 2
+                        if vertical {
+                            tracking.following = tracking.contentFrame.maxY <= viewport.size.height + 2
+                        }
                     })
                 .onPreferenceChange(ChatContentFrameKey.self) { frame in
                     let heightChanged = abs(frame.height - tracking.contentFrame.height) > 0.5

@@ -106,7 +106,7 @@ struct PreferencesSection: View {
             Picker("Text size", selection: $textSize) {
                 ForEach(TextSizePreference.allCases) { Text($0.title).tag($0) }
             }
-            Toggle("Haptics", isOn: $haptics).tint(Color(presentation: PresentationTokens.blue))
+            Toggle("Haptics", isOn: $haptics).tint(Color.suzentYellow)
             Button {
                 if let url = URL(string: UIApplication.openSettingsURLString) { openURL(url) }
             } label: {

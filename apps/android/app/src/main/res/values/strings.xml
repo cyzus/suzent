@@ -206,7 +206,7 @@
     <string name="pairing_finishing">Finishing connection…</string>
     <string name="pairing_network_help">Keep Suzent open on your desktop and check Wi-Fi or Tailscale.</string>
     <string name="back_to_chats">Back to chats</string>
-    <string name="regent_name">SUZENT Regent</string>
+    <string name="regent_name">Regent</string>
     <string name="regent_working">Regent is working</string>
     <string name="regent_waiting">Needs your attention</string>
     <string name="regent_scope">Across all your projects</string>
@@ -222,6 +222,8 @@
     <string name="activity_copy_details">Copy details</string>
     <string name="activity_full_details">Show full details</string>
     <string name="recent_chats">Recent</string>
+    <string name="home_list_view">Show conversations</string>
+    <string name="home_list_by_project">By project</string>
     <string name="recent_view_all">View all</string>
     <string name="search_hint">Search the titles of every chat this phone can read.</string>
     <string name="clear_search">Clear search</string>
@@ -396,4 +398,5 @@
     <string name="add_model_favorite">Add favorite</string>
     <string name="remove_model_favorite">Remove favorite</string>
     <string name="model_catalog_error">Could not update models. Try again.</string>
+    <string name="robot_play">Play with Suzent</string>
 </resources>

@@ -1,0 +1,5 @@
+{
+  "products": {"desktop": "none", "mobile": "patch"},
+  "summary": "Mobile chat, lists, and the composer use a shared native visual system, and vertical scrolling no longer opens horizontal swipes.",
+  "reason": "New presentation tokens are mobile-only colors and radii. Desktop still reads the same yellow, file covers, borders, and shadow offsets."
+}

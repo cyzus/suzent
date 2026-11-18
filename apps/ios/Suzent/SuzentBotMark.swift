@@ -10,12 +10,14 @@ private struct BotInput: Equatable {
     let reduced: Bool
     let dark: Bool
     let visible: Bool
+    let clicks: Int
 }
 
 struct SuzentBotBadge: View {
     let parts: [MessagePart]
     let streaming: Bool
     var toolOverride: String?
+    var size: CGFloat = 32
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.scenePhase) private var scenePhase
@@ -25,19 +27,21 @@ struct SuzentBotBadge: View {
     @State private var seenErrors: Int?
     @State private var flash = 0
     @State private var startled = false
+    @State private var clicks = 0
+    @State private var handledClicks = 0
 
     private var errors: Int { parts.filter { $0.type == "tool" && toolCallFailed($0) }.count }
     private var input: BotInput {
         let tool = toolOverride ?? robotCurrentTool(parts, streaming: streaming)
         let pending = parts.contains { $0.type == "tool" && $0.state == "approval-requested" && ($0.output ?? "").isEmpty }
         return BotInput(pending: pending, startled: startled, thinking: streaming && tool == nil, tool: tool,
-                        active: streaming || pending, reduced: reduceMotion, dark: colorScheme == .dark, visible: scenePhase == .active)
+                        active: streaming || pending, reduced: reduceMotion, dark: colorScheme == .dark, visible: scenePhase == .active, clicks: clicks)
     }
     var body: some View {
         Canvas { context, size in
             if let frame { drawSuzentBot(frame, in: &context, size: size) }
         }
-        .frame(width: 32, height: 32)
+        .frame(width: size, height: size)
         .task(id: input) {
             let config = input
             guard config.visible else { return }
@@ -48,14 +52,17 @@ struct SuzentBotBadge: View {
                 guard !Task.isCancelled else { await renderer.closeBot(id); return }
                 bot = id
             }
+            var trick: Int? = config.clicks > handledClicks ? config.clicks - 1 : nil
+            handledClicks = config.clicks
             var previous = ContinuousClock.now
             while !Task.isCancelled {
                 let now = ContinuousClock.now
                 time += min(durationSeconds(previous.duration(to: now)), 0.05) * 1000
                 previous = now
                 let next = await renderer.frame(bot: id, pending: config.pending, error: config.startled, thinking: config.thinking,
-                    tool: config.tool, active: config.active, time: time, reduced: config.reduced, dark: config.dark)
+                    tool: config.tool, active: config.active, time: time, reduced: config.reduced, dark: config.dark, interactiveTrick: trick)
                 guard !Task.isCancelled else { return }
+                trick = nil
                 frame = next
                 if next.settled || config.reduced { return }
                 do { try await Task.sleep(for: .seconds(max(0.001, 1.0 / 30 - durationSeconds(now.duration(to: .now))))) }
@@ -77,7 +84,11 @@ struct SuzentBotBadge: View {
             guard !Task.isCancelled else { return }
             startled = false
         }
-        .accessibilityHidden(true)
+        .contentShape(Rectangle())
+        .onTapGesture { clicks += 1 }
+        .accessibilityLabel(Text("Play with Suzent"))
+        .accessibilityAddTraits(.isButton)
+        .accessibilityAction { clicks += 1 }
     }
 }
 
