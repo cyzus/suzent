@@ -444,9 +444,10 @@ fun MessageView(message: DisplayMessage, regent: Boolean = false, isLatest: Bool
             .border(PresentationTokens.borderWidth.dp, if (dark) Color.Black.copy(alpha = .35f) else Color.Black, bubbleShape)
         Column(Modifier.widthIn(max = 320.dp), horizontalAlignment = androidx.compose.ui.Alignment.End,
             verticalArrangement = Arrangement.spacedBy(PresentationTokens.spaceSmall.dp)) {
-            message.files.forEach { file ->
-                if (file.media != null && LocalMediaLoader.current != null) MediaGallery(listOf(file.media))
-                else AttachmentChip(file.filename, file.mimeType, color = foreground)
+            val media = message.files.mapNotNull { it.media }
+            if (media.isNotEmpty() && LocalMediaLoader.current != null) MediaGallery(media)
+            message.files.filter { it.media == null || LocalMediaLoader.current == null }.forEach { file ->
+                AttachmentChip(file.filename, file.mimeType, color = foreground)
             }
             if (message.text.isNotEmpty()) {
                 // Text keeps selection; the surrounding padding opens message actions.

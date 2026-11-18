@@ -1,5 +1,6 @@
 import SuzentCore
 import SwiftUI
+import UIKit
 
 private struct BotInput: Equatable {
     let pending: Bool
@@ -54,8 +55,12 @@ struct SuzentBotBadge: View {
             }
             var trick: Int? = config.clicks > handledClicks ? config.clicks - 1 : nil
             handledClicks = config.clicks
+            let clock = BotDisplayClock()
+            defer { clock.stop() }
+            var pacing = BotFramePacing()
             var previous = ContinuousClock.now
-            while !Task.isCancelled {
+            for await _ in clock.frames {
+                guard !Task.isCancelled else { return }
                 let now = ContinuousClock.now
                 time += min(durationSeconds(previous.duration(to: now)), 0.05) * 1000
                 previous = now
@@ -65,8 +70,8 @@ struct SuzentBotBadge: View {
                 trick = nil
                 frame = next
                 if next.settled || config.reduced { return }
-                do { try await Task.sleep(for: .seconds(max(0.001, 1.0 / 30 - durationSeconds(now.duration(to: .now))))) }
-                catch { return }
+                pacing.record(workSeconds: durationSeconds(now.duration(to: .now)), displayRate: clock.maximumFPS)
+                clock.setRate(pacing.framesPerSecond(displayRate: clock.maximumFPS))
             }
         }
         .onDisappear {
@@ -89,6 +94,45 @@ struct SuzentBotBadge: View {
         .accessibilityLabel(Text("Play with Suzent"))
         .accessibilityAddTraits(.isButton)
         .accessibilityAction { clicks += 1 }
+    }
+}
+
+@MainActor
+private final class BotDisplayClock: NSObject {
+    let frames: AsyncStream<CFTimeInterval>
+    let maximumFPS: Double
+    private let continuation: AsyncStream<CFTimeInterval>.Continuation
+    private var link: CADisplayLink?
+    private var requestedFPS = 0.0
+
+    override init() {
+        let stream = AsyncStream<CFTimeInterval>.makeStream(bufferingPolicy: .bufferingNewest(1))
+        frames = stream.stream
+        continuation = stream.continuation
+        let scene = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+            .first { $0.activationState == .foregroundActive }
+        maximumFPS = Double(min(scene?.screen.maximumFramesPerSecond ?? 60, 120))
+        super.init()
+        let displayLink = CADisplayLink(target: self, selector: #selector(tick(_:)))
+        link = displayLink
+        setRate(maximumFPS)
+        displayLink.add(to: .main, forMode: .common)
+    }
+
+    func setRate(_ fps: Double) {
+        guard fps != requestedFPS else { return }
+        requestedFPS = fps
+        link?.preferredFrameRateRange = CAFrameRateRange(minimum: Float(min(fps, 30)), maximum: Float(fps), preferred: Float(fps))
+    }
+
+    func stop() {
+        link?.invalidate()
+        link = nil
+        continuation.finish()
+    }
+
+    @objc private func tick(_ displayLink: CADisplayLink) {
+        continuation.yield(displayLink.timestamp)
     }
 }
 
@@ -125,7 +169,7 @@ struct SharedToolGlyph: View {
                 guard !Task.isCancelled else { return }
                 frame = next
                 if reduced { return }
-                do { try await Task.sleep(for: .seconds(max(0.001, 1.0 / 30 - durationSeconds(now.duration(to: .now))))) }
+                do { try await Task.sleep(for: .seconds(max(0.001, 1.0 / 60 - durationSeconds(now.duration(to: .now))))) }
                 catch { return }
             }
         }.onDisappear {

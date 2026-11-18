@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.media.MediaMetadataRetriever
 import android.media.MediaPlayer
 import android.os.Build
 import android.os.Environment
@@ -14,6 +15,8 @@ import android.webkit.MimeTypeMap
 import android.widget.MediaController
 import android.widget.VideoView
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -32,7 +35,13 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -74,6 +83,8 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.core.content.FileProvider
 import java.io.File
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -92,9 +103,72 @@ private sealed interface MediaState {
 fun MediaGallery(items: List<MediaItem>) {
     val loader = LocalMediaLoader.current ?: return
     if (items.isEmpty()) return
+    val unique = items.distinctBy { it.id }
+    val visual = unique.filter { it.kind == "image" || it.kind == "video" }
+    var viewing by remember { mutableStateOf<Int?>(null) }
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        items.distinctBy { it.id }.forEach { item ->
-            key(item.id) { if (item.kind == "file") FileRow(item, loader) else MediaTile(item, loader) }
+        visual.forEachIndexed { index, item ->
+            key(item.id) {
+                VisualMediaCard(item, loader, Modifier.fillMaxWidth().height(200.dp)) { viewing = index }
+            }
+        }
+        unique.filter { it.kind != "image" && it.kind != "video" }.forEach { item ->
+            key(item.id) { if (item.kind == "file") FileRow(item, loader) else PlayableMediaTile(item, loader) }
+        }
+    }
+    viewing?.let { index -> MediaGalleryViewer(visual, index, loader) { viewing = null } }
+}
+
+@Composable
+private fun VisualMediaCard(item: MediaItem, loader: suspend (MediaItem) -> File?, modifier: Modifier, viewer: Boolean = false, open: () -> Unit) {
+    val preview by produceState<Bitmap?>(null, item.id) {
+        value = if (item.kind == "video") videoPreview(item, loader)
+            else loader(item)?.let { file -> withContext(Dispatchers.IO) { decodeImage(file, 480) } }
+    }
+    val openLabel = stringResource(R.string.media_open, item.name)
+    Box(modifier.background(if (viewer) Color.Black else MaterialTheme.colorScheme.surface)
+        .then(if (viewer) Modifier else Modifier.border(1.dp, suzentLine).clickable(onClickLabel = openLabel, onClick = open))
+        .semantics { contentDescription = item.name }, contentAlignment = Alignment.Center) {
+        preview?.let { Image(it.asImageBitmap(), null, Modifier.fillMaxSize(), contentScale = if (viewer) ContentScale.Fit else ContentScale.Crop) }
+        if (item.kind == "video" && !viewer) Box(Modifier.size(40.dp).background(Color.Black.copy(alpha = .65f), androidx.compose.foundation.shape.CircleShape),
+            contentAlignment = Alignment.Center) {
+            Icon(painterResource(R.drawable.ic_media_play), null, Modifier.size(20.dp), tint = Color.White)
+        } else if (preview == null) Icon(painterResource(R.drawable.ic_tool_folder_open), null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+@Composable
+private fun MediaGalleryViewer(items: List<MediaItem>, initial: Int, loader: suspend (MediaItem) -> File?, close: () -> Unit) {
+    if (items.isEmpty()) return
+    val pager = rememberPagerState(initialPage = initial.coerceIn(items.indices), pageCount = { items.size })
+    Dialog(onDismissRequest = close, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
+        val window = (androidx.compose.ui.platform.LocalView.current.parent as? androidx.compose.ui.window.DialogWindowProvider)?.window
+        androidx.compose.runtime.SideEffect { window?.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(android.graphics.Color.BLACK)) }
+        HorizontalPager(pager, Modifier.fillMaxSize().background(Color.Black), beyondViewportPageCount = 1, overscrollEffect = null) { page ->
+            val item = items[page]
+            key(item.id) {
+                val state by produceState<MediaState>(MediaState.Loading, item.id) {
+                    value = loader(item)?.let { MediaState.Ready(it) } ?: MediaState.Failed
+                }
+                Column(Modifier.fillMaxSize().background(Color.Black).safeDrawingPadding()) {
+                    val ready = (state as? MediaState.Ready)?.file
+                    if (item.kind == "image" && ready != null) {
+                        ImageViewerContent(ready, item.name, "${page + 1} / ${items.size}", close)
+                    } else {
+                        Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text("${page + 1} / ${items.size}", Modifier.weight(1f).padding(start = 12.dp), color = Color.White)
+                            SuzentIconButton(close, stringResource(R.string.media_close)) {
+                                Icon(painterResource(R.drawable.ic_close), null, Modifier.size(20.dp), tint = Color.White)
+                            }
+                        }
+                        Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
+                            if (ready != null && page == pager.settledPage) VideoPlayer(ready, item.name, Modifier.fillMaxSize())
+                            else if (ready != null) VisualMediaCard(item, loader, Modifier.fillMaxSize(), viewer = true) {}
+                            else MediaNote(stringResource(if (state == MediaState.Failed) R.string.media_unavailable else R.string.media_loading, item.name), Modifier)
+                        }
+                    }
+                }
+            }
         }
     }
 }
@@ -105,9 +179,12 @@ fun SentFilesSection(items: List<MediaItem>) {
     if (LocalMediaLoader.current == null) return
     val count = items.distinctBy { it.id }.size
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        Icon(painterResource(R.drawable.ic_tool_arrow_down_on_square), null, Modifier.size(14.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
         Text(stringResource(R.string.sent_files_heading, count).uppercase(), Modifier.semantics { heading() },
             fontSize = PresentationTokens.typeMeta.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold,
             color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
         MediaGallery(items)
     }
 }
@@ -170,52 +247,79 @@ private fun shareFile(context: Context, file: File) {
     try { context.startActivity(Intent.createChooser(send, file.name)) } catch (_: android.content.ActivityNotFoundException) {}
 }
 
-@Composable
-private fun MediaTile(item: MediaItem, loader: suspend (MediaItem) -> File?) {
-    val state by produceState<MediaState>(MediaState.Loading, item.id) {
-        val file = loader(item)
-        value = when {
-            file == null -> MediaState.Failed
-            item.kind == "image" -> withContext(Dispatchers.IO) { decodeImage(file) }?.let { MediaState.Ready(file, it) } ?: MediaState.Failed
-            else -> MediaState.Ready(file)
-        }
-    }
-    val outline = MaterialTheme.colorScheme.outline
-    val frame = Modifier.fillMaxWidth().border(1.dp, outline)
-    when (val current = state) {
-        MediaState.Loading -> MediaNote(stringResource(R.string.media_loading, item.name), frame)
-        MediaState.Failed -> MediaNote(stringResource(R.string.media_unavailable, item.name), frame)
-        is MediaState.Ready -> when (item.kind) {
-            "image" -> ImageTile(current.file, current.image!!, item.name, frame)
-            "video" -> VideoPlayer(current.file, item.name, frame)
-            else -> AudioPlayer(current.file, item.name, frame)
-        }
-    }
-}
+private val videoPreviewSlots = Semaphore(2)
 
-/** An inline image: tap opens it full screen, long press offers saving and sharing. */
-@Composable
-private fun ImageTile(file: File, image: Bitmap, name: String, modifier: Modifier) {
-    var viewing by remember(file) { mutableStateOf(false) }
-    var actions by remember(file) { mutableStateOf(false) }
-    var menuAnchor by remember(file) { mutableStateOf<Offset?>(null) }
-    var pressAt by remember(file) { mutableLongStateOf(0L) }
-    Box {
-        Image(image.asImageBitmap(), contentDescription = name, contentScale = ContentScale.Fit,
-            modifier = modifier.heightIn(max = 360.dp).recordPressInWindow {
-                menuAnchor = it
-                pressAt = android.os.SystemClock.uptimeMillis()
-            }.combinedClickable(
-                onClickLabel = stringResource(R.string.media_open, name),
-                onLongClickLabel = stringResource(R.string.media_actions),
-                onClick = { viewing = true }, onLongClick = {
-                    // Accessibility actions have no current touch to anchor to.
-                    if (android.os.SystemClock.uptimeMillis() - pressAt > 1_500L) menuAnchor = null
-                    actions = true
-                }))
-        ImageActions(file, actions, menuAnchor) { actions = false }
+private suspend fun videoPreview(item: MediaItem, loader: suspend (MediaItem) -> File?): Bitmap? =
+    videoPreviewSlots.withPermit {
+        val file = loader(item) ?: return@withPermit null
+        withContext(Dispatchers.IO) {
+            val cached = File(file.parentFile, ".video-preview.jpg")
+            if (cached.isFile) decodeImage(cached, 320)?.let { return@withContext it }
+            val retriever = MediaMetadataRetriever()
+            try {
+                retriever.setDataSource(file.path)
+                val frame = if (Build.VERSION.SDK_INT >= 27) {
+                    retriever.getScaledFrameAtTime(0, MediaMetadataRetriever.OPTION_CLOSEST_SYNC, 320, 320)
+                } else retriever.getFrameAtTime(0, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+                frame?.let { original ->
+                    val factor = 320f / maxOf(original.width, original.height).coerceAtLeast(320)
+                    val preview = if (factor < 1f) Bitmap.createScaledBitmap(original,
+                        (original.width * factor).toInt().coerceAtLeast(1), (original.height * factor).toInt().coerceAtLeast(1), true)
+                        .also { original.recycle() } else original
+                    runCatching { cached.outputStream().use { preview.compress(Bitmap.CompressFormat.JPEG, 80, it) } }
+                    preview
+                }
+            } catch (_: Exception) { null }
+            finally { runCatching { retriever.release() } }
+        }
     }
-    if (viewing) ImageViewer(file, name) { viewing = false }
+
+@Composable
+private fun PlayableMediaTile(item: MediaItem, loader: suspend (MediaItem) -> File?) {
+    var viewing by remember(item.id) { mutableStateOf(false) }
+    val preview by produceState<Bitmap?>(null, item.id) {
+        if (item.kind == "video") value = videoPreview(item, loader)
+    }
+    Row(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface)
+        .border(1.dp, suzentLine).clickable(onClickLabel = stringResource(R.string.media_open, item.name)) { viewing = true }
+        .padding(10.dp), verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        Box(Modifier.width(96.dp).height(72.dp).background(if (item.kind == "video") Color.Black else MaterialTheme.colorScheme.background),
+            contentAlignment = Alignment.Center) {
+            preview?.let { image ->
+                Image(image.asImageBitmap(), null, Modifier.matchParentSize(), contentScale = ContentScale.Crop)
+            }
+            Box(Modifier.size(32.dp).background(Color.Black.copy(alpha = .65f), androidx.compose.foundation.shape.CircleShape),
+                contentAlignment = Alignment.Center) {
+                Icon(painterResource(R.drawable.ic_media_play), null, Modifier.size(16.dp), tint = Color.White)
+            }
+        }
+        Text(item.name, Modifier.weight(1f), fontWeight = FontWeight.Medium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        Icon(painterResource(R.drawable.ic_chevron_right), null, Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+    if (viewing) Dialog(onDismissRequest = { viewing = false }, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
+        val state by produceState<MediaState>(MediaState.Loading, item.id) {
+            value = loader(item)?.let { MediaState.Ready(it) } ?: MediaState.Failed
+        }
+        val video = item.kind == "video"
+        val foreground = if (video) Color.White else MaterialTheme.colorScheme.onSurface
+        Column(Modifier.fillMaxSize().background(if (video) Color.Black else MaterialTheme.colorScheme.background).safeDrawingPadding()) {
+            Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(item.name, Modifier.weight(1f).padding(start = 12.dp), color = foreground, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                SuzentIconButton(onClick = { viewing = false }, label = stringResource(R.string.media_close)) {
+                    Icon(painterResource(R.drawable.ic_close), null, Modifier.size(20.dp), tint = foreground)
+                }
+            }
+            Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
+                when (val current = state) {
+                    is MediaState.Ready -> if (item.kind == "video") VideoPlayer(current.file, item.name, Modifier.fillMaxSize())
+                        else AudioPlayer(current.file, item.name, Modifier.fillMaxWidth().padding(20.dp))
+                    MediaState.Loading -> MediaNote(stringResource(R.string.media_loading, item.name), Modifier)
+                    MediaState.Failed -> MediaNote(stringResource(R.string.media_unavailable, item.name), Modifier)
+                }
+            }
+        }
+    }
 }
 
 @Composable
@@ -234,9 +338,8 @@ private fun ImageActions(file: File, expanded: Boolean, anchorInWindow: Offset?,
     }
 }
 
-/** Full screen, pinch or double tap to zoom, drag to pan when zoomed. */
 @Composable
-private fun ImageViewer(file: File, name: String, close: () -> Unit) {
+private fun ImageViewerContent(file: File, name: String, title: String, close: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val image by produceState<Bitmap?>(null, file) { value = withContext(Dispatchers.IO) { decodeImage(file, 2560) } }
@@ -244,7 +347,6 @@ private fun ImageViewer(file: File, name: String, close: () -> Unit) {
     var offset by remember(file) { mutableStateOf(Offset.Zero) }
     var actions by remember(file) { mutableStateOf(false) }
     var menuAnchor by remember(file) { mutableStateOf<Offset?>(null) }
-    Dialog(onDismissRequest = close, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Box(Modifier.fillMaxSize().background(Color.Black)) {
             image?.let { bitmap ->
                 Image(bitmap.asImageBitmap(), contentDescription = name, contentScale = ContentScale.Fit,
@@ -286,12 +388,12 @@ private fun ImageViewer(file: File, name: String, close: () -> Unit) {
                         }
                         .graphicsLayer { scaleX = scale; scaleY = scale; translationX = offset.x; translationY = offset.y })
             }
-            Row(Modifier.fillMaxWidth().statusBarsPadding().padding(4.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(Modifier.fillMaxWidth().padding(4.dp), verticalAlignment = Alignment.CenterVertically) {
                 SuzentIconButton(onClick = close, label = stringResource(R.string.media_close)) {
                     Icon(painterResource(R.drawable.ic_close), contentDescription = null, tint = Color.White,
                         modifier = Modifier.size(20.dp))
                 }
-                Text(name, Modifier.weight(1f).padding(horizontal = 8.dp), color = Color.White,
+                Text(title, Modifier.weight(1f).padding(horizontal = 8.dp), color = Color.White,
                     fontSize = PresentationTokens.typeMeta.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 if (canSaveToPhotos()) SuzentIconButton(onClick = {
                     scope.launch { announceSave(context, saveToPhotos(context, file)) }
@@ -306,7 +408,6 @@ private fun ImageViewer(file: File, name: String, close: () -> Unit) {
             }
             ImageActions(file, actions, menuAnchor) { actions = false }
         }
-    }
 }
 
 /** Android 10 and later can add to the gallery without a storage permission; older versions keep Share. */
@@ -344,46 +445,76 @@ private fun MediaNote(text: String, modifier: Modifier) {
 @Composable
 private fun VideoPlayer(file: File, name: String, modifier: Modifier) {
     var view by remember(file) { mutableStateOf<VideoView?>(null) }
-    DisposableEffect(file) { onDispose { view?.stopPlayback() } }
-    Box(modifier.background(Color.Black).heightIn(min = 120.dp, max = 360.dp).semantics { contentDescription = name },
-        contentAlignment = Alignment.Center) {
-        AndroidView(factory = { context ->
-            VideoView(context).apply {
-                val controls = MediaController(context)
-                controls.setAnchorView(this)
-                setMediaController(controls)
-                // Show the first frame instead of a black box until the user presses play.
-                setOnPreparedListener { seekTo(1) }
+    var controls by remember(file) { mutableStateOf<MediaController?>(null) }
+    var prepared by remember(file) { mutableStateOf(false) }
+    var playing by remember(file) { mutableStateOf(false) }
+    var failed by remember(file) { mutableStateOf(false) }
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    DisposableEffect(file, lifecycle) {
+        val observer = LifecycleEventObserver { _, event -> if (event == Lifecycle.Event.ON_PAUSE) view?.pause() }
+        lifecycle.addObserver(observer)
+        onDispose { lifecycle.removeObserver(observer); controls?.hide(); view?.stopPlayback() }
+    }
+    Box(modifier.background(Color.Black).semantics { contentDescription = name }, contentAlignment = Alignment.Center) {
+        AndroidView(modifier = Modifier.fillMaxSize(), factory = { context ->
+            object : VideoView(context) {
+                override fun start() { super.start(); playing = true }
+                override fun pause() { super.pause(); playing = false }
+            }.apply {
+                val controller = MediaController(context)
+                controller.setAnchorView(this)
+                setMediaController(controller)
+                controls = controller
+                setOnPreparedListener { prepared = true; seekTo(1) }
+                setOnCompletionListener { playing = false }
+                setOnErrorListener { _, _, _ -> failed = true; playing = false; true }
                 setVideoPath(file.path)
                 view = this
             }
         })
+        if (failed) MediaNote(stringResource(R.string.media_unavailable, name), Modifier)
+        else if (!prepared) androidx.compose.material3.CircularProgressIndicator(color = Color.White, modifier = Modifier.size(32.dp))
+        else if (!playing) androidx.compose.material3.IconButton(onClick = { view?.start(); controls?.show() },
+            modifier = Modifier.size(64.dp).background(Color.Black.copy(alpha = .65f), androidx.compose.foundation.shape.CircleShape)) {
+            Icon(painterResource(R.drawable.ic_media_play), stringResource(R.string.media_play, name), Modifier.size(32.dp), tint = Color.White)
+        }
     }
 }
 
 @Composable
 private fun AudioPlayer(file: File, name: String, modifier: Modifier) {
     var playing by remember(file) { mutableStateOf(false) }
-    val player = remember(file) {
-        runCatching { MediaPlayer().apply { setDataSource(file.path); prepare() } }.getOrNull()
+    var prepared by remember(file) { mutableStateOf(false) }
+    var failed by remember(file) { mutableStateOf(false) }
+    val player = remember(file) { MediaPlayer() }
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    DisposableEffect(player, lifecycle) {
+        player.setOnPreparedListener { prepared = true }
+        player.setOnCompletionListener { playing = false }
+        player.setOnErrorListener { _, _, _ -> failed = true; playing = false; true }
+        runCatching { player.setDataSource(file.path); player.prepareAsync() }.onFailure { failed = true }
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_PAUSE && playing) { player.pause(); playing = false }
+        }
+        lifecycle.addObserver(observer)
+        onDispose { lifecycle.removeObserver(observer); player.release() }
     }
-    DisposableEffect(player) {
-        player?.setOnCompletionListener { playing = false }
-        onDispose { player?.release() }
-    }
-    if (player == null) {
+    if (failed) {
         MediaNote(stringResource(R.string.media_unavailable, name), modifier)
         return
     }
     Row(modifier.padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
         SuzentIconButton(onClick = {
-            if (playing) player.pause() else player.start()
-            playing = !playing
-        }, label = stringResource(if (playing) R.string.media_pause else R.string.media_play, name)) {
+            runCatching {
+                if (playing) player.pause() else player.start()
+                playing = !playing
+            }.onFailure { failed = true }
+        }, enabled = prepared, label = stringResource(if (playing) R.string.media_pause else R.string.media_play, name)) {
             Icon(painterResource(if (playing) R.drawable.ic_media_pause else R.drawable.ic_media_play), contentDescription = null,
                 modifier = Modifier.size(20.dp))
         }
-        Text(name, Modifier.weight(1f), fontSize = PresentationTokens.typeMeta.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(if (prepared) name else stringResource(R.string.media_loading, name), Modifier.weight(1f),
+            fontSize = PresentationTokens.typeMeta.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
 

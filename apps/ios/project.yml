@@ -29,6 +29,7 @@ targets:
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         PRODUCT_BUNDLE_IDENTIFIER: com.suzent.mobile
         GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CADisableMinimumFrameDurationOnPhone: YES
         INFOPLIST_KEY_CFBundleDisplayName: Suzent
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         INFOPLIST_KEY_NSCameraUsageDescription: Scan a pairing invitation from your Suzent desktop, and take photos to send to Suzent.

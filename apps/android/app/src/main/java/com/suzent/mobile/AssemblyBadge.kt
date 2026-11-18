@@ -7,6 +7,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -80,7 +81,7 @@ fun AssemblyBadge(thinking: Boolean, parts: List<MessagePart> = emptyList(), str
 
 /**
  * Desktop's Suzent bot: the same stage resolver and scene the desktop mark draws, computed off the UI thread,
- * capped at 30fps, and stopped once the scene settles, animations are disabled or the screen is in the background.
+ * paced to the display up to 120fps, and stopped once the scene settles, animations are disabled or the screen is in the background.
  */
 @Composable
 fun RobotBadge(parts: List<MessagePart>, streaming: Boolean, visible: Boolean = true, toolOverride: String? = null, size: Dp = 32.dp) {
@@ -107,13 +108,15 @@ fun RobotBadge(parts: List<MessagePart>, streaming: Boolean, visible: Boolean = 
     val tool = toolOverride ?: robotCurrentTool(parts, streaming)
     val input by rememberUpdatedState(BotInput(pending, startled, streaming, tool, reduced, dark, visible, clicks))
     val frame = remember { mutableStateOf<SuzentBotFrame?>(null) }
-    LaunchedEffect(context, lifecycle) {
+    val view = LocalView.current
+    LaunchedEffect(context, lifecycle, view) {
         withContext(botDispatcher) {
             val host = SharedBotEngine.host(context)
             val session = host.create(1, "{}")
             try {
                 var timeMs = 0.0
                 var handledClicks = 0
+                val pacing = BotFramePacing()
                 lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
                     snapshotFlow { input }.collectLatest { current ->
                         if (!current.visible) return@collectLatest
@@ -123,17 +126,33 @@ fun RobotBadge(parts: List<MessagePart>, streaming: Boolean, visible: Boolean = 
                         handledClicks = current.clicks
                         var pendingTrick = trick
                         var previous = System.nanoTime()
+                        var lastFrame = 0L
+                        var sampleCount = 0
+                        var sampleWork = 0L
                         while (true) {
+                            val (tick, displayRate) = withFrameNanos { it to (view.display?.refreshRate ?: 60f) }
+                            val interval = 1_000_000_000.0 / pacing.framesPerSecond(displayRate)
+                            if (lastFrame != 0L && tick - lastFrame < interval - 500_000) continue
+                            lastFrame = tick
                             val now = System.nanoTime()
                             timeMs += ((now - previous) / 1_000_000.0).coerceAtMost(50.0)
                             previous = now
                             val next = SuzentBotFrame.parse(host.step(session, botStep(stage, timeMs, current.reduced, current.dark, pendingTrick)))
                             pendingTrick = null
                             frame.value = next
-                            if (current.reduced || next.settled) break
-                            // Backpressure: never queue frames when computation exceeds the budget.
-                            val remaining = 33_333_334L - (System.nanoTime() - now)
-                            delay((remaining / 1_000_000L).coerceAtLeast(1))
+                            if (current.reduced || next.settled) {
+                                if (BuildConfig.DEBUG && sampleCount in 1..119) android.util.Log.d("SuzentBotFrames",
+                                    "samples=$sampleCount, meanWorkMs=${sampleWork / sampleCount.toDouble() / 1_000_000.0}, targetFps=${pacing.framesPerSecond(displayRate)}")
+                                break
+                            }
+                            val work = System.nanoTime() - tick
+                            pacing.record(work, displayRate)
+                            if (BuildConfig.DEBUG && sampleCount < 120) {
+                                sampleCount++
+                                sampleWork += System.nanoTime() - now
+                                if (sampleCount == 120) android.util.Log.d("SuzentBotFrames",
+                                    "meanWorkMs=${sampleWork / 120.0 / 1_000_000.0}, targetFps=${pacing.framesPerSecond(displayRate)}")
+                            }
                         }
                     }
                 }
