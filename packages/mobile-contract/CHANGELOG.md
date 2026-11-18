@@ -1,5 +1,13 @@
 # Mobile changelog
 
+## [mobile-v0.10.2] - 2026-11-18
+
+### Release notes
+- Robot animations follow the screen up to 120 FPS with automatic load-based fallback, and Android videos use the full screen.
+- Mobile chat groups images and videos into swipeable galleries without filenames and marks files delivered beneath replies.
+- Mobile video and audio open in a dedicated player on tap, and robot animations target 60 FPS.
+- Mobile videos show cached thumbnail previews with a play indicator before opening the player.
+
 ## [mobile-v0.10.1] - 2026-11-18
 
 ### Release notes
