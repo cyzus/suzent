@@ -10,6 +10,7 @@ import kotlin.math.sqrt
  * caller's space) in either axis, and it never flips. Horizontal wins only inside a
  * 30° cone: `|dx| >= |dy| * sqrt(3)`. [noteVerticalScroll] records that scrolling
  * already started, so a later sideways drift cannot claim the gesture.
+ * Vertical intent locks early at 8 dp; a flick needs 56 dp to avoid short accidental actions.
  *
  * Keep the thresholds identical to `SwipeAxisLock` in SuzentCore.
  */
@@ -27,6 +28,10 @@ class SwipeAxisLock {
         if (axis != Axis.UNDECIDED) return axis
         val adx = abs(dx)
         val ady = abs(dy)
+        if (ady >= SCROLL_TRAVEL && adx < ady * DOMINANCE) {
+            axis = Axis.VERTICAL
+            return axis
+        }
         if (adx < MIN_TRAVEL && ady < MIN_TRAVEL) return Axis.UNDECIDED
         axis = if (adx >= MIN_TRAVEL && adx + 1e-9 >= ady * DOMINANCE) Axis.HORIZONTAL else Axis.VERTICAL
         return axis
@@ -39,7 +44,9 @@ class SwipeAxisLock {
     companion object {
         const val MIN_TRAVEL = 24.0
         val DOMINANCE = sqrt(3.0)
-        const val TRIGGER = 72.0
+        const val SCROLL_TRAVEL = 8.0
+        const val FLICK_TRAVEL = 56.0
+        const val TRIGGER = 96.0
         const val VELOCITY_TRIGGER = 900.0
 
         /** Commit a swipe that has already locked horizontal. [velocity] is px/s, positive toward the trailing edge. */
@@ -48,7 +55,7 @@ class SwipeAxisLock {
             if (travel < MIN_TRAVEL) return false
             val along = if (offset < 0) -velocity else velocity
             if (along <= -VELOCITY_TRIGGER) return false
-            return travel >= TRIGGER || along >= VELOCITY_TRIGGER
+            return travel >= TRIGGER || (travel >= FLICK_TRAVEL && along >= VELOCITY_TRIGGER)
         }
 
         /**

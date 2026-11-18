@@ -31,7 +31,6 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
@@ -170,7 +169,7 @@ private fun MobileScreen(model: MobileModel) {
                                 androidx.activity.compose.BackHandler(enabled = desktopsOpen) { desktopsOpen = false }
                                 if (desktopsOpen) DesktopsView(model, back = { desktopsOpen = false })
                                 else {
-                                    TabTitle(stringResource(R.string.settings))
+                                    TabTitle(stringResource(R.string.settings), subtleDivider = true)
                                     SettingsView(model, openDesktops = { desktopsOpen = true })
                                 }
                             }
@@ -536,8 +535,7 @@ private fun Sidebar(model: MobileModel, hideSelection: Boolean, tabs: Boolean, o
                 waiting = regent.regent?.waiting ?: 0, unread = if (selected) 0 else regent.regent?.unread ?: 0,
                 lastMessageAt = regent.regent?.lastMessageAt, coronation = regentPressed,
                 modifier = Modifier.padding(horizontal = 16.dp).fillMaxWidth()
-                    .background(if (selected) suzentSelection else Color.Transparent)
-                    .clickable(interactionSource = regentInteraction, indication = LocalIndication.current,
+                    .clickable(interactionSource = regentInteraction, indication = null,
                         enabled = !model.busy, role = Role.Button) { open(regent) }.padding(vertical = 18.dp))
         }
         HorizontalDivider(Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.onSurface.copy(alpha = .08f))
@@ -558,12 +556,12 @@ private fun Sidebar(model: MobileModel, hideSelection: Boolean, tabs: Boolean, o
                 focusedContainerColor = MaterialTheme.colorScheme.onSurface.copy(alpha = .04f),
                 unfocusedContainerColor = MaterialTheme.colorScheme.onSurface.copy(alpha = .04f)),
             modifier = Modifier.padding(horizontal = 16.dp).padding(top = 12.dp).fillMaxWidth())
-        if (search.isEmpty()) HomeListPicker(listMode, { listMode = it }, Modifier.padding(horizontal = 16.dp).padding(top = 12.dp))
+        if (search.isEmpty()) HomeListPicker(listMode, { listMode = it }, Modifier.padding(horizontal = 16.dp).padding(top = 4.dp))
         PullToRefreshBox(isRefreshing = refreshing, modifier = Modifier.weight(1f).fillMaxWidth(), onRefresh = {
             refreshing = true
             scope.launch { try { model.refresh().join() } finally { refreshing = false } }
         }) {
-        LazyColumn(Modifier.fillMaxSize().padding(horizontal = 16.dp), state = listState, contentPadding = PaddingValues(vertical = 12.dp)) {
+        LazyColumn(Modifier.fillMaxSize().padding(horizontal = 16.dp), state = listState, contentPadding = PaddingValues(top = 4.dp, bottom = 12.dp)) {
             if (search.isNotEmpty()) {
                 item(key = "search-heading") { SidebarSectionHeading(stringResource(R.string.search_results)) }
                 val results = sidebarChats(model.pageChats(searchQuery), search, expandedAgents)
@@ -861,7 +859,7 @@ private fun SettingsView(model: MobileModel, openDesktops: () -> Unit) {
     var accessExpanded by rememberSaveable { mutableStateOf(false) }
     var forgetting by remember { mutableStateOf(false) }
     if (forgetting) ForgetConnectionDialog(model) { forgetting = false }
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(bottom = PresentationTokens.spaceLarge.dp)) {
+    Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).verticalScroll(rememberScrollState()).padding(bottom = PresentationTokens.spaceLarge.dp)) {
         if (model.isDemo) {
             SettingsSection(stringResource(R.string.demo_section), divider = false)
             SettingsRow(stringResource(R.string.demo_reset), model::resetDemo, enabled = !model.busy)
@@ -872,10 +870,9 @@ private fun SettingsView(model: MobileModel, openDesktops: () -> Unit) {
         } else {
             SettingsSection(stringResource(R.string.connection_section), divider = false)
             model.desktops.active?.let { desktop ->
-                val dark = isSystemInDarkTheme()
                 ListItem(leadingContent = {
                     // The same computer mark as the home screen's desktop line; colour swatches stay in the desktops list.
-                    Box(Modifier.size(40.dp).background(Color(if (dark) PresentationTokens.code_header_dark else PresentationTokens.code_bg))
+                    Box(Modifier.size(40.dp).background(MaterialTheme.colorScheme.background)
                         .border(1.dp, MaterialTheme.colorScheme.outlineVariant), contentAlignment = Alignment.Center) {
                         Icon(painterResource(R.drawable.ic_desktop), contentDescription = null, modifier = Modifier.size(20.dp))
                     }
@@ -902,7 +899,10 @@ private fun SettingsView(model: MobileModel, openDesktops: () -> Unit) {
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             ListItem(headlineContent = { Text(stringResource(R.string.enable_node), fontWeight = FontWeight.SemiBold) },
                 supportingContent = if (model.nodeEnabled) { { Text(model.nodeStatus) } } else null,
-                trailingContent = { Switch(checked = model.nodeEnabled, onCheckedChange = null) },
+                trailingContent = { Switch(checked = model.nodeEnabled, onCheckedChange = null, colors = SwitchDefaults.colors(
+                    checkedTrackColor = suzentYellow(), checkedThumbColor = Color.Black, checkedBorderColor = Color.Transparent,
+                    uncheckedTrackColor = suzentLine, uncheckedThumbColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                    uncheckedBorderColor = Color.Transparent)) },
                 modifier = Modifier.toggleable(value = model.nodeEnabled, role = Role.Switch, onValueChange = model::toggleNode))
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             SettingsRow(stringResource(R.string.pair_again), { model.error = null; model.beginPairing(repairActive = true); repairScanner = true }, enabled = !model.busy && !model.streaming)
@@ -940,7 +940,10 @@ private fun PreferencesSection() {
     PreferenceRow(stringResource(R.string.text_size), textSizeLabels.getValue(AppPreferences.textSize)) { picking = "text" }
     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
     ListItem(headlineContent = { Text(stringResource(R.string.haptics), fontWeight = FontWeight.SemiBold) },
-        trailingContent = { Switch(checked = AppPreferences.haptics, onCheckedChange = null) },
+        trailingContent = { Switch(checked = AppPreferences.haptics, onCheckedChange = null, colors = SwitchDefaults.colors(
+            checkedTrackColor = suzentYellow(), checkedThumbColor = Color.Black, checkedBorderColor = Color.Transparent,
+            uncheckedTrackColor = suzentLine, uncheckedThumbColor = MaterialTheme.colorScheme.onSurfaceVariant,
+            uncheckedBorderColor = Color.Transparent)) },
         modifier = Modifier.toggleable(value = AppPreferences.haptics, role = Role.Switch, onValueChange = { AppPreferences.haptics = it }))
     if (AppPreferences.supportsLanguage) {
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
@@ -973,8 +976,8 @@ private fun PreferenceRow(label: String, value: String, onClick: () -> Unit) {
 
 @Composable
 private fun SettingsSection(label: String, divider: Boolean = true) {
-    if (divider) HorizontalDivider(Modifier.padding(top = PresentationTokens.spaceMedium.dp), thickness = PresentationTokens.borderWidth.dp,
-        color = MaterialTheme.colorScheme.outline)
+    if (divider) HorizontalDivider(Modifier.padding(top = PresentationTokens.spaceMedium.dp), thickness = 1.dp,
+        color = suzentLine)
     SidebarSectionHeading(label, start = PresentationTokens.spacePage.dp)
 }
 
@@ -1411,39 +1414,22 @@ private fun SidebarSectionHeading(label: String, count: Int? = null, start: Dp =
     }
 }
 
-private enum class HomeListMode(val label: Int, val menuLabel: Int, val icon: Int) {
-    RECENT(R.string.recent_chats, R.string.recent_chats, R.drawable.ic_clock),
-    PROJECTS(R.string.sidebar_projects, R.string.home_list_by_project, R.drawable.ic_chat_folder)
+private enum class HomeListMode(val label: Int) {
+    RECENT(R.string.recent_chats),
+    PROJECTS(R.string.sidebar_projects)
 }
 
-/** The list's section heading doubles as its view picker: tap it to choose Recent or By project. */
 @Composable
 private fun HomeListPicker(selection: HomeListMode, select: (HomeListMode) -> Unit, modifier: Modifier = Modifier) {
-    var open by remember { mutableStateOf(false) }
-    var anchor by remember { mutableStateOf<androidx.compose.ui.geometry.Offset?>(null) }
-    val current = stringResource(selection.label)
-    val hint = stringResource(R.string.home_list_view)
-    val muted = MaterialTheme.colorScheme.onSurfaceVariant
-    Box(modifier) {
-        Row(Modifier.recordPressInWindow { anchor = it }
-            .background(if (open) suzentSelection else Color.Transparent)
-            .clickable(role = Role.Button) { open = true }
-            .semantics { contentDescription = "$hint: $current" }
-            .heightIn(min = 44.dp).padding(horizontal = 12.dp),
-            verticalAlignment = Alignment.CenterVertically) {
-            Text(current.uppercase(java.util.Locale.getDefault()), fontWeight = FontWeight.ExtraBold,
-                fontSize = PresentationTokens.typeSidebarSection.sp, letterSpacing = 1.6.sp,
-                color = if (open) MaterialTheme.colorScheme.onSurface else muted)
-            Icon(painterResource(R.drawable.ic_chevron_right), contentDescription = null, tint = muted,
-                modifier = Modifier.padding(start = 6.dp).size(12.dp).rotate(if (open) -90f else 90f))
-        }
-        SuzentMenu(expanded = open, onDismissRequest = { open = false }, anchorInWindow = anchor) {
-            HomeListMode.entries.forEach { mode ->
-                SuzentMenuItem(stringResource(mode.menuLabel), mode.icon, selected = mode == selection) {
-                    open = false
-                    select(mode)
-                }
-            }
+    Row(modifier.selectableGroup(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        HomeListMode.entries.forEach { mode ->
+            val selected = mode == selection
+            Text(stringResource(mode.label),
+                fontSize = 14.sp,
+                fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                color = if (selected) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.selectable(selected = selected, role = Role.Tab, onClick = { select(mode) })
+                    .heightIn(min = 48.dp).wrapContentHeight(Alignment.CenterVertically).padding(horizontal = 12.dp))
         }
     }
 }
@@ -1479,7 +1465,7 @@ private fun TabHome(tab: HomeTab, select: (HomeTab) -> Unit, unread: Int = 0, pa
                         horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
                         Box {
                             Icon(painterResource(item.icon), contentDescription = null, tint = color, modifier = Modifier.size(22.dp))
-                            if (item == HomeTab.INBOX && unread > 0) SuzentCountBadge(unread, Modifier.align(Alignment.TopStart).offset(x = 14.dp, y = (-6).dp))
+                            if (item == HomeTab.INBOX && unread > 0) SuzentCountBadge(unread, Modifier.align(Alignment.TopStart).offset(x = 14.dp, y = (-4).dp))
                         }
                         Text(stringResource(item.label), fontSize = PresentationTokens.typeMeta.sp, color = color,
                             fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal, maxLines = 1)
@@ -1491,7 +1477,7 @@ private fun TabHome(tab: HomeTab, select: (HomeTab) -> Unit, unread: Int = 0, pa
 }
 
 @Composable
-internal fun TabTitle(title: String, model: MobileModel? = null, actions: @Composable BoxScope.() -> Unit = {}) {
+internal fun TabTitle(title: String, model: MobileModel? = null, subtleDivider: Boolean = false, actions: @Composable BoxScope.() -> Unit = {}) {
     Box(Modifier.fillMaxWidth().heightIn(min = 52.dp)) {
         Column(Modifier.align(Alignment.Center).padding(horizontal = 56.dp, vertical = 8.dp), horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center) {
@@ -1500,11 +1486,12 @@ internal fun TabTitle(title: String, model: MobileModel? = null, actions: @Compo
         }
         actions()
     }
-    HorizontalDivider(thickness = PresentationTokens.borderWidth.dp, color = MaterialTheme.colorScheme.outline)
+    HorizontalDivider(thickness = if (subtleDivider) 1.dp else PresentationTokens.borderWidth.dp,
+        color = if (subtleDivider) suzentLine else MaterialTheme.colorScheme.outline)
 }
 
 @Composable
-private fun ActiveDesktopLabel(model: MobileModel, modifier: Modifier = Modifier) {
+internal fun ActiveDesktopLabel(model: MobileModel, modifier: Modifier = Modifier) {
     val desktop = model.desktops.active ?: return
     if (model.isDemo) return
     Row(modifier.semantics(mergeDescendants = true) {}, verticalAlignment = Alignment.CenterVertically,

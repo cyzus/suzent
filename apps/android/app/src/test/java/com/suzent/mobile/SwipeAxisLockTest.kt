@@ -36,14 +36,25 @@ class SwipeAxisLockTest {
     }
 
     @Test fun commitNeedsTriggerOrAFlickInTheSameDirection() {
-        assertTrue(SwipeAxisLock.commits(72.0, 0.0))
-        assertFalse(SwipeAxisLock.commits(71.0, 0.0))
-        assertTrue(SwipeAxisLock.commits(30.0, 900.0))
-        assertTrue(SwipeAxisLock.commits(-30.0, -900.0))
+        assertTrue(SwipeAxisLock.commits(96.0, 0.0))
+        assertFalse(SwipeAxisLock.commits(95.0, 0.0))
+        assertFalse(SwipeAxisLock.commits(30.0, 900.0))
+        assertTrue(SwipeAxisLock.commits(56.0, 900.0))
+        assertFalse(SwipeAxisLock.commits(-30.0, -900.0))
+        assertTrue(SwipeAxisLock.commits(-56.0, -900.0))
         assertFalse(SwipeAxisLock.commits(30.0, -900.0))
         assertFalse(SwipeAxisLock.commits(23.0, 2000.0))
         assertFalse(SwipeAxisLock.commits(80.0, -900.0))
-        assertTrue(SwipeAxisLock.commits(-72.0, -100.0))
+        assertTrue(SwipeAxisLock.commits(-96.0, -100.0))
+    }
+
+    @Test fun earlyVerticalMovementCannotBecomeASwipe() {
+        for (direction in listOf(-1.0, 1.0)) {
+            val lock = SwipeAxisLock()
+            assertEquals(SwipeAxisLock.Axis.VERTICAL, lock.update(direction * 6.0, 8.0))
+            assertEquals(SwipeAxisLock.Axis.VERTICAL, lock.update(direction * 100.0, 10.0))
+            assertFalse(SwipeAxisLock.commits(direction * 40.0, direction * 2000.0))
+        }
     }
 
     @Test fun zoomedImageKeepsVerticalPanning() {

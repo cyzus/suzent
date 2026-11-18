@@ -34,6 +34,8 @@ export interface HostInput {
   /** Fires once, before this step, matching the desktop morph preview. */
   morph?: string;
   morphDuration?: number;
+  /** One-shot click cycle, matching the desktop robot. */
+  interactiveTrick?: number;
 }
 
 interface Session {
@@ -105,6 +107,11 @@ export function step(id: number, json: string): string {
   const session = sessions.get(id);
   if (!session) return JSON.stringify({ error: "missing" });
   Object.assign(session.input, JSON.parse(json) as HostInput);
+  const trick = session.input.interactiveTrick;
+  if (trick != null) {
+    if (!session.input.reducedMotion) session.engine.triggerInteractiveTrick(trick);
+    session.input.interactiveTrick = undefined;
+  }
   const morph = session.input.morph;
   if (morph && morph !== "none") {
     session.engine.triggerMorphPreview(

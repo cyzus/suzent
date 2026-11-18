@@ -291,37 +291,7 @@ fun MarkdownText(text: String, citationSources: List<CitationSource> = emptyList
         val ids = Uri.parse(link).path.orEmpty().removePrefix("/").split(',')
         val sources = if (link.startsWith("suzent-citation://")) ids.mapNotNull { id -> citationSources.firstOrNull { it.id == id } }
             else listOf(citationSources.firstOrNull { it.url == link } ?: CitationSource("", "webpage", Uri.parse(link).host.orEmpty(), link))
-        ModalBottomSheet(onDismissRequest = { pendingLink = null }, shape = RectangleShape) {
-            Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp).padding(bottom = 32.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                Text(stringResource(R.string.citation_sources), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                sources.forEach { source ->
-                    val uri = Uri.parse(source.url)
-                    Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceVariant).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            val icon = icons[source.favicon]
-                            if (icon != null) Image(icon.asImageBitmap(), contentDescription = null, modifier = Modifier.size(18.dp))
-                            else Icon(painterResource(R.drawable.ic_globe), contentDescription = null, modifier = Modifier.size(18.dp),
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Text(uri.host.orEmpty().removePrefix("www."), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                        Text(source.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                        if (source.snippet.isNotBlank()) Text(source.snippet, style = MaterialTheme.typography.bodyMedium, maxLines = 6, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
-                        if (uri.scheme in listOf("http", "https")) {
-                            Button(onClick = { androidx.browser.customtabs.CustomTabsIntent.Builder().setShowTitle(true).build().launchUrl(context, uri) }, shape = RectangleShape) {
-                                Text(stringResource(R.string.citation_read))
-                            }
-                            Row {
-                                TextButton(onClick = {
-                                    val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
-                                    clipboard.setPrimaryClip(android.content.ClipData.newPlainText(source.title, source.url))
-                                }) { Text(stringResource(R.string.citation_copy)) }
-                                TextButton(onClick = { context.startActivity(Intent(Intent.ACTION_VIEW, uri)) }) { Text(stringResource(R.string.citation_external)) }
-                            }
-                        }
-                    }
-                }
-            }
-        }
+        CitationSourcesSheet(sources, dismiss = { pendingLink = null }, icons = icons)
     }
 }
 
@@ -649,53 +619,64 @@ private fun MessageFooter(message: DisplayMessage, fallbackModel: String?, canRe
     Box(Modifier.fillMaxWidth()) {
         var footerCoords by remember { mutableStateOf<LayoutCoordinates?>(null) }
         val footerCoordsState = rememberUpdatedState(footerCoords)
-        Row(Modifier.fillMaxWidth()
-            .onGloballyPositioned { footerCoords = it }
-            .pointerInput(hasMenu) {
-                if (!hasMenu) return@pointerInput
-                detectTapGestures(onLongPress = { local ->
-                    onAnchor(footerCoordsState.value?.localToWindow(local))
-                    view.suzentHaptic(SuzentHaptic.LongPress)
-                    onMenu(true)
-                })
+        Row(Modifier.fillMaxWidth(), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            if (showBot) Box(Modifier.width(48.dp).heightIn(min = 48.dp), contentAlignment = androidx.compose.ui.Alignment.CenterStart) {
+                RobotBadge(message.parts, streaming = false, size = 40.dp)
             }
-            .semantics { if (hasMenu) onLongClick(actionsLabel) { onAnchor(footerCoords?.positionInWindow()); onMenu(true); true } },
-            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-            if (user) Spacer(Modifier.weight(1f))
-            if (showBot) RobotBadge(message.parts, streaming = false)
-            if (showActions) {
-                if (hasText) IconButton(modifier = Modifier.size(32.dp), onClick = { copy() }) {
-                    Icon(painterResource(if (copied) R.drawable.ic_message_check else R.drawable.ic_message_copy), stringResource(if (copied) R.string.message_copied else R.string.message_copy), Modifier.size(18.dp), tint = ink)
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp),
+                horizontalAlignment = androidx.compose.ui.Alignment.End) {
+            Row(Modifier.fillMaxWidth()
+                .onGloballyPositioned { footerCoords = it }
+                .pointerInput(hasMenu) {
+                    if (!hasMenu) return@pointerInput
+                    detectTapGestures(onLongPress = { local ->
+                        onAnchor(footerCoordsState.value?.localToWindow(local))
+                        view.suzentHaptic(SuzentHaptic.LongPress)
+                        onMenu(true)
+                    })
                 }
-                if (hasText) IconButton(modifier = Modifier.size(32.dp), onClick = { shareText(context, message.text) }) {
-                    Icon(painterResource(R.drawable.ic_share), stringResource(R.string.message_share), Modifier.size(18.dp), tint = ink)
+                .semantics { if (hasMenu) onLongClick(actionsLabel) { onAnchor(footerCoords?.positionInWindow()); onMenu(true); true } },
+                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp, androidx.compose.ui.Alignment.End)) {
+                if (user) Spacer(Modifier.weight(1f))
+                if (showActions) {
+                    if (hasText) IconButton(modifier = Modifier.size(32.dp), onClick = { copy() }) {
+                        Icon(painterResource(if (copied) R.drawable.ic_message_check else R.drawable.ic_message_copy), stringResource(if (copied) R.string.message_copied else R.string.message_copy), Modifier.size(18.dp), tint = ink)
+                    }
+                    if (hasText) IconButton(modifier = Modifier.size(32.dp), onClick = { shareText(context, message.text) }) {
+                        Icon(painterResource(R.drawable.ic_share), stringResource(R.string.message_share), Modifier.size(18.dp), tint = ink)
+                    }
+                    if (canEdit) IconButton(modifier = Modifier.size(32.dp), onClick = { edited = message.text; action = "edit" }) { Icon(painterResource(R.drawable.ic_chat_rename), stringResource(R.string.message_edit), Modifier.size(18.dp), tint = ink) }
+                    if (canRetry) IconButton(modifier = Modifier.size(32.dp), onClick = { action = "retry" }) { Icon(painterResource(R.drawable.ic_message_retry), stringResource(R.string.message_retry), Modifier.size(18.dp), tint = ink) }
+                    if (canFork) IconButton(modifier = Modifier.size(32.dp), onClick = { action = "fork" }) { Icon(painterResource(R.drawable.ic_message_fork), stringResource(R.string.message_fork), Modifier.size(18.dp), tint = ink) }
                 }
-                if (canEdit) IconButton(modifier = Modifier.size(32.dp), onClick = { edited = message.text; action = "edit" }) { Icon(painterResource(R.drawable.ic_chat_rename), stringResource(R.string.message_edit), Modifier.size(18.dp), tint = ink) }
-                if (canRetry) IconButton(modifier = Modifier.size(32.dp), onClick = { action = "retry" }) { Icon(painterResource(R.drawable.ic_message_retry), stringResource(R.string.message_retry), Modifier.size(18.dp), tint = ink) }
-                if (canFork) IconButton(modifier = Modifier.size(32.dp), onClick = { action = "fork" }) { Icon(painterResource(R.drawable.ic_message_fork), stringResource(R.string.message_fork), Modifier.size(18.dp), tint = ink) }
-            }
-            if (hasSources) TextButton(onClick = { sourcesOpen = true }, contentPadding = PaddingValues(horizontal = 4.dp), shape = RectangleShape,
-                modifier = Modifier.widthIn(min = 32.dp).height(32.dp)
-                    .semantics(mergeDescendants = true) { contentDescription = context.getString(R.string.message_sources, message.citationSources.size) }) {
-                Icon(painterResource(R.drawable.ic_globe), contentDescription = null, modifier = Modifier.size(14.dp), tint = ink)
-                Spacer(Modifier.width(4.dp))
-                Text("${message.citationSources.size}", fontSize = PresentationTokens.typeMeta.sp, color = ink, maxLines = 1)
-            }
-            if (showActions && !user) (message.model ?: fallbackModel)?.takeIf { it.isNotBlank() }?.let { model ->
-                Row(Modifier.weight(1f, fill = false).heightIn(min = 32.dp)
-                    .clickable(onClickLabel = stringResource(R.string.message_model)) { modelDetails = model },
-                    verticalAlignment = androidx.compose.ui.Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Icon(painterResource(R.drawable.ic_tool_cpu_chip), contentDescription = null, modifier = Modifier.size(12.dp), tint = ink)
-                    Text(model.substringAfter('/'), Modifier.weight(1f, fill = false), fontSize = PresentationTokens.typeMeta.sp,
-                        fontWeight = FontWeight.Medium, color = ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    if (message.timestamp != null) Text("·", fontSize = PresentationTokens.typeMeta.sp, color = ink)
+                if (hasSources) TextButton(onClick = { sourcesOpen = true }, contentPadding = PaddingValues(horizontal = 4.dp), shape = RectangleShape,
+                    modifier = Modifier.widthIn(min = 32.dp).height(32.dp)
+                        .semantics(mergeDescendants = true) { contentDescription = context.getString(R.string.message_sources, message.citationSources.size) }) {
+                    Icon(painterResource(R.drawable.ic_globe), contentDescription = null, modifier = Modifier.size(14.dp), tint = ink)
+                    Spacer(Modifier.width(4.dp))
+                    Text("${message.citationSources.size}", fontSize = PresentationTokens.typeMeta.sp, color = ink, maxLines = 1)
                 }
             }
-            message.timestamp?.let { raw ->
-                Text(formattedTimestamp(raw), Modifier.widthIn(max = 120.dp), fontSize = PresentationTokens.typeMeta.sp, color = ink,
-                    maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Row(Modifier.fillMaxWidth(), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp, androidx.compose.ui.Alignment.End)) {
+                if (user) Spacer(Modifier.weight(1f))
+                if (showActions && !user) (message.model ?: fallbackModel)?.takeIf { it.isNotBlank() }?.let { model ->
+                    Row(Modifier.weight(1f, fill = false).heightIn(min = 32.dp)
+                        .clickable(onClickLabel = stringResource(R.string.message_model)) { modelDetails = model },
+                        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp, androidx.compose.ui.Alignment.End)) {
+                        Icon(painterResource(R.drawable.ic_tool_cpu_chip), contentDescription = null, modifier = Modifier.size(12.dp), tint = ink)
+                        Text(model.substringAfter('/'), Modifier.weight(1f, fill = false), fontSize = PresentationTokens.typeMeta.sp,
+                            fontWeight = FontWeight.Medium, color = ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                }
+                message.timestamp?.let { raw ->
+                    Text(formattedTimestamp(raw), Modifier.widthIn(max = 120.dp), fontSize = PresentationTokens.typeMeta.sp, color = ink,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+                if (showActions && user) Text(stringResource(R.string.you), fontSize = PresentationTokens.typeMeta.sp, color = ink, maxLines = 1)
             }
-            if (showActions && user) Text(stringResource(R.string.you), fontSize = PresentationTokens.typeMeta.sp, color = ink, maxLines = 1)
+        }
         }
         SuzentMenu(expanded = menu && hasMenu, onDismissRequest = { onMenu(false) }, anchorInWindow = menuAnchor) {
             if (hasText) {
@@ -709,9 +690,12 @@ private fun MessageFooter(message: DisplayMessage, fallbackModel: String?, canRe
         }
     }
     modelDetails?.let { model ->
-        AlertDialog(onDismissRequest = { modelDetails = null }, title = { Text(stringResource(R.string.message_model)) },
-            text = { SelectionContainer { Text(model) } },
-            confirmButton = { TextButton(onClick = { modelDetails = null }) { Text(stringResource(android.R.string.ok)) } })
+        SuzentDetailSheet(stringResource(R.string.message_model), dismiss = { modelDetails = null }) {
+            SelectionContainer(Modifier.weight(1f, fill = false)) {
+                Text(model, Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 16.dp),
+                    fontSize = 15.sp, lineHeight = 22.sp, color = MaterialTheme.colorScheme.onSurface)
+            }
+        }
     }
     action?.let { selected ->
         if (selected == "edit") SuzentInputSheet(title = stringResource(R.string.message_edit), value = edited, onValueChange = { edited = it },
@@ -725,16 +709,82 @@ private fun MessageFooter(message: DisplayMessage, fallbackModel: String?, canRe
                 dismissButton = { TextButton(onClick = { action = null }) { Text(stringResource(R.string.cancel_link)) } })
         }
     }
-    if (sourcesOpen) ModalBottomSheet(onDismissRequest = { sourcesOpen = false }, shape = RectangleShape) {
-        Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            Text(stringResource(R.string.citation_sources), style = MaterialTheme.typography.titleLarge)
-            message.citationSources.distinctBy { it.id }.forEach { source ->
-                Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceVariant).padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(source.title, fontWeight = FontWeight.SemiBold)
-                    if (source.snippet.isNotBlank()) Text(source.snippet, maxLines = 5, style = MaterialTheme.typography.bodySmall)
-                    if (Uri.parse(source.url).scheme in listOf("http", "https")) TextButton(onClick = {
-                        androidx.browser.customtabs.CustomTabsIntent.Builder().build().launchUrl(context, Uri.parse(source.url))
-                    }, shape = RectangleShape) { Text(stringResource(R.string.citation_read)) }
+    if (sourcesOpen) CitationSourcesSheet(message.citationSources.distinctBy { it.id }, dismiss = { sourcesOpen = false })
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SuzentDetailSheet(title: String, dismiss: () -> Unit, content: @Composable ColumnScope.() -> Unit) {
+    val maxHeight = LocalConfiguration.current.screenHeightDp.dp * .85f
+    ModalBottomSheet(onDismissRequest = dismiss, containerColor = MaterialTheme.colorScheme.surface,
+        contentColor = MaterialTheme.colorScheme.onSurface, shape = suzentSheetShape(),
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
+        Column(Modifier.fillMaxWidth().heightIn(max = maxHeight).imePadding()) {
+            Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 8.dp),
+                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                Text(title, Modifier.weight(1f), fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                IconButton(onClick = dismiss) {
+                    Icon(painterResource(R.drawable.ic_close), stringResource(R.string.dismiss), Modifier.size(20.dp))
+                }
+            }
+            HorizontalDivider(color = suzentLine)
+            content()
+        }
+    }
+}
+
+@Composable
+private fun CitationSourcesSheet(sources: List<CitationSource>, dismiss: () -> Unit, icons: Map<String, android.graphics.Bitmap> = emptyMap()) {
+    val context = LocalContext.current
+    SuzentDetailSheet(stringResource(R.string.citation_sources), dismiss) {
+        androidx.compose.foundation.lazy.LazyColumn(Modifier.fillMaxWidth().weight(1f, fill = false),
+            contentPadding = PaddingValues(horizontal = 20.dp, vertical = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(20.dp)) {
+            items(sources.size) { index ->
+                val source = sources[index]
+                val uri = Uri.parse(source.url)
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        val icon = icons[source.favicon]
+                        if (icon != null) Image(icon.asImageBitmap(), null, Modifier.size(16.dp))
+                        else Icon(painterResource(R.drawable.ic_globe), null, Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(uri.host.orEmpty().removePrefix("www."), fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                    }
+                    SelectionContainer {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text(source.title, fontSize = 16.sp, lineHeight = 23.sp, fontWeight = FontWeight.SemiBold)
+                            if (source.snippet.isNotBlank()) Text(source.snippet, fontSize = 14.sp, lineHeight = 21.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 6, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                        }
+                    }
+                    if (uri.scheme in listOf("http", "https")) {
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Button(onClick = { androidx.browser.customtabs.CustomTabsIntent.Builder().setShowTitle(true).build().launchUrl(context, uri) },
+                                modifier = Modifier.weight(1f, fill = false).heightIn(min = 48.dp),
+                                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
+                                shape = RoundedCornerShape(PresentationTokens.radiusControl.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = suzentYellow(), contentColor = Color.Black)) {
+                                Text(stringResource(R.string.citation_read), fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
+                                    maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                            }
+                            Spacer(Modifier.weight(1f))
+                            IconButton(onClick = {
+                                val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                                clipboard.setPrimaryClip(android.content.ClipData.newPlainText(source.title, source.url))
+                            }, modifier = Modifier.size(48.dp)) {
+                                Icon(painterResource(R.drawable.ic_message_copy), stringResource(R.string.citation_copy),
+                                    Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            IconButton(onClick = { context.startActivity(Intent(Intent.ACTION_VIEW, uri)) }, modifier = Modifier.size(48.dp)) {
+                                Icon(painterResource(R.drawable.ic_open_external), stringResource(R.string.citation_external),
+                                    Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                    }
+                    if (index < sources.lastIndex) HorizontalDivider(color = suzentLine)
                 }
             }
         }
@@ -1173,8 +1223,6 @@ fun SuzentSelectionTrigger(value: String, onClick: () -> Unit, enabled: Boolean 
 fun SuzentSelectionPanel(title: String, options: List<Pair<String, String>>, selected: String, dismiss: () -> Unit, modelPicker: Boolean = false, defaultModel: String? = null,
     starredModels: Set<String> = emptySet(), canManageModels: Boolean = false, modelsBusy: Boolean = false,
     modelsError: String? = null, refreshModels: () -> Unit = {}, toggleStar: (String) -> Unit = {}, choose: (String) -> Unit) {
-    val outline = MaterialTheme.colorScheme.outline
-    val shadowColor = suzentShadow
     var query by remember { mutableStateOf("") }
     val filtered = options.filter { it.first.isEmpty() || query.isBlank() || it.second.contains(query.trim(), ignoreCase = true) }
     val preferences = LocalContext.current.getSharedPreferences("suzent.modelPicker", android.content.Context.MODE_PRIVATE)
@@ -1188,88 +1236,71 @@ fun SuzentSelectionPanel(title: String, options: List<Pair<String, String>>, sel
             .groupBy { if ('/' in it.first) it.first.substringBefore('/') else fallbackGroup }
             .toSortedMap().map { it.key to it.value }
     } else listOf("" to options)
-    val plate = RoundedCornerShape(PresentationTokens.radiusCard.dp)
-    ModalBottomSheet(onDismissRequest = dismiss, containerColor = Color.Transparent,
-        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), dragHandle = null, shape = suzentSheetShape()) {
-        Column(Modifier.fillMaxWidth().padding(16.dp).drawBehind {
-            val offset = PresentationTokens.shadowOffsetHeavy.dp.toPx()
-            val radius = PresentationTokens.radiusCard.dp.toPx()
-            drawRoundRect(shadowColor, topLeft = Offset(offset, offset),
-                size = androidx.compose.ui.geometry.Size((size.width - offset).coerceAtLeast(0f), (size.height - offset).coerceAtLeast(0f)),
-                cornerRadius = androidx.compose.ui.geometry.CornerRadius(radius, radius))
-        }.clip(plate).background(MaterialTheme.colorScheme.surface, plate).border(2.dp, outline, plate)) {
-            val dismissLabel = stringResource(R.string.dismiss)
-            Row(Modifier.fillMaxWidth().background(Color.Black).padding(start = 16.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-                Text(title, Modifier.weight(1f), fontFamily = FontFamily.Monospace, fontSize = 15.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                if (modelPicker && canManageModels) {
-                    TextButton(onClick = refreshModels, enabled = !modelsBusy) {
-                        Text(stringResource(if (modelsBusy) R.string.refreshing_models else R.string.refresh_models), color = Color.White)
-                    }
-                }
-                SuzentIconButton(onClick = dismiss, label = dismissLabel) {
-                    Icon(painterResource(R.drawable.ic_close), contentDescription = null, tint = Color.White, modifier = Modifier.size(20.dp))
-                }
+    SuzentDetailSheet(title, dismiss) {
+        if (modelPicker && canManageModels) {
+            TextButton(onClick = refreshModels, enabled = !modelsBusy, modifier = Modifier.align(androidx.compose.ui.Alignment.End).padding(end = 8.dp)) {
+                Text(stringResource(if (modelsBusy) R.string.refreshing_models else R.string.refresh_models), color = MaterialTheme.colorScheme.onSurface)
             }
-            if (modelPicker) {
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text(stringResource(R.string.model_selection_scope), fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    if (modelsError != null) {
-                        Text(modelsError, color = MaterialTheme.colorScheme.error, modifier = Modifier.semantics { liveRegion = androidx.compose.ui.semantics.LiveRegionMode.Polite })
-                        TextButton(onClick = refreshModels, enabled = !modelsBusy) { Text(stringResource(R.string.retry_models)) }
-                    }
-                    OutlinedTextField(value = query, onValueChange = { query = it }, singleLine = true,
-                        placeholder = { Text(stringResource(R.string.search_models)) }, modifier = Modifier.fillMaxWidth())
+        }
+        if (modelPicker) {
+            Column(Modifier.padding(horizontal = 20.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(stringResource(R.string.model_selection_scope), fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (modelsError != null) {
+                    Text(modelsError, color = MaterialTheme.colorScheme.error, modifier = Modifier.semantics { liveRegion = androidx.compose.ui.semantics.LiveRegionMode.Polite })
+                    TextButton(onClick = refreshModels, enabled = !modelsBusy) { Text(stringResource(R.string.retry_models)) }
                 }
+                OutlinedTextField(value = query, onValueChange = { query = it }, singleLine = true,
+                    placeholder = { Text(stringResource(R.string.search_models)) }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(PresentationTokens.radiusControl.dp))
             }
-            androidx.compose.foundation.lazy.LazyColumn(Modifier.fillMaxWidth().heightIn(max = 480.dp)) {
-                if (modelPicker && filtered.none { it.first.isNotEmpty() }) {
-                    item { Text(stringResource(R.string.no_matching_models), Modifier.padding(16.dp)) }
-                }
-                groups.forEach { (group, entries) ->
-                    val expanded = group.isEmpty() || query.isNotBlank() || group !in collapsedGroups
-                    if (group.isNotEmpty()) item {
-                        val expandedLabel = stringResource(if (expanded) R.string.models_expanded else R.string.models_collapsed)
-                        Row(Modifier.fillMaxWidth().clickable(enabled = query.isBlank()) {
-                            collapsedGroups = if (group in collapsedGroups) collapsedGroups - group else collapsedGroups + group
-                            preferences.edit().putStringSet("collapsedGroups", collapsedGroups).apply()
-                        }.semantics { stateDescription = expandedLabel }.heightIn(min = 48.dp).padding(16.dp),
-                            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-                            SuzentChevron(expanded, modifier = Modifier.padding(end = 12.dp), size = 14.dp,
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Text(group, Modifier.weight(1f), fontSize = 13.sp, fontWeight = FontWeight.SemiBold, fontFamily = FontFamily.Monospace)
-                            Text(entries.size.toString(), fontSize = 13.sp)
-                        }
+        }
+        androidx.compose.foundation.lazy.LazyColumn(Modifier.fillMaxWidth().weight(1f, fill = false)) {
+            if (modelPicker && filtered.none { it.first.isNotEmpty() }) {
+                item { Text(stringResource(R.string.no_matching_models), Modifier.padding(16.dp)) }
+            }
+            groups.forEach { (group, entries) ->
+                val expanded = group.isEmpty() || query.isNotBlank() || group !in collapsedGroups
+                if (group.isNotEmpty()) item {
+                    val expandedLabel = stringResource(if (expanded) R.string.models_expanded else R.string.models_collapsed)
+                    Row(Modifier.fillMaxWidth().clickable(enabled = query.isBlank()) {
+                        collapsedGroups = if (group in collapsedGroups) collapsedGroups - group else collapsedGroups + group
+                        preferences.edit().putStringSet("collapsedGroups", collapsedGroups).apply()
+                    }.semantics { stateDescription = expandedLabel }.heightIn(min = 48.dp).padding(16.dp),
+                        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                        SuzentChevron(expanded, modifier = Modifier.padding(end = 12.dp), size = 14.dp,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(group, Modifier.weight(1f), fontSize = 13.sp, fontWeight = FontWeight.SemiBold, fontFamily = FontFamily.Monospace)
+                        Text(entries.size.toString(), fontSize = 13.sp)
                     }
-                    if (expanded) items(entries.size) { index ->
-                        val (id, label) = entries[index]
-                        val active = id == selected
-                        Row(Modifier.fillMaxWidth().background(if (active) suzentYellow() else MaterialTheme.colorScheme.surface),
-                            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-                            Row(Modifier.weight(1f).selectable(selected = active, onClick = { choose(id) }, role = androidx.compose.ui.semantics.Role.RadioButton)
-                                .heightIn(min = 48.dp).padding(16.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-                            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                Text(if (modelPicker && id.isNotEmpty()) label.substringAfter('/') else label,
-                                    fontSize = 15.sp, fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal,
-                                    color = if (active) Color.Black else MaterialTheme.colorScheme.onSurface)
-                                if (modelPicker && id.isEmpty() && defaultModel != null) {
-                                    Text(defaultModel, fontSize = 13.sp, color = if (active) Color.Black else MaterialTheme.colorScheme.onSurfaceVariant)
-                                }
-                            }
-                            if (active) Icon(painterResource(R.drawable.ic_message_check), contentDescription = null, tint = Color.Black, modifier = Modifier.size(18.dp))
-                            }
-                            if (modelPicker && id.isNotEmpty() && canManageModels) {
-                                val starred = id in starredModels
-                                val favoriteAction = stringResource(if (starred) R.string.remove_model_favorite else R.string.add_model_favorite)
-                                TextButton(onClick = { toggleStar(id) }, enabled = !modelsBusy,
-                                    modifier = Modifier.sizeIn(minWidth = 48.dp, minHeight = 48.dp).semantics {
-                                        contentDescription = "$favoriteAction: $label"
-                                    }) {
-                                    Text(if (starred) "★" else "☆", color = if (active) Color.Black else MaterialTheme.colorScheme.onSurface)
-                                }
+                }
+                if (expanded) items(entries.size) { index ->
+                    val (id, label) = entries[index]
+                    val active = id == selected
+                    Row(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface),
+                        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                        Row(Modifier.weight(1f).selectable(selected = active, onClick = { choose(id) }, role = androidx.compose.ui.semantics.Role.RadioButton)
+                            .heightIn(min = 48.dp).padding(16.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text(if (modelPicker && id.isNotEmpty()) label.substringAfter('/') else label,
+                                fontSize = 15.sp, fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal,
+                                color = MaterialTheme.colorScheme.onSurface)
+                            if (modelPicker && id.isEmpty() && defaultModel != null) {
+                                Text(defaultModel, fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                         }
-                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                        if (active) Icon(painterResource(R.drawable.ic_message_check), contentDescription = null, tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(18.dp).background(suzentYellow()))
+                        }
+                        if (modelPicker && id.isNotEmpty() && canManageModels) {
+                            val starred = id in starredModels
+                            val favoriteAction = stringResource(if (starred) R.string.remove_model_favorite else R.string.add_model_favorite)
+                            TextButton(onClick = { toggleStar(id) }, enabled = !modelsBusy,
+                                modifier = Modifier.sizeIn(minWidth = 48.dp, minHeight = 48.dp).semantics {
+                                    contentDescription = "$favoriteAction: $label"
+                                }) {
+                                Text(if (starred) "★" else "☆", color = MaterialTheme.colorScheme.onSurface)
+                            }
+                        }
                     }
+                    HorizontalDivider(Modifier.padding(horizontal = 20.dp), color = suzentLine)
                 }
             }
         }

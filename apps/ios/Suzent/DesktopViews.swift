@@ -41,7 +41,7 @@ struct HomeTabBar: View {
                     .frame(height: 24)
                     .overlay(alignment: .topTrailing) {
                         if tab == .inbox && unread > 0 {
-                            SuzentCountBadge(count: unread).offset(x: 14, y: -6)
+                            SuzentCountBadge(count: unread).offset(x: 14, y: -4)
                         }
                     }
                 Text(title).suzentFont(11, weight: selected ? .bold : .medium)
@@ -62,22 +62,19 @@ struct HomeListPicker: View {
     @Binding var selection: HomeListMode
     let modes: [HomeListMode]
 
-    /// The list's section heading doubles as its view picker: tap it to choose Recent or By project.
     var body: some View {
-        Menu {
-            Picker("Show conversations", selection: $selection) {
-                ForEach(modes, id: \.self) { mode in
-                    Label(menuTitle(mode), systemImage: mode == .recent ? "clock" : "folder").tag(mode)
-                }
+        HStack(spacing: 4) {
+            ForEach(modes, id: \.self) { mode in
+                Button { selection = mode } label: {
+                    Text(title(mode)).suzentFont(14, weight: selection == mode ? .bold : .medium)
+                        .foregroundStyle(selection == mode ? Color.suzentText : Color.suzentMuted)
+                        .padding(.horizontal, 12).frame(minHeight: 44).contentShape(Rectangle())
+                }.buttonStyle(.plain)
+                    .accessibilityAddTraits(selection == mode ? .isSelected : [])
             }
-        } label: {
-            HStack(spacing: 6) {
-                Text(title(selection)).textCase(.uppercase).suzentFont(PresentationTokens.typeSidebarSection, weight: .heavy)
-                    .tracking(1.6)
-                Image(systemName: "chevron.down").font(.system(size: 10, weight: .bold))
-            }.foregroundStyle(Color.suzentMuted).frame(minHeight: 44).padding(.horizontal, 12).contentShape(Rectangle())
-        }.buttonStyle(.plain).frame(maxWidth: .infinity, alignment: .leading)
-            .accessibilityLabel(Text("Show conversations")).accessibilityValue(Text(title(selection)))
+        }.frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel(Text("Show conversations"))
     }
 
     private func title(_ mode: HomeListMode) -> LocalizedStringKey {
@@ -87,12 +84,7 @@ struct HomeListPicker: View {
         }
     }
 
-    private func menuTitle(_ mode: HomeListMode) -> LocalizedStringKey {
-        switch mode {
-        case .recent: "Recent"
-        case .projects: "By project"
-        }
-    }
+
 }
 
 struct DesktopCard: View {

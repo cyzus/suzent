@@ -671,7 +671,7 @@ struct ContentView: View {
             }
             if search.isEmpty {
                 HomeListPicker(selection: $listMode, modes: [.recent, .projects])
-                    .padding(.horizontal, 16).padding(.top, home ? 12 : 0).padding(.bottom, 4)
+                    .padding(.horizontal, 16).padding(.top, home ? 4 : 0)
             }
             ScrollViewReader { reader in
                 List {
@@ -965,7 +965,7 @@ struct ContentView: View {
                                 Text(model.nodeStatus).font(.caption).foregroundStyle(Color.suzentMuted)
                             }
                         }
-                    }.tint(Color(presentation: PresentationTokens.blue))
+                    }.tint(Color.suzentYellow)
                     Button("Pair again") { model.beginPairing(repairActive: true); repairScanner = true }.disabled(model.busy || model.streaming)
                     Button("Forget this desktop", role: .destructive) { confirmForget = true }
                         .foregroundStyle(Color.suzentDanger).disabled(model.busy)
@@ -982,6 +982,9 @@ struct ContentView: View {
             } header: { settingsHeader("About") }
         }
         .formStyle(.grouped)
+        .scrollContentBackground(.hidden)
+        .background(Color.suzentBackground)
+        .tint(Color.suzentText)
         .alert("Forget this desktop?", isPresented: $confirmForget) {
             Button("Cancel", role: .cancel) {}
             Button("Forget", role: .destructive) { model.forget() }

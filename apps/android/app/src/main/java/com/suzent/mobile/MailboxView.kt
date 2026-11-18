@@ -2,13 +2,12 @@ package com.suzent.mobile
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.material3.*
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
@@ -16,12 +15,11 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -60,7 +58,13 @@ fun MailboxView(model: MobileModel, openChat: (Chat) -> Unit) {
 @Composable
 private fun InboxHeader(model: MobileModel, showTasks: Boolean, toggleTasks: () -> Unit) {
     val ink = MaterialTheme.colorScheme.onSurface
-    TabTitle(stringResource(if (showTasks) R.string.tab_tasks else R.string.mailbox_title), model) {
+    Box(Modifier.fillMaxWidth().heightIn(min = 60.dp)) {
+        Column(Modifier.align(Alignment.Center).padding(horizontal = 56.dp, vertical = 10.dp),
+            horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(stringResource(if (showTasks) R.string.tab_tasks else R.string.mailbox_title),
+                fontSize = 18.sp, fontWeight = FontWeight.Bold)
+            ActiveDesktopLabel(model)
+        }
         if (showTasks) IconButton(toggleTasks, Modifier.align(Alignment.CenterStart).padding(start = 4.dp)) {
             Icon(painterResource(R.drawable.ic_chat_back), stringResource(R.string.mailbox_title), tint = ink)
         } else if (model.mailboxSupported && model.mailbox.unread > 0) IconButton({ model.readMailbox() },
@@ -71,26 +75,29 @@ private fun InboxHeader(model: MobileModel, showTasks: Boolean, toggleTasks: () 
             Icon(painterResource(R.drawable.ic_clock), stringResource(R.string.tab_tasks), Modifier.size(22.dp), tint = ink)
         }
     }
+    HorizontalDivider(color = suzentLine)
 }
 
 @Composable
 private fun InboxFilters(model: MobileModel) {
-    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 10.dp)
+    val accent = suzentYellow()
+    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).selectableGroup()
+        .padding(horizontal = 12.dp).padding(top = 4.dp)
         .alpha(if (model.mailboxBusy) PresentationTokens.disabledAlpha.toFloat() else 1f),
-        horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        // The segmented tabs' block: black in light mode, yellow in dark.
-        val dark = isSystemInDarkTheme()
-        val block = if (dark) suzentYellow() else Color.Black
-        val blockText = if (dark) Color.Black else Color.White
+        horizontalArrangement = Arrangement.spacedBy(4.dp)) {
         InboxFilter.entries.forEach { filter ->
             val selected = model.mailboxCategory == filter.category
-            Row(Modifier.heightIn(min = 30.dp).background(if (selected) block else MaterialTheme.colorScheme.surface)
-                .border(1.dp, if (selected) block else suzentRowDivider)
+            Row(Modifier.heightIn(min = 48.dp)
                 .selectable(selected, enabled = !model.mailboxBusy, role = Role.Tab) { if (!selected) model.changeMailbox(filter.category) }
-                .padding(horizontal = 10.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-                Text(stringResource(filter.label), fontSize = PresentationTokens.typeMeta.sp, fontFamily = FontFamily.Monospace,
-                    fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
-                    color = if (selected) blockText else MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+                .drawBehind {
+                    if (selected) drawRect(accent, topLeft = androidx.compose.ui.geometry.Offset(12.dp.toPx(), size.height - 3.dp.toPx()),
+                        size = androidx.compose.ui.geometry.Size(size.width - 24.dp.toPx(), 3.dp.toPx()))
+                }
+                .padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(stringResource(filter.label), fontSize = 13.sp,
+                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                    color = if (selected) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
                 if (filter == InboxFilter.NOTIFICATIONS && model.mailbox.unread > 0) SuzentCountBadge(model.mailbox.unread)
             }
         }
@@ -108,7 +115,7 @@ private fun ColumnScope.InboxList(model: MobileModel, open: (String) -> Unit) {
         scope.launch { try { model.refresh().join() } finally { refreshing = false } }
     }) {
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
-            item { HorizontalDivider(thickness = 1.dp, color = suzentRowDivider) }
+
             model.mailboxError?.let { error -> item {
                 Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
                     Text(error, color = MaterialTheme.colorScheme.error, fontSize = 13.sp)

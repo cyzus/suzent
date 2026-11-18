@@ -13,6 +13,22 @@ class SuzentBotCoreTest {
 
     @After fun close() { host.close() }
 
+    @Test fun clicksWakeIdleBotAndRunOnlyOnce() {
+        for (cycle in 0..2) {
+            val id = host.create(1, "{}")
+            fun step(time: Int, trick: String = "") = SuzentBotFrame.parse(host.step(id,
+                """{"stage":"idle","time":$time,"autoMorphCycle":false,"holdWhenIdle":true$trick}"""))
+            var frame = step(0)
+            for (index in 1..300) frame = step(index * 34)
+            assertTrue(frame.settled)
+            frame = step(10234, ",\"interactiveTrick\":$cycle")
+            assertTrue(!frame.settled)
+            for (index in 302..900) frame = step(index * 34)
+            assertTrue(frame.settled)
+            host.destroy(id)
+        }
+    }
+
     @Test fun callsReleaseThreadContextAndKeepSessionsIndependent() {
         assertEquals(null, org.mozilla.javascript.Context.getCurrentContext())
         SuzentBotHost(script, 2).use { other ->

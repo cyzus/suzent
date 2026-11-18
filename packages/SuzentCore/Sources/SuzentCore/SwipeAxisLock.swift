@@ -5,7 +5,7 @@ import Foundation
 /// The lock is taken once, at the first sample that travels `minTravel` (24 pt/dp)
 /// in either axis, and it never flips. Horizontal wins only when the gesture is
 /// within 30° of the x axis: `|dx| >= |dy| * sqrt(3)`. A scroll that has already
-/// started (`noteVerticalScroll`) keeps the gesture.
+/// started (`noteVerticalScroll`) keeps the gesture. Vertical intent locks early at 8 pt/dp.
 public struct SwipeAxisLock: Sendable, Equatable {
     public enum Axis: String, Sendable, Equatable {
         case undecided, horizontal, vertical
@@ -16,8 +16,10 @@ public struct SwipeAxisLock: Sendable, Equatable {
     /// `|dx| / |dy|` for a 30° cone around the horizontal axis.
     public static let dominance: Double = 3.squareRoot()
     /// Release past this distance commits a swipe action.
-    public static let trigger: Double = 72
-    /// A flick at least this fast (px/s) commits after `minTravel`, in the offset's direction.
+    public static let trigger: Double = 96
+    public static let scrollTravel: Double = 8
+    public static let flickTravel: Double = 56
+    /// A flick at least this fast (px/s) commits after `flickTravel`, in the offset's direction.
     public static let velocityTrigger: Double = 900
 
     public private(set) var axis: Axis = .undecided
@@ -33,6 +35,10 @@ public struct SwipeAxisLock: Sendable, Equatable {
         if axis != .undecided { return axis }
         let adx = abs(dx)
         let ady = abs(dy)
+        if ady >= Self.scrollTravel && adx < ady * Self.dominance {
+            axis = .vertical
+            return axis
+        }
         if adx < Self.minTravel && ady < Self.minTravel { return .undecided }
         // The epsilon keeps an exact 30° sample on the horizontal side of the comparison.
         axis = adx >= Self.minTravel && adx + 1e-9 >= ady * Self.dominance ? .horizontal : .vertical
@@ -48,7 +54,7 @@ public struct SwipeAxisLock: Sendable, Equatable {
         if travel < minTravel { return false }
         let along = offset < 0 ? -velocity : velocity
         if along <= -velocityTrigger { return false }
-        return travel >= trigger || along >= velocityTrigger
+        return travel >= trigger || (travel >= flickTravel && along >= velocityTrigger)
     }
 
     /// Angle check for a platform recognizer that must accept or reject at its own, smaller

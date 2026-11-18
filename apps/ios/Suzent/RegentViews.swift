@@ -164,7 +164,7 @@ struct RegentIdentity: View {
         HStack(spacing: 12) {
             RegentMark(working: working, waiting: waiting > 0, size: expanded ? 44 : 24, lastMessageAt: lastMessageAt, coronation: coronation)
             VStack(alignment: .leading, spacing: 4) {
-                Text("SUZENT Regent").suzentFont(14, weight: .semibold)
+                Text("Regent").suzentFont(14, weight: .semibold)
                 if showStatus {
                     Text(working ? String(localized: "Regent is working") : waiting > 0 ? String(localized: "Needs your attention") : String(localized: "Across all your projects"))
                         .suzentFont(PresentationTokens.typeLabel).foregroundStyle(waiting > 0 && !working ? Color.orange : Color.suzentMuted)
@@ -193,7 +193,7 @@ struct RegentHero: View {
                             .accessibilityLabel(Text("(unread) unread messages"))
                     }
                 }
-            Text("SUZENT Regent").suzentFont(17, weight: .bold)
+            Text("Regent").suzentFont(17, weight: .bold)
             Text(working ? String(localized: "Regent is working") : waiting > 0 ? String(localized: "Needs your attention") : String(localized: "Across all your projects"))
                 .suzentFont(PresentationTokens.typeLabel).multilineTextAlignment(.center)
                 .foregroundStyle(waiting > 0 && !working ? Color.orange : Color.suzentMuted)
@@ -205,7 +205,7 @@ struct RegentGreeting: View {
     var body: some View {
         VStack(spacing: 16) {
             RegentMark(size: 64)
-            Text("SUZENT Regent").font(.title2.bold())
+            Text("Regent").font(.title2.bold())
             Text("One conversation for all your projects. Ask what needs you, or hand me your next task.")
                 .foregroundStyle(Color.suzentMuted).multilineTextAlignment(.center)
         }.frame(maxWidth: .infinity).padding(.vertical, 36)

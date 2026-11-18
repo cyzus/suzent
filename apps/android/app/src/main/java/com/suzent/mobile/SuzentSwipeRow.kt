@@ -75,7 +75,6 @@ fun SuzentSwipeRow(
         }
         Box(
             Modifier.fillMaxWidth()
-                .graphicsLayer { translationX = if (rtl) -shift else shift }
                 .pointerInput(enableLeading, enableTrailing, rtl) {
                     if (!enableLeading && !enableTrailing) return@pointerInput
                     fun close() {
@@ -83,7 +82,7 @@ fun SuzentSwipeRow(
                         if (from == 0f) return
                         val motion = ValueAnimator.areAnimatorsEnabled()
                         settle.value = scope.launch {
-                            if (motion) animate(from, 0f, animationSpec = spring()) { value, _ -> shift = value }
+                            if (motion) animate(from, 0f, animationSpec = spring(dampingRatio = 1f)) { value, _ -> shift = value }
                             else shift = 0f
                         }
                     }
@@ -140,6 +139,11 @@ fun SuzentSwipeRow(
                         close()
                     }
                 },
-        ) { content() }
+        ) {
+            // Keep touch coordinates fixed while only the visible row follows the finger.
+            Box(Modifier.fillMaxWidth().graphicsLayer { translationX = if (rtl) -shift else shift }) {
+                content()
+            }
+        }
     }
 }

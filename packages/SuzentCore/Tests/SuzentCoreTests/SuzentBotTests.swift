@@ -3,6 +3,24 @@ import Foundation
 import Testing
 @testable import SuzentCore
 
+@Test func interactiveClicksWakeIdleBotAndRunOnlyOnce() async {
+    let renderer = SuzentBotRenderer()
+    for cycle in 0...2 {
+        let bot = await renderer.openBot()
+        var settled = false
+        for index in 0...300 {
+            let frame = await renderer.frame(bot: bot, pending: false, error: false, thinking: false, tool: nil,
+                active: false, time: Double(index * 34), reduced: false, dark: false)
+            settled = frame.settled
+        }
+        #expect(settled)
+        let clicked = await renderer.frame(bot: bot, pending: false, error: false, thinking: false, tool: nil,
+            active: false, time: 10234, reduced: false, dark: false, interactiveTrick: cycle)
+        #expect(!clicked.settled)
+        await renderer.closeBot(bot)
+    }
+}
+
 @Test func suzentBotResolvesTheDesktopStages() {
     let session = SuzentBotSession(seed: 1)
     #expect(session.resolveStage(hasPending: true, isError: true, isThinking: false, tool: "run_command", isActive: true) == "approval")

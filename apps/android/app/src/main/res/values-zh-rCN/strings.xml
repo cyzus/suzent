@@ -205,7 +205,7 @@
     <string name="pairing_finishing">正在完成连接…</string>
     <string name="pairing_network_help">请保持桌面端 Suzent 开启，并检查 Wi-Fi 或 Tailscale 连接。</string>
     <string name="back_to_chats">返回会话列表</string>
-    <string name="regent_name">SUZENT Regent</string>
+    <string name="regent_name">Regent</string>
     <string name="regent_working">Regent 正在工作</string>
     <string name="regent_waiting">需要你处理</string>
     <string name="regent_scope">统筹你的所有项目</string>
@@ -396,4 +396,5 @@
     <string name="add_model_favorite">收藏模型</string>
     <string name="remove_model_favorite">取消收藏</string>
     <string name="model_catalog_error">无法更新模型，请重试。</string>
+    <string name="robot_play">逗逗 Suzent</string>
 </resources>

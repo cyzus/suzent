@@ -293,9 +293,13 @@ struct MessageView: View {
     }
 
     private var footer: some View {
+        HStack(alignment: .center, spacing: 12) {
+            if !user && botPlacement(message.parts, live: false, latest: isLatest, regent: regent) == .footer {
+                SuzentBotBadge(parts: message.parts, streaming: false, size: 40).frame(width: 48, height: 48, alignment: .leading)
+            }
+        VStack(alignment: .trailing, spacing: 2) {
         HStack(spacing: 5) {
-            if user { Spacer(minLength: 0) }
-            if !user && botPlacement(message.parts, live: false, latest: isLatest, regent: regent) == .footer { SuzentBotBadge(parts: message.parts, streaming: false) }
+            Spacer(minLength: 0)
             if isLatest {
                 if !message.text.isEmpty {
                     Button { copy() } label: { footerIcon(copied ? "checkmark" : "doc.on.doc") }
@@ -319,13 +323,15 @@ struct MessageView: View {
                         .suzentFont(PresentationTokens.typeMeta).lineLimit(1).fixedSize().frame(minHeight: 36)
                 }.accessibilityLabel(Text("Sources")).accessibilityValue(Text("\(message.citationSources.count)"))
             }
+        }
+        HStack(spacing: 6) {
+            Spacer(minLength: 0)
             if isLatest, !user, let model = message.model ?? fallbackModel, !model.isEmpty {
                 Button { modelDetails = model } label: {
                     HStack(spacing: 4) {
                         Image(systemName: "cpu").font(.system(size: 10))
                         Text(model.split(separator: "/", maxSplits: 1).last.map(String.init) ?? model)
                             .suzentFont(PresentationTokens.typeMeta, weight: .medium).lineLimit(1).truncationMode(.tail)
-                        if message.timestamp != nil { Text("·").suzentFont(PresentationTokens.typeMeta) }
                     }.frame(minHeight: 36).contentShape(Rectangle())
                 }.layoutPriority(-1).accessibilityLabel(model)
                     .accessibilityHint(String(localized: "View full model name"))
@@ -336,7 +342,8 @@ struct MessageView: View {
                 }
                 if user { Text("You") }
             }.suzentFont(PresentationTokens.typeMeta).lineLimit(1).layoutPriority(1)
-            if !user { Spacer(minLength: 0) }
+        }
+        }.frame(maxWidth: .infinity, alignment: .trailing)
         }.buttonStyle(.plain).foregroundStyle(Color.suzentMuted)
             .frame(maxWidth: .infinity, minHeight: isLatest ? 36 : 20, alignment: user ? .trailing : .leading)
     }

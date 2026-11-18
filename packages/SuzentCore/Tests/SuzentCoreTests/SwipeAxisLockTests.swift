@@ -40,14 +40,16 @@ import Testing
 }
 
 @Test func commitNeedsTriggerOrAFlickInTheSameDirection() {
-    #expect(SwipeAxisLock.commits(offset: 72, velocity: 0))
-    #expect(!SwipeAxisLock.commits(offset: 71, velocity: 0))
-    #expect(SwipeAxisLock.commits(offset: 30, velocity: 900))
-    #expect(SwipeAxisLock.commits(offset: -30, velocity: -900))
+    #expect(SwipeAxisLock.commits(offset: 96, velocity: 0))
+    #expect(!SwipeAxisLock.commits(offset: 95, velocity: 0))
+    #expect(!SwipeAxisLock.commits(offset: 30, velocity: 900))
+    #expect(SwipeAxisLock.commits(offset: 56, velocity: 900))
+    #expect(!SwipeAxisLock.commits(offset: -30, velocity: -900))
+    #expect(SwipeAxisLock.commits(offset: -56, velocity: -900))
     #expect(!SwipeAxisLock.commits(offset: 30, velocity: -900))
     #expect(!SwipeAxisLock.commits(offset: 23, velocity: 2000))
     #expect(!SwipeAxisLock.commits(offset: 80, velocity: -900))
-    #expect(SwipeAxisLock.commits(offset: -72, velocity: -100))
+    #expect(SwipeAxisLock.commits(offset: -96, velocity: -100))
 }
 
 @Test func systemRecognizerUsesTheSameAngleBeforeMinimumTravel() {
@@ -57,4 +59,13 @@ import Testing
     #expect(SwipeAxisLock.angleIsHorizontal(dx: 0, dy: 0, vx: 400, vy: 40))
     #expect(!SwipeAxisLock.angleIsHorizontal(dx: 0, dy: 0, vx: 40, vy: 400))
     #expect(!SwipeAxisLock.angleIsHorizontal(dx: 0, dy: 0, vx: 0, vy: 0))
+}
+
+@Test func earlyVerticalMovementCannotBecomeASwipe() {
+    for direction in [-1.0, 1.0] {
+        var lock = SwipeAxisLock()
+        #expect(lock.update(dx: direction * 6, dy: 8) == .vertical)
+        #expect(lock.update(dx: direction * 100, dy: 10) == .vertical)
+        #expect(!SwipeAxisLock.commits(offset: direction * 40, velocity: direction * 2000))
+    }
 }
