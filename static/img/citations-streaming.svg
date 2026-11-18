@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 300" width="880" height="300" role="img" aria-label="While a reply streams, a half-written marker would show as boxes. Suzent hides it until it closes, then shows the badge."><defs><marker id="ar" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 1 1.5 L 8.5 5 L 1 8.5" fill="none" stroke="#1a1a1a" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></marker></defs><style>
+    .ui { font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", sans-serif; }
+    .mono { font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    .card { fill: #ffffff; stroke: #dcdcdc; stroke-width: 1; }
+    .card-em { fill: #ffffff; stroke: #1a1a1a; stroke-width: 1.25; }
+    .label { fill: #8a8a8a; letter-spacing: 0.08em; }
+  </style>
+<rect x="0" y="0" width="880" height="300" rx="14" fill="#fafafa"/>
+<text x="32" y="74" class="mono label" font-size="9.5" font-weight="600">RAW STREAM</text><text x="32" y="194" class="mono label" font-size="9.5" font-weight="600">WHAT YOU SEE</text>
+<text x="250" y="36" class="mono" font-size="9.5" fill="#8a8a8a" text-anchor="middle">t + 100 ms</text>
+<rect x="150" y="50" width="200" height="44" rx="8" class="card"/><rect x="150" y="170" width="200" height="44" rx="8" class="card-em"/>
+<text x="162" y="77" class="ui" font-size="12" fill="#1a1a1a">40.3°C</text><text x="162" y="197" class="ui" font-size="12" fill="#1a1a1a">40.3°C</text>
+<rect x="212" y="63" width="34" height="18" rx="4" fill="#1a1a1a"/><text x="229" y="75" class="mono" font-size="8" fill="#ffffff" text-anchor="middle">E200</text><text x="250" y="76" class="mono" font-size="10" fill="#1a1a1a">ci</text>
+<text x="250" y="240" class="mono" font-size="9" fill="#8a8a8a" text-anchor="middle">held back</text>
+<line x1="250" y1="98" x2="250" y2="164" stroke="#cfcfcf" stroke-dasharray="3 4" marker-end="url(#ar)"/>
+<text x="490" y="36" class="mono" font-size="9.5" fill="#8a8a8a" text-anchor="middle">t + 200 ms</text>
+<rect x="390" y="50" width="200" height="44" rx="8" class="card"/><rect x="390" y="170" width="200" height="44" rx="8" class="card-em"/>
+<text x="402" y="77" class="ui" font-size="12" fill="#1a1a1a">40.3°C</text><text x="402" y="197" class="ui" font-size="12" fill="#1a1a1a">40.3°C</text>
+<rect x="452" y="63" width="34" height="18" rx="4" fill="#1a1a1a"/><text x="469" y="75" class="mono" font-size="8" fill="#ffffff" text-anchor="middle">E200</text><text x="490" y="76" class="mono" font-size="10" fill="#1a1a1a">cite</text><rect x="520" y="63" width="34" height="18" rx="4" fill="#1a1a1a"/><text x="537" y="75" class="mono" font-size="8" fill="#ffffff" text-anchor="middle">E202</text>
+<text x="490" y="240" class="mono" font-size="9" fill="#8a8a8a" text-anchor="middle">held back</text>
+<line x1="490" y1="98" x2="490" y2="164" stroke="#cfcfcf" stroke-dasharray="3 4" marker-end="url(#ar)"/>
+<text x="730" y="36" class="mono" font-size="9.5" fill="#8a8a8a" text-anchor="middle">t + 300 ms</text>
+<rect x="630" y="50" width="200" height="44" rx="8" class="card"/><rect x="630" y="170" width="200" height="44" rx="8" class="card-em"/>
+<text x="642" y="77" class="ui" font-size="12" fill="#1a1a1a">40.3°C</text><text x="642" y="197" class="ui" font-size="12" fill="#1a1a1a">40.3°C</text>
+<rect x="692" y="63" width="34" height="18" rx="4" fill="#1a1a1a"/><text x="709" y="75" class="mono" font-size="8" fill="#ffffff" text-anchor="middle">E200</text><text x="728" y="76" class="mono" font-size="9" fill="#1a1a1a">…src_2</text><rect x="772" y="63" width="34" height="18" rx="4" fill="#1a1a1a"/><text x="789" y="75" class="mono" font-size="8" fill="#ffffff" text-anchor="middle">E201</text>
+<rect x="696" y="182" width="84" height="20" rx="10" fill="#f1f1f1" stroke="#bdbdbd"/><circle cx="708" cy="192" r="4" fill="#1a1a1a"/><text x="744" y="196" class="ui" font-size="10.5" fill="#1a1a1a" text-anchor="middle">metoffice</text>
+<text x="730" y="240" class="mono" font-size="9" fill="#1a1a1a" text-anchor="middle">closed → badge</text>
+<line x1="730" y1="98" x2="730" y2="164" stroke="#cfcfcf" stroke-dasharray="3 4" marker-end="url(#ar)"/>
+</svg>

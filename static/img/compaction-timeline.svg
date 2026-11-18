@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 380" width="880" height="380" role="img" aria-label="Context size over a long conversation. At 350k tokens Suzent prepares the summary in the background while the cache is warm. At 500k it applies the prepared summary at once, with no wait. If you are away long enough for the cache to expire after 350k, the prepared summary is applied early instead of re-reading the whole history at full price.">
+  <style>
+    .ui { font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", sans-serif; }
+    .mono { font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    .label { fill: #8a8a8a; letter-spacing: 0.08em; }
+  </style>
+
+  <rect x="0" y="0" width="880" height="380" rx="14" fill="#fafafa"/>
+  <text x="32" y="38" class="mono label" font-size="9.5" font-weight="600">CONTEXT SIZE OVER A LONG CONVERSATION</text>
+
+  <!-- axes -->
+  <line x1="90" y1="280" x2="850" y2="280" stroke="#cfcfcf" stroke-width="1.25"/>
+  <line x1="90" y1="60" x2="90" y2="280" stroke="#cfcfcf" stroke-width="1.25"/>
+  <text x="82" y="283.5" class="mono" font-size="9.5" fill="#8a8a8a" text-anchor="end">0</text>
+
+  <!-- thresholds -->
+  <line x1="90" y1="96.7" x2="850" y2="96.7" stroke="#1a1a1a" stroke-width="1" stroke-dasharray="4 4"/>
+  <text x="82" y="100" class="mono" font-size="9.5" fill="#1a1a1a" text-anchor="end">500k</text>
+  <line x1="90" y1="151.7" x2="850" y2="151.7" stroke="#9a9a9a" stroke-width="1" stroke-dasharray="4 4"/>
+  <text x="82" y="155" class="mono" font-size="9.5" fill="#6b6b6b" text-anchor="end">350k</text>
+  <text x="100" y="90" class="mono" font-size="9" fill="#1a1a1a">COMPACT (OR 80% OF WINDOW)</text>
+  <text x="100" y="145" class="mono" font-size="9" fill="#6b6b6b">PREPARE (OR 50% OF WINDOW)</text>
+
+  <!-- cycle 1 -->
+  <polyline points="90,280 430,96.7 430,265.3" fill="none" stroke="#1a1a1a" stroke-width="2.25" stroke-linejoin="round"/>
+  <!-- cycle 2 -->
+  <polyline points="430,265.3 688,126" fill="none" stroke="#1a1a1a" stroke-width="2.25" stroke-linejoin="round"/>
+  <line x1="688" y1="126" x2="778" y2="126" stroke="#1a1a1a" stroke-width="2.25" stroke-dasharray="2 5" stroke-linecap="round"/>
+  <polyline points="778,126 778,265.3 840,232" fill="none" stroke="#1a1a1a" stroke-width="2.25" stroke-linejoin="round"/>
+
+  <!-- prepare markers -->
+  <circle cx="328" cy="151.7" r="6" fill="#ffffff" stroke="#1a1a1a" stroke-width="2"/>
+  <circle cx="640.8" cy="151.7" r="6" fill="#ffffff" stroke="#1a1a1a" stroke-width="2"/>
+  <!-- apply markers -->
+  <circle cx="430" cy="96.7" r="6" fill="#1a1a1a"/>
+  <circle cx="778" cy="126" r="6" fill="#1a1a1a"/>
+
+  <!-- callouts -->
+  <g transform="translate(150, 300)">
+    <circle cx="6" cy="6" r="5" fill="#ffffff" stroke="#1a1a1a" stroke-width="2"/>
+    <text x="20" y="10" class="ui" font-size="12" font-weight="600" fill="#1a1a1a">Prepare in the background</text>
+    <text x="20" y="28" class="ui" font-size="11" fill="#6b6b6b">written from the warm prompt cache,</text>
+    <text x="20" y="44" class="ui" font-size="11" fill="#6b6b6b">saved to disk</text>
+  </g>
+  <g transform="translate(420, 300)">
+    <circle cx="6" cy="6" r="5" fill="#1a1a1a"/>
+    <text x="20" y="10" class="ui" font-size="12" font-weight="600" fill="#1a1a1a">Apply the prepared summary</text>
+    <text x="20" y="28" class="ui" font-size="11" fill="#6b6b6b">at the threshold: no waiting,</text>
+    <text x="20" y="44" class="ui" font-size="11" fill="#6b6b6b">or early if the cache went cold</text>
+  </g>
+  <text x="733" y="116" class="mono" font-size="9" fill="#6b6b6b" text-anchor="middle">away · cache expired</text>
+</svg>

@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 380" width="880" height="380" role="img" aria-label="Six ways a citation can arrive, from the intended invisible-character marker to a copied tool label, all rendered as the same badge."><defs><marker id="ar" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 1 1.5 L 8.5 5 L 1 8.5" fill="none" stroke="#1a1a1a" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></marker></defs><style>
+    .ui { font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", sans-serif; }
+    .mono { font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    .card { fill: #ffffff; stroke: #dcdcdc; stroke-width: 1; }
+    .card-em { fill: #ffffff; stroke: #1a1a1a; stroke-width: 1.25; }
+    .label { fill: #8a8a8a; letter-spacing: 0.08em; }
+  </style>
+<rect x="0" y="0" width="880" height="380" rx="14" fill="#fafafa"/>
+<text x="32" y="38" class="mono label" font-size="9.5" font-weight="600">SIX SPELLINGS</text><text x="700" y="38" class="mono label" font-size="9.5" font-weight="600">ONE BADGE</text>
+<rect x="32" y="58" width="400" height="40" rx="8" class="card"/>
+<rect x="48" y="69" width="34" height="18" rx="4" fill="#1a1a1a"/><text x="65" y="81" class="mono" font-size="8" fill="#ffffff" text-anchor="middle">E200</text><text x="88" y="83" class="mono" font-size="11" fill="#1a1a1a">cite</text><rect x="122" y="69" width="34" height="18" rx="4" fill="#1a1a1a"/><text x="139" y="81" class="mono" font-size="8" fill="#ffffff" text-anchor="middle">E202</text><text x="162" y="83" class="mono" font-size="11" fill="#1a1a1a">t3_src_2</text><rect x="228" y="69" width="34" height="18" rx="4" fill="#1a1a1a"/><text x="245" y="81" class="mono" font-size="8" fill="#ffffff" text-anchor="middle">E201</text>
+<path d="M 436 78 C 540 78, 560 210, 650 210" fill="none" stroke="#8f8f8f" stroke-width="1.1"/>
+<rect x="32" y="108" width="400" height="40" rx="8" class="card"/>
+<text x="48" y="133" class="mono" font-size="11" fill="#1a1a1a">[[cite:t3_src_2]]</text>
+<path d="M 436 128 C 540 128, 560 210, 650 210" fill="none" stroke="#8f8f8f" stroke-width="1.1"/>
+<rect x="32" y="158" width="400" height="40" rx="8" class="card"/>
+<rect x="48" y="169" width="18" height="18" rx="3" fill="none" stroke="#1a1a1a" stroke-width="1.2"/><text x="72" y="183" class="mono" font-size="11" fill="#1a1a1a">cite</text><rect x="106" y="169" width="18" height="18" rx="3" fill="none" stroke="#1a1a1a" stroke-width="1.2"/><text x="130" y="183" class="mono" font-size="11" fill="#1a1a1a">t3_src_2</text><rect x="192" y="169" width="18" height="18" rx="3" fill="none" stroke="#1a1a1a" stroke-width="1.2"/>
+<path d="M 436 178 C 540 178, 560 210, 650 210" fill="none" stroke="#8f8f8f" stroke-width="1.1"/>
+<rect x="32" y="208" width="400" height="40" rx="8" class="card"/>
+<text x="48" y="233" class="mono" font-size="11" fill="#1a1a1a">cite:t3_src_2</text>
+<path d="M 436 228 C 540 228, 560 210, 650 210" fill="none" stroke="#8f8f8f" stroke-width="1.1"/>
+<rect x="32" y="258" width="400" height="40" rx="8" class="card"/>
+<text x="48" y="283" class="mono" font-size="11" fill="#1a1a1a">citet3_src_2</text><text x="416" y="283" class="mono" font-size="9" fill="#8a8a8a" text-anchor="end">KNOWN IDS ONLY</text>
+<path d="M 436 278 C 540 278, 560 210, 650 210" fill="none" stroke="#8f8f8f" stroke-width="1.1"/>
+<rect x="32" y="308" width="400" height="40" rx="8" class="card"/>
+<text x="48" y="333" class="mono" font-size="11" fill="#1a1a1a">[t3_src_2]</text><text x="416" y="333" class="mono" font-size="9" fill="#8a8a8a" text-anchor="end">KNOWN IDS ONLY</text>
+<path d="M 436 328 C 540 328, 560 210, 650 210" fill="none" stroke="#8f8f8f" stroke-width="1.1"/>
+<line x1="640" y1="210" x2="664" y2="210" stroke="#1a1a1a" stroke-width="1.5" marker-end="url(#ar)"/>
+<rect x="672" y="160" width="184" height="100" rx="12" class="card-em"/>
+<rect x="700" y="196" width="128" height="28" rx="14" fill="#f1f1f1" stroke="#bdbdbd"/><circle cx="718" cy="210" r="6" fill="#1a1a1a"/><text x="770" y="214.5" class="ui" font-size="12.5" fill="#1a1a1a" text-anchor="middle">metoffice</text>
+</svg>
