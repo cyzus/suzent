@@ -1,6 +1,6 @@
 # Mobile changelog
 
-## [mobile-v0.10.1] - 2026-11-17
+## [mobile-v0.10.1] - 2026-11-18
 
 ### Release notes
 - Reduce model-picker overhead by caching the model catalog and omitting it from routine mobile conversation polling.
