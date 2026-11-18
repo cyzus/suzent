@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [v0.27.2] - 2026-11-18
 
+<!-- highlights -->
+### Highlights
+
+- **A broken MCP server no longer breaks your chats.** Until now, one server that could not start made the next reply fail with "Failed to initialize server session", every time. Its tools are now skipped for that turn while everything else works, first-launch installs run in the background, and the MCP settings page says which servers are still preparing or failing.
+- **The Inbox opens instantly.** It used to stall for seconds while a reply was streaming. Chat history, model lists and the sidebar no longer compete with a running reply for the same database lock.
+- **Long chats and big histories stop getting in the way.** Deleting, pinning or archiving a conversation no longer freezes the app for seconds, replies no longer rewrite the whole chat row on every moment of output, and a reply cut off by a crash comes back marked as interrupted instead of vanishing.
+- **Less work when nothing is happening.** The desktop polls far less while idle, and switching chats no longer re-queries every model provider.
+
+**这篇中文版：**
+
+- **一个坏掉的 MCP 服务器不再拖垮聊天。** 以前只要有一个服务器起不来，之后每次回复都会报 "Failed to initialize server session"。现在那一轮只是跳过它的工具，其他功能照常；首次启动的安装转到后台，MCP 设置页会标明哪些服务器仍在准备或已失败。
+- **Inbox 秒开。** 以前在回复流式输出时打开要卡好几秒。聊天历史、模型列表和侧边栏现在不再与正在进行的回复抢同一把数据库锁。
+- **长对话和大历史不再碍事。** 删除、置顶或归档会话不再让应用卡顿数秒；回复不再每输出一点就重写整行聊天记录；被崩溃截断的回复会以「已中断」状态回来，而不是消失。
+- **没事干的时候少干活。** 桌面端空闲时轮询大幅减少，切换会话也不再重新查询所有模型供应商。
+
+**A performance and reliability patch.** No new capabilities; existing things get faster and stop failing. The mobile side ships this same work as mobile-v0.10.1.
+<!-- /highlights -->
+
 ### Release notes
 - Reduce model-picker overhead by caching the model catalog and omitting it from routine mobile conversation polling.
 - Deleting, pinning and archiving a chat no longer take seconds or freeze other chats while they run, even with a large chat history.
