@@ -50,11 +50,7 @@ So we kept the convenience of a relay and changed who runs it.
 
 ## How it works
 
-```
-Suzent on your computer ──connects out──▶ your relay ◀── Suzent app on your phone
-                                              ▲
-                                              └── GitHub and other webhook callers
-```
+<img src="/img/relay-architecture.svg" width="880" height="360" alt="Suzent on your computer connects out to a relay you deploy. Your phone and webhook callers reach Suzent through that relay, with no open ports on your router and no Suzent cloud in the middle." />
 
 [suzent-relay](https://github.com/cyzus/suzent-relay) is a small open-source
 server. You deploy it once, either for free on Cloudflare Workers with no
@@ -90,6 +86,8 @@ it cannot read or change:
 3. Both sides derive fresh keys for that session, and every message is
    encrypted with AES-256-GCM and numbered. A message that is replayed,
    dropped or reordered fails to decrypt, and the session ends.
+
+<img src="/img/relay-handshake.svg" width="880" height="400" alt="The pairing QR code gives the phone your computer's public key. The phone sends a fresh key, your computer replies with proof it holds the private key, and every message after that is encrypted and numbered. The relay only sees ciphertext." />
 
 A relay that tries to pretend to be your computer fails step 2. A relay that
 tries to tamper with a message fails step 3. The most it can do is refuse to

@@ -54,6 +54,8 @@ The difference is large. Summarizing a 400k-token conversation on Anthropic
 used to cost 400k input tokens at the base price. Read from the cache, the same
 history costs about as much as 40k.
 
+<img src="/img/compaction-cost.svg" width="880" height="280" alt="Summarizing a 400k-token conversation: a new summary prompt pays for 400k tokens at the base price, while re-sending the conversation's own request reads the history from the cache for about the cost of 40k." />
+
 Recording the request "as sent" matters more than it sounds. The framework adds
 small pieces to a request on the way out, so the history Suzent stores is not
 byte-for-byte what the provider saw, and a single differing byte early on is
@@ -75,6 +77,8 @@ whichever comes first:
   cache is still warm from the request that just happened.
 - **Compact** at 500k tokens or 80% of the window. If a prepared summary
   matches the history, it is applied immediately. You do not wait for anything.
+
+<img src="/img/compaction-timeline.svg" width="880" height="380" alt="Context size over a long conversation: the summary is prepared at 350k tokens, applied at 500k with no wait, or applied early when you come back after the cache has expired." />
 
 A prepared summary is saved to disk, so restarting Suzent does not throw it
 away. If the conversation keeps growing a lot after the summary was written,
