@@ -1,5 +1,22 @@
 # Mobile changelog
 
+## [mobile-v0.10.1] - 2026-11-18
+
+### Release notes
+- Android source and model panels use a consistent layout with readable content and bounded scrolling.
+- Reduce model-picker overhead by caching the model catalog and omitting it from routine mobile conversation polling.
+- Open conversations more smoothly by avoiding unused agent-state reads and moving history processing off the UI thread.
+- Place the mobile robot and animate tool icons the way desktop does, and draw them off the UI thread on iOS and Android, pausing when hidden or settled.
+- Chat replies separate robot status, actions, and model details, with gentler transitions for the assembly animation.
+- Inbox uses compact unread badges, clearer text filters, and a more readable message layout.
+- Collapse mobile model groups, share favorites with desktop, and refresh provider model lists from your phone.
+- Find mobile chat models with search and provider groups, and see the conversation default model before choosing.
+- Mobile chat, lists, and the composer use a shared native visual system, and vertical scrolling no longer opens horizontal swipes.
+- Tap the robot in mobile chats to play the same rotating animations as on desktop.
+- Settings uses consistent warm surfaces, subtle dividers, and yellow switches.
+- Keep desktop and mobile actions consistent through a shared API while preserving device permissions and compatibility with older clients.
+- The phone apps play the same Suzent bot animation as desktop, and the desktop mark rests when it is idle or reduced motion is on.
+
 ## [mobile-v0.10.0] - 2026-11-16
 
 ### Release notes
