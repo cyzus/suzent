@@ -110,6 +110,8 @@ The last two look a lot like ordinary text, so they only count when **every id
 in them belongs to a real source** in that conversation. A sentence that
 happens to contain `[x_src_1]` stays a sentence.
 
+<img src="/img/citations-spellings.svg" width="880" height="380" alt="Six spellings of the same citation, from the invisible marker to a copied tool label, all rendered as one badge." />
+
 All six render as the same badge. When a marker names an id that isn't in the
 current list, for example a source from an earlier part of the conversation,
 you get a muted badge instead of a broken one. When an answer has no sources at
@@ -125,6 +127,8 @@ Both the desktop renderer and the backend hide a marker that has started but
 not closed, and show it only once it is complete. The markers that have no
 closing character at all, such as `cite:t3_src_2`, are held back until the
 next bit of text shows where they end.
+
+<img src="/img/citations-streaming.svg" width="880" height="300" alt="While a reply streams, a half-written marker is held back. Once it closes, the badge appears." />
 
 ## Leaving the app
 

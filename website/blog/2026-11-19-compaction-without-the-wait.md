@@ -25,6 +25,8 @@ That approach has three costs that are easy to miss:
    agent forgets things it still needed. Compact too late and it was already
    struggling to use them.
 
+<img src="/img/compaction-flow.svg" width="880" height="300" alt="Usually the agent stops when the window is full, re-reads everything at full price and you wait. In Suzent the summary is written from the cache in the background earlier and swapped in with no wait." />
+
 This month we rebuilt Suzent's compaction around those three
 costs. Here is what changed and why.
 

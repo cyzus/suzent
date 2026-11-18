@@ -48,6 +48,8 @@ we operate would quietly undo that.
 
 So we kept the convenience of a relay and changed who runs it.
 
+<img src="/img/relay-options.svg" width="880" height="300" alt="Port forwarding opens a port at home, Tailscale needs an app on the phone, a vendor relay puts a company in the middle. Your own relay avoids all three." />
+
 ## How it works
 
 <img src="/img/relay-architecture.svg" width="880" height="360" alt="Suzent on your computer connects out to a relay you deploy. Your phone and webhook callers reach Suzent through that relay, with no open ports on your router and no Suzent cloud in the middle." />
