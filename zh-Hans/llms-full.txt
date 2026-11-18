@@ -8917,11 +8917,22 @@ uses, and returns a `FileResponse` (Range requests work, which the relay streams
 Anything not reported by a media tool in that chat is a 404.
 
 Clients render the items under a turn's activity summary, outside the collapsed rail.
-Each item is downloaded once into the app's cache (`cacheDir/media/<desktop>/` on
+Images and videos appear together in static thumbnails, one per row, without visible
+filenames or horizontal gestures in the transcript. Tapping opens a full-screen pager with an item counter; swiping moves
+between the group’s images and videos. Image zoom/save/share remain available,
+and a video player is disposed or paused when its page leaves selection. Audio
+keeps a static play entry. Video previews fetch through the existing media cache and
+generate a JPEG of at most 320 px per side without creating a player. Android
+limits background video preview work to two items at once. Cached previews are
+reused, and extraction failure keeps the play placeholder usable. Tapping opens a
+dedicated player, reuses or downloads the item, and exposes native playback controls;
+closing the player or backgrounding the app pauses playback. Images keep their
+inline preview and full-screen viewer. Each downloaded item is cached (`cacheDir/media/<desktop>/` on
 Android, `Caches/media/<desktop>/` on iOS) and played from the local file: Android uses
 `VideoView` with `MediaController` for video and `MediaPlayer` for audio, iOS uses
 AVKit's `VideoPlayer` for both. Downloading first keeps playback independent of the
-transport, since neither system player can speak the relay tunnel. Items of kind
+transport, since neither system player can speak the relay tunnel. Android audio
+preparation is asynchronous so opening a clip does not block the UI. Items of kind
 `file` download only when tapped, keep their original name under `<id>/`, and open the
 system share sheet (Android through the existing `FileProvider`). Images are decoded
 at most 1600 px on the long side. Live turns show media once the saved transcript loads.
@@ -9329,6 +9340,13 @@ trigger boundaries. Cross-platform delivery cases live in
 `packages/mobile-contract/regent-fixtures.json`.
 
 ### Native activity presentation
+
+Chat robots follow display timing up to 120 FPS on both platforms. Eight consecutive
+frames above 80% of the high-refresh budget limit animation to 60 FPS; 240
+frames below half the budget allow recovery. Android uses the Compose frame
+clock and iOS uses CADisplayLink with a bounded newest-frame buffer. Animation
+computation stays off the UI thread, and settled robots stop updating. Background
+and reduced-motion behavior is retained.
 
 Swift and Kotlin `ActivityPresentation` consume persisted run timings, deduplicate
 run IDs and sum resumed active durations without including approval waits. Shared
