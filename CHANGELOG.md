@@ -5,10 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [v0.27.2] - 2026-11-17
+## [v0.27.2] - 2026-11-18
 
 ### Release notes
 - Reduce model-picker overhead by caching the model catalog and omitting it from routine mobile conversation polling.
+- Deleting, pinning and archiving a chat no longer take seconds or freeze other chats while they run, even with a large chat history.
 - Open conversations more smoothly by avoiding unused agent-state reads and moving history processing off the UI thread.
 - The Inbox opens instantly and no longer freezes the app while a chat is replying.
 - The desktop app polls the backend less while idle: the sidebar no longer re-renders when nothing changed, scheduled and heartbeat chats reload only when they have new activity, Git and background task checks slow down when there is nothing running, and status checks pause while the window is hidden.
