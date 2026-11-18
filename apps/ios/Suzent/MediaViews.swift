@@ -25,15 +25,123 @@ struct MediaGallery: View {
     let items: [MediaItem]
     @Environment(\.mediaLoader) private var loader
 
+    @State private var viewing: Int?
+
     var body: some View {
-        if let loader, !items.isEmpty {
+        let unique = items.reduce(into: [MediaItem]()) { result, item in
+            if !result.contains(where: { $0.id == item.id }) { result.append(item) }
+        }
+        let visual = unique.filter { $0.kind == "image" || $0.kind == "video" }
+        if let loader, !unique.isEmpty {
             VStack(alignment: .leading, spacing: 10) {
-                ForEach(items) { item in
+                if !visual.isEmpty {
+                    VStack(spacing: 10) {
+                        ForEach(Array(visual.enumerated()), id: \.element.id) { index, item in
+                            VisualMediaCard(item: item, loader: loader) { viewing = index }
+                                .frame(maxWidth: .infinity).frame(height: 200)
+                        }
+                    }
+                }
+                ForEach(unique.filter { $0.kind != "image" && $0.kind != "video" }) { item in
                     if item.kind == "file" { FileRow(item: item, loader: loader) }
                     else { MediaTile(item: item, loader: loader) }
                 }
+            }.fullScreenCover(isPresented: Binding(get: { viewing != nil }, set: { if !$0 { viewing = nil } })) {
+                MediaGalleryViewer(items: visual, initial: viewing ?? 0, loader: loader)
             }
         }
+    }
+
+}
+
+private struct VisualMediaCard: View {
+    let item: MediaItem
+    let loader: MediaLoader
+    let open: () -> Void
+    @State private var preview: UIImage?
+
+    var body: some View {
+        Button(action: open) {
+            GeometryReader { geometry in
+                ZStack {
+                    Color.suzentSurface
+                    if let preview {
+                        Image(uiImage: preview).resizable().scaledToFill()
+                            .frame(width: geometry.size.width, height: geometry.size.height).clipped()
+                    }
+                    if item.kind == "video" {
+                        Image(systemName: "play.fill").foregroundStyle(.white).font(.system(size: 18))
+                            .frame(width: 40, height: 40).background(Color.black.opacity(0.65), in: Circle())
+                    } else if preview == nil { Image(systemName: "photo").foregroundStyle(Color.suzentMuted) }
+                }.overlay(Rectangle().strokeBorder(Color.suzentLine, lineWidth: 1)).contentShape(Rectangle())
+            }
+        }.buttonStyle(.plain).accessibilityLabel(Text(item.name))
+            .task(id: item.id) {
+                guard let file = await loader.load(item), !Task.isCancelled else { return }
+                if item.kind == "video" { preview = await videoThumbnail(file) }
+                else { preview = await Task.detached(priority: .utility) { downsampledImage(file, maxSide: 480) }.value }
+            }
+    }
+}
+
+private struct MediaGalleryViewer: View {
+    let items: [MediaItem]
+    let loader: MediaLoader
+    @State private var selected: Int
+
+    init(items: [MediaItem], initial: Int, loader: MediaLoader) {
+        self.items = items
+        self.loader = loader
+        _selected = State(initialValue: min(max(initial, 0), max(items.count - 1, 0)))
+    }
+
+    var body: some View {
+        TabView(selection: $selected) {
+            ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
+                MediaGalleryPage(item: item, loader: loader, active: selected == index, caption: "\(index + 1) / \(items.count)").tag(index)
+            }
+        }.tabViewStyle(.page(indexDisplayMode: .never)).background(Color.black.ignoresSafeArea())
+    }
+}
+
+private struct MediaGalleryPage: View {
+    let item: MediaItem
+    let loader: MediaLoader
+    let active: Bool
+    let caption: String
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.scenePhase) private var scenePhase
+    @State private var file: URL?
+    @State private var player: AVPlayer?
+    @State private var failed = false
+
+    var body: some View {
+        Group {
+            if let file, item.kind == "image" {
+                ImageViewer(file: file, name: item.name, caption: caption)
+            } else {
+                VStack(spacing: 0) {
+                    HStack {
+                        Text(caption).suzentFont(12)
+                        Spacer()
+                        Button { dismiss() } label: { Image(systemName: "xmark").frame(width: 44, height: 44) }
+                            .accessibilityLabel("Close")
+                    }.foregroundStyle(.white).padding(.horizontal, 12)
+                    if let player, active { VideoPlayer(player: player).frame(maxWidth: .infinity, maxHeight: .infinity) }
+                    else if failed { Image(systemName: "exclamationmark.triangle").foregroundStyle(.white).frame(maxWidth: .infinity, maxHeight: .infinity) }
+                    else { ProgressView().tint(.white).frame(maxWidth: .infinity, maxHeight: .infinity) }
+                }
+            }
+        }.background(Color.black)
+            .task(id: active) {
+                guard active else { player?.pause(); player = nil; return }
+                if file == nil { file = await loader.load(item) }
+                guard !Task.isCancelled else { return }
+                if let file, item.kind == "video" { player = AVPlayer(url: file) }
+                failed = file == nil
+            }
+            .onChange(of: scenePhase) { _, phase in if phase != .active { player?.pause() } }
+            .onDisappear { player?.pause(); player = nil }
     }
 }
 
@@ -44,6 +152,7 @@ struct SentFilesSection: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 6) {
+                Image(systemName: "arrow.down.doc")
                 Text("Files for you")
                 Text(verbatim: "\(items.count)").monospacedDigit()
             }
@@ -123,7 +232,7 @@ private struct MediaTile: View {
     let loader: MediaLoader
     @State private var image: UIImage?
     @State private var file: URL?
-    @State private var player: AVPlayer?
+    @State private var preview: UIImage?
     @State private var failed = false
     @State private var viewing = false
     @State private var saveNote: String?
@@ -132,8 +241,12 @@ private struct MediaTile: View {
         content
             .frame(maxWidth: .infinity)
             .overlay(Rectangle().stroke(Color.suzentOutline, lineWidth: 1))
-            .task(id: item.id) { await load() }
-            .onDisappear { player?.pause() }
+            .task(id: item.id) {
+                if item.kind == "image" { await load() }
+                else if item.kind == "video", let file = await loader.load(item) {
+                    preview = await videoThumbnail(file)
+                }
+            }
     }
 
     @ViewBuilder private var content: some View {
@@ -154,9 +267,20 @@ private struct MediaTile: View {
                 .accessibilityHint(Text("Opens full screen. Touch and hold to save or share."))
                 .accessibilityAddTraits(.isButton)
                 .fullScreenCover(isPresented: $viewing) { ImageViewer(file: file, name: item.name) }
-        } else if let player {
-            VideoPlayer(player: player).frame(height: item.kind == "audio" ? 80 : 240)
-                .accessibilityLabel(Text(item.name))
+        } else if item.kind != "image" {
+            Button { viewing = true } label: {
+                HStack(spacing: 12) {
+                    ZStack {
+                        Color.black
+                        if let preview { Image(uiImage: preview).resizable().scaledToFill().frame(width: 96, height: 72).clipped() }
+                        Image(systemName: "play.fill").font(.system(size: 14)).foregroundStyle(.white)
+                            .frame(width: 32, height: 32).background(Color.black.opacity(0.65), in: Circle())
+                    }.frame(width: 96, height: 72).accessibilityHidden(true)
+                    Text(item.name).suzentFont(14, weight: .medium).lineLimit(2).frame(maxWidth: .infinity, alignment: .leading)
+                    Image(systemName: "chevron.right").foregroundStyle(Color.suzentMuted)
+                }.padding(10).contentShape(Rectangle())
+            }.buttonStyle(.plain).foregroundStyle(Color.suzentText)
+                .fullScreenCover(isPresented: $viewing) { MediaPlaybackViewer(item: item, loader: loader) }
         } else {
             note(String(localized: "Loading \(item.name)…"))
         }
@@ -173,9 +297,52 @@ private struct MediaTile: View {
             self.file = file
             let decoded = await Task.detached(priority: .userInitiated) { downsampledImage(file) }.value
             if let decoded { image = decoded } else { failed = true }
-        } else {
-            player = AVPlayer(url: file)
         }
+    }
+}
+
+private func videoThumbnail(_ file: URL) async -> UIImage? {
+    let cached = file.deletingLastPathComponent().appendingPathComponent(".video-preview.jpg")
+    if let image = await Task.detached(priority: .utility, operation: { UIImage(contentsOfFile: cached.path) }).value { return image }
+    let generator = AVAssetImageGenerator(asset: AVURLAsset(url: file))
+    generator.appliesPreferredTrackTransform = true
+    generator.maximumSize = CGSize(width: 320, height: 320)
+    guard let frame = try? await generator.image(at: .zero), !Task.isCancelled else { return nil }
+    let image = UIImage(cgImage: frame.image)
+    await Task.detached(priority: .utility) {
+        if let data = image.jpegData(compressionQuality: 0.8) { try? data.write(to: cached, options: .atomic) }
+    }.value
+    return image
+}
+
+private struct MediaPlaybackViewer: View {
+    let item: MediaItem
+    let loader: MediaLoader
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.scenePhase) private var scenePhase
+    @State private var player: AVPlayer?
+    @State private var failed = false
+
+    var body: some View {
+        NavigationStack {
+            Group {
+                if let player {
+                    VideoPlayer(player: player).accessibilityLabel(Text(item.name))
+                } else if failed {
+                    Text("\(item.name) can't be opened. It may have been moved or deleted on your computer.")
+                        .foregroundStyle(Color.suzentMuted).padding(20)
+                } else { ProgressView() }
+            }.frame(maxWidth: .infinity, maxHeight: .infinity).background(Color.suzentBackground)
+                .navigationTitle(item.name).navigationBarTitleDisplayMode(.inline)
+                .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Close") { dismiss() } } }
+        }.tint(Color.suzentText)
+            .task(id: item.id) {
+                guard let file = await loader.load(item) else { failed = true; return }
+                guard !Task.isCancelled else { return }
+                player = AVPlayer(url: file)
+            }
+            .onChange(of: scenePhase) { _, phase in if phase != .active { player?.pause() } }
+            .onDisappear { player?.pause(); player = nil }
     }
 }
 
@@ -183,6 +350,7 @@ private struct MediaTile: View {
 private struct ImageViewer: View {
     let file: URL
     let name: String
+    var caption = ""
     @Environment(\.dismiss) private var dismiss
     @State private var image: UIImage?
     @State private var scale: CGFloat = 1
@@ -218,7 +386,7 @@ private struct ImageViewer: View {
         HStack(spacing: 4) {
             Button { dismiss() } label: { Image(systemName: "xmark").frame(width: 44, height: 44) }
                 .accessibilityLabel(Text("Close"))
-            Text(name).suzentFont(PresentationTokens.typeMeta).lineLimit(1).truncationMode(.middle)
+            Text(caption).suzentFont(PresentationTokens.typeMeta).lineLimit(1)
             Spacer(minLength: 0)
             Button { save() } label: { Image(systemName: "square.and.arrow.down").frame(width: 44, height: 44) }
                 .accessibilityLabel(Text("Save to Photos"))

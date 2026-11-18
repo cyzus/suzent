@@ -181,9 +181,10 @@ struct MessageView: View {
             HStack {
                 Spacer(minLength: 40)
                 VStack(alignment: .trailing, spacing: PresentationTokens.spaceSmall) {
-                    ForEach(Array(message.files.enumerated()), id: \.offset) { _, file in
-                        if let media = file.media { MediaGallery(items: [media]) }
-                        else { AttachmentChip(name: file.filename, mimeType: file.mimeType, foreground: .userMessageText) }
+                    let media = message.files.compactMap { $0.media }
+                    if !media.isEmpty { MediaGallery(items: media) }
+                    ForEach(Array(message.files.filter { $0.media == nil }.enumerated()), id: \.offset) { _, file in
+                        AttachmentChip(name: file.filename, mimeType: file.mimeType, foreground: .userMessageText)
                     }
                     if !message.text.isEmpty {
                         Text(message.text).suzentFont(PresentationTokens.typeChat)
@@ -1486,7 +1487,7 @@ struct AssemblyBadge: View {
 
     var body: some View {
         if thinking {
-            TimelineView(.animation(minimumInterval: 1.0 / 30, paused: reduceMotion || scenePhase != .active)) { timeline in
+            TimelineView(.animation(minimumInterval: 1.0 / 60, paused: reduceMotion || scenePhase != .active)) { timeline in
                 Canvas { context, size in
                     context.scaleBy(x: size.width / 320, y: size.height / 108)
                     for mark in AssemblyScene.frame(seconds: timeline.date.timeIntervalSince(started), reduced: reduceMotion) {
