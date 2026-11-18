@@ -28,7 +28,7 @@ struct HomeTabBar: View {
         .dynamicTypeSize(...DynamicTypeSize.accessibility2)
         .background(Color.suzentSurface.ignoresSafeArea(edges: .bottom))
         .overlay(alignment: .top) {
-            Rectangle().fill(Color.suzentOutline).frame(height: PresentationTokens.borderWidth)
+            Rectangle().fill(Color.suzentLine).frame(height: 1)
         }
     }
 
@@ -41,14 +41,16 @@ struct HomeTabBar: View {
                     .frame(height: 24)
                     .overlay(alignment: .topTrailing) {
                         if tab == .inbox && unread > 0 {
-                            SuzentCountBadge(count: unread).offset(x: 14, y: -6)
+                            SuzentCountBadge(count: unread).offset(x: 14, y: -4)
                         }
                     }
                 Text(title).suzentFont(11, weight: selected ? .bold : .medium)
             }.foregroundStyle(selected ? Color.suzentText : Color.suzentMuted)
                 .frame(maxWidth: .infinity, minHeight: 52).padding(.top, PresentationTokens.borderWidth)
                 .overlay(alignment: .top) {
-                    if selected { Rectangle().fill(Color.suzentText).frame(width: 32, height: 3).accessibilityHidden(true) }
+                    if selected {
+                        Rectangle().fill(Color.suzentYellow).frame(width: 28, height: 3).accessibilityHidden(true)
+                    }
                 }
                 .contentShape(Rectangle())
         }.buttonStyle(.plain)
@@ -61,7 +63,18 @@ struct HomeListPicker: View {
     let modes: [HomeListMode]
 
     var body: some View {
-        SuzentSegmentedTabs(options: modes, selection: $selection, title: title)
+        HStack(spacing: 4) {
+            ForEach(modes, id: \.self) { mode in
+                Button { selection = mode } label: {
+                    Text(title(mode)).suzentFont(14, weight: selection == mode ? .bold : .medium)
+                        .foregroundStyle(selection == mode ? Color.suzentText : Color.suzentMuted)
+                        .padding(.horizontal, 12).frame(minHeight: 44).contentShape(Rectangle())
+                }.buttonStyle(.plain)
+                    .accessibilityAddTraits(selection == mode ? .isSelected : [])
+            }
+        }.frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel(Text("Show conversations"))
     }
 
     private func title(_ mode: HomeListMode) -> LocalizedStringKey {
@@ -70,6 +83,8 @@ struct HomeListPicker: View {
         case .projects: "Projects"
         }
     }
+
+
 }
 
 struct DesktopCard: View {
@@ -114,11 +129,10 @@ struct DesktopsPage: View {
             Section {
                 ForEach(model.desktops) { desktop in
                     row(desktop)
-                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                            // Not role: .destructive, which would animate the row away before the confirmation.
-                            Button { forgetting = desktop } label: { Label("Forget", systemImage: "trash") }
-                                .tint(Color.suzentDanger)
-                        }
+                        .directionalSwipe(enabled: model.checkingDesktopId == nil && !model.streaming,
+                            trailing: SuzentSwipeAction(title: "Forget", systemImage: "trash", tint: Color.suzentDanger) {
+                                forgetting = desktop
+                            })
                         .accessibilityActions {
                             Button("Forget") { forgetting = desktop }
                         }

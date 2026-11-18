@@ -1,15 +1,14 @@
 import SwiftUI
 import SuzentCore
 
-/// The desktop's unread count: a yellow block with black figures, used by the tab bar and the filters.
+/// Compact unread count shared by navigation and inbox filters.
 struct SuzentCountBadge: View {
     let count: Int
 
     var body: some View {
-        Text(count > 99 ? "99+" : String(count)).font(.system(size: 10, weight: .bold, design: .monospaced))
-            .foregroundStyle(Color.black).padding(.horizontal, 4).frame(minHeight: 15)
-            .background(Color.suzentYellow).overlay(Rectangle().strokeBorder(Color.black, lineWidth: 1))
-            .fixedSize()
+        Text(count > 99 ? "99+" : String(count)).font(.system(size: 10, weight: .bold))
+            .foregroundStyle(Color.black).padding(.horizontal, 5).frame(minWidth: 18, minHeight: 18)
+            .background(Color.suzentYellow, in: Capsule()).fixedSize()
     }
 }
 
@@ -29,8 +28,9 @@ struct MailboxSourceMark: View {
         }
         .foregroundStyle(muted ? Color.suzentMuted : Color.suzentText)
         .frame(width: size, height: size)
-        .background(Color.suzentSurface)
-        .overlay(Rectangle().strokeBorder(muted ? Color.suzentRowDivider : Color.suzentOutline, lineWidth: 1))
+        .background(Color.suzentSurface, in: RoundedRectangle(cornerRadius: PresentationTokens.radiusControl, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: PresentationTokens.radiusControl, style: .continuous)
+            .strokeBorder(Color.suzentLine, lineWidth: 1))
         .accessibilityHidden(true)
     }
 
@@ -105,37 +105,28 @@ struct MailboxThreadRow: View {
         let latest = thread.latest
         let unread = !thread.unreadIds.isEmpty
         HStack(alignment: .top, spacing: 12) {
-            MailboxSourceMark(item: latest)
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(alignment: .firstTextBaseline, spacing: 7) {
-                    if unread {
-                        Rectangle().fill(Color.suzentYellow).frame(width: 7, height: 7)
-                            .overlay(Rectangle().strokeBorder(Color.suzentOutline, lineWidth: 1)).alignmentGuide(.firstTextBaseline) { $0[.bottom] - 1 }
-                            .accessibilityLabel("Unread")
-                    }
-                    Text(latest.display.title).suzentFont(14, weight: unread ? .semibold : .regular).lineSpacing(2)
-                        .foregroundStyle(latest.status == "unrouted" ? Color.suzentMuted : Color.suzentText)
-                        .lineLimit(2).multilineTextAlignment(.leading)
+            MailboxSourceMark(item: latest, size: 36)
+                .overlay(alignment: .topTrailing) {
+                    if unread { Circle().fill(Color.suzentYellow).frame(width: 8, height: 8).accessibilityLabel("Unread") }
                 }
+            VStack(alignment: .leading, spacing: 5) {
+                HStack(spacing: 10) {
+                    Text(latest.display.context ?? latest.display.source).suzentFont(11).lineLimit(1)
+                    Spacer(minLength: 0)
+                    if let date = suzentParseDate(latest.createdAt) { Text(date.suzentStamp).suzentFont(10).fixedSize() }
+                }.foregroundStyle(Color.suzentMuted)
+                Text(latest.display.title).suzentFont(15, weight: unread ? .semibold : .medium).lineSpacing(3)
+                    .foregroundStyle(Color.suzentText).lineLimit(2).multilineTextAlignment(.leading)
                 HStack(spacing: 8) {
-                    Text(meta).suzentFont(11, design: .monospaced).foregroundStyle(Color.suzentMuted).lineLimit(1)
-                    Spacer(minLength: 4)
                     MailboxStatusPill(status: latest.status, target: target)
-                }
+                    if thread.items.count > 1 { Text("×\(thread.items.count)").suzentFont(10).foregroundStyle(Color.suzentMuted) }
+                }.padding(.top, 3)
             }.frame(maxWidth: .infinity, alignment: .leading)
         }
-        .padding(.horizontal, 16).padding(.vertical, 12)
-        .contentShape(Rectangle())
-        .overlay(alignment: .bottom) { Rectangle().fill(Color.suzentRowDivider).frame(height: 1) }
+        .padding(.horizontal, 20).padding(.vertical, 16).contentShape(Rectangle())
+        .overlay(alignment: .bottom) { Rectangle().fill(Color.suzentRowDivider).frame(height: 1).padding(.leading, 68).padding(.trailing, 20) }
     }
 
-    private var meta: String {
-        let latest = thread.latest
-        var parts = [latest.display.context ?? latest.display.source]
-        if thread.items.count > 1 { parts.append("×\(thread.items.count)") }
-        if let date = suzentParseDate(latest.createdAt) { parts.append(date.suzentStamp) }
-        return parts.joined(separator: " · ")
-    }
 }
 
 /// One inbox thread on its own page: what it is, where it went, its history and the latest raw event.
@@ -149,7 +140,7 @@ struct MailboxThreadDetail: View {
             if let thread = mailboxThreads(model.mailbox.items).first(where: { $0.id == key }) { content(thread) }
             else { ContentUnavailableView("Event unavailable", systemImage: "tray") }
         }
-        .background(Color.suzentSurface)
+        .background(Color.suzentBackground)
         .navigationBarTitleDisplayMode(.inline)
         .task(id: key) {
             let unread = mailboxThreads(model.mailbox.items).first { $0.id == key }?.unreadIds ?? []

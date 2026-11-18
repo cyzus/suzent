@@ -21,14 +21,20 @@ struct SuzentSegmentedTabs<Selection: Hashable>: View {
                         .foregroundStyle(selected ? Color.suzentTabBlockText : Color.suzentMuted)
                         .frame(maxWidth: .infinity, minHeight: 40)
                         .background {
-                            if selected { Rectangle().fill(Color.suzentTabBlock).matchedGeometryEffect(id: "selection", in: slider) }
+                            if selected {
+                                RoundedRectangle(cornerRadius: max(PresentationTokens.radiusControl - 3, 0), style: .continuous)
+                                    .fill(Color.suzentTabBlock)
+                                    .matchedGeometryEffect(id: "selection", in: slider)
+                            }
                         }
                         .contentShape(Rectangle())
                 }.buttonStyle(.plain).disabled(!enabled)
                     .accessibilityAddTraits(selected ? [.isSelected, .isButton] : .isButton)
             }
-        }.padding(3).background(Color.suzentTabTrack)
-            .overlay(Rectangle().strokeBorder(Color.suzentOutline, lineWidth: 1))
+        }.padding(3)
+            .background(Color.suzentTabTrack, in: RoundedRectangle(cornerRadius: PresentationTokens.radiusControl, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: PresentationTokens.radiusControl, style: .continuous)
+                .strokeBorder(Color.suzentOutline, lineWidth: 1))
             .opacity(enabled ? 1 : PresentationTokens.disabledAlpha)
             .dynamicTypeSize(...DynamicTypeSize.accessibility2)
     }

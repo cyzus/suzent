@@ -87,7 +87,7 @@ public actor SuzentBotRenderer {
 
     /// Steps `bot`, or a renderer-owned bot when none is given.
     public func frame(bot: Int32? = nil, pending: Bool, error: Bool, thinking: Bool, tool: String?, active: Bool,
-                      time: Double, reduced: Bool, dark: Bool) -> SuzentBotFrame {
+                      time: Double, reduced: Bool, dark: Bool, interactiveTrick: Int? = nil) -> SuzentBotFrame {
         let engine = engine()
         let id: Int32
         if let bot { id = bot } else if let defaultBot { id = defaultBot } else {
@@ -95,8 +95,9 @@ public actor SuzentBotRenderer {
             defaultBot = id
         }
         let stage = engine.resolveStage(hasPending: pending, isError: error, isThinking: thinking, tool: tool, isActive: active)
-        let input: [String: Any] = ["stage": stage, "time": time, "reducedMotion": reduced, "dark": dark,
+        var input: [String: Any] = ["stage": stage, "time": time, "reducedMotion": reduced, "dark": dark,
                                    "size": 32, "holdWhenIdle": true, "particlesEnabled": !reduced, "autoMorphCycle": !reduced]
+        if let interactiveTrick { input["interactiveTrick"] = interactiveTrick }
         let json = String(data: try! JSONSerialization.data(withJSONObject: input), encoding: .utf8)!
         return SuzentBotFrame.parse(engine.step(session: id, json))
     }

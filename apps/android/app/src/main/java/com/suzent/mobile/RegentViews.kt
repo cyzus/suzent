@@ -188,3 +188,24 @@ fun RegentGreeting() {
         Text(stringResource(R.string.regent_greeting), textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
+
+/** The home list's Regent entry: a centred, tappable mark with the name and status beneath it. */
+@Composable
+fun RegentHero(working: Boolean, waiting: Int, unread: Int, lastMessageAt: String?, coronation: Boolean, modifier: Modifier = Modifier) {
+    Column(modifier, horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Box {
+            RegentMark(working, waiting > 0, 40.dp, lastMessageAt, coronation)
+            if (unread > 0) {
+                val label = stringResource(R.string.regent_unread, unread)
+                Text("$unread", fontSize = PresentationTokens.typeLabel.sp, fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.background,
+                    modifier = Modifier.align(Alignment.TopEnd).offset(x = 14.dp).background(MaterialTheme.colorScheme.onSurface)
+                        .padding(horizontal = 5.dp, vertical = 1.dp).semantics { contentDescription = label })
+            }
+        }
+        Text(stringResource(R.string.regent_name), fontSize = 17.sp, fontWeight = FontWeight.Bold)
+        Text(stringResource(if (working) R.string.regent_working else if (waiting > 0) R.string.regent_waiting else R.string.regent_scope),
+            fontSize = PresentationTokens.typeLabel.sp, textAlign = TextAlign.Center,
+            color = if (waiting > 0 && !working) Color(0xFFF59E0B) else MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
