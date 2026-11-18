@@ -7505,7 +7505,20 @@ to 15 seconds for each other before failing as locked. `synchronous=NORMAL`
 can lose the last commits on power loss; chats replay them from their logs.
 The search index (`chat_messages_fts`) is updated in the same transaction, but
 only for messages whose text changed: re-tokenizing a long chat on every
-appended message used to hold the lock for up to a second.
+appended message used to hold the lock for up to a second. FTS5 cannot index
+its `UNINDEXED` `chat_id` column, so `WHERE chat_id = ?` reads every row's text
+(17s on a 2.3 GB database). A plain table, `chat_messages_fts_rows`, mirrors
+each FTS row under the same rowid with `chat_id`, `message_index`, `role` and a
+digest of the text, indexed on `chat_id`. Reindexing compares digests there and
+deleting a chat removes its FTS rows by rowid. A database from before the
+mirror fills it once on start. Deleting a chat also reads only the tail of its
+log for the next seq instead of folding the whole log. A write that assigns no
+messages or state to a slim row whose log is not cached (a pin, an archive, a
+rename) can only change meta and config, so it skips the fold too: a regex scan
+finds the lines naming a meta event, only those are parsed, and the diff
+against the row appends `meta.set` and `config.merge`. A broken message event
+then goes unnoticed until the next fold. A `PUT /chats/{id}` that sets only
+`pinned` or `archived` answers with the flags instead of the whole chat.
 
 ## Starting up
 
