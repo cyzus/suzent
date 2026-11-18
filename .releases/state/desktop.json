@@ -193,6 +193,7 @@
     ".releases/changes/mobile-model-picker-favorites.json",
     ".releases/changes/mobile-multiple-desktops.json",
     ".releases/changes/mobile-native-polish.json",
+    ".releases/changes/mobile-native-visual-refresh.json",
     ".releases/changes/mobile-pairing-qr-v3.json",
     ".releases/changes/mobile-pairing-tailscale-origin.json",
     ".releases/changes/mobile-pairing-welcome.json",
