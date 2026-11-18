@@ -8898,8 +8898,8 @@ Phones show a bottom bar with Chats, Inbox and Settings. It's hidden while a
 conversation is open. The desktop card at the top of Settings opens the Desktops
 page (switch, swipe to forget, pair another). Tablets keep the split view with
 the settings button in the sidebar. The Chats list shows one of Recent (pinned,
-then the recent page) or Projects at a time, picked with a segmented switch under
-the search field; iOS keeps the choice in `@AppStorage("homeListMode")`, Android in
+then the recent page) or Projects at a time, picked with lightweight Recent / Projects text tabs above
+the list; iOS keeps the choice in `@AppStorage("homeListMode")`, Android in
 saved state. The sidebar can be hidden on iPad from its header and shown again from the detail
 toolbar. Scheduled tasks on both platforms open from the clock button in the Inbox header.
 
