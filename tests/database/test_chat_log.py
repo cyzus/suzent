@@ -386,7 +386,10 @@ def test_an_unreadable_log_is_reported_then_set_aside(temp_db, line) -> None:
     assert list(report) == [chat_id]
     assert report[chat_id][0].startswith("<unreadable log")
 
-    db.merge_chat_config(chat_id, {"k": 1})
+    # A pin reads only meta events; the next write that folds the log finds
+    # the broken one.
+    db.update_chat(chat_id, pinned=True)
+    db.append_chat_message(chat_id, {"role": "user", "content": "after"})
     assert list((db.chat_log.root / ".corrupt").glob("*.jsonl"))
     assert _events(db, chat_id)[0]["type"] == "chat.imported"
     _assert_log_matches(db)
@@ -610,3 +613,71 @@ def test_chats_show_prints_the_logged_conversation(temp_db, monkeypatch) -> None
     assert "Shown" in result.output
     assert "[user]\nhello" in result.output
     assert CliRunner().invoke(chats_app, ["show", "missing"]).exit_code == 1
+
+
+def test_deleting_a_chat_reads_only_the_tail_of_its_log(temp_db, monkeypatch) -> None:
+    db = temp_db
+    chat_id = db.create_chat(
+        title="Long",
+        config={},
+        messages=[{"role": "user", "content": f"m{i}"} for i in range(50)],
+    )
+    path = db.chat_log.path(chat_id)
+    last_seq = _events(db, chat_id)[-1]["seq"]
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write('{"v": 1, "seq": 999, "type": "meta.set"')
+    db.chat_log.forget(chat_id)
+
+    def no_fold(*args, **kwargs):
+        raise AssertionError("deleting a chat folded its whole log")
+
+    monkeypatch.setattr(db.chat_log, "fold", no_fold)
+    assert db.delete_chat(chat_id)
+
+    trashed = list((db.chat_log.root / ".trash").glob("*.jsonl"))
+    assert len(trashed) == 1
+    events = [json.loads(line) for line in trashed[0].read_text("utf-8").splitlines()]
+    assert events[-1]["type"] == "chat.deleted"
+    assert events[-1]["seq"] == last_seq + 1
+
+
+def test_pinning_an_uncached_chat_does_not_fold_its_log(temp_db, monkeypatch) -> None:
+    db = temp_db
+    parts = [{"type": "text", "text": "m"}, {"type": "meta.set", "title": "Not it"}]
+    chat_id = db.create_chat(
+        title="Long",
+        config={"model": "a"},
+        messages=[{"role": "user", "content": parts} for _ in range(50)],
+    )
+    db.chat_log.forget(chat_id)
+
+    def no_fold(*args, **kwargs):
+        raise AssertionError("a pin folded the whole log")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(db.chat_log, "fold", no_fold)
+        assert db.update_chat(chat_id, pinned=True)
+        assert db.update_chat(chat_id, archived=True, config={"model": "b"})
+        assert db.update_chat(chat_id, archived=True)
+
+    kinds = [event["type"] for event in _events(db, chat_id)]
+    assert kinds.count("meta.set") == 2
+    assert kinds.count("config.merge") == 1
+    chat = db.get_chat(chat_id)
+    assert (chat.pinned, chat.archived, chat.config["model"]) == (False, True, "b")
+    assert len(chat.messages) == 50
+    _assert_log_matches(db)
+
+
+def test_a_bypassed_write_is_recorded_by_the_next_uncached_pin(temp_db) -> None:
+    db = temp_db
+    chat_id = db.create_chat(title="Raw", config={})
+    with Session(db.engine) as session:
+        chat = session.get(ChatModel, chat_id)
+        chat.title = "Changed behind the log"
+        session.add(chat)
+        session.commit()
+    db.chat_log.forget(chat_id)
+
+    db.update_chat(chat_id, pinned=True)
+    _assert_log_matches(db)

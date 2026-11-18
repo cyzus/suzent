@@ -29,6 +29,7 @@ import copy
 import hashlib
 import json
 import os
+import re
 import shutil
 import threading
 import time
@@ -69,6 +70,15 @@ META_FIELDS = (
 # Projection keys that come from events rather than from the row.
 LOG_ONLY_FIELDS = ("checkpoint",)
 
+# The events that set the fields of project_meta.
+_META_EVENTS = frozenset(
+    ("chat.created", "chat.imported", "chat.deleted", "meta.set", "config.merge")
+)
+_META_EVENT_TYPE = re.compile(
+    rb'"type"\s*:\s*"(?:chat\.created|chat\.imported|chat\.deleted|meta\.set'
+    rb'|config\.merge)"'
+)
+
 MEDIA_THRESHOLD = 64 * 1024
 MEDIA_KEY = "$media"
 TRASH_RETENTION_DAYS = 30
@@ -84,6 +94,24 @@ class ChatLogError(Exception):
 def normalize_json(value: Any) -> Any:
     """Return *value* exactly as it reads back from the log."""
     return json.loads(json.dumps(value, ensure_ascii=False, default=str))
+
+
+def _meta_event_lines(data: bytes) -> Iterator[bytes]:
+    """The complete lines of *data* that may be meta events, in order.
+
+    A line matches when it names a meta event type anywhere, so a message
+    quoting one is a false hit the caller drops after parsing it.
+    """
+    previous = -1
+    for match in _META_EVENT_TYPE.finditer(data):
+        start = data.rfind(b"\n", 0, match.start()) + 1
+        if start == previous:
+            continue
+        end = data.find(b"\n", match.end())
+        if end < 0:
+            return
+        previous = start
+        yield data[start:end]
 
 
 def _timestamp(value: Optional[datetime]) -> Optional[str]:
@@ -335,6 +363,8 @@ class PendingAppend:
     seq: int
     size: int
     mtime_ns: int
+    # Only meta and config: confirming it cannot refresh the cached fold.
+    partial: bool = False
 
 
 @dataclass
@@ -573,6 +603,52 @@ class ChatEventLog:
         with self._cache_lock:
             self._cache.pop(chat_id, None)
 
+    def is_cached(self, chat_id: str) -> bool:
+        """Whether :meth:`logged` would answer without folding the log."""
+        file_stat = self.stat(chat_id)
+        with self._cache_lock:
+            cached = self._cache.get(chat_id)
+        return cached is not None and cached[2] == file_stat
+
+    def logged_meta(self, chat_id: str) -> Optional[tuple[dict[str, Any], int]]:
+        """The logged meta and config, and the last seq, skipping the conversation.
+
+        Only the lines naming a meta event are parsed, so this costs a scan of
+        the file rather than a fold, and a broken message event goes unnoticed
+        until the next fold. Returns None when the log is missing, deleted or
+        unreadable; the caller then falls back to :meth:`logged`.
+        """
+        path = self.path(chat_id)
+        seq = self._last_seq(path)
+        if seq is None:
+            return None
+        projection: Optional[Projection] = None
+        try:
+            for line in _meta_event_lines(path.read_bytes()):
+                event = json.loads(line)
+                if not (
+                    isinstance(event.get("seq"), int)
+                    and isinstance(event.get("type"), str)
+                    and "data" in event
+                ):
+                    return None
+                if event["type"] not in _META_EVENTS:
+                    continue
+                event["data"] = self._resolve(event["data"])
+                projection = apply_event(projection, event)
+        except (
+            ChatLogError,
+            OSError,
+            ValueError,
+            KeyError,
+            TypeError,
+            AttributeError,
+        ):
+            return None
+        if projection is None:
+            return None
+        return {key: projection[key] for key in (*META_FIELDS, "config")}, seq
+
     # Writing ---------------------------------------------------------------
 
     def _drop_torn_tail(self, path: Path) -> None:
@@ -582,6 +658,41 @@ class ChatEventLog:
             data = handle.read()
             if data and not data.endswith(b"\n"):
                 handle.truncate(data.rfind(b"\n") + 1)
+
+    def _last_seq(self, path: Path, block: int = 1 << 16) -> Optional[int]:
+        """The seq of a live log's last complete event, read from its tail.
+
+        Drops a torn final line first. Returns None when there is no log, or
+        when its tail is not a readable event or the chat is already deleted,
+        so the caller falls back to folding the whole log.
+        """
+        try:
+            handle = path.open("rb+")
+        except FileNotFoundError:
+            return None
+        with handle:
+            end = handle.seek(0, os.SEEK_END)
+            tail = b""
+            while end > 0 and tail.count(b"\n") < 2:
+                start = max(0, end - block)
+                handle.seek(start)
+                tail = handle.read(end - start) + tail
+                end = start
+            complete = tail.rfind(b"\n") + 1
+            if complete < len(tail):
+                handle.truncate(end + complete)
+            lines = tail[:complete].split(b"\n")
+        try:
+            event = json.loads(lines[-2]) if len(lines) >= 2 else None
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            return None
+        if not (
+            isinstance(event, dict)
+            and isinstance(event.get("seq"), int)
+            and event.get("type") != "chat.deleted"
+        ):
+            return None
+        return event["seq"]
 
     def _append(self, path: Path, events: list[Event]) -> None:
         self.root.mkdir(parents=True, exist_ok=True)
@@ -618,12 +729,16 @@ class ChatEventLog:
         :meth:`confirm`, or calls :meth:`undo`. Returns None if nothing changed.
         """
         path = self.path(chat_id)
-        logged, seq = self.logged(chat_id)
         if current is None:
-            if logged is None:
-                return None
+            # Folding a long log only to learn its last seq took seconds.
+            seq = self._last_seq(path)
+            if seq is None:
+                logged, seq = self.logged(chat_id)
+                if logged is None:
+                    return None
             pending: list[tuple[str, Any]] = [("chat.deleted", {})]
         else:
+            logged, seq = self.logged(chat_id)
             if logged is None:
                 # The opening event carries everything but the two lists, whose
                 # items follow one per line like any later append.
@@ -651,7 +766,36 @@ class ChatEventLog:
         if current is not None:
             for event in events[len(events) - len(extra) :]:
                 apply_event(current, event)
+        return self._write(chat_id, events, current)
 
+    def prepare_meta(
+        self,
+        chat_id: str,
+        current: dict[str, Any],
+        logged: dict[str, Any],
+        seq: int,
+    ) -> Optional[PendingAppend]:
+        """:meth:`prepare` for a write that changed nothing but meta and config.
+
+        *current* is :func:`project_meta` of the uncommitted row and *logged*,
+        *seq* come from :meth:`logged_meta`. The append's projection is partial.
+        """
+        lists = {"messages": [], "state": project_state(None)}
+        pending = diff_projections({**logged, **lists}, {**current, **lists})
+        if not pending:
+            return None
+        events = [
+            self._event(seq + offset, kind, data)
+            for offset, (kind, data) in enumerate(pending, start=1)
+        ]
+        append = self._write(chat_id, events, current)
+        append.partial = True
+        return append
+
+    def _write(
+        self, chat_id: str, events: list[Event], current: Optional[Projection]
+    ) -> PendingAppend:
+        path = self.path(chat_id)
         size_before = path.stat().st_size if path.exists() else 0
         try:
             self._append(path, events)
@@ -670,6 +814,9 @@ class ChatEventLog:
 
     def confirm(self, pending: PendingAppend) -> None:
         """SQLite committed: cache the new projection, retire a deleted log."""
+        if pending.partial:
+            self.forget(pending.chat_id)
+            return
         if pending.projection is None:
             self.retire(pending.chat_id)
             return
