@@ -1,0 +1,9 @@
+{
+  "products": {
+    "desktop": "none",
+    "mobile": "none",
+    "browser": "none"
+  },
+  "summary": "Log the App Store versions and their states before creating a new one, so a 409 shows which record blocks it.",
+  "reason": "Diagnostic logging in the iOS submission script only; no user-visible behaviour changes."
+}

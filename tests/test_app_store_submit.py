@@ -275,6 +275,126 @@ def test_token_is_a_verifiable_es256_jwt(tmp_path: Path) -> None:
     )
 
 
+def test_prepare_version_logs_existing_versions_when_creating(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """No exact match and no reusable version: dump what exists, then still POST."""
+
+    def versions(path: str) -> Any:
+        if "versionString" in path or "appVersionState" in path:
+            return {"data": []}
+        return {
+            "data": [
+                {
+                    "id": "version-9",
+                    "attributes": {
+                        "versionString": "0.10.0",
+                        "appVersionState": "READY_FOR_SALE",
+                    },
+                }
+            ]
+        }
+
+    fake = FakeAppStore(routes({("GET", f"/v1/apps/{APP}/appStoreVersions"): versions}))
+    submitter = submit.AppStoreSubmitter(fake)
+
+    assert submitter.prepare_version(APP, "0.10.2") == {"id": "version-1"}
+
+    assert "/v1/appStoreVersions" in fake.paths("POST")
+    log = capsys.readouterr().out
+    assert "Existing App Store versions" in log
+    assert "0.10.0" in log and "READY_FOR_SALE" in log and "version-9" in log
+
+
+def test_prepare_version_reports_no_existing_versions(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A first-ever version says so instead of printing an empty list."""
+    fake = FakeAppStore(
+        routes({("GET", f"/v1/apps/{APP}/appStoreVersions"): {"data": []}})
+    )
+    submitter = submit.AppStoreSubmitter(fake)
+
+    assert submitter.prepare_version(APP, "1.0.0") == {"id": "version-1"}
+
+    assert "/v1/appStoreVersions" in fake.paths("POST")
+    assert "No existing App Store versions" in capsys.readouterr().out
+
+
+def test_prepare_version_survives_listing_failure(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Diagnostics must never be the reason a release fails."""
+
+    def versions(path: str) -> Any:
+        if "versionString" in path or "appVersionState" in path:
+            return {"data": []}
+        raise submit.AppStoreError(
+            "GET /v1/apps/app-1/appStoreVersions failed with 500"
+        )
+
+    fake = FakeAppStore(routes({("GET", f"/v1/apps/{APP}/appStoreVersions"): versions}))
+
+    assert submit.AppStoreSubmitter(fake).prepare_version(APP, "0.10.2") == {
+        "id": "version-1"
+    }
+    assert "/v1/appStoreVersions" in fake.paths("POST")
+    assert "Could not list existing App Store versions" in capsys.readouterr().out
+
+
+def test_prepare_version_exact_match_needs_no_listing(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """An exact hit returns before any diagnostic listing happens."""
+    existing = {
+        "data": [
+            {
+                "id": "version-1",
+                "attributes": {
+                    "versionString": "0.10.2",
+                    "appVersionState": "PREPARE_FOR_SUBMISSION",
+                },
+            }
+        ]
+    }
+    fake = FakeAppStore(routes({("GET", f"/v1/apps/{APP}/appStoreVersions"): existing}))
+    submitter = submit.AppStoreSubmitter(fake)
+
+    assert submitter.prepare_version(APP, "0.10.2") == existing["data"][0]
+
+    assert "/v1/appStoreVersions" not in fake.paths("POST")
+    assert "Existing App Store versions" not in capsys.readouterr().out
+
+
+def test_prepare_version_rename_needs_no_listing(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A reusable draft is renamed; the diagnostic listing is skipped."""
+
+    def versions(path: str) -> Any:
+        if "versionString" in path:
+            return {"data": []}
+        return {
+            "data": [
+                {
+                    "id": "version-1",
+                    "attributes": {
+                        "versionString": "0.10.1",
+                        "appVersionState": "PREPARE_FOR_SUBMISSION",
+                    },
+                }
+            ]
+        }
+
+    fake = FakeAppStore(routes({("GET", f"/v1/apps/{APP}/appStoreVersions"): versions}))
+    submitter = submit.AppStoreSubmitter(fake)
+
+    assert submitter.prepare_version(APP, "0.10.2") == {"id": "version-1"}
+
+    assert "/v1/appStoreVersions" not in fake.paths("POST")
+    assert "Existing App Store versions" not in capsys.readouterr().out
+
+
 def test_first_app_store_version_skips_whats_new() -> None:
     fake = FakeAppStore(
         routes(

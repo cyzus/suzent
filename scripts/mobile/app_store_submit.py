@@ -175,6 +175,31 @@ class AppStoreSubmitter:
             **{"filter[platform]": "IOS", **query},
         )["data"]
 
+    def dump_versions(self, app: str, version: str) -> None:
+        """Log every App Store version and its state before creating a new one.
+
+        App Store Connect refuses to create a version while another one is still
+        open, so a 409 here means some existing record blocks the new version.
+        Listing what already exists makes that record visible in the job log.
+        """
+        try:
+            everything = self._versions(app)
+        except AppStoreError as error:
+            print(f"Could not list existing App Store versions: {error}")
+            return
+        if not everything:
+            print(f"No existing App Store versions; {version} will be the first one")
+            return
+        print("Existing App Store versions (a 409 below means one of these is open):")
+        for item in everything:
+            attributes = item.get("attributes") or {}
+            print(
+                "  "
+                f"{attributes.get('versionString', '?')} "
+                f"[{attributes.get('appVersionState', '?')}] "
+                f"id={item.get('id', '?')}"
+            )
+
     def prepare_version(self, app: str, version: str) -> Json | None:
         """Return the editable version to submit, or None when it is already past submission."""
         existing = self._versions(app, **{"filter[versionString]": version})
@@ -204,6 +229,7 @@ class AppStoreSubmitter:
                     }
                 },
             )["data"]
+        self.dump_versions(app, version)
         print(f"Creating App Store version {version}")
         return self.send(
             "POST",
