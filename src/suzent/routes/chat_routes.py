@@ -1385,6 +1385,18 @@ async def update_chat(request: Request) -> JSONResponse:
                 except Exception as e:
                     logger.error(f"Failed to write heartbeat.md during update: {e}")
 
+            if title is None and config is None and messages is None:
+                # Echoing the whole conversation back for a pin or archive
+                # cost seconds and megabytes on a long chat.
+                result: dict[str, Any] = {"ok": True, "chat_id": chat_id}
+                if flags.pinned is not None:
+                    result["pinned"] = flags.pinned
+                if flags.archived is not None:
+                    result["archived"] = flags.archived
+                    if flags.archived:
+                        result["pinned"] = False
+                return JSONResponse(result)
+
             chat = db.get_chat(chat_id)
             if not chat:
                 return JSONResponse(
@@ -1423,10 +1435,15 @@ async def delete_chat(request: Request) -> JSONResponse:
         cascade = request.query_params.get("cascade", "false").lower() == "true"
         db = get_database()
 
-        # Collect subagent child IDs before deletion (for tool cleanup)
-        child_ids = db.get_subagent_chat_ids_for_parent_chat(chat_id) if cascade else []
+        def apply() -> tuple[bool, list[str]]:
+            # Collect subagent child IDs before deletion (for tool cleanup)
+            child_ids = (
+                db.get_subagent_chat_ids_for_parent_chat(chat_id) if cascade else []
+            )
+            return db.delete_chat(chat_id, cascade_subagents=cascade), child_ids
 
-        success = db.delete_chat(chat_id, cascade_subagents=cascade)
+        # SQLite work on the event loop stalls every chat stream in flight.
+        success, child_ids = await asyncio.to_thread(apply)
         if not success:
             return JSONResponse({"error": "Chat not found"}, status_code=404)
 

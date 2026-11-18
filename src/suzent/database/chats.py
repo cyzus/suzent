@@ -533,12 +533,25 @@ class ChatOperationsMixin:
                 locks.enter_context(self.chat_log.lock(chat_id))
             try:
                 for chat_id in ids:
-                    append = self.chat_log.prepare(
-                        chat_id,
-                        self._project_in_session(session, chat_id, assigned[chat_id]),
-                        created=created,
-                        extra=tuple((checkpoint_events or {}).get(chat_id, ())),
-                    )
+                    extra = tuple((checkpoint_events or {}).get(chat_id, ()))
+                    if created or extra or assigned[chat_id]:
+                        found = None
+                    else:
+                        found = self._logged_meta_only(session, chat_id)
+                    if found is not None:
+                        current, logged, seq = found
+                        append = self.chat_log.prepare_meta(
+                            chat_id, current, logged, seq
+                        )
+                    else:
+                        append = self.chat_log.prepare(
+                            chat_id,
+                            self._project_in_session(
+                                session, chat_id, assigned[chat_id]
+                            ),
+                            created=created,
+                            extra=extra,
+                        )
                     if append is not None:
                         pending.append(append)
                         self._index_in_session(
@@ -570,6 +583,33 @@ class ChatOperationsMixin:
                 raise
             for append in pending:
                 self.chat_log.confirm(append)
+
+    def _logged_meta_only(
+        self, session: Session, chat_id: str
+    ) -> Optional[tuple[Dict[str, Any], Dict[str, Any], int]]:
+        """The row's and the log's meta, when that is all this write can change.
+
+        A write that assigned no messages or state to a slim row can only
+        differ from the log in meta and config, and folding a long log to
+        compare a pinned flag took seconds. Returns None to fold instead: the
+        fold is cached, the row still holds a conversation, or the log cannot
+        be read this way.
+        """
+        if self.chat_log.is_cached(chat_id):
+            return None
+        table = ChatModel.__table__
+        row = (
+            session.connection()
+            .execute(sa_select(table).where(table.c.id == chat_id))
+            .first()
+        )
+        if row is None or row.messages or row.agent_state is not None:
+            return None
+        found = self.chat_log.logged_meta(chat_id)
+        if found is None:
+            return None
+        logged, seq = found
+        return project_meta(row), logged, seq
 
     def _project_in_session(
         self,
@@ -1424,10 +1464,7 @@ class ChatOperationsMixin:
 
             deleted_ids = [chat_id]
             if cascade_subagents:
-                all_chats = session.exec(select(ChatModel)).all()
-                deleted_ids += [
-                    c.id for c in all_chats if self._is_subagent_child(c, {chat_id})
-                ]
+                deleted_ids += self.get_subagent_chat_ids_for_parent_chat(chat_id)
 
             self._delete_chat_rows(session, deleted_ids)
             self.commit_chat_changes(session, deleted_ids)
@@ -1497,11 +1534,9 @@ class ChatOperationsMixin:
         try:
             if not self.fts_available():
                 return
-            from suzent.database.search import FTS_TABLE
+            from suzent.database.search import delete_chat_fts_rows
 
-            session.connection().exec_driver_sql(
-                f"DELETE FROM {FTS_TABLE} WHERE chat_id = ?", (chat_id,)
-            )
+            delete_chat_fts_rows(session.connection(), chat_id)
         except Exception as exc:
             from suzent.logger import get_logger
 
