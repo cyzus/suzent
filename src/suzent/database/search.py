@@ -19,6 +19,7 @@ the existing chat-list search behaviour (2-char CJK substrings included) never r
 
 from __future__ import annotations
 
+import hashlib
 from typing import Any, Dict, List, Optional
 
 from suzent.logger import get_logger
@@ -26,6 +27,10 @@ from suzent.logger import get_logger
 logger = get_logger(__name__)
 
 FTS_TABLE = "chat_messages_fts"
+# FTS5 cannot index an UNINDEXED column, so finding a chat's rows by
+# ``chat_id`` reads every row's text. This plain table mirrors each FTS row
+# (same rowid) with an index on ``chat_id`` and a digest of its text.
+FTS_ROWS_TABLE = "chat_messages_fts_rows"
 
 # Trigram needs at least this many chars to produce a token.
 MIN_TRIGRAM_CHARS = 3
@@ -48,6 +53,63 @@ def _supports_fts5(conn: Any) -> bool:
             "SQLite FTS5 not available; chat search falls back to LIKE: {}", exc
         )
         return False
+
+
+def _text_digest(text: str) -> str:
+    return hashlib.blake2b(text.encode("utf-8"), digest_size=16).hexdigest()
+
+
+def _ensure_fts_rows_table(conn: Any) -> None:
+    """Create the rowid mirror, filling it from an index that predates it.
+
+    It is built under a scratch name and renamed when complete, so an
+    interrupted fill is redone on the next start instead of left partial.
+    """
+    exists = conn.exec_driver_sql(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
+        (FTS_ROWS_TABLE,),
+    ).first()
+    if exists:
+        return
+    scratch = f"{FTS_ROWS_TABLE}_build"
+    conn.exec_driver_sql(f"DROP TABLE IF EXISTS {scratch}")
+    conn.exec_driver_sql(
+        f"CREATE TABLE {scratch} ("
+        "id INTEGER PRIMARY KEY, chat_id TEXT NOT NULL, "
+        "message_index INTEGER NOT NULL, role TEXT NOT NULL, digest TEXT NOT NULL)"
+    )
+    rows = [
+        (rowid, chat_id, index, role, _text_digest(text or ""))
+        for rowid, chat_id, index, role, text in conn.exec_driver_sql(
+            f"SELECT rowid, chat_id, message_index, role, text FROM {FTS_TABLE}"
+        )
+    ]
+    if rows:
+        conn.exec_driver_sql(
+            f"INSERT INTO {scratch} (id, chat_id, message_index, role, digest) "
+            "VALUES (?, ?, ?, ?, ?)",
+            rows,
+        )
+        logger.info("Indexed {} chat search row(s) by chat", len(rows))
+    conn.exec_driver_sql(f"ALTER TABLE {scratch} RENAME TO {FTS_ROWS_TABLE}")
+    conn.exec_driver_sql(
+        f"CREATE INDEX IF NOT EXISTS ix_{FTS_ROWS_TABLE}_chat_id "
+        f"ON {FTS_ROWS_TABLE} (chat_id)"
+    )
+
+
+def delete_chat_fts_rows(conn: Any, chat_id: str) -> None:
+    """Delete a chat's search rows by rowid, inside the caller's transaction."""
+    rowids = [
+        (rowid,)
+        for (rowid,) in conn.exec_driver_sql(
+            f"SELECT id FROM {FTS_ROWS_TABLE} WHERE chat_id = ?", (chat_id,)
+        )
+    ]
+    if not rowids:
+        return
+    conn.exec_driver_sql(f"DELETE FROM {FTS_TABLE} WHERE rowid = ?", rowids)
+    conn.exec_driver_sql(f"DELETE FROM {FTS_ROWS_TABLE} WHERE chat_id = ?", (chat_id,))
 
 
 def _message_searchable_text(message: Dict[str, Any], include_tool: bool) -> str:
@@ -173,6 +235,7 @@ class ChatSearchMixin:
                 )
                 """
             )
+            _ensure_fts_rows_table(conn)
             conn.commit()
         self._fts_available_cache = True
         return True
@@ -185,6 +248,7 @@ class ChatSearchMixin:
         try:
             with self.engine.connect() as conn:
                 conn.exec_driver_sql(f"SELECT 1 FROM {FTS_TABLE} LIMIT 1")
+                conn.exec_driver_sql(f"SELECT 1 FROM {FTS_ROWS_TABLE} LIMIT 1")
             available = True
         except Exception:
             available = False
@@ -207,40 +271,47 @@ class ChatSearchMixin:
         """
         # Take the write lock before reading the chat's rows, so a concurrent
         # write to the same chat can't slip in between and leave duplicates.
-        conn.exec_driver_sql(f"DELETE FROM {FTS_TABLE} WHERE rowid = -1")
+        conn.exec_driver_sql(f"DELETE FROM {FTS_ROWS_TABLE} WHERE id = -1")
         indexed: Dict[int, tuple[int, str, str]] = {}
         stale: List[int] = []
-        for rowid, index, role, text in conn.exec_driver_sql(
-            f"SELECT rowid, message_index, role, text FROM {FTS_TABLE} WHERE chat_id = ?",
+        for rowid, index, role, digest in conn.exec_driver_sql(
+            f"SELECT id, message_index, role, digest FROM {FTS_ROWS_TABLE} "
+            "WHERE chat_id = ?",
             (chat_id,),
         ):
             if index in indexed:
                 stale.append(rowid)
             else:
-                indexed[index] = (rowid, role, text)
+                indexed[index] = (rowid, role, digest)
         wanted = {
-            r["index"]: (r["role"], r["text"])
+            r["index"]: (r["role"], r["text"], _text_digest(r["text"]))
             for r in sanitize_messages(
                 messages, role_filter=("user", "assistant", "tool")
             )
         }
         inserts = []
-        for index, (rowid, role, text) in indexed.items():
-            if wanted.get(index) != (role, text):
+        for index, (rowid, role, digest) in indexed.items():
+            want = wanted.get(index)
+            if want is None or (want[0], want[2]) != (role, digest):
                 stale.append(rowid)
-        for index, (role, text) in wanted.items():
+        for index, (role, text, digest) in wanted.items():
             current = indexed.get(index)
-            if current is None or current[1:] != (role, text):
-                inserts.append((chat_id, index, role, text))
+            if current is None or current[1:] != (role, digest):
+                inserts.append((index, role, text, digest))
         if stale:
-            conn.exec_driver_sql(
-                f"DELETE FROM {FTS_TABLE} WHERE rowid = ?", [(r,) for r in stale]
-            )
-        if inserts:
-            conn.exec_driver_sql(
-                f"INSERT INTO {FTS_TABLE} (chat_id, message_index, role, text) "
+            params = [(r,) for r in stale]
+            conn.exec_driver_sql(f"DELETE FROM {FTS_TABLE} WHERE rowid = ?", params)
+            conn.exec_driver_sql(f"DELETE FROM {FTS_ROWS_TABLE} WHERE id = ?", params)
+        for index, role, text, digest in inserts:
+            rowid = conn.exec_driver_sql(
+                f"INSERT INTO {FTS_ROWS_TABLE} (chat_id, message_index, role, digest) "
                 "VALUES (?, ?, ?, ?)",
-                inserts,
+                (chat_id, index, role, digest),
+            ).lastrowid
+            conn.exec_driver_sql(
+                f"INSERT INTO {FTS_TABLE} (rowid, chat_id, message_index, role, text) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (rowid, chat_id, index, role, text),
             )
 
     def reindex_chat(self, chat_id: str, messages: List[Dict[str, Any]]) -> None:
@@ -260,9 +331,7 @@ class ChatSearchMixin:
             return
         try:
             with self.engine.connect() as conn:
-                conn.exec_driver_sql(
-                    f"DELETE FROM {FTS_TABLE} WHERE chat_id = ?", (chat_id,)
-                )
+                delete_chat_fts_rows(conn, chat_id)
                 conn.commit()
         except Exception as exc:
             logger.warning("FTS delete failed for chat {}: {}", chat_id, exc)

@@ -432,3 +432,44 @@ def test_cli_read_is_paginated_and_sanitized(tool_db):
     assert len(page["messages"]) == 1
     assert "answer" in result.stdout
     assert "private reasoning" not in result.stdout
+
+
+def _fts_row_count(db, chat_id):
+    from sqlalchemy import text
+
+    with db.engine.connect() as conn:
+        return tuple(
+            conn.execute(text(sql), {"c": chat_id}).scalar()
+            for sql in (
+                "SELECT count(*) FROM chat_messages_fts WHERE chat_id = :c",
+                "SELECT count(*) FROM chat_messages_fts_rows WHERE chat_id = :c",
+            )
+        )
+
+
+def test_deleting_a_chat_drops_its_search_rows(db):
+    gone = db.create_chat("Gone", {}, [{"role": "user", "content": "vanishword"}])
+    kept = db.create_chat("Kept", {}, [{"role": "user", "content": "stayword"}])
+    assert _fts_row_count(db, gone) == (1, 1)
+    db.delete_chat(gone)
+    assert _fts_row_count(db, gone) == (0, 0)
+    assert not db.fts_match_chat_ids("vanishword")
+    assert kept in (db.fts_match_chat_ids("stayword") or [])
+
+
+def test_an_index_from_before_the_row_table_is_mirrored_on_start(db):
+    cid = db.create_chat(
+        "Old", {}, [{"role": "user", "content": f"message {i}"} for i in range(3)]
+    )
+    before = _fts_rows(db, cid)
+    with db.engine.connect() as conn:
+        conn.exec_driver_sql("DROP TABLE chat_messages_fts_rows")
+        conn.commit()
+
+    assert db._ensure_fts_table()
+    db.append_chat_message(cid, {"role": "user", "content": "message 3"})
+    after = _fts_rows(db, cid)
+    assert {i: after[i] for i in range(3)} == before
+    assert _fts_row_count(db, cid) == (4, 4)
+    db.delete_chat(cid)
+    assert _fts_row_count(db, cid) == (0, 0)

@@ -80,3 +80,23 @@ def test_legacy_migration_and_pin_persistence(
     assert reopened.get_project(home.id).name == "My Home"
     assert reopened.get_chat(chat_id).pinned is True
     reopened.engine.dispose()
+
+
+def test_pinning_does_not_send_the_conversation_back(
+    temp_db: ChatDatabase, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from suzent.routes import chat_routes
+
+    monkeypatch.setattr(chat_routes, "get_database", lambda: temp_db)
+    client = TestClient(
+        Starlette(
+            routes=[Route("/chats/{chat_id}", chat_routes.update_chat, methods=["PUT"])]
+        )
+    )
+    chat_id = temp_db.create_chat(
+        "Long", {}, messages=[{"role": "user", "content": "x" * 1000}] * 20
+    )
+
+    response = client.put(f"/chats/{chat_id}", json={"pinned": True})
+    assert response.json() == {"ok": True, "chat_id": chat_id, "pinned": True}
+    assert "messages" in client.put(f"/chats/{chat_id}", json={"title": "T"}).json()

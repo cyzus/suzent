@@ -1,0 +1,1 @@
+{"products": {"desktop": "patch"}, "summary": "Deleting, pinning and archiving a chat no longer take seconds or freeze other chats while they run, even with a large chat history."}

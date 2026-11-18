@@ -897,7 +897,7 @@ class DatabaseMigrationMixin:
         block startup.
         """
         from suzent.logger import logger
-        from suzent.database.search import FTS_TABLE
+        from suzent.database.search import FTS_ROWS_TABLE
 
         try:
             if not self._ensure_fts_table():
@@ -911,7 +911,7 @@ class DatabaseMigrationMixin:
                 indexed_ids = {
                     cid
                     for (cid,) in conn.exec_driver_sql(
-                        f"SELECT DISTINCT chat_id FROM {FTS_TABLE}"
+                        f"SELECT DISTINCT chat_id FROM {FTS_ROWS_TABLE}"
                     )
                 }
         except Exception as exc:
