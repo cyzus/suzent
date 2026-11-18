@@ -76,8 +76,9 @@ struct PairingView: View {
                 .padding(PresentationTokens.spaceLarge)
                 .foregroundStyle(.black)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color.suzentYellow)
-                .overlay(Rectangle().stroke(.black, lineWidth: PresentationTokens.borderWidth))
+                .background(Color.suzentYellow, in: RoundedRectangle(cornerRadius: PresentationTokens.radiusCard, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: PresentationTokens.radiusCard, style: .continuous)
+                    .stroke(.black, lineWidth: PresentationTokens.borderWidth))
 
                 if model.awaitingDesktop {
                     ProgressView("Waiting for desktop approval")
@@ -152,7 +153,8 @@ struct PairingPermissionsView: View {
             }
             if permissions.allChats { Text("Regent can coordinate work across all your projects.").font(.footnote).foregroundStyle(Color.suzentMuted) }
         }.frame(maxWidth: .infinity, alignment: .leading).padding(16)
-            .overlay(Rectangle().stroke(Color.suzentOutline, lineWidth: PresentationTokens.borderWidth))
+            .overlay(RoundedRectangle(cornerRadius: PresentationTokens.radiusCard, style: .continuous)
+                .stroke(Color.suzentOutline, lineWidth: PresentationTokens.borderWidth))
     }
     private func permission(_ title: LocalizedStringKey, enabled: Bool) -> some View {
         HStack { Text(title); Spacer(); Text(enabled ? String(localized: "Allowed") : String(localized: "Not allowed")) }

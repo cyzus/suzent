@@ -16,7 +16,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 
@@ -64,7 +63,7 @@ private fun PairingWelcome(model: MobileModel, scan: () -> Unit) {
             }
         }
     }
-    if (paste) ModalBottomSheet(onDismissRequest = { paste = false }, shape = RectangleShape,
+    if (paste) ModalBottomSheet(onDismissRequest = { paste = false }, shape = suzentSheetShape(),
         containerColor = MaterialTheme.colorScheme.surface) {
         Column(Modifier.fillMaxWidth().padding(horizontal = PresentationTokens.spacePage.dp).padding(bottom = PresentationTokens.spaceLarge.dp),
             verticalArrangement = Arrangement.spacedBy(PresentationTokens.spaceMedium.dp)) {
@@ -80,8 +79,9 @@ private fun PairingWelcome(model: MobileModel, scan: () -> Unit) {
 private fun PairingProgressView(model: MobileModel) {
     Column(Modifier.fillMaxSize().padding(top = 16.dp).verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(PresentationTokens.spaceLarge.dp)) {
-        Column(Modifier.fillMaxWidth().background(suzentYellow())
-            .border(PresentationTokens.borderWidth.dp, Color.Black).padding(PresentationTokens.spaceLarge.dp),
+        val banner = androidx.compose.foundation.shape.RoundedCornerShape(PresentationTokens.radiusCard.dp)
+        Column(Modifier.fillMaxWidth().background(suzentYellow(), banner)
+            .border(PresentationTokens.borderWidth.dp, Color.Black, banner).padding(PresentationTokens.spaceLarge.dp),
             verticalArrangement = Arrangement.spacedBy(PresentationTokens.spaceSmall.dp)) {
             Text(stringResource(R.string.pairing_heading), style = MaterialTheme.typography.titleLarge, color = Color.Black)
             Text(stringResource(R.string.pairing_intro), color = Color.Black)
@@ -96,7 +96,8 @@ private fun PairingProgressView(model: MobileModel) {
             model.pairingPreview?.let { preview ->
                 Text(preview.desktopName, style = MaterialTheme.typography.titleLarge)
                 val permissions = preview.permissions
-                Column(Modifier.fillMaxWidth().border(PresentationTokens.borderWidth.dp, MaterialTheme.colorScheme.outline).padding(16.dp),
+                Column(Modifier.fillMaxWidth().border(PresentationTokens.borderWidth.dp, MaterialTheme.colorScheme.outline,
+                    androidx.compose.foundation.shape.RoundedCornerShape(PresentationTokens.radiusCard.dp)).padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(stringResource(R.string.manage_conversations) + ": " + stringResource(if (permissions.manageChats) R.string.allowed else R.string.not_allowed))
                     if (permissions.allChats && permissions.createChats && permissions.manageChats && permissions.send && permissions.stop && permissions.approveTools) {
@@ -138,7 +139,8 @@ fun PairingProgress(status: String, color: Color = MaterialTheme.colorScheme.onS
 
 @Composable
 fun ClientPermissionsView(device: ClientDevice, origin: String) {
-    Column(Modifier.fillMaxWidth().border(PresentationTokens.borderWidth.dp, MaterialTheme.colorScheme.outline)
+    Column(Modifier.fillMaxWidth().border(PresentationTokens.borderWidth.dp, MaterialTheme.colorScheme.outline,
+        androidx.compose.foundation.shape.RoundedCornerShape(PresentationTokens.radiusCard.dp))
         .padding(PresentationTokens.spacePage.dp), verticalArrangement = Arrangement.spacedBy(PresentationTokens.spaceSmall.dp)) {
         Text(stringResource(R.string.desktop_access), style = MaterialTheme.typography.titleLarge)
         Text(device.name, style = MaterialTheme.typography.titleMedium)

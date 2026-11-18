@@ -1,6 +1,10 @@
 package com.suzent.mobile
 
 import android.animation.ValueAnimator
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.clickable
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.ui.platform.LocalContext
@@ -19,6 +23,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -78,7 +83,7 @@ fun AssemblyBadge(thinking: Boolean, parts: List<MessagePart> = emptyList(), str
  * capped at 30fps, and stopped once the scene settles, animations are disabled or the screen is in the background.
  */
 @Composable
-fun RobotBadge(parts: List<MessagePart>, streaming: Boolean, visible: Boolean = true, toolOverride: String? = null) {
+fun RobotBadge(parts: List<MessagePart>, streaming: Boolean, visible: Boolean = true, toolOverride: String? = null, size: Dp = 32.dp) {
     val reduced = !ValueAnimator.areAnimatorsEnabled()
     val dark = isSystemInDarkTheme()
     val lifecycle = LocalLifecycleOwner.current.lifecycle
@@ -88,6 +93,7 @@ fun RobotBadge(parts: List<MessagePart>, streaming: Boolean, visible: Boolean = 
     var seenErrors by remember { mutableIntStateOf(errors) }
     var flash by remember { mutableIntStateOf(0) }
     var startled by remember { mutableStateOf(false) }
+    var clicks by remember { mutableIntStateOf(0) }
     LaunchedEffect(errors) {
         if (errors > seenErrors) flash++
         seenErrors = errors
@@ -99,7 +105,7 @@ fun RobotBadge(parts: List<MessagePart>, streaming: Boolean, visible: Boolean = 
         startled = false
     }
     val tool = toolOverride ?: robotCurrentTool(parts, streaming)
-    val input by rememberUpdatedState(BotInput(pending, startled, streaming, tool, reduced, dark, visible))
+    val input by rememberUpdatedState(BotInput(pending, startled, streaming, tool, reduced, dark, visible, clicks))
     val frame = remember { mutableStateOf<SuzentBotFrame?>(null) }
     LaunchedEffect(context, lifecycle) {
         withContext(botDispatcher) {
@@ -107,17 +113,22 @@ fun RobotBadge(parts: List<MessagePart>, streaming: Boolean, visible: Boolean = 
             val session = host.create(1, "{}")
             try {
                 var timeMs = 0.0
+                var handledClicks = 0
                 lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
                     snapshotFlow { input }.collectLatest { current ->
                         if (!current.visible) return@collectLatest
                         val stage = host.resolveStage(current.pending, current.startled,
                             current.streaming && current.tool == null, current.tool, current.streaming || current.pending)
+                        val trick = if (current.clicks > handledClicks) current.clicks - 1 else null
+                        handledClicks = current.clicks
+                        var pendingTrick = trick
                         var previous = System.nanoTime()
                         while (true) {
                             val now = System.nanoTime()
                             timeMs += ((now - previous) / 1_000_000.0).coerceAtMost(50.0)
                             previous = now
-                            val next = SuzentBotFrame.parse(host.step(session, botStep(stage, timeMs, current.reduced, current.dark)))
+                            val next = SuzentBotFrame.parse(host.step(session, botStep(stage, timeMs, current.reduced, current.dark, pendingTrick)))
+                            pendingTrick = null
                             frame.value = next
                             if (current.reduced || next.settled) break
                             // Backpressure: never queue frames when computation exceeds the budget.
@@ -131,11 +142,14 @@ fun RobotBadge(parts: List<MessagePart>, streaming: Boolean, visible: Boolean = 
             }
         }
     }
-    Canvas(Modifier.size(32.dp)) { frame.value?.let { drawSuzentBot(it) } }
+    val label = stringResource(R.string.robot_play)
+    Canvas(Modifier.size(size).clickable(interactionSource = remember { MutableInteractionSource() }, indication = null,
+        role = Role.Button, onClickLabel = label) { clicks++ }
+        .semantics { contentDescription = label }) { frame.value?.let { drawSuzentBot(it) } }
 }
 
-private fun botStep(stage: String, timeMs: Double, reduced: Boolean, dark: Boolean) =
-    """{"stage":"$stage","time":$timeMs,"reducedMotion":$reduced,"dark":$dark,"size":32,"holdWhenIdle":true,"particlesEnabled":${!reduced},"autoMorphCycle":${!reduced},"isActive":true}"""
+private fun botStep(stage: String, timeMs: Double, reduced: Boolean, dark: Boolean, trick: Int? = null) =
+    """{"stage":"$stage","time":$timeMs,"reducedMotion":$reduced,"dark":$dark,"size":32,"holdWhenIdle":true,"particlesEnabled":${!reduced},"autoMorphCycle":${!reduced},"isActive":true${if (trick != null) ",\"interactiveTrick\":$trick" else ""}}"""
 
 private data class BotInput(
     val pending: Boolean,
@@ -145,6 +159,7 @@ private data class BotInput(
     val reduced: Boolean,
     val dark: Boolean,
     val visible: Boolean,
+    val clicks: Int,
 )
 
 // One serial worker keeps JS scopes confined without allocating a thread per badge.

@@ -19,6 +19,8 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -85,7 +87,7 @@ fun ActivityTurn(parts: List<MessagePart>, live: Boolean = false, regent: Boolea
     val placement = botPlacement(parts, live, !compact, regent)
     val showDisclosure = !live && work.isNotEmpty()
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        if (placement == BotPlacement.Assembly) AssemblyBadge(thinking = true)
+        BotStatusReveal(placement == BotPlacement.Assembly) { AssemblyBadge(thinking = true) }
         if (showDisclosure) {
             val visible = expanded || pending
             val label = stringResource(if (visible) R.string.reminder_expanded else R.string.reminder_collapsed)
@@ -107,9 +109,23 @@ fun ActivityTurn(parts: List<MessagePart>, live: Boolean = false, regent: Boolea
             if (media.isNotEmpty()) Box(Modifier.padding(bottom = 10.dp)) { MediaGallery(media) }
             ActivityContent(persistent + parts.drop(start), false, citationSources, regent, onBubbleLongPress)
         }
-        if (live && placement == BotPlacement.Footer) RobotBadge(parts, streaming = true, toolOverride = "write_file")
+        BotStatusReveal(live && placement == BotPlacement.Footer) {
+            Box(Modifier.fillMaxWidth().heightIn(min = 40.dp), contentAlignment = Alignment.CenterStart) {
+                RobotBadge(parts, streaming = true, toolOverride = "write_file", size = 40.dp)
+            }
+        }
         val sent = remember(parts) { parts.filter { it.toolName == "send_file" }.flatMap { it.media } }
         if (sent.isNotEmpty()) SentFilesSection(sent)
+    }
+}
+
+@Composable
+private fun BotStatusReveal(visible: Boolean, content: @Composable () -> Unit) {
+    val motion = ValueAnimator.areAnimatorsEnabled()
+    AnimatedVisibility(visible,
+        enter = if (motion) expandVertically(tween(300), expandFrom = Alignment.Top) + fadeIn(tween(240, delayMillis = 60)) + scaleIn(tween(300), initialScale = .94f) else EnterTransition.None,
+        exit = if (motion) shrinkVertically(tween(300), shrinkTowards = Alignment.Top) + fadeOut(tween(180)) + scaleOut(tween(240), targetScale = .96f) else ExitTransition.None) {
+        content()
     }
 }
 
@@ -249,7 +265,7 @@ fun ToolActivityBlock(part: MessagePart, live: Boolean, last: Boolean = true, cu
             val expandedLabel = stringResource(if (expanded) R.string.reminder_expanded else R.string.reminder_collapsed)
             val surface = if (part.type == "tool" && active && part.output.isEmpty()) activityRunningSurface(part.toolName) else null
             SuzentTextButton(onClick = { expanded = !expanded }, modifier = Modifier.fillMaxWidth().heightIn(min = 46.dp)
-                .then(if (surface != null) Modifier.border(2.dp, ink) else Modifier).runningSurface(surface, ink)
+                .then(if (surface != null) Modifier.border(2.dp, ink, androidx.compose.foundation.shape.RoundedCornerShape(PresentationTokens.radiusControl.dp)) else Modifier).runningSurface(surface, ink)
                 .semantics { stateDescription = "$status, $expandedLabel" }, contentPadding = PaddingValues(horizontal = 8.dp)) {
                 ActivityToolIcon(part, active, color)
                 Spacer(Modifier.width(8.dp))
