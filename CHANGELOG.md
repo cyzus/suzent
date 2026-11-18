@@ -5,6 +5,38 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v0.27.2] - 2026-11-18
+
+<!-- highlights -->
+### Highlights
+
+- **A broken MCP server no longer breaks your chats.** Until now, one server that could not start made the next reply fail with "Failed to initialize server session", every time. Its tools are now skipped for that turn while everything else works, first-launch installs run in the background, and the MCP settings page says which servers are still preparing or failing.
+- **The Inbox opens instantly.** It used to stall for seconds while a reply was streaming. Chat history, model lists and the sidebar no longer compete with a running reply for the same database lock.
+- **Long chats and big histories stop getting in the way.** Deleting, pinning or archiving a conversation no longer freezes the app for seconds, replies no longer rewrite the whole chat row on every moment of output, and a reply cut off by a crash comes back marked as interrupted instead of vanishing.
+- **Less work when nothing is happening.** The desktop polls far less while idle, and switching chats no longer re-queries every model provider.
+
+**这篇中文版：**
+
+- **一个坏掉的 MCP 服务器不再拖垮聊天。** 以前只要有一个服务器起不来，之后每次回复都会报 "Failed to initialize server session"。现在那一轮只是跳过它的工具，其他功能照常；首次启动的安装转到后台，MCP 设置页会标明哪些服务器仍在准备或已失败。
+- **Inbox 秒开。** 以前在回复流式输出时打开要卡好几秒。聊天历史、模型列表和侧边栏现在不再与正在进行的回复抢同一把数据库锁。
+- **长对话和大历史不再碍事。** 删除、置顶或归档会话不再让应用卡顿数秒；回复不再每输出一点就重写整行聊天记录；被崩溃截断的回复会以「已中断」状态回来，而不是消失。
+- **没事干的时候少干活。** 桌面端空闲时轮询大幅减少，切换会话也不再重新查询所有模型供应商。
+
+**A performance and reliability patch.** No new capabilities; existing things get faster and stop failing. The mobile side ships this same work as mobile-v0.10.1.
+<!-- /highlights -->
+
+### Release notes
+- Reduce model-picker overhead by caching the model catalog and omitting it from routine mobile conversation polling.
+- Deleting, pinning and archiving a chat no longer take seconds or freeze other chats while they run, even with a large chat history.
+- Open conversations more smoothly by avoiding unused agent-state reads and moving history processing off the UI thread.
+- The Inbox opens instantly and no longer freezes the app while a chat is replying.
+- The desktop app polls the backend less while idle: the sidebar no longer re-renders when nothing changed, scheduled and heartbeat chats reload only when they have new activity, Git and background task checks slow down when there is nothing running, and status checks pause while the window is hidden.
+- Streaming replies no longer rewrite the whole chat in the database every moment, so other parts of the app stay responsive during long answers, and a reply cut off by a crash is restored as interrupted.
+- An MCP server that can't connect no longer fails every chat: its tools are skipped for that turn, first-launch installs run in the background, and the MCP settings page shows which servers are still preparing or failing.
+- Switching chats no longer re-queries every model provider; model lists refresh at most every 15 minutes or when you press refresh.
+- Keep desktop and mobile actions consistent through a shared API while preserving device permissions and compatibility with older clients.
+- Long chats save faster at the end of each reply, because their messages are stored only in the chat log instead of being rewritten into the database every turn.
+
 ## [v0.27.1] - 2026-11-17
 
 <!-- highlights -->
