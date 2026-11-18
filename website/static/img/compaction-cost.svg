@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 280" width="880" height="280" role="img" aria-label="Input cost of summarizing a 400k-token conversation on Anthropic. Re-reading the history as a new prompt costs 400k tokens at the base price. Re-sending the conversation's own request reads it from the prompt cache at a tenth of that price, about the cost of 40k tokens.">
+  <style>
+    .ui { font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", sans-serif; }
+    .mono { font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    .label { fill: #8a8a8a; letter-spacing: 0.08em; }
+  </style>
+
+  <rect x="0" y="0" width="880" height="280" rx="14" fill="#fafafa"/>
+  <text x="32" y="38" class="mono label" font-size="9.5" font-weight="600">INPUT COST OF SUMMARIZING A 400K-TOKEN CONVERSATION</text>
+
+  <!-- row 1 -->
+  <text x="32" y="78" class="ui" font-size="13" font-weight="600" fill="#1a1a1a">Usual: a new summary prompt</text>
+  <text x="32" y="96" class="ui" font-size="11" fill="#6b6b6b">no cache hit, whole history at the base price</text>
+  <rect x="32" y="108" width="720" height="26" rx="5" fill="#d4d4d4"/>
+  <text x="764" y="126" class="mono" font-size="11" font-weight="600" fill="#1a1a1a">400k</text>
+
+  <!-- row 2 -->
+  <text x="32" y="168" class="ui" font-size="13" font-weight="600" fill="#1a1a1a">Suzent: the conversation's own request, plus one instruction</text>
+  <text x="32" y="186" class="ui" font-size="11" fill="#6b6b6b">history read from the prompt cache at 0.1× the base price</text>
+  <rect x="32" y="198" width="72" height="26" rx="5" fill="#1a1a1a"/>
+  <text x="116" y="216" class="mono" font-size="11" font-weight="600" fill="#1a1a1a">≈ 40k</text>
+
+  <text x="32" y="256" class="mono" font-size="9" fill="#8a8a8a">Token-equivalents at Anthropic cache pricing. The summary's own output tokens cost the same either way.</text>
+</svg>

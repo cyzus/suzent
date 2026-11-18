@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 300" width="880" height="300" role="img" aria-label="Four ways to reach your computer from your phone. Port forwarding opens a port at home. Tailscale needs an app on the phone. A vendor relay puts a company in the middle. Your own relay avoids all three."><style>
+    .ui { font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", sans-serif; }
+    .mono { font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    .card { fill: #ffffff; stroke: #dcdcdc; stroke-width: 1; }
+    .card-em { fill: #ffffff; stroke: #1a1a1a; stroke-width: 1.25; }
+    .label { fill: #8a8a8a; letter-spacing: 0.08em; }
+  </style>
+<rect x="0" y="0" width="880" height="300" rx="14" fill="#fafafa"/>
+<text x="32" y="130" class="ui" font-size="12" fill="#333333">Just the Suzent app on the phone</text><line x1="32" y1="152" x2="848" y2="152" stroke="#ececec"/>
+<text x="32" y="182" class="ui" font-size="12" fill="#333333">No open ports at home</text><line x1="32" y1="204" x2="848" y2="204" stroke="#ececec"/>
+<text x="32" y="234" class="ui" font-size="12" fill="#333333">No company in the middle</text><line x1="32" y1="256" x2="848" y2="256" stroke="#ececec"/>
+<rect x="268" y="36" width="124" height="52" rx="10" class="card"/><text x="330" y="67" class="ui" font-size="12.5" font-weight="600" fill="#1a1a1a" text-anchor="middle">Port forwarding</text>
+<circle cx="330" cy="126" r="10" fill="#1a1a1a"/><path d="M 326 126 L 329 129 L 335 122" fill="none" stroke="#ffffff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+<circle cx="330" cy="178" r="10" fill="none" stroke="#bdbdbd" stroke-width="1.2"/><path d="M 326 174 L 334 182 M 334 174 L 326 182" stroke="#a3a3a3" stroke-width="1.5" stroke-linecap="round"/>
+<circle cx="330" cy="230" r="10" fill="#1a1a1a"/><path d="M 326 230 L 329 233 L 335 226" fill="none" stroke="#ffffff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="418" y="36" width="124" height="52" rx="10" class="card"/><text x="480" y="67" class="ui" font-size="12.5" font-weight="600" fill="#1a1a1a" text-anchor="middle">Tailscale</text>
+<circle cx="480" cy="126" r="10" fill="none" stroke="#bdbdbd" stroke-width="1.2"/><path d="M 476 122 L 484 130 M 484 122 L 476 130" stroke="#a3a3a3" stroke-width="1.5" stroke-linecap="round"/>
+<circle cx="480" cy="178" r="10" fill="#1a1a1a"/><path d="M 476 178 L 479 181 L 485 174" fill="none" stroke="#ffffff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+<circle cx="480" cy="230" r="10" fill="#1a1a1a"/><path d="M 476 230 L 479 233 L 485 226" fill="none" stroke="#ffffff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="568" y="36" width="124" height="52" rx="10" class="card"/><text x="630" y="67" class="ui" font-size="12.5" font-weight="600" fill="#1a1a1a" text-anchor="middle">Vendor relay</text>
+<circle cx="630" cy="126" r="10" fill="#1a1a1a"/><path d="M 626 126 L 629 129 L 635 122" fill="none" stroke="#ffffff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+<circle cx="630" cy="178" r="10" fill="#1a1a1a"/><path d="M 626 178 L 629 181 L 635 174" fill="none" stroke="#ffffff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+<circle cx="630" cy="230" r="10" fill="none" stroke="#bdbdbd" stroke-width="1.2"/><path d="M 626 226 L 634 234 M 634 226 L 626 234" stroke="#a3a3a3" stroke-width="1.5" stroke-linecap="round"/>
+<rect x="718" y="36" width="124" height="52" rx="10" class="card-em"/><text x="780" y="67" class="ui" font-size="12.5" font-weight="600" fill="#1a1a1a" text-anchor="middle">Your relay</text>
+<rect x="718" y="100" width="124" height="170" rx="10" fill="#1a1a1a" fill-opacity="0.04"/>
+<circle cx="780" cy="126" r="10" fill="#1a1a1a"/><path d="M 776 126 L 779 129 L 785 122" fill="none" stroke="#ffffff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+<circle cx="780" cy="178" r="10" fill="#1a1a1a"/><path d="M 776 178 L 779 181 L 785 174" fill="none" stroke="#ffffff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+<circle cx="780" cy="230" r="10" fill="#1a1a1a"/><path d="M 776 230 L 779 233 L 785 226" fill="none" stroke="#ffffff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
