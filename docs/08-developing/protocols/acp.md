@@ -113,6 +113,26 @@ Implemented methods: `initialize`, `authenticate`, `session/new`,
 `loadSession: true`, text prompts with embedded context. Images and audio are
 declined at the handshake rather than silently dropped.
 
+### Relayed prompts
+
+A client that relays someone else's words, such as a shared room, can keep its
+background out of the transcript. Text blocks whose `annotations.audience`
+leaves out `"user"` go to the model only: they ride ahead of the request in a
+hidden runtime block, outside the reminder budget, and the transcript row shows
+the remaining blocks. The row keeps the hidden text in its metadata so the
+desktop can show it folded under the message. A prompt made only of such blocks
+is shown whole, since an empty row would hide a turn that ran.
+
+The client can name the person behind the words in the prompt's `_meta`, under
+its own namespace. Suzent reads `com.enoxian/origin`:
+
+```json
+"_meta": {"com.enoxian/origin": {"author": "butter", "via": "suzent-vid"}}
+```
+
+The transcript then reads "Sent by butter via enoxian · suzent-vid" instead of
+naming only the client. Names that are not short printable strings are ignored.
+
 ### Inbound authentication
 
 `suzent acp` requires pairing by default. Initialization needs no running backend:

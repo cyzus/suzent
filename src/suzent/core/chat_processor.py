@@ -635,6 +635,7 @@ class ChatProcessor:
         system_reminders: list[str] = None,
         incoming_citation_sources: list[dict] = None,
         counts_toward_goal: Optional[bool] = None,
+        prompt_context: list[str] | None = None,
     ) -> AsyncGenerator[str, None]:
         """
         Process a user message turn:
@@ -816,6 +817,7 @@ class ChatProcessor:
                     },
                     turn_input={
                         "system_reminders": list(system_reminders or []),
+                        "prompt_context": list(prompt_context or []),
                         "incoming_citation_sources": list(
                             incoming_citation_sources or []
                         ),
@@ -1219,6 +1221,26 @@ class ChatProcessor:
                 message_content = f"{message_content}\n\n{reminder}"
             else:
                 message_content = reminder
+        if prompt_context and message_content and message_content.strip():
+            # Background a client sent for the model alone, such as the room an
+            # editor or workspace is relaying from. It is the turn's input rather
+            # than ambient chatter, so it bypasses the reminder budget that would
+            # cut it, and it leads so the request reads as what follows it.
+            background = "\n\n".join(
+                part.strip() for part in prompt_context if part and part.strip()
+            )
+            if background:
+                from suzent.core.context_usage import register_context_source
+
+                register_context_source(
+                    deps,
+                    sanitize_untrusted_text(background),
+                    "messages",
+                    "client_prompt_context",
+                )
+                message_content = (
+                    f"{wrap_in_system_reminder(background)}\n\n{message_content}"
+                )
         if skill_context:
             # A block of its own, not an ad-hoc reminder: the reminder budget
             # would truncate a typical skill, and the user asked for all of it.
@@ -1999,6 +2021,7 @@ class ChatProcessor:
             system_reminders=turn_input.get("system_reminders")
             if not is_retry_edit
             else None,
+            prompt_context=turn_input.get("prompt_context"),
             incoming_citation_sources=turn_input.get("incoming_citation_sources"),
             file_mentions=turn_input.get("file_mentions"),
             config_override=merged_config,

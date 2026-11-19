@@ -304,12 +304,16 @@ const UserMessageComponent: React.FC<UserMessageProps> = ({
   const editTextareaRef = useRef<HTMLTextAreaElement>(null);
 
   const content = message.content ? sanitizeContent(message.content) : '';
-  const { sender, channel } = message.metadata ?? {};
+  const { sender, channel, context: hiddenContext } = message.metadata ?? {};
   const label =
     senderLabel ??
     (typeof sender === 'string' && typeof channel === 'string'
       ? t('chatMessage.sentVia', { sender, channel })
       : null);
+  // What a relaying client sent for the model alone: kept off the bubble, one
+  // click away for anyone who wants to see what the agent was shown.
+  const promptContext =
+    typeof hiddenContext === 'string' && hiddenContext.trim() ? hiddenContext : null;
   const canEdit = isLatest && !!content && (!!onEdit || !!onRerun);
 
   const startEditing = () => {
@@ -483,6 +487,21 @@ const UserMessageComponent: React.FC<UserMessageProps> = ({
               </div>
             </div>
           </div>
+        )}
+
+        {promptContext && !isEditing && (
+          <details className="group flex flex-col items-end pr-1">
+            <summary className="ml-auto w-fit cursor-pointer list-none text-[10px] font-medium text-neutral-400 hover:text-neutral-600 dark:text-neutral-500 dark:hover:text-neutral-300 [&::-webkit-details-marker]:hidden">
+              <span className="group-open:hidden">▸ </span>
+              <span className="hidden group-open:inline">▾ </span>
+              {t('chatMessage.promptContext', {
+                size: Math.max(0.1, new Blob([promptContext]).size / 1024).toFixed(1),
+              })}
+            </summary>
+            <pre className="mt-2 max-h-80 w-full overflow-auto whitespace-pre-wrap break-words border-2 border-brutal-black bg-white px-3 py-2 text-left font-mono text-[11px] leading-relaxed text-neutral-600 dark:border-white/10 dark:bg-zinc-900 dark:text-zinc-400">
+              {promptContext}
+            </pre>
+          </details>
         )}
 
         {reaction && !isEditing && chatId === FOCAL_CHAT_ID && (
