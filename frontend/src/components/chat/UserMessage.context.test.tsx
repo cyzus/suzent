@@ -41,6 +41,21 @@ describe('a prompt relayed by an ACP client', () => {
     expect(html).toContain('&lt;context&gt;members&lt;/context&gt;');
   });
 
+  it('keeps the background with the sender, above the request', () => {
+    const html = render({
+      source: 'acp',
+      sender: 'butter',
+      channel: 'enoxian',
+      context: '<context>members</context>',
+    });
+
+    const sender = html.indexOf('chatMessage.sentVia');
+    const fold = html.indexOf('chatMessage.promptContext');
+    const request = html.indexOf('summarize the notes');
+    expect(sender).toBeLessThan(fold);
+    expect(fold).toBeLessThan(request);
+  });
+
   it('shows no fold when nothing was hidden', () => {
     const html = render({ source: 'acp', sender: 'Zed', channel: 'ACP' });
 

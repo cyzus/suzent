@@ -1,0 +1,1 @@
+{"products": {"desktop": "patch"}, "summary": "The context an ACP client sent along with a relayed prompt now folds away right under the sender's name, above the message."}

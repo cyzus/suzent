@@ -417,11 +417,27 @@ const UserMessageComponent: React.FC<UserMessageProps> = ({
             : 'space-y-3'
         }
       >
-        {label && (
-          <div className="flex justify-end pr-1">
-            <span className="text-[10px] font-medium text-neutral-400 dark:text-neutral-500">
-              {label}
-            </span>
+        {(label || (promptContext && !isEditing)) && (
+          <div className="flex flex-col items-end gap-1 pr-1">
+            {label && (
+              <span className="text-[10px] font-medium text-neutral-400 dark:text-neutral-500">
+                {label}
+              </span>
+            )}
+            {promptContext && !isEditing && (
+              <details className="group flex w-full flex-col items-end">
+                <summary className="ml-auto w-fit cursor-pointer list-none text-[10px] font-medium text-neutral-400 hover:text-neutral-600 dark:text-neutral-500 dark:hover:text-neutral-300 [&::-webkit-details-marker]:hidden">
+                  <span className="group-open:hidden">▸ </span>
+                  <span className="hidden group-open:inline">▾ </span>
+                  {t('chatMessage.promptContext', {
+                    size: Math.max(0.1, new Blob([promptContext]).size / 1024).toFixed(1),
+                  })}
+                </summary>
+                <pre className="mt-2 max-h-80 w-full overflow-auto whitespace-pre-wrap break-words border-2 border-brutal-black bg-white px-3 py-2 text-left font-mono text-[11px] leading-relaxed text-neutral-600 dark:border-white/10 dark:bg-zinc-900 dark:text-zinc-400">
+                  {promptContext}
+                </pre>
+              </details>
+            )}
           </div>
         )}
 
@@ -487,21 +503,6 @@ const UserMessageComponent: React.FC<UserMessageProps> = ({
               </div>
             </div>
           </div>
-        )}
-
-        {promptContext && !isEditing && (
-          <details className="group flex flex-col items-end pr-1">
-            <summary className="ml-auto w-fit cursor-pointer list-none text-[10px] font-medium text-neutral-400 hover:text-neutral-600 dark:text-neutral-500 dark:hover:text-neutral-300 [&::-webkit-details-marker]:hidden">
-              <span className="group-open:hidden">▸ </span>
-              <span className="hidden group-open:inline">▾ </span>
-              {t('chatMessage.promptContext', {
-                size: Math.max(0.1, new Blob([promptContext]).size / 1024).toFixed(1),
-              })}
-            </summary>
-            <pre className="mt-2 max-h-80 w-full overflow-auto whitespace-pre-wrap break-words border-2 border-brutal-black bg-white px-3 py-2 text-left font-mono text-[11px] leading-relaxed text-neutral-600 dark:border-white/10 dark:bg-zinc-900 dark:text-zinc-400">
-              {promptContext}
-            </pre>
-          </details>
         )}
 
         {reaction && !isEditing && chatId === FOCAL_CHAT_ID && (
