@@ -18,7 +18,7 @@ from suzent.acp.server import (
     SESSION_MARKER,
     WORKSPACE_MOUNT,
     TurnTranslator,
-    _prompt_text,
+    _prompt_parts,
     tool_kind,
 )
 
@@ -465,7 +465,7 @@ def test_replayed_tool_call_start_updates_instead_of_duplicating():
 
 
 def test_prompt_text_flattens_content_blocks():
-    text = _prompt_text(
+    parts = _prompt_parts(
         [
             {"type": "text", "text": "fix"},
             {"type": "resource_link", "uri": "file:///a.py"},
@@ -475,7 +475,50 @@ def test_prompt_text_flattens_content_blocks():
             },
         ]
     )
-    assert text == "fix\n\n@file:///a.py\n\nfile:///b.py\nx = 1"
+    assert parts.text == "fix\n\n@file:///a.py\n\nfile:///b.py\nx = 1"
+    assert parts.context == []
+
+
+def test_blocks_for_the_model_alone_are_kept_off_the_message():
+    parts = _prompt_parts(
+        [
+            {
+                "type": "text",
+                "text": "<context>room</context>\n\nREQUEST from ann:\n",
+                "annotations": {"audience": ["assistant"]},
+            },
+            {"type": "text", "text": "rename the file"},
+            {
+                "type": "text",
+                "text": "\n\nReply PASS if nothing to add.",
+                "annotations": {"audience": ["assistant"]},
+            },
+            {
+                "type": "text",
+                "text": "shown to both",
+                "annotations": {"audience": ["user", "assistant"]},
+            },
+        ]
+    )
+    assert parts.text == "rename the file\n\nshown to both"
+    assert parts.context == [
+        "<context>room</context>\n\nREQUEST from ann:",
+        "Reply PASS if nothing to add.",
+    ]
+
+
+def test_a_prompt_with_only_model_blocks_is_shown_whole():
+    parts = _prompt_parts(
+        [
+            {
+                "type": "text",
+                "text": "background",
+                "annotations": {"audience": ["assistant"]},
+            }
+        ]
+    )
+    assert parts.text == "background"
+    assert parts.context == []
 
 
 def test_tool_kinds_cover_the_common_tools():
@@ -633,3 +676,69 @@ def test_the_live_stream_envelopes_are_unwrapped_once_each():
     texts = [item.payload["content"]["text"] for item in translator.feed(frames)]
 
     assert texts == ["Hel", "lo"]
+
+
+@pytest.mark.asyncio
+async def test_a_relayed_prompt_names_its_author_and_carries_its_background(
+    tmp_path,
+):
+    backend = FakeBackend([[sse({"type": "TEXT_MESSAGE_CONTENT", "delta": "ok"})]])
+    server = ACPAgentServer(backend, Wire())
+    await server.dispatch(request(1, "initialize", {"clientInfo": {"name": "enoxian"}}))
+    await server.dispatch(request(2, "session/new", {"cwd": str(tmp_path)}))
+
+    await server.dispatch(
+        request(
+            3,
+            "session/prompt",
+            {
+                "sessionId": "chat-1",
+                "prompt": [
+                    {
+                        "type": "text",
+                        "text": "<context>members</context>\n\n",
+                        "annotations": {"audience": ["assistant"]},
+                    },
+                    {"type": "text", "text": "summarize the notes"},
+                ],
+                "_meta": {
+                    "com.enoxian/origin": {"author": "butter", "via": "suzent-vid"}
+                },
+            },
+        )
+    )
+    await server.drain()
+
+    [payload] = backend.payloads
+    assert payload["message"] == "summarize the notes"
+    assert payload["prompt_context"] == ["<context>members</context>"]
+    assert payload["origin"] == {
+        "kind": "acp",
+        "client": "enoxian",
+        "author": "butter",
+        "via": "suzent-vid",
+    }
+
+
+@pytest.mark.asyncio
+async def test_an_unreadable_author_is_left_out(tmp_path):
+    backend = FakeBackend([[sse({"type": "TEXT_MESSAGE_CONTENT", "delta": "ok"})]])
+    server = ACPAgentServer(backend, Wire())
+    await server.dispatch(request(1, "initialize", {"clientInfo": {"name": "Zed"}}))
+    await server.dispatch(request(2, "session/new", {"cwd": str(tmp_path)}))
+    await server.dispatch(
+        request(
+            3,
+            "session/prompt",
+            {
+                "sessionId": "chat-1",
+                "prompt": [{"type": "text", "text": "hi"}],
+                "_meta": {"com.enoxian/origin": {"author": "x\n" * 3}},
+            },
+        )
+    )
+    await server.drain()
+
+    [payload] = backend.payloads
+    assert payload["origin"] == {"kind": "acp", "client": "Zed"}
+    assert "prompt_context" not in payload

@@ -127,11 +127,23 @@ def _origin_metadata(origin: Any) -> dict[str, str] | None:
     """
     if not isinstance(origin, dict) or origin.get("kind") != "acp":
         return None
-    return {
-        "source": "acp",
-        "sender": display_name(origin.get("client"), "ACP client"),
-        "channel": "ACP",
-    }
+    client = display_name(origin.get("client"), "ACP client")
+    metadata = {"source": "acp", "sender": client, "channel": "ACP"}
+    # A client relaying someone else's words (a shared room, a team chat) names
+    # them, so the transcript says who asked rather than which program carried it.
+    author = display_name(origin.get("author"), "")
+    if author:
+        via = display_name(origin.get("via"), "")
+        metadata["sender"] = author
+        metadata["channel"] = f"{client} · {via}" if via else client
+    return metadata
+
+
+def _prompt_context(value: Any) -> list[str]:
+    """Background an ACP client marked for the model alone, kept off the row."""
+    if not isinstance(value, list):
+        return []
+    return [part for part in value if isinstance(part, str) and part.strip()]
 
 
 def _is_text(value: Any) -> bool:
@@ -207,6 +219,7 @@ async def chat(request: Request) -> StreamingResponse:
             recovery_protocol = form.get("protocol") == "1"
             client_run_token = form.get("client_run_token")
             origin = None
+            prompt_context: list[str] = []
         else:
             data = await request.json()
             message = data.get("message", "").strip()
@@ -221,6 +234,9 @@ async def chat(request: Request) -> StreamingResponse:
             recovery_protocol = data.get("protocol") == 1
             client_run_token = data.get("client_run_token")
             origin = _origin_metadata(data.get("origin"))
+            prompt_context = (
+                _prompt_context(data.get("prompt_context")) if origin else []
+            )
 
         if not message and not files_list and not resume_approvals and not is_heartbeat:
             return StreamingResponse(
@@ -329,8 +345,13 @@ async def chat(request: Request) -> StreamingResponse:
             and not resume_approvals
             and not message.startswith("/")
         ):
+            row_metadata = dict(origin)
+            if prompt_context:
+                # Kept with the row so the person can open what the model was
+                # shown alongside it, without it standing in for their words.
+                row_metadata["context"] = "\n\n".join(prompt_context)
             message, prewritten = prewrite_prompt(
-                chat_id, message, files_list, metadata=origin
+                chat_id, message, files_list, metadata=row_metadata
             )
 
         def _make_generator(replay: Any | None = None) -> AsyncGenerator[str, None]:
@@ -345,6 +366,9 @@ async def chat(request: Request) -> StreamingResponse:
                     file_mentions=file_mentions or None,
                     replay=replay,
                     prewritten=prewritten,
+                    # The agent's prompt, not the row: the background stays off
+                    # the transcript the way it does on the native runtime.
+                    system_preamble="\n\n".join(prompt_context) or None,
                 )
             return processor.process_turn(
                 chat_id=chat_id,
@@ -355,6 +379,7 @@ async def chat(request: Request) -> StreamingResponse:
                 config_override=config_override,
                 resume_approvals=resume_approvals,
                 is_heartbeat=is_heartbeat,
+                prompt_context=prompt_context or None,
             )
 
         if stream:

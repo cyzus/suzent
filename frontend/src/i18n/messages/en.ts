@@ -2411,6 +2411,7 @@ export const en = {
         pending: 'Not answered yet',
       },
     },
+    promptContext: 'Context shown to the agent · {size} KB',
     sentVia: 'Sent by {sender} via {channel}',
     today: 'Today',
     yesterday: 'Yesterday',

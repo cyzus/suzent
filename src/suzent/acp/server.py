@@ -63,6 +63,11 @@ AUTH_REQUIRED = -32000
 TERMINAL_AUTH_ID = "suzent-terminal"
 AGENT_AUTH_ID = "suzent-pair"
 
+# `_meta` keys on session/prompt under which a client relaying someone else's
+# words names them: {"author": ..., "via": ...}. ACP leaves _meta to extensions
+# namespaced by the producer's domain, so each relaying client is listed here.
+ORIGIN_META_KEYS = ("com.enoxian/origin",)
+
 # Suzent tool name -> ACP tool-call kind. Anything unlisted is "other", which is
 # what a client renders for a tool it has no special affordance for.
 _TOOL_KINDS: dict[str, str] = {
@@ -681,15 +686,16 @@ class ACPAgentServer:
             )
             return
 
-        text = _prompt_text(params.get("prompt"))
-        if not text:
+        prompt = _prompt_parts(params.get("prompt"))
+        if not prompt.text:
             await self._error(message_id, INVALID_PARAMS, "the prompt carries no text")
             return
+        author = _prompt_author(params.get("_meta"))
 
         session.running = True
         session.cancelled = False
         try:
-            stop_reason = await self._run_authorized_turn(session, text)
+            stop_reason = await self._run_authorized_turn(session, prompt, author)
         except ACPServerError as exc:
             await self._error(message_id, exc.code, str(exc))
         except Exception as exc:  # noqa: BLE001
@@ -702,17 +708,19 @@ class ACPAgentServer:
         finally:
             session.running = False
 
-    async def _run_authorized_turn(self, session: Session, text: str) -> str:
+    async def _run_authorized_turn(
+        self, session: Session, prompt: PromptParts, author: dict[str, str]
+    ) -> str:
         await self._authorize(session)
         if not self._require_auth:
-            return await self._run_turn(session, text)
+            return await self._run_turn(session, prompt, author)
 
         async def watch() -> None:
             while True:
                 await asyncio.sleep(1)
                 await self._authorize(session)
 
-        turn = asyncio.create_task(self._run_turn(session, text))
+        turn = asyncio.create_task(self._run_turn(session, prompt, author))
         watcher = asyncio.create_task(watch())
         try:
             await asyncio.wait([turn, watcher], return_when=asyncio.FIRST_COMPLETED)
@@ -728,9 +736,11 @@ class ACPAgentServer:
                 watcher.cancel()
                 await asyncio.gather(turn, watcher, return_exceptions=True)
 
-    async def _run_turn(self, session: Session, text: str) -> str:
+    async def _run_turn(
+        self, session: Session, prompt: PromptParts, author: dict[str, str]
+    ) -> str:
         """Stream a headless turn, declining any legacy approval requests."""
-        message = text
+        message = prompt.text
         resume_approvals: list[dict[str, Any]] = []
         failure: str | None = None
         citations = CitationStreamRenderer()
@@ -752,10 +762,12 @@ class ACPAgentServer:
                 },
                 "protocol": 1,
                 "client_run_token": uuid.uuid4().hex,
-                "origin": {"kind": "acp", "client": self._client_name},
+                "origin": {"kind": "acp", "client": self._client_name, **author},
             }
             if resume_approvals:
                 payload["resume_approvals"] = resume_approvals
+            elif prompt.context:
+                payload["prompt_context"] = prompt.context
 
             translator = TurnTranslator(citations)
             pending: list[dict[str, Any]] = []
@@ -864,40 +876,93 @@ class ACPAgentServer:
 # ── prompt and history helpers ────────────────────────────────────────────────
 
 
-def _prompt_text(blocks: Any) -> str:
-    """Flatten ACP prompt content blocks into the text of one user message."""
-    if isinstance(blocks, str):
-        return blocks.strip()
-    if not isinstance(blocks, list):
-        return ""
+@dataclass
+class PromptParts:
+    """A prompt split by who each block is for.
 
-    parts: list[str] = []
+    ``text`` is what the person wrote, shown in the transcript and sent to the
+    model; ``context`` is what the client marked for the model alone.
+    """
+
+    text: str
+    context: list[str] = field(default_factory=list)
+
+
+def _model_only(block: dict[str, Any]) -> bool:
+    """Whether a block's annotations address it to the model and not the user."""
+    annotations = block.get("annotations")
+    if not isinstance(annotations, dict):
+        return False
+    audience = annotations.get("audience")
+    return isinstance(audience, list) and bool(audience) and "user" not in audience
+
+
+def _block_text(block: Any) -> str:
+    """The text one ACP content block contributes to a user message."""
+    if isinstance(block, str):
+        return block
+    if not isinstance(block, dict):
+        return ""
+    match block.get("type"):
+        case "text":
+            return str(block.get("text") or "")
+        case "resource_link":
+            uri = str(block.get("uri") or block.get("name") or "")
+            return f"@{uri}" if uri else ""
+        case "resource":
+            resource = block.get("resource")
+            if not isinstance(resource, dict):
+                return ""
+            uri = str(resource.get("uri") or "")
+            text = str(resource.get("text") or "")
+            if text:
+                return f"{uri}\n{text}" if uri else text
+            return f"@{uri}" if uri else ""
+        case _:
+            # image/audio are not advertised in promptCapabilities, so a
+            # client should not send them; note it rather than drop it.
+            return f"[unsupported {block.get('type')} content]"
+
+
+def _prompt_parts(blocks: Any) -> PromptParts:
+    """Split ACP prompt content blocks into the person's message and background."""
+    if isinstance(blocks, str):
+        return PromptParts(blocks.strip())
+    if not isinstance(blocks, list):
+        return PromptParts("")
+
+    shown: list[str] = []
+    hidden: list[str] = []
     for block in blocks:
-        if isinstance(block, str):
-            parts.append(block)
+        text = _block_text(block)
+        if not text.strip():
             continue
-        if not isinstance(block, dict):
+        if isinstance(block, dict) and _model_only(block):
+            hidden.append(text.strip())
+        else:
+            shown.append(text)
+    text = "\n\n".join(part for part in shown if part).strip()
+    if not text:
+        # Nothing addressed to the person: the background is the whole prompt,
+        # and hiding it would leave an empty row for a turn that did run.
+        return PromptParts("\n\n".join(hidden))
+    return PromptParts(text, hidden)
+
+
+def _prompt_author(meta: Any) -> dict[str, str]:
+    """Who a relaying client says wrote the prompt, from its ``_meta`` origin."""
+    if not isinstance(meta, dict):
+        return {}
+    for key in ORIGIN_META_KEYS:
+        origin = meta.get(key)
+        if not isinstance(origin, dict):
             continue
-        match block.get("type"):
-            case "text":
-                parts.append(str(block.get("text") or ""))
-            case "resource_link":
-                if uri := str(block.get("uri") or block.get("name") or ""):
-                    parts.append(f"@{uri}")
-            case "resource":
-                resource = block.get("resource")
-                if isinstance(resource, dict):
-                    uri = str(resource.get("uri") or "")
-                    text = str(resource.get("text") or "")
-                    if text:
-                        parts.append(f"{uri}\n{text}" if uri else text)
-                    elif uri:
-                        parts.append(f"@{uri}")
-            case _:
-                # image/audio are not advertised in promptCapabilities, so a
-                # client should not send them; note it rather than drop it.
-                parts.append(f"[unsupported {block.get('type')} content]")
-    return "\n\n".join(part for part in parts if part).strip()
+        author = display_name(origin.get("author"), "")
+        if not author:
+            continue
+        via = display_name(origin.get("via"), "")
+        return {"author": author, **({"via": via} if via else {})}
+    return {}
 
 
 def _history_updates(messages: list[Any]) -> Iterator[dict[str, Any]]:

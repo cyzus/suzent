@@ -2346,6 +2346,7 @@ export const zhCN = {
         pending: '尚未回复',
       },
     },
+    promptContext: '附带给 agent 的上下文 · {size} KB',
     sentVia: '{sender} 通过 {channel} 发送',
     today: '今天',
     yesterday: '昨天',
