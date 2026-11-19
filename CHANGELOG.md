@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [v0.27.3] - 2026-11-19
 
 ### Release notes
+- The context an ACP client sent along with a relayed prompt now folds away right under the sender's name, above the message.
 - Chats started from another app over ACP now show who wrote each message and fold the app's background context away under it.
 
 ## [v0.27.2] - 2026-11-18
