@@ -579,7 +579,9 @@ async def get_api_keys_status(request: Request) -> JSONResponse:
 
             providers.append(provider_data)
 
-        return JSONResponse({"providers": providers})
+        return JSONResponse(
+            {"providers": providers, "china_mode": network_region.china_mode()}
+        )
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
 
@@ -869,8 +871,15 @@ async def verify_provider(request: Request) -> JSONResponse:
             )
 
         models = await provider.list_models()
+        # A refused key still yields catalog defaults; reporting those as a
+        # working connection would hide the bad key until the first chat.
+        key_refused = bool(
+            re.search(r"HTTP 40[13]\b", getattr(provider, "discovery_error", "") or "")
+        )
 
-        if models and not getattr(provider, "used_catalog_fallback", False):
+        if key_refused:
+            models = []
+        elif models and not getattr(provider, "used_catalog_fallback", False):
             from suzent.core.model_registry import (
                 save_discovered_models,
                 prune_stale_models,

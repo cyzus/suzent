@@ -1,6 +1,7 @@
 """Onboarding checks. Recommendations never invoke a model."""
 
 import asyncio
+from typing import Literal
 
 from pydantic import BaseModel, Field, ValidationError
 from starlette.requests import Request
@@ -18,12 +19,75 @@ class ModelSelection(BaseModel):
     model: str = Field(min_length=1, max_length=512)
 
 
+class RoleRequest(ModelSelection):
+    # The models a connection check actually listed. A provider's catalog can
+    # name models a custom endpoint does not serve, so recommendations stay
+    # within these when given.
+    models: list[str] | None = Field(default=None, max_length=2000)
+
+
+# Overdue or empty accounts that pydantic-ai has no mapping for, matched in the
+# error body: DashScope's 400 `Arrearage`, Volcengine's 403 `AccountOverdueError`.
+_BALANCE_HINTS = (
+    "arrearage",
+    "overdue",
+    "insufficient balance",
+    "insufficient_balance",
+    "余额不足",
+    "欠费",
+)
+
+
+type ProbeFailure = Literal["auth", "quota", "busy", "model", "network", "unknown"]
+
+
+def _probe_failure(error: BaseException) -> ProbeFailure:
+    """A coarse, credential-free category the setup screen can explain."""
+    from pydantic_ai.exceptions import (
+        ModelAuthenticationError,
+        ModelConnectionError,
+        ModelHTTPError,
+        ModelNotFoundError,
+        ModelQuotaExceededError,
+        ModelRateLimitError,
+    )
+
+    if isinstance(error, ModelHTTPError) and any(
+        hint in str(error.body).lower() for hint in _BALANCE_HINTS
+    ):
+        return "quota"
+    match error:
+        case ModelAuthenticationError():
+            return "auth"
+        case ModelQuotaExceededError():
+            return "quota"
+        case ModelRateLimitError():
+            return "busy"
+        case ModelNotFoundError():
+            return "model"
+        case ModelConnectionError() | TimeoutError():
+            return "network"
+        case ModelHTTPError(status_code=401 | 403):
+            return "auth"
+        case ModelHTTPError(status_code=402):
+            return "quota"
+        case ModelHTTPError(status_code=429):
+            return "busy"
+        case ModelHTTPError(status_code=404):
+            return "model"
+    return "unknown"
+
+
 async def role_recommendations(request: Request) -> JSONResponse:
     try:
-        selection = ModelSelection.model_validate(await request.json())
+        selection = RoleRequest.model_validate(await request.json())
+        enabled = get_enabled_models_from_db()
+        if selection.models is not None:
+            listed = {*selection.models, selection.model}
+            enabled = [m for m in enabled if m in listed]
         roles = recommend_roles(
             get_model_registry(),
-            get_enabled_models_from_db(),
+            enabled,
             get_configured_provider_ids(),
             selection.model,
         )
@@ -55,9 +119,12 @@ async def verify_onboarding_model(request: Request) -> JSONResponse:
         agent = Agent(model, retries=0, model_settings={"max_tokens": 32})
         await asyncio.wait_for(agent.run("Reply with OK."), timeout=30)
         return JSONResponse({"success": True})
-    except Exception:  # noqa: BLE001 -- redact provider errors, including credential URLs
-        # Provider exception strings may contain credential-bearing URLs.
-        return JSONResponse({"success": False}, status_code=502)
+    except Exception as error:  # noqa: BLE001 -- redact provider errors, including credential URLs
+        # Provider exception strings may contain credential-bearing URLs, so
+        # only a category leaves the server.
+        return JSONResponse(
+            {"success": False, "reason": _probe_failure(error)}, status_code=502
+        )
 
 
 async def check_onboarding_connection(request: Request) -> JSONResponse:
