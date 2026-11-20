@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The context an ACP client sent along with a relayed prompt now folds away right under the sender's name, above the message.
 - Chats started from another app over ACP now show who wrote each message and fold the app's background context away under it.
 - The first-run setup is now three simple screens: pick a recommended service, paste your key, and start chatting, with plain explanations when a key, balance or network is the problem.
+- When the auto-approval reviewer model can't be reached, Suzent now tries the chat's own model before falling back to asking you.
+- Models on OpenAI-compatible providers such as DeepSeek get 15 seconds to connect instead of 5, so a slow proxy or network no longer fails the request with "Request timed out."
 - When a model request times out, drops its connection or hits a busy provider, the reply now retries by itself up to three times without redoing finished tool work, and a final failure explains the cause in your language.
 
 ## [v0.27.2] - 2026-11-18
