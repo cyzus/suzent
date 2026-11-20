@@ -157,12 +157,23 @@ export function partsForBatch(
   return reset ? baseParts.map((part) => ({ ...part })) : [...current];
 }
 
+/** A run that ended in error, carrying the backend's failure code when it sent one. */
+export class RunError extends Error {
+  readonly code?: string;
+
+  constructor(message: string, code?: string) {
+    super(message);
+    this.name = 'RunError';
+    this.code = code;
+  }
+}
+
 export function processEvent(
   event: ParsedSSEEvent,
   parts: AGUIPart[],
   onCustomEvent?: (name: string, value: unknown) => void,
   onMarkDeferred?: (surfaceId: string) => void
-): { parts: AGUIPart[]; error?: string } {
+): { parts: AGUIPart[]; error?: string; errorCode?: string } {
   const { type, data } = event;
   // Clone parts array for immutable update
   const next = [...parts];
@@ -590,7 +601,11 @@ export function processEvent(
       // stream with STREAM_END{persisted:true}. Reporting it as an error
       // would abandon the stream just short of that confirmation.
       if (data.code === 'stream_stopped') break;
-      return { parts: next, error: (data.message as string) || 'Unknown error' };
+      return {
+        parts: next,
+        error: (data.message as string) || 'Unknown error',
+        errorCode: typeof data.code === 'string' ? data.code : undefined,
+      };
     }
 
     case 'error': {
@@ -971,7 +986,7 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
             currentParts = result.parts;
             if (result.error) {
               publishParts(currentParts, true);
-              throw new Error(result.error);
+              throw new RunError(result.error, result.errorCode);
             }
           }
           for (const part of speechTracker.collect(currentParts, batch.runId, batch.reset)) {

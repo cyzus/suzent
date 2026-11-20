@@ -2294,6 +2294,8 @@ export const en = {
       'The response could not be saved. Your received content is shown below.',
     streamInterrupted:
       'The connection was interrupted. Reload to reconnect; your received content is shown below.',
+    modelUnreachableError:
+      'The model provider did not respond ({detail}). Check your network, proxy or VPN, then press Retry below.',
     genericError: 'Something went wrong. Please try again.',
     acpAgentLocked: 'ACP agent is fixed for this chat',
     heartbeatFailed: 'Check-in failed',

@@ -8,7 +8,7 @@ import { parseToolResultEnvelope } from './chat/ToolCallBlock';
 import React, { useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { ChatScopeProvider, useChatStore } from '../hooks/useChatStore';
 import { forgetReply, watchForReply } from '../lib/desktopNotifications';
-import { useAGUI, type AGUIPart, type ApprovalRememberScope } from '../hooks/useAGUI';
+import { RunError, useAGUI, type AGUIPart, type ApprovalRememberScope } from '../hooks/useAGUI';
 import {
   fetchCronJobs,
   forkChat,
@@ -1657,7 +1657,9 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
           ? recoveryMessages[error.reason]
           : isOutputValidationRetryError
             ? t('chatWindow.outputValidationRetryError')
-            : errorMessage || t('chatWindow.genericError');
+            : error instanceof RunError && error.code === 'model_stalled'
+              ? t('chatWindow.modelUnreachableError', { detail: errorMessage })
+              : errorMessage || t('chatWindow.genericError');
 
       if (!wasHeartbeat) {
         const partialMessage = aguiPartsToStoreMessage(
