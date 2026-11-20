@@ -61,7 +61,8 @@ def test_updater_that_cannot_be_moved_runs_from_a_versioned_file(
 
     updater = cli_main._install_release_updater("v0.27.2")
 
-    assert updater.name == "suzent-installer-v0.27.2.exe"
+    assert updater.name.startswith("suzent-installer-v0.27.2-")
+    assert updater.suffix == ".exe"
     assert updater.read_bytes() == b"new"
     assert windows_updater.read_bytes() == b"old"
     assert (windows_updater.parent / "version.txt").read_text() == "v0.27.1"
@@ -88,3 +89,16 @@ def test_permission_error_outside_windows_is_not_hidden(monkeypatch, windows_upd
     with pytest.raises(PermissionError):
         cli_main._install_release_updater("v0.27.2")
     assert windows_updater.read_bytes() == b"old"
+
+
+def test_prefetch_does_not_use_a_fallback_the_desktop_cannot_apply(
+    monkeypatch, windows_updater
+):
+    _lock(monkeypatch, overwrite={windows_updater}, rename={windows_updater})
+
+    with pytest.raises(PermissionError):
+        cli_main._install_release_updater("v0.27.2", allow_fallback=False)
+    assert sorted(p.name for p in windows_updater.parent.iterdir()) == [
+        "suzent-installer.exe",
+        "version.txt",
+    ]

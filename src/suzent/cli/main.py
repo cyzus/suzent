@@ -690,7 +690,7 @@ def _download_file_atomic(
         raise
 
 
-def _install_release_updater(release_tag: str) -> Path:
+def _install_release_updater(release_tag: str, *, allow_fallback: bool = True) -> Path:
     updater = _persistent_updater_path()
     version_file = updater.with_name("version.txt")
     installed_version = (
@@ -711,12 +711,13 @@ def _install_release_updater(release_tag: str) -> Path:
         try:
             _replace_updater(staged, updater)
         except PermissionError:
-            if not IS_WINDOWS:
+            if not IS_WINDOWS or not allow_fallback:
                 raise
             # Something keeps the updater open and also refuses the rename:
-            # run this release's updater from a file of its own instead.
+            # run this release's updater from a file of its own instead. A
+            # unique name, because an earlier fallback may still be running.
             fallback = updater.with_name(
-                f"{updater.stem}-{release_tag}{updater.suffix}"
+                f"{updater.stem}-{release_tag}-{time.time_ns()}{updater.suffix}"
             )
             staged.replace(fallback)
             return fallback
@@ -919,8 +920,10 @@ def prefetch_update(root: Path) -> str:
     if blocker:
         return f"not staging {latest}: {blocker}"
     # The target release's own updater does the work, so prefetching never
-    # depends on the features of the version that is running now.
-    updater = _install_release_updater(latest)
+    # depends on the features of the version that is running now. The desktop
+    # app only applies a staged release with the canonical updater, so a
+    # locked one fails here and the next prefetch tries again.
+    updater = _install_release_updater(latest, allow_fallback=False)
     kwargs: dict = {"cwd": root, "capture_output": True, "text": True}
     if IS_WINDOWS:
         kwargs["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0) | getattr(
