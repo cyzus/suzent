@@ -701,6 +701,7 @@ Under **Settings → Voice & audio → Hands-free start**:
 | The file edits are wrong | Ask the agent to put them back, or restore them yourself, for example with Git. Retry doesn't undo file changes. |
 | You want to try another direction and keep this one | **Branch from here** under any reply starts an independent copy from that point. |
 | The chat has drifted too far | Start a new chat. Memory and the project folder carry over. |
+| The model stopped responding or the connection dropped | Usually nothing: Suzent sends the request again by itself, up to three times, and says so in the reply. Work the agent already finished is kept. If it still fails, the message under the reply says why; fix that and press **Retry**. |
 
 Only the most recent turn can be retried or edited. If the chat's folder is a
 Git repository, the status bar at the bottom shows its branch and how many
@@ -6907,6 +6908,16 @@ is running, and that `docker ps` works in a terminal. To work without it, turn
 the sandbox off in **Settings → Security**. See
 [Using the sandbox](https://suzent.com/docs/features/filesystem#using-the-sandbox).
 
+### A reply stopped with "The model provider stopped responding".
+
+When a model request times out, the connection drops, or the provider is busy
+or limiting requests, Suzent waits a few seconds and sends it again, up to
+three times. Each retry shows as a line in the reply, and tool work the agent
+already finished is not redone. This message means all three failed. Check
+your network, proxy or VPN, then press **Retry**. A rejected API key, an empty
+balance, or a conversation too long for the model is not retried; the message
+says which it was. You can also switch the chat to another model and resend.
+
 ### Where are the logs?
 
 Run `suzent logs --desktop` for the desktop app's log, and add `-f` to follow
@@ -10886,6 +10897,31 @@ Tools declare display-only fields in `model_excluded_metadata`.
 `ToolResultContextCapability` removes those fields from copies of model-bound
 tool returns. Original tool events and persisted history retain their snapshots
 for display and rollback, including when a saved conversation is resumed.
+
+## Failed model requests
+
+`core/model_recovery.py` sorts a run failure into a kind using pydantic-ai's
+error categories (with transport errors below the SDK matched by class name).
+Timeouts, dropped connections, rate limits and 5xx/overloaded responses are
+retried in the same stream after 2, 5 and 15 seconds, or after the provider's
+`retry_after` when it is longer (up to 60 seconds; a longer wait ends the run).
+A first-event timeout is retried only once, since each wait already lasts
+minutes. The retry count resets whenever a tool batch finishes. Authentication,
+quota, unknown model, context window and other rejected requests are not retried.
+
+A retry resumes from `deps.model_request_history`, the request that failed, so
+finished tool results are kept and only the broken reply is requested again.
+Before it, the stream emits a `model_recovery` custom event (`attempt`,
+`maxAttempts`, `reason`, `detail`, `delaySeconds`). The AG-UI adapter first
+closes the part the failed response left open; the frontend reducer and the
+draft accumulator then drop that response's trailing text, reasoning and
+unfinished tool calls and append a `model-notice` part, which stays in the
+persisted reply.
+
+When the run finally fails, `RUN_ERROR.code` names the kind (`model_stalled`,
+`model_rate_limited`, `model_overloaded`, `model_auth`, `model_quota`,
+`model_not_found`, `model_context_exceeded`) and the client shows a localized
+explanation with the provider's message as detail.
 
 ## Auxiliary work after a reply
 
