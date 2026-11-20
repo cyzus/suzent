@@ -2230,7 +2230,8 @@ export const zhCN = {
     streamRecoveryUnavailable: '无法恢复此条流。请刷新以读取已保存的对话。',
     streamPersistenceFailed: '回复保存失败，已收到的内容会保留显示。',
     streamInterrupted: '连接中断，请刷新重连；已收到的内容会保留显示。',
-    modelUnreachableError: '模型服务没有响应（{detail}）。请检查网络、代理或 VPN 设置，然后点下方的重试按钮。',
+    modelUnreachableError:
+      '模型服务没有响应（{detail}）。请检查网络、代理或 VPN 设置，然后点下方的重试按钮。',
     genericError: '发生错误，请重试。',
     acpAgentLocked: '此会话的 ACP 智能体不可更改',
     heartbeatFailed: '巡检失败',
