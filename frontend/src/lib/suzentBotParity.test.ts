@@ -16,7 +16,7 @@ import {
   SuzentBotEngine,
   type SuzentBotEngineConfig,
 } from '../../../packages/suzent-bot-core/src/suzentBotEngine';
-import { useRng } from '../../../packages/suzent-bot-core/src/suzentBotPhysics';
+import { seedRng } from '../../../packages/suzent-bot-core/src/suzentBotPhysics';
 import {
   type SceneFrame,
   parseSvgFragment,
@@ -45,7 +45,7 @@ function replay(
 ): SceneFrame[] {
   const previous = globalThis.performance;
   Object.assign(globalThis, { performance: { now: () => 0 } });
-  useRng(portableMulberry32(1));
+  seedRng(portableMulberry32(1));
   const config: SuzentBotEngineConfig = {
     stage,
     size: 36,
@@ -86,7 +86,7 @@ describe('suzent bot frame parity', () => {
     });
     for (const morph of new Set(morphs)) {
       Object.assign(globalThis, { performance: { now: () => 0 } });
-      useRng(portableMulberry32(3));
+      seedRng(portableMulberry32(3));
       const config: SuzentBotEngineConfig = {
         stage: 'idle',
         size: 36,
@@ -113,7 +113,7 @@ describe('suzent bot frame parity', () => {
 
   it('stops changing once an idle bot has settled', () => {
     Object.assign(globalThis, { performance: { now: () => 0 } });
-    useRng(portableMulberry32(5));
+    seedRng(portableMulberry32(5));
     const config: SuzentBotEngineConfig = {
       stage: 'idle',
       size: 36,
@@ -217,7 +217,7 @@ describe('suzent bot frame parity', () => {
       bounds: NonNullable<SuzentBotEngineConfig['bounds']>,
       client: { x: number; y: number }
     ) => {
-      useRng(portableMulberry32(4));
+      seedRng(portableMulberry32(4));
       const config: SuzentBotEngineConfig = {
         stage: 'idle',
         size: 36,

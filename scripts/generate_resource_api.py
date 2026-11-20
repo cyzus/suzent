@@ -131,6 +131,9 @@ def dtos(schemas: dict, language: str) -> str:
         fields = schema.get("properties", {})
         required = schema.get("required", [])
         if language == "ts":
+            if not fields and schema.get("additionalProperties") is not True:
+                lines.append(f"export type Wire{name} = Record<string, never>;\n")
+                continue
             lines.append(f"export interface Wire{name} {{")
             for key, value in fields.items():
                 type_name = wire_type(value, language) + (

@@ -133,8 +133,7 @@ export interface WireCreateRequest {
   project_id?: string | null;
 }
 
-export interface WireEmptyRequest {
-}
+export type WireEmptyRequest = Record<string, never>;
 
 export interface WireHostFieldsRequest {
   [key: string]: unknown;

@@ -46,6 +46,19 @@ _CHATGPT_UNSUPPORTED_PARAMS = {
     "prompt_cache_retention",
 }
 
+# pydantic-ai and the OpenAI SDK give a connection 5s, which a slow proxy or an
+# unsteady network (common in mainland China) misses three tries in a row and
+# the user sees "Request timed out." before the provider was ever reached.
+# Phases that differ are left alone by pydantic-ai's connect cap, so this
+# lengthens the connect budget while keeping the SDK's 600s read budget.
+_OPENAI_COMPAT_TIMEOUT = httpx.Timeout(600.0, connect=15.0)
+
+
+def _openai_compat_settings() -> Any:
+    from pydantic_ai.settings import ModelSettings
+
+    return ModelSettings(timeout=_OPENAI_COMPAT_TIMEOUT)
+
 
 def _chatgpt_model_profile(default: dict[str, Any]) -> dict[str, Any]:
     """Disable hosted tool search for the ChatGPT subscription endpoint.
@@ -339,11 +352,13 @@ def _create_openai_model(model_name: str, api_key: str, spec: ProviderSpec) -> o
         return OpenAIChatModel(
             model_name,
             provider=OpenAIProvider(openai_client=client),
+            settings=_openai_compat_settings(),
         )
 
     model = OpenAIChatModel(
         model_name,
         provider=OpenAIProvider(api_key=api_key or "local", base_url=base_url),
+        settings=_openai_compat_settings(),
     )
     # OpenAI-compatible third parties share this handler, and pydantic-ai sends
     # `prompt_cache_key` to whatever endpoint it is given; only OpenAI documents it.
@@ -580,7 +595,11 @@ def _create_via_native_provider(
     provider_cls = getattr(module, native["class"])
     base_url = _resolve_base_url(spec)
     if not base_url:
-        return OpenAIChatModel(model_name, provider=provider_cls(api_key=api_key))
+        return OpenAIChatModel(
+            model_name,
+            provider=provider_cls(api_key=api_key),
+            settings=_openai_compat_settings(),
+        )
 
     # The native classes hard-code one endpoint (MoonshotAIProvider points at
     # the international api.moonshot.ai, which rejects a mainland key), so a
@@ -589,7 +608,11 @@ def _create_via_native_provider(
     from openai import AsyncOpenAI
 
     client = AsyncOpenAI(api_key=api_key, base_url=base_url)
-    return OpenAIChatModel(model_name, provider=provider_cls(openai_client=client))
+    return OpenAIChatModel(
+        model_name,
+        provider=provider_cls(openai_client=client),
+        settings=_openai_compat_settings(),
+    )
 
 
 # ---------------------------------------------------------------------------

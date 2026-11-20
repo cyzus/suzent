@@ -233,6 +233,7 @@ class PermissionEngine:
                 args=request.args,
                 transcript=context.transcript,
                 delegated_task=_delegated_task(context),
+                chat_model=context.model_id,
             )
         except Exception as exc:
             if context.interaction_profile == "interactive":

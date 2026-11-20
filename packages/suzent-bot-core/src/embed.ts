@@ -9,7 +9,7 @@ import {
   type SuzentMorphId,
 } from "./suzentBotActs";
 import { SuzentBotEngine, type SuzentBotEngineConfig } from "./suzentBotEngine";
-import { useRng } from "./suzentBotPhysics";
+import { seedRng } from "./suzentBotPhysics";
 import { portableMulberry32 } from "./suzentBotScene";
 
 export interface HostInput {
@@ -97,7 +97,7 @@ export function create(seed: number, json = "{}"): number {
     },
     JSON.parse(json) as HostInput,
   );
-  useRng(portableMulberry32(seed >>> 0 || 1));
+  seedRng(portableMulberry32(seed >>> 0 || 1));
   const engine = new SuzentBotEngine(() => toConfig(input));
   sessions.set(id, { engine, input });
   return id;

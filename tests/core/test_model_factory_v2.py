@@ -2,6 +2,7 @@ import json
 from unittest.mock import AsyncMock, patch
 
 import httpx
+import pytest
 from pydantic_ai.models.openai import OpenAIChatModel
 from pydantic_ai.native_tools import WebSearchTool
 from pydantic_ai.native_tools._tool_search import ToolSearchTool
@@ -134,6 +135,48 @@ def test_native_provider_without_base_url_keeps_its_default() -> None:
     )
 
     assert str(model.client.base_url).rstrip("/") == "https://api.deepseek.com"
+
+
+class _RequestCaptured(Exception):
+    pass
+
+
+async def _sent_timeout(model: OpenAIChatModel) -> dict:
+    from pydantic_ai import Agent
+
+    seen: dict = {}
+
+    async def capture(request) -> None:
+        seen.update(request.extensions["timeout"])
+        raise _RequestCaptured
+
+    model.client._client.event_hooks["request"].append(capture)
+    try:
+        await Agent(model).run("hi")
+    except Exception:
+        pass
+    return seen
+
+
+@pytest.mark.parametrize(
+    ("create", "provider_id", "model_name"),
+    [
+        (model_factory._create_via_native_provider, "deepseek", "deepseek-chat"),
+        (model_factory._create_via_native_provider, "moonshot", "kimi-k2.6"),
+        (model_factory._create_openai_model, "minimax", "MiniMax-M2"),
+    ],
+)
+async def test_openai_compatible_requests_get_a_longer_connect_timeout(
+    create, provider_id: str, model_name: str
+) -> None:
+    """The SDK's 5s connect budget fails users behind a slow proxy with
+    "Request timed out." before the provider is reached."""
+    model = create(model_name, "test-key", PROVIDER_REGISTRY_BY_ID[provider_id])
+
+    timeout = await _sent_timeout(model)
+
+    assert timeout["connect"] == 15.0
+    assert timeout["read"] == 600.0
 
 
 def test_litellm_proxy_handler_uses_v2_chat_model(monkeypatch) -> None:

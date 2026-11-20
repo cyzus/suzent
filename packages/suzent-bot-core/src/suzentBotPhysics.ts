@@ -14,7 +14,7 @@ export interface SpringState {
 let randomSource: () => number = Math.random;
 
 /** Swap the shared random stream. Tests and each bot install their own before constructing. */
-export function useRng(source: () => number): void {
+export function seedRng(source: () => number): void {
   randomSource = source;
 }
 
