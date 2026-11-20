@@ -1,5 +1,5 @@
 {
-  "version": "0.27.3",
+  "version": "0.28.0",
   "consumed": [
     ".releases/changes/3d-loading-redesign.json",
     ".releases/changes/about-install-identity.json",
@@ -35,6 +35,7 @@
     ".releases/changes/auto-provider-defaults.json",
     ".releases/changes/background-memory-status.json",
     ".releases/changes/background-task-wakeups.json",
+    ".releases/changes/beginner-setup-wizard.json",
     ".releases/changes/builtin-tool-color.json",
     ".releases/changes/builtin-tool-floor.json",
     ".releases/changes/cache-aware-compaction.json",
