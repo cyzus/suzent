@@ -690,7 +690,7 @@ def _download_file_atomic(
         raise
 
 
-def _install_release_updater(release_tag: str) -> Path:
+def _install_release_updater(release_tag: str, *, allow_fallback: bool = True) -> Path:
     updater = _persistent_updater_path()
     version_file = updater.with_name("version.txt")
     installed_version = (
@@ -708,11 +708,66 @@ def _install_release_updater(release_tag: str) -> Path:
         _verify_release_asset(staged, asset, release_tag)
         if not IS_WINDOWS:
             staged.chmod(0o755)
-        staged.replace(updater)
+        try:
+            _replace_updater(staged, updater)
+        except PermissionError:
+            if not IS_WINDOWS or not allow_fallback:
+                raise
+            # Something keeps the updater open and also refuses the rename:
+            # run this release's updater from a file of its own instead. A
+            # unique name, because an earlier fallback may still be running.
+            fallback = updater.with_name(
+                f"{updater.stem}-{release_tag}-{time.time_ns()}{updater.suffix}"
+            )
+            staged.replace(fallback)
+            return fallback
         version_file.write_text(release_tag, encoding="utf-8")
     finally:
         staged.unlink(missing_ok=True)
+    _remove_stale_updaters(updater)
     return updater
+
+
+_UPDATER_REPLACE_ATTEMPTS = 5
+_UPDATER_REPLACE_DELAY_SECONDS = 0.5
+
+
+def _replace_updater(staged: Path, updater: Path) -> None:
+    """Move `staged` over `updater`, even while the old updater is still open.
+
+    Windows refuses to overwrite a running executable or one an antivirus is
+    scanning, but it does allow renaming a running one. A background prefetch
+    or an updater window left open both hold the file, so after a few retries
+    the old file is moved aside and removed on a later run.
+    """
+    for attempt in range(_UPDATER_REPLACE_ATTEMPTS):
+        try:
+            staged.replace(updater)
+            return
+        except PermissionError:
+            if not IS_WINDOWS:
+                raise
+            if attempt + 1 < _UPDATER_REPLACE_ATTEMPTS:
+                time.sleep(_UPDATER_REPLACE_DELAY_SECONDS)
+    aside = updater.with_name(f".{updater.name}.{time.time_ns()}.old")
+    updater.replace(aside)
+    try:
+        staged.replace(updater)
+    except Exception:
+        aside.replace(updater)
+        raise
+
+
+def _remove_stale_updaters(updater: Path) -> None:
+    stale = [
+        *updater.parent.glob(f".{updater.name}.*.old"),
+        *updater.parent.glob(f"{updater.stem}-v*{updater.suffix}"),
+    ]
+    for path in stale:
+        try:
+            path.unlink()
+        except OSError:
+            pass
 
 
 def _delegate_installer_update(
@@ -865,8 +920,10 @@ def prefetch_update(root: Path) -> str:
     if blocker:
         return f"not staging {latest}: {blocker}"
     # The target release's own updater does the work, so prefetching never
-    # depends on the features of the version that is running now.
-    updater = _install_release_updater(latest)
+    # depends on the features of the version that is running now. The desktop
+    # app only applies a staged release with the canonical updater, so a
+    # locked one fails here and the next prefetch tries again.
+    updater = _install_release_updater(latest, allow_fallback=False)
     kwargs: dict = {"cwd": root, "capture_output": True, "text": True}
     if IS_WINDOWS:
         kwargs["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0) | getattr(
