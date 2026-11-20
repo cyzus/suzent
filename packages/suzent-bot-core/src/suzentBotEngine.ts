@@ -39,7 +39,7 @@ import {
   cubicInOut,
   random,
   rng,
-  useRng,
+  seedRng,
   smoothstep,
   springValue,
   stepSpring,
@@ -403,7 +403,7 @@ export class SuzentBotEngine {
 
   /** Advance one frame. `now` is the host clock in milliseconds, the same value rAF used to pass. */
   step(realNow: number): SceneFrame {
-    useRng(this.rng);
+    seedRng(this.rng);
     const rawDelta = Math.max(0, (realNow - this.lastTime) / 1000);
     this.lastTime = realNow;
     const delta = Math.min(rawDelta, 0.1);
