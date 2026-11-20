@@ -230,6 +230,16 @@ export const zhCN = {
   modelResponseSlow: '模型响应较慢，你可以停止，或允许等待更长时间。',
   modelWaitExtended: '已延长等待时间，你可以随时停止。',
   modelWaitContinue: '继续等待',
+  modelRecovery: {
+    retried: '{reason}，已自动重新发送请求（第 {attempt}/{max} 次重试）',
+    reasons: {
+      timeout: '模型响应超时',
+      connection: '与模型的连接中断',
+      rate_limit: '服务商限流',
+      overloaded: '服务商繁忙或出错',
+      other: '模型请求失败',
+    },
+  },
   modelWaitExtending: '正在延长等待…',
   modelWaitExtensionFailed: '未能延长等待，当前等待可能已经结束，你可以重试。',
   contextPanel: {
@@ -2231,6 +2241,16 @@ export const zhCN = {
     streamPersistenceFailed: '回复保存失败，已收到的内容会保留显示。',
     streamInterrupted: '连接中断，请刷新重连；已收到的内容会保留显示。',
     genericError: '发生错误，请重试。',
+    modelErrors: {
+      model_stalled: '模型服务没有响应（{detail}）。请检查网络、代理或 VPN 设置，然后点重试。',
+      model_rate_limited: '服务商正在限流（{detail}）。请等一分钟后点重试。',
+      model_overloaded: '服务商繁忙或出错（{detail}）。请稍后再试，或换一个模型。',
+      model_auth: '服务商拒绝了 API Key（{detail}）。请到 设置 › 提供商 检查。',
+      model_quota: '该服务商账户余额或额度不足（{detail}）。请充值，或换一个模型。',
+      model_not_found: '服务商不提供这个模型（{detail}）。请换一个模型。',
+      model_context_exceeded:
+        '这段对话超出了模型的上下文长度（{detail}）。请新开对话，或换一个上下文更长的模型。',
+    },
     acpAgentLocked: '此会话的 ACP 智能体不可更改',
     heartbeatFailed: '巡检失败',
     heartbeatOff: '心跳已关闭',

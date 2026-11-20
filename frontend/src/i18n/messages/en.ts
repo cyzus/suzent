@@ -241,6 +241,16 @@ export const en = {
   modelWaitContinue: 'Continue waiting',
   modelWaitExtending: 'Allowing more time…',
   modelWaitExtensionFailed: 'Could not extend the wait. It may have ended; you can try again.',
+  modelRecovery: {
+    retried: '{reason}, so the request was sent again (retry {attempt} of {max})',
+    reasons: {
+      timeout: 'The model took too long to respond',
+      connection: 'The connection to the model dropped',
+      rate_limit: 'The provider was rate limiting requests',
+      overloaded: 'The provider was overloaded or having trouble',
+      other: 'The model request failed',
+    },
+  },
   contextPanel: {
     usage: 'Context usage',
     percentUsed: '{percent}% used',
@@ -2295,6 +2305,21 @@ export const en = {
     streamInterrupted:
       'The connection was interrupted. Reload to reconnect; your received content is shown below.',
     genericError: 'Something went wrong. Please try again.',
+    modelErrors: {
+      model_stalled:
+        'The model provider stopped responding ({detail}). Check your network, proxy or VPN, then press Retry.',
+      model_rate_limited:
+        'The provider is rate limiting requests ({detail}). Wait a minute, then press Retry.',
+      model_overloaded:
+        'The provider is overloaded or having trouble ({detail}). Try again later, or switch to another model.',
+      model_auth:
+        'The provider rejected the API key ({detail}). Check it under Settings > Providers.',
+      model_quota:
+        'Your account with this provider is out of credit or quota ({detail}). Top it up, or switch to another model.',
+      model_not_found: 'The provider does not offer this model ({detail}). Choose another model.',
+      model_context_exceeded:
+        'This conversation is too long for the model ({detail}). Start a new chat, or switch to a model with a larger context window.',
+    },
     acpAgentLocked: 'ACP agent is fixed for this chat',
     heartbeatFailed: 'Check-in failed',
     heartbeatOff: 'Heartbeat off',

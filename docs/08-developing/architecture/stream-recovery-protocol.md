@@ -105,6 +105,31 @@ Tools declare display-only fields in `model_excluded_metadata`.
 tool returns. Original tool events and persisted history retain their snapshots
 for display and rollback, including when a saved conversation is resumed.
 
+## Failed model requests
+
+`core/model_recovery.py` sorts a run failure into a kind using pydantic-ai's
+error categories (with transport errors below the SDK matched by class name).
+Timeouts, dropped connections, rate limits and 5xx/overloaded responses are
+retried in the same stream after 2, 5 and 15 seconds, or after the provider's
+`retry_after` when it is longer (up to 60 seconds; a longer wait ends the run).
+A first-event timeout is retried only once, since each wait already lasts
+minutes. The retry count resets whenever a tool batch finishes. Authentication,
+quota, unknown model, context window and other rejected requests are not retried.
+
+A retry resumes from `deps.model_request_history`, the request that failed, so
+finished tool results are kept and only the broken reply is requested again.
+Before it, the stream emits a `model_recovery` custom event (`attempt`,
+`maxAttempts`, `reason`, `detail`, `delaySeconds`). The AG-UI adapter first
+closes the part the failed response left open; the frontend reducer and the
+draft accumulator then drop that response's trailing text, reasoning and
+unfinished tool calls and append a `model-notice` part, which stays in the
+persisted reply.
+
+When the run finally fails, `RUN_ERROR.code` names the kind (`model_stalled`,
+`model_rate_limited`, `model_overloaded`, `model_auth`, `model_quota`,
+`model_not_found`, `model_context_exceeded`) and the client shows a localized
+explanation with the provider's message as detail.
+
 ## Auxiliary work after a reply
 
 Automatic titles run as registered background tasks. Reply completion never waits

@@ -8,7 +8,7 @@ import { parseToolResultEnvelope } from './chat/ToolCallBlock';
 import React, { useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { ChatScopeProvider, useChatStore } from '../hooks/useChatStore';
 import { forgetReply, watchForReply } from '../lib/desktopNotifications';
-import { useAGUI, type AGUIPart, type ApprovalRememberScope } from '../hooks/useAGUI';
+import { RunError, useAGUI, type AGUIPart, type ApprovalRememberScope } from '../hooks/useAGUI';
 import {
   fetchCronJobs,
   forkChat,
@@ -421,6 +421,18 @@ function groupedBlocksToAssistantContent(blocks: ContentBlock[]): string {
 // up and tears the stream down itself. Long enough for a tool call to unwind,
 // short enough that a wedged turn doesn't leave the composer disabled.
 const STOP_STREAM_END_TIMEOUT_MS = 10000;
+
+// Run error codes the backend sends for a failed model request, each with a
+// localized explanation under chatWindow.modelErrors.
+const MODEL_ERROR_CODES = new Set([
+  'model_stalled',
+  'model_rate_limited',
+  'model_overloaded',
+  'model_auth',
+  'model_quota',
+  'model_not_found',
+  'model_context_exceeded',
+]);
 
 const STREAM_SEED_KEY = 'chat_stream_seed_v1';
 
@@ -1652,12 +1664,18 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         persistence: t('chatWindow.streamPersistenceFailed'),
         interrupted: t('chatWindow.streamInterrupted'),
       };
+      const modelErrorCode =
+        error instanceof RunError && error.code && MODEL_ERROR_CODES.has(error.code)
+          ? error.code
+          : null;
       const displayMessage =
         error instanceof StreamRecoveryError
           ? recoveryMessages[error.reason]
           : isOutputValidationRetryError
             ? t('chatWindow.outputValidationRetryError')
-            : errorMessage || t('chatWindow.genericError');
+            : modelErrorCode
+              ? t(`chatWindow.modelErrors.${modelErrorCode}`, { detail: errorMessage })
+              : errorMessage || t('chatWindow.genericError');
 
       if (!wasHeartbeat) {
         const partialMessage = aguiPartsToStoreMessage(

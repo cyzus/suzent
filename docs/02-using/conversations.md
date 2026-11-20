@@ -159,6 +159,7 @@ Under **Settings → Voice & audio → Hands-free start**:
 | The file edits are wrong | Ask the agent to put them back, or restore them yourself, for example with Git. Retry doesn't undo file changes. |
 | You want to try another direction and keep this one | **Branch from here** under any reply starts an independent copy from that point. |
 | The chat has drifted too far | Start a new chat. Memory and the project folder carry over. |
+| The model stopped responding or the connection dropped | Usually nothing: Suzent sends the request again by itself, up to three times, and says so in the reply. Work the agent already finished is kept. If it still fails, the message under the reply says why; fix that and press **Retry**. |
 
 Only the most recent turn can be retried or edited. If the chat's folder is a
 Git repository, the status bar at the bottom shows its branch and how many
