@@ -19,6 +19,7 @@ class PermissionContext:
     transcript: list[Any]
     permission_rules: list[Any]
     delegator_chat_ids: frozenset[str] = frozenset()
+    model_id: str = ""
 
     @classmethod
     def from_deps(cls, deps: Any) -> "PermissionContext":
@@ -39,6 +40,7 @@ class PermissionContext:
             delegator_chat_ids=frozenset(
                 getattr(deps, "delegator_chat_ids", None) or ()
             ),
+            model_id=str(getattr(deps, "model_id", "") or ""),
         )
 
 

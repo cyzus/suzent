@@ -5,6 +5,9 @@ from typing import Any
 
 from suzent.permissions.auto.models import AutoClassificationResult
 from suzent.permissions.auto.transcript import compact_transcript
+from suzent.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 SYSTEM_PROMPT = """You are a security classifier for an AI coding agent.
@@ -56,12 +59,18 @@ class AutoPermissionClassifier:
         args: dict[str, Any],
         transcript: list[Any],
         delegated_task: str = "",
+        chat_model: str = "",
     ) -> AutoClassificationResult:
         from suzent.core.role_router import get_role_router
         from suzent.llm import LLMClient
 
-        model = get_role_router().get_model_id("permission_review")
-        if not model:
+        models = get_role_router().get_model_ids("permission_review")
+        # The reviewer role is set once in Settings, so it can point at a
+        # provider the user can no longer reach while the chat itself runs on
+        # another one. The chat's own model is known to be answering this run.
+        if chat_model and chat_model not in models:
+            models.append(chat_model)
+        if not models:
             raise RuntimeError("No classifier model is configured")
 
         context = compact_transcript(transcript, delegated_task=delegated_task)
@@ -71,10 +80,21 @@ class AutoPermissionClassifier:
             "Proposed action:\n"
             f"{json.dumps({'tool': tool_name, 'args': args}, ensure_ascii=False)}"
         )
-        result = await LLMClient(model=model).extract_with_schema(
-            prompt=prompt,
-            response_model=AutoClassificationResult,
-            system=SYSTEM_PROMPT,
-            temperature=0.0,
-        )
-        return result.model_copy(update={"reviewer_model": model})
+        last_error: Exception | None = None
+        for model in models:
+            try:
+                result = await LLMClient(model=model).extract_with_schema(
+                    prompt=prompt,
+                    response_model=AutoClassificationResult,
+                    system=SYSTEM_PROMPT,
+                    temperature=0.0,
+                )
+            except Exception as exc:
+                last_error = exc
+                logger.warning(
+                    "Auto permission classifier failed on {}: {}", model, exc
+                )
+                continue
+            return result.model_copy(update={"reviewer_model": model})
+        assert last_error is not None
+        raise last_error
