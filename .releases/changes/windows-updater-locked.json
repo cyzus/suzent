@@ -1,0 +1,1 @@
+{"products": {"desktop": "patch"}, "summary": "Updating on Windows no longer fails with \"Access denied\" when an older updater is still open or being scanned by antivirus."}
