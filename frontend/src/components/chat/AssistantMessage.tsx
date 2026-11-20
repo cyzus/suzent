@@ -30,6 +30,7 @@ import { SuzentBotMark } from './SuzentBotMark';
 import { DispatchReference } from './StatusMessages';
 import { linkedChatsFromTools } from './chatToolLink';
 import { AcpSessionResetNotice } from './AcpSessionResetNotice';
+import { ModelRecoveryNotice } from './ModelRecoveryNotice';
 import { IncomingMessage } from './IncomingMessage';
 import { splitLeadingTriggers } from '../../lib/streamingDrafts';
 import type { SubAgentStatus } from './SubAgentCallBlock';
@@ -632,6 +633,16 @@ const AGUIPartsContent: React.FC<{
               {chunk.items.map((p, pi) => (
                 <IncomingMessage key={pi} text={p.text || ''} />
               ))}
+            </React.Fragment>
+          );
+        }
+
+        if (chunk.type === 'model-notice') {
+          return (
+            <React.Fragment key={ci}>
+              {chunk.items.map((p, pi) =>
+                p.modelNotice ? <ModelRecoveryNotice key={pi} notice={p.modelNotice} /> : null
+              )}
             </React.Fragment>
           );
         }

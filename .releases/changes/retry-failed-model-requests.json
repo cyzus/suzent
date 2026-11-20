@@ -1,0 +1,1 @@
+{"products": {"desktop": "minor"}, "summary": "When a model request times out, drops its connection or hits a busy provider, the reply now retries by itself up to three times without redoing finished tool work, and a final failure explains the cause in your language."}

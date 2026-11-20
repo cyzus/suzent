@@ -323,6 +323,8 @@ async def test_real_stream_keeps_tools_across_context_rewrite(monkeypatch, times
     monkeypatch.setattr(
         streaming, "_stream_idle_timeout", lambda _: 0.02 if times_out else 1.0
     )
+    # This is about what a failed run keeps, not about retrying it.
+    monkeypatch.setattr(streaming, "retry_delay", lambda failure, attempt: None)
     from pydantic_ai import Agent, RunContext
     from pydantic_ai.capabilities import ProcessHistory
     from pydantic_ai.models.function import FunctionModel, DeltaToolCall
