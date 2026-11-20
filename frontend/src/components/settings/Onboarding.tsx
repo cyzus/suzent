@@ -162,16 +162,14 @@ export function Onboarding({
       setProgress('listing');
       const result = await verifyProvider(provider.id, {});
       if (result.error) throw new Error();
-      if (!result.success) {
-        setFailure(runsLocally(provider) ? 'network' : 'auth');
-        return;
-      }
-      const listed = result.used_catalog_fallback ? [] : chatIds(result.models);
+      // A failed listing does not say why (timeouts and refused keys look the
+      // same), so the reply probe on a catalog model decides what to tell the user.
+      const listed = result.success && !result.used_catalog_fallback ? chatIds(result.models) : [];
       const defaults = provider.default_models.map((m) => m.id);
       const preferred = listed.length ? defaults.filter((id) => listed.includes(id)) : defaults;
       const primary = preferred[0] ?? listed[0] ?? chatIds(result.models)[0];
       if (!primary) {
-        setFailure('model');
+        setFailure(result.success ? 'model' : runsLocally(provider) ? 'network' : 'unknown');
         return;
       }
       const current = configs[provider.id] || EMPTY_CONFIG;
@@ -628,7 +626,7 @@ function ConnectForm({
     return <ChatGPTSignIn onBack={onBack} onSignedIn={onConnect} busy={busy} failure={failure} />;
 
   return (
-    <div className="space-y-6">
+    <fieldset disabled={busy} className="min-w-0 space-y-6 border-0 p-0">
       {regions.length > 1 && address && (
         <div className="space-y-2">
           <span className="block text-xs font-bold">
@@ -724,7 +722,7 @@ function ConnectForm({
           </BrutalButton>
         </div>
       </div>
-    </div>
+    </fieldset>
   );
 }
 
