@@ -26,6 +26,18 @@ class RoleRequest(ModelSelection):
     models: list[str] | None = Field(default=None, max_length=2000)
 
 
+# Overdue or empty accounts that pydantic-ai has no mapping for, matched in the
+# error body: DashScope's 400 `Arrearage`, Volcengine's 403 `AccountOverdueError`.
+_BALANCE_HINTS = (
+    "arrearage",
+    "overdue",
+    "insufficient balance",
+    "insufficient_balance",
+    "余额不足",
+    "欠费",
+)
+
+
 type ProbeFailure = Literal["auth", "quota", "busy", "model", "network", "unknown"]
 
 
@@ -40,6 +52,10 @@ def _probe_failure(error: BaseException) -> ProbeFailure:
         ModelRateLimitError,
     )
 
+    if isinstance(error, ModelHTTPError) and any(
+        hint in str(error.body).lower() for hint in _BALANCE_HINTS
+    ):
+        return "quota"
     match error:
         case ModelAuthenticationError():
             return "auth"

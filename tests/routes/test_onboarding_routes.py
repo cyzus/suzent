@@ -153,3 +153,36 @@ async def test_probe_failure_names_a_category_without_details(
     response = await routes.verify_onboarding_model(request)
     assert response.status_code == 502
     assert json.loads(response.body) == {"success": False, "reason": reason}
+
+
+@pytest.mark.parametrize(
+    ("status", "body"),
+    [
+        (400, {"error": {"code": "Arrearage", "message": "Access denied"}}),
+        (403, {"error": {"code": "AccountOverdueError"}}),
+    ],
+)
+async def test_overdue_accounts_read_as_quota(
+    monkeypatch: pytest.MonkeyPatch, status: int, body: dict
+) -> None:
+    setup(monkeypatch)
+    import pydantic_ai
+    from pydantic_ai.exceptions import ModelHTTPError
+
+    import suzent.core.model_factory
+
+    class FakeAgent:
+        def __init__(self, model: object, **kwargs: object) -> None:
+            pass
+
+        async def run(self, prompt: str) -> None:
+            raise ModelHTTPError(status, "p/chat", body=body)
+
+    monkeypatch.setattr(pydantic_ai, "Agent", FakeAgent)
+    monkeypatch.setattr(
+        suzent.core.model_factory, "create_pydantic_ai_model", lambda _: object()
+    )
+    request = AsyncMock()
+    request.json.return_value = {"model": "p/chat"}
+    response = await routes.verify_onboarding_model(request)
+    assert json.loads(response.body)["reason"] == "quota"
