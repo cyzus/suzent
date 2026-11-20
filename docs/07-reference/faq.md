@@ -144,6 +144,16 @@ is running, and that `docker ps` works in a terminal. To work without it, turn
 the sandbox off in **Settings → Security**. See
 [Using the sandbox](../03-features/filesystem.md#using-the-sandbox).
 
+### A reply stopped with "The model provider stopped responding".
+
+When a model request times out, the connection drops, or the provider is busy
+or limiting requests, Suzent waits a few seconds and sends it again, up to
+three times. Each retry shows as a line in the reply, and tool work the agent
+already finished is not redone. This message means all three failed. Check
+your network, proxy or VPN, then press **Retry**. A rejected API key, an empty
+balance, or a conversation too long for the model is not retried; the message
+says which it was. You can also switch the chat to another model and resend.
+
 ### Where are the logs?
 
 Run `suzent logs --desktop` for the desktop app's log, and add `-f` to follow
