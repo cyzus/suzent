@@ -97,7 +97,7 @@ function KeyStatusBadge({ fields }: { fields: ApiField[] }) {
 
 // ─── ProviderIcon ────────────────────────────────────────────────────────────
 
-function ProviderIcon({ provider }: { provider: ApiProvider }) {
+export function ProviderIcon({ provider }: { provider: ApiProvider }) {
   const [imgFailed, setImgFailed] = useState(false);
   const color = getProviderColor(provider.id, provider.user_defined);
   // Built-in providers use the bundled logo; a remote one would be blocked by
@@ -127,7 +127,7 @@ function ProviderIcon({ provider }: { provider: ApiProvider }) {
 // ─── RegionPicker ────────────────────────────────────────────────────────────
 
 /** The provider's *_BASE_URL field, which a region choice writes. */
-function baseUrlField(provider: ApiProvider): ApiField | undefined {
+export function baseUrlField(provider: ApiProvider): ApiField | undefined {
   return provider.fields.find((field) => field.key.endsWith('BASE_URL'));
 }
 
@@ -142,7 +142,7 @@ function activeRegion(provider: ApiProvider, baseUrl: string): ProviderRegion | 
   return regions.find((region) => region.base_url.replace(/\/+$/, '') === trimmed);
 }
 
-function regionName(region: ProviderRegion, locale: string): string {
+export function regionName(region: ProviderRegion, locale: string): string {
   return locale.startsWith('zh') && region.name_zh ? region.name_zh : region.name;
 }
 
