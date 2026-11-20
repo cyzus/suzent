@@ -121,6 +121,12 @@ async def test_finished_tool_calls_are_not_run_again() -> None:
 
     assert tool_runs == 1
     assert calls == 3
+    [usage] = [
+        event["value"]
+        for event in events
+        if event.get("type") == "CUSTOM" and event.get("name") == "usage_update"
+    ]
+    assert usage["requests"] == 3
     assert len(_recoveries(events)) == 1
     parts = deps.streamed_message["parts"]
     assert [part["type"] for part in parts if part.get("text") != ""] == [

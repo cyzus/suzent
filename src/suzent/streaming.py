@@ -33,6 +33,7 @@ from pydantic_ai.messages import (
     ToolReturnPart,
 )
 from pydantic_ai.run import AgentRunResultEvent
+from pydantic_ai.usage import RunUsage
 from pydantic_ai.tools import DeferredToolRequests, DeferredToolResults, ToolDenied
 from pydantic_ai.ui.ag_ui._event_stream import AGUIEventStream
 from ag_ui.core import (
@@ -1704,6 +1705,7 @@ async def stream_agent_responses(
         # The latest finished tool batch, for agents whose history processors
         # do not record the request they sent.
         _last_tool_checkpoint: Optional[list] = None
+        _retry_usage: Optional[RunUsage] = None
         from pydantic_ai.messages import (
             ToolReturnPart as _TRP,
             ModelResponse as _MResp,
@@ -1725,6 +1727,12 @@ async def stream_agent_responses(
                 logger.debug("[Streaming] Agent context ready. Starting run loop.")
                 while not control.cancel_event.is_set():
                     run_kwargs: Dict[str, Any] = {"deps": deps}
+                    # A retried run carries on the failed run's usage, so the
+                    # requests that finished before the failure are still
+                    # counted in the turn's usage and cost.
+                    if _retry_usage is None:
+                        _retry_usage = RunUsage()
+                    run_kwargs["usage"] = _retry_usage
                     if history:
                         run_kwargs["message_history"] = history
                     if current_deferred:
@@ -1989,7 +1997,9 @@ async def stream_agent_responses(
                     if _retry_repaired_history:
                         continue
 
-                    if _model_recovery is not None:
+                    if _model_recovery is None:
+                        _retry_usage = None
+                    else:
                         _failure, _delay = _model_recovery
                         _model_retries += 1
                         logger.warning(
