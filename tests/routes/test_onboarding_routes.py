@@ -101,3 +101,55 @@ async def test_unsupported_connection_check_is_not_success(monkeypatch):
     request.json.return_value = {"model": "p/chat"}
     response = await routes.check_onboarding_connection(request)
     assert json.loads(response.body)["status"] == "unsupported"
+
+
+async def test_recommendations_stay_within_listed_models(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    setup(monkeypatch)
+    monkeypatch.setattr(
+        routes, "get_enabled_models_from_db", lambda: ["p/chat", "p/catalog-only"]
+    )
+    seen: list[list[str]] = []
+
+    def recommend(_registry, enabled, _providers, primary):
+        seen.append(enabled)
+        return {"primary": [primary]}
+
+    monkeypatch.setattr(routes, "recommend_roles", recommend)
+    request = AsyncMock()
+    request.json.return_value = {"model": "p/chat", "models": ["p/chat"]}
+    response = await routes.role_recommendations(request)
+    assert response.status_code == 200
+    assert seen == [["p/chat"]]
+
+
+@pytest.mark.parametrize(
+    ("status", "reason"),
+    [(401, "auth"), (402, "quota"), (429, "busy"), (404, "model"), (500, "unknown")],
+)
+async def test_probe_failure_names_a_category_without_details(
+    monkeypatch: pytest.MonkeyPatch, status: int, reason: str
+) -> None:
+    setup(monkeypatch)
+    import pydantic_ai
+    from pydantic_ai.exceptions import ModelHTTPError
+
+    import suzent.core.model_factory
+
+    class FakeAgent:
+        def __init__(self, model: object, **kwargs: object) -> None:
+            pass
+
+        async def run(self, prompt: str) -> None:
+            raise ModelHTTPError(status, "p/chat", body={"key": "sk-secret"})
+
+    monkeypatch.setattr(pydantic_ai, "Agent", FakeAgent)
+    monkeypatch.setattr(
+        suzent.core.model_factory, "create_pydantic_ai_model", lambda _: object()
+    )
+    request = AsyncMock()
+    request.json.return_value = {"model": "p/chat"}
+    response = await routes.verify_onboarding_model(request)
+    assert response.status_code == 502
+    assert json.loads(response.body) == {"success": False, "reason": reason}
