@@ -12,6 +12,7 @@ export interface AGUIPart {
     | 'citation-sources'
     | 'acp-permission'
     | 'acp-notice'
+    | 'model-notice'
     | 'incoming-message';
   text?: string;
   messageId?: string;
@@ -39,6 +40,8 @@ export interface AGUIPart {
   acpPermission?: AcpPermissionRequest;
   /** For 'acp-notice' parts: an out-of-band ACP runtime notice. */
   acpNotice?: AcpNotice;
+  /** For 'model-notice' parts: a failed model request that was retried. */
+  modelNotice?: ModelRecoveryNotice;
   /** For 'incoming-message' parts: the message is already a row of the display log. */
   persisted?: boolean;
 }
@@ -63,6 +66,14 @@ export interface AcpPermissionRequest {
   createdAt?: number;
   /** Set once answered, so the prompt renders its outcome instead of buttons. */
   resolved?: 'approved' | 'denied';
+}
+
+export interface ModelRecoveryNotice {
+  attempt: number;
+  maxAttempts: number;
+  reason: string;
+  detail?: string;
+  delaySeconds?: number;
 }
 
 export interface AcpNotice {

@@ -18,7 +18,14 @@ import { isSubAgentActive, isSubAgentTerminal } from './subAgentStatus';
 import { SuzentBotMark } from './SuzentBotMark';
 
 export type AguiChunkType =
-  'tool' | 'reasoning' | 'text' | 'a2ui' | 'acp-permission' | 'acp-notice' | 'incoming-message';
+  | 'tool'
+  | 'reasoning'
+  | 'text'
+  | 'a2ui'
+  | 'acp-permission'
+  | 'acp-notice'
+  | 'model-notice'
+  | 'incoming-message';
 
 export type AguiChunk = { type: AguiChunkType; items: AGUIPart[] };
 

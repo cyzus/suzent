@@ -6,7 +6,12 @@
  */
 import { useState, useCallback, useEffect, useRef } from 'react';
 import type { A2UISurface } from '../types/a2ui';
-import type { AGUIPart, AcpPermissionRequest, ApprovalRememberScope } from '../types/agui';
+import type {
+  AGUIPart,
+  AcpPermissionRequest,
+  ApprovalRememberScope,
+  ModelRecoveryNotice,
+} from '../types/agui';
 import type { CitationSource } from '../lib/streamEvents';
 import { LiveSpeechTracker } from '../lib/liveSpeech';
 import { recoverableStream } from '../lib/recoverableStream';
@@ -165,6 +170,21 @@ export class RunError extends Error {
     super(message);
     this.name = 'RunError';
     this.code = code;
+  }
+}
+
+/**
+ * Remove the trailing parts of a model response that broke off.
+ *
+ * A response hands its tool calls over only once it is complete, so a broken
+ * one ends in text, reasoning and calls that never ran.
+ */
+export function dropUnfinishedResponse(parts: AGUIPart[]): void {
+  while (parts.length > 0) {
+    const last = parts[parts.length - 1];
+    const unfinishedCall = last.type === 'tool' && last.state === 'running' && !last.output;
+    if (last.type !== 'text' && last.type !== 'reasoning' && !unfinishedCall) return;
+    parts.pop();
   }
 }
 
@@ -419,6 +439,24 @@ export function processEvent(
             type: 'incoming-message',
             text: incoming.content,
             ...(incoming.persisted ? { persisted: true } : {}),
+          });
+        }
+      } else if (name === 'model_recovery') {
+        // The request failed and is being sent again; the reply it was
+        // streaming starts over, so its fragment would otherwise show twice.
+        dropUnfinishedResponse(next);
+        const notice = value as Partial<ModelRecoveryNotice> | null;
+        if (notice && typeof notice.attempt === 'number') {
+          next.push({
+            type: 'model-notice',
+            modelNotice: {
+              attempt: notice.attempt,
+              maxAttempts: Number(notice.maxAttempts) || notice.attempt,
+              reason: String(notice.reason || 'unknown'),
+              detail: typeof notice.detail === 'string' ? notice.detail : undefined,
+              delaySeconds:
+                typeof notice.delaySeconds === 'number' ? notice.delaySeconds : undefined,
+            },
           });
         }
       } else if (name === 'acp.session_reset') {

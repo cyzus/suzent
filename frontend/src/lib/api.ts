@@ -1284,7 +1284,11 @@ export async function fetchEmbeddingModels(): Promise<string[]> {
 // API Keys
 // -----------------------------------------------------------------------------
 
-export async function fetchApiKeys(): Promise<{ providers: ApiProvider[] } | null> {
+export async function fetchApiKeys(): Promise<{
+  providers: ApiProvider[];
+  /** Set when the network looks like mainland China, so China-reachable services come first. */
+  china_mode?: boolean;
+} | null> {
   try {
     const res = await fetch(`${getApiBase()}/config/api-keys`);
     if (!res.ok) throw new Error('Failed to fetch API keys');

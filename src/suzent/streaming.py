@@ -28,10 +28,12 @@ from pydantic_ai import (
 )
 from pydantic_ai.messages import (
     FunctionToolResultEvent,
+    PartEndEvent,
     RetryPromptPart,
     ToolReturnPart,
 )
 from pydantic_ai.run import AgentRunResultEvent
+from pydantic_ai.usage import RunUsage
 from pydantic_ai.tools import DeferredToolRequests, DeferredToolResults, ToolDenied
 from pydantic_ai.ui.ag_ui._event_stream import AGUIEventStream
 from ag_ui.core import (
@@ -45,6 +47,12 @@ from suzent.core.agent_serializer import serialize_state
 from suzent.core.agent_deps import AgentDeps
 from suzent.core.live_turn import LiveTurns, get_live_turns, message_content
 from suzent.core.citation_manager import CitationManager
+from suzent.core.model_recovery import (
+    RETRY_DELAYS_SECONDS,
+    classify_model_failure,
+    failure_detail,
+    retry_delay,
+)
 from suzent.core.prefill_probe import make_prefill_probe
 from suzent.core.message_history import (
     is_tool_history_protocol_error,
@@ -101,10 +109,30 @@ class _SuzentAGUIEventStream(AGUIEventStream):
 
     async def handle_event(self, event: Any) -> AsyncGenerator[Any, None]:
         if isinstance(event, CustomEvent):
+            if event.name == MODEL_RECOVERY_EVENT:
+                async for closing_event in self._close_broken_part():
+                    yield closing_event
             yield event
             return
         async for converted_event in super().handle_event(event):
             yield converted_event
+
+    async def _close_broken_part(self) -> AsyncGenerator[Any, None]:
+        """End the part a failed request left open, before its retry starts."""
+        part = self._open_part
+        if part is None:
+            return
+        for delta in self._open_part_deltas:
+            try:
+                part = delta.apply(part)
+            except Exception:
+                pass
+        self._open_part = None
+        self._open_part_deltas.clear()
+        async for closing_event in self.handle_part_end(
+            PartEndEvent(index=self._open_part_index, part=part)
+        ):
+            yield closing_event
 
     async def handle_function_tool_result(
         self, event: FunctionToolResultEvent
@@ -250,19 +278,53 @@ _DRAFT_PERSIST_INTERVAL_SECONDS = 0.75
 # A model call that went quiet or lost its connection mid-stream. The provider
 # may have been working the whole time, so a fresh request can pick it up again.
 MODEL_STALLED_CODE = "model_stalled"
+# A failed model request is being retried; the client drops the broken response.
+MODEL_RECOVERY_EVENT = "model_recovery"
 
 
 def model_failure_code(error: object) -> Optional[str]:
-    """Name a model failure that a new request can recover from."""
+    """Name a model failure so the client can explain it in the user's language."""
     from pydantic_ai.exceptions import ModelAPIError, ModelHTTPError
 
-    if isinstance(error, TimeoutError):
-        return MODEL_STALLED_CODE
+    if not isinstance(error, BaseException):
+        return None
+    failure = classify_model_failure(error)
+    if failure is None:
+        return None
+    if failure.run_error_code:
+        return failure.run_error_code
     # An HTTP status means the provider answered; anything else here is a
     # dropped or unfinished response.
     if isinstance(error, ModelAPIError) and not isinstance(error, ModelHTTPError):
         return MODEL_STALLED_CODE
     return None
+
+
+def _drop_unfinished_response(parts: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Remove the trailing parts of a model response that broke off.
+
+    A response only hands its tool calls over once it is complete, so a broken
+    one ends in text, reasoning and calls that never ran. The retry streams
+    that response again from scratch; keeping the fragment would show it twice.
+    """
+    dropped: list[dict[str, Any]] = []
+    while parts:
+        last = parts[-1]
+        kind = last.get("type")
+        unfinished_call = (
+            kind == "tool" and last.get("state") == "running" and not last.get("output")
+        )
+        if kind not in ("text", "reasoning") and not unfinished_call:
+            break
+        dropped.append(parts.pop())
+    return dropped
+
+
+async def _wait_unless_cancelled(control: StreamControl, seconds: float) -> None:
+    try:
+        await asyncio.wait_for(control.cancel_event.wait(), timeout=seconds)
+    except asyncio.TimeoutError:
+        pass
 
 
 def _stream_idle_timeout(model_id: str | None) -> float:
@@ -726,7 +788,12 @@ class _DraftDisplayAccumulator:
     def _apply_custom(self, event: Any) -> None:
         name = getattr(event, "name", "")
         value = getattr(event, "value", None)
-        if name == "tool_approval_request" and isinstance(value, dict):
+        if name == MODEL_RECOVERY_EVENT and isinstance(value, dict):
+            for dropped in _drop_unfinished_response(self.parts):
+                self._tool_index.pop(str(dropped.get("toolCallId") or ""), None)
+            self.parts.append({"type": "model-notice", "modelNotice": dict(value)})
+            self.dirty = True
+        elif name == "tool_approval_request" and isinstance(value, dict):
             tool_call_id = str(value.get("toolCallId") or value.get("approvalId") or "")
             tool = self._ensure_tool(tool_call_id)
             tool["state"] = "approval-requested"
@@ -1633,6 +1700,12 @@ async def stream_agent_responses(
         _emitted_recovery_ids: set[str] = set()
         _history_repair_retries = 0
         _first_event_retries = 0
+        # Failed model requests retried since the run last made progress.
+        _model_retries = 0
+        # The latest finished tool batch, for agents whose history processors
+        # do not record the request they sent.
+        _last_tool_checkpoint: Optional[list] = None
+        _retry_usage: Optional[RunUsage] = None
         from pydantic_ai.messages import (
             ToolReturnPart as _TRP,
             ModelResponse as _MResp,
@@ -1654,6 +1727,12 @@ async def stream_agent_responses(
                 logger.debug("[Streaming] Agent context ready. Starting run loop.")
                 while not control.cancel_event.is_set():
                     run_kwargs: Dict[str, Any] = {"deps": deps}
+                    # A retried run carries on the failed run's usage, so the
+                    # requests that finished before the failure are still
+                    # counted in the turn's usage and cost.
+                    if _retry_usage is None:
+                        _retry_usage = RunUsage()
+                    run_kwargs["usage"] = _retry_usage
                     if history:
                         run_kwargs["message_history"] = history
                     if current_deferred:
@@ -1676,7 +1755,7 @@ async def stream_agent_responses(
                     last_run_result = None
                     _tool_timeout: Optional[_ToolResultTimeout] = None
                     _retry_repaired_history = False
-                    _retry_first_event = False
+                    _model_recovery: Optional[tuple[Any, float]] = None
                     logger.debug("[Streaming] Calling agent.run_stream_events()...")
                     _events = _iter_stream_events_with_timeout(
                         agent, prompt, run_kwargs, control, chat_id
@@ -1689,22 +1768,6 @@ async def stream_agent_responses(
                         except _ToolResultTimeout as exc:
                             _tool_timeout = exc
                             break
-                        except _FirstEventTimeout as exc:
-                            # A prefill that overran its budget, a queued request,
-                            # or a genuinely dead connection -- indistinguishable
-                            # from here. Nothing streamed, so the history is intact
-                            # and one identical retry costs only the wait; losing
-                            # the whole turn to a provider that was merely slow
-                            # costs the user their work.
-                            if _first_event_retries < 1:
-                                _first_event_retries += 1
-                                _retry_first_event = True
-                                logger.warning(
-                                    "[Streaming] {}; retrying the request once.",
-                                    exc,
-                                )
-                                break
-                            raise
                         except Exception as exc:
                             if (
                                 _history_repair_retries < 1
@@ -1733,6 +1796,24 @@ async def stream_agent_responses(
                                         removed_for_compatibility,
                                     )
                                     break
+                            _failure = classify_model_failure(exc)
+                            # A prefill that overran its budget, a queued request,
+                            # or a genuinely dead connection -- indistinguishable
+                            # from here, and each wait already took minutes, so
+                            # a first-event timeout gets one retry, not three.
+                            _slow_first_event = isinstance(exc, _FirstEventTimeout)
+                            _delay = (
+                                retry_delay(_failure, _model_retries + 1)
+                                if _failure is not None
+                                and not control.cancel_event.is_set()
+                                and not (_slow_first_event and _first_event_retries)
+                                else None
+                            )
+                            if _delay is not None:
+                                if _slow_first_event:
+                                    _first_event_retries += 1
+                                _model_recovery = (_failure, _delay)
+                                break
                             raise
                         if control.cancel_event.is_set():
                             break
@@ -1829,6 +1910,9 @@ async def stream_agent_responses(
                                             )
                                 _chk_in_flight = max(0, _chk_in_flight - 1)
                                 if _chk_in_flight == 0 and _chk_tool_returns:
+                                    # The run moved on, so a later failure
+                                    # gets a full set of retries again.
+                                    _model_retries = 0
                                     # All tools in this batch have completed.
                                     # Build a proper checkpoint from accumulated parts.
                                     _resp_parts = [
@@ -1840,6 +1924,7 @@ async def stream_agent_responses(
                                         _MReq(parts=list(_chk_tool_returns)),
                                     ]
                                     schedule_checkpoint(_checkpoint)
+                                    _last_tool_checkpoint = _checkpoint
                                     # Also update partial_history so the finally
                                     # block has the latest state on crash/cancel.
                                     partial_history = _checkpoint
@@ -1909,7 +1994,49 @@ async def stream_agent_responses(
                             # Continue processing other events
                             continue
 
-                    if _retry_repaired_history or _retry_first_event:
+                    if _retry_repaired_history:
+                        continue
+
+                    if _model_recovery is None:
+                        _retry_usage = None
+                    else:
+                        _failure, _delay = _model_recovery
+                        _model_retries += 1
+                        logger.warning(
+                            "[Streaming] Model request failed ({}): {}; retry {}/{} in {:.0f}s",
+                            _failure.kind.value,
+                            _failure.detail,
+                            _model_retries,
+                            len(RETRY_DELAYS_SECONDS),
+                            _delay,
+                        )
+                        # Resume from the request that failed: it already holds
+                        # every finished tool result, so nothing reruns and only
+                        # the broken reply is asked for again.
+                        capture_request_history()
+                        _resume_from = (
+                            getattr(deps, "model_request_history", None)
+                            or _last_tool_checkpoint
+                        )
+                        if _resume_from:
+                            history = list(_resume_from)
+                            partial_history = history
+                            deps.last_messages = history
+                            prompt = None
+                            current_deferred = None
+                        await sse_queue.put(
+                            (
+                                "model_recovery",
+                                {
+                                    "attempt": _model_retries,
+                                    "maxAttempts": len(RETRY_DELAYS_SECONDS),
+                                    "reason": _failure.kind.value,
+                                    "detail": _failure.detail[:300],
+                                    "delaySeconds": _delay,
+                                },
+                            )
+                        )
+                        await _wait_unless_cancelled(control, _delay)
                         continue
 
                     # A tool ran long enough that its result never arrived on the
@@ -2419,6 +2546,9 @@ async def stream_agent_responses(
                 elif msg_type == "incoming_message":
                     yield CustomEvent(name="incoming_message", value=payload)
 
+                elif msg_type == "model_recovery":
+                    yield CustomEvent(name=MODEL_RECOVERY_EVENT, value=payload)
+
                 elif msg_type == "tool_recovery":
                     # HITL: emit recovered tool result with output
                     await _queue_custom_event(
@@ -2450,8 +2580,12 @@ async def stream_agent_responses(
                     break
 
                 elif msg_type == "error":
+                    _code = model_failure_code(payload)
                     err = RunErrorEvent(
-                        message=str(payload), code=model_failure_code(payload)
+                        message=failure_detail(payload)
+                        if _code and isinstance(payload, BaseException)
+                        else str(payload),
+                        code=_code,
                     )
                     await out_queue.put(("chunk", _encoder.encode(err)))
                     break
