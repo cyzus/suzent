@@ -6,7 +6,9 @@
       "max_output_tokens": 128000,
       "supports_function_calling": true,
       "supports_reasoning": true,
-      "supports_prompt_caching": true
+      "supports_prompt_caching": true,
+      "input_cost_per_token": 1e-06,
+      "output_cost_per_token": 3.2e-06
     },
     "zai/glm-5-code": {
       "mode": "chat",
@@ -14,7 +16,9 @@
       "max_output_tokens": 128000,
       "supports_function_calling": true,
       "supports_reasoning": true,
-      "supports_prompt_caching": true
+      "supports_prompt_caching": true,
+      "input_cost_per_token": 1.2e-06,
+      "output_cost_per_token": 5e-06
     },
     "zai/glm-4.7": {
       "mode": "chat",
@@ -22,7 +26,9 @@
       "max_output_tokens": 128000,
       "supports_function_calling": true,
       "supports_reasoning": true,
-      "supports_prompt_caching": true
+      "supports_prompt_caching": true,
+      "input_cost_per_token": 6e-07,
+      "output_cost_per_token": 2.2e-06
     },
     "zai/glm-4.6": {
       "mode": "chat",
@@ -30,50 +36,66 @@
       "max_output_tokens": 128000,
       "supports_function_calling": true,
       "supports_reasoning": true,
-      "supports_prompt_caching": true
+      "supports_prompt_caching": true,
+      "input_cost_per_token": 6e-07,
+      "output_cost_per_token": 2.2e-06
     },
     "zai/glm-4.5": {
       "mode": "chat",
       "max_input_tokens": 128000,
       "max_output_tokens": 32000,
-      "supports_function_calling": true
+      "supports_function_calling": true,
+      "input_cost_per_token": 6e-07,
+      "output_cost_per_token": 2.2e-06
     },
     "zai/glm-4.5v": {
       "mode": "chat",
       "max_input_tokens": 128000,
       "max_output_tokens": 32000,
       "supports_vision": true,
-      "supports_function_calling": true
+      "supports_function_calling": true,
+      "input_cost_per_token": 6e-07,
+      "output_cost_per_token": 1.8e-06
     },
     "zai/glm-4.5-x": {
       "mode": "chat",
       "max_input_tokens": 128000,
       "max_output_tokens": 32000,
-      "supports_function_calling": true
+      "supports_function_calling": true,
+      "input_cost_per_token": 2.2e-06,
+      "output_cost_per_token": 8.9e-06
     },
     "zai/glm-4.5-air": {
       "mode": "chat",
       "max_input_tokens": 128000,
       "max_output_tokens": 32000,
-      "supports_function_calling": true
+      "supports_function_calling": true,
+      "input_cost_per_token": 2e-07,
+      "output_cost_per_token": 1.1e-06
     },
     "zai/glm-4.5-airx": {
       "mode": "chat",
       "max_input_tokens": 128000,
       "max_output_tokens": 32000,
-      "supports_function_calling": true
+      "supports_function_calling": true,
+      "input_cost_per_token": 1.1e-06,
+      "output_cost_per_token": 4.5e-06
     },
     "zai/glm-4-32b-0414-128k": {
       "mode": "chat",
       "max_input_tokens": 128000,
       "max_output_tokens": 32000,
-      "supports_function_calling": true
+      "supports_function_calling": true,
+      "input_cost_per_token": 1e-07,
+      "output_cost_per_token": 1e-07
     },
     "zai/glm-4.5-flash": {
       "mode": "chat",
       "max_input_tokens": 128000,
       "max_output_tokens": 32000,
-      "supports_function_calling": true
+      "supports_function_calling": true,
+      "input_cost_per_token": 0,
+      "output_cost_per_token": 0
     },
     "zai/glm-5.1": {
       "mode": "chat",
@@ -81,7 +103,9 @@
       "max_output_tokens": 128000,
       "supports_function_calling": true,
       "supports_reasoning": true,
-      "supports_prompt_caching": true
+      "supports_prompt_caching": true,
+      "input_cost_per_token": 1.4e-06,
+      "output_cost_per_token": 4.4e-06
     },
     "zai/glm-4.7-flash": {
       "mode": "chat",
@@ -89,7 +113,9 @@
       "max_output_tokens": 128000,
       "supports_function_calling": true,
       "supports_reasoning": true,
-      "supports_prompt_caching": true
+      "supports_prompt_caching": true,
+      "input_cost_per_token": 0,
+      "output_cost_per_token": 0
     },
     "zai/glm-5.3": {
       "mode": "chat",
@@ -98,7 +124,9 @@
       "supports_function_calling": true,
       "supports_reasoning": true,
       "supports_prompt_caching": true,
-      "supports_response_schema": true
+      "supports_response_schema": true,
+      "input_cost_per_token": 1.4e-06,
+      "output_cost_per_token": 4.4e-06
     },
     "zai/glm-5.3-flash": {
       "mode": "chat",
@@ -108,7 +136,9 @@
       "supports_function_calling": true,
       "supports_reasoning": true,
       "supports_prompt_caching": true,
-      "supports_response_schema": true
+      "supports_response_schema": true,
+      "input_cost_per_token": 1.5e-07,
+      "output_cost_per_token": 5e-07
     },
     "zai/glm-5.2": {
       "mode": "chat",
@@ -116,7 +146,9 @@
       "max_output_tokens": 128000,
       "supports_function_calling": true,
       "supports_reasoning": true,
-      "supports_prompt_caching": true
+      "supports_prompt_caching": true,
+      "input_cost_per_token": 1.4e-06,
+      "output_cost_per_token": 4.4e-06
     },
     "zai/glm-5v-turbo": {
       "mode": "chat",
@@ -125,7 +157,9 @@
       "supports_vision": true,
       "supports_function_calling": true,
       "supports_reasoning": true,
-      "supports_prompt_caching": true
+      "supports_prompt_caching": true,
+      "input_cost_per_token": 1.2e-06,
+      "output_cost_per_token": 4e-06
     },
     "zai/glm-latest": {
       "mode": "chat"

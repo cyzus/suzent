@@ -9,7 +9,9 @@
       "supports_function_calling": true,
       "supports_reasoning": true,
       "supports_prompt_caching": true,
-      "supports_response_schema": true
+      "supports_response_schema": true,
+      "input_cost_per_token": 5e-06,
+      "output_cost_per_token": 2.5e-05
     },
     "anthropic/claude-sonnet-4-6": {
       "mode": "chat",
@@ -19,7 +21,9 @@
       "supports_function_calling": true,
       "supports_reasoning": true,
       "supports_prompt_caching": true,
-      "supports_response_schema": true
+      "supports_response_schema": true,
+      "input_cost_per_token": 3e-06,
+      "output_cost_per_token": 1.5e-05
     },
     "anthropic/claude-haiku-4-5": {
       "mode": "chat",
@@ -29,7 +33,9 @@
       "supports_function_calling": true,
       "supports_reasoning": true,
       "supports_prompt_caching": true,
-      "supports_response_schema": true
+      "supports_response_schema": true,
+      "input_cost_per_token": 1e-06,
+      "output_cost_per_token": 5e-06
     },
     "anthropic/claude-opus-4-7": {
       "mode": "chat",
@@ -39,7 +45,9 @@
       "supports_function_calling": true,
       "supports_response_schema": true,
       "supports_reasoning": true,
-      "supports_prompt_caching": true
+      "supports_prompt_caching": true,
+      "input_cost_per_token": 5e-06,
+      "output_cost_per_token": 2.5e-05
     },
     "anthropic/claude-opus-4-5-20251101": {
       "mode": "chat",
@@ -49,7 +57,9 @@
       "supports_function_calling": true,
       "supports_response_schema": true,
       "supports_reasoning": true,
-      "supports_prompt_caching": true
+      "supports_prompt_caching": true,
+      "input_cost_per_token": 5e-06,
+      "output_cost_per_token": 2.5e-05
     },
     "anthropic/claude-haiku-4-5-20251001": {
       "mode": "chat",
@@ -59,7 +69,9 @@
       "supports_function_calling": true,
       "supports_response_schema": true,
       "supports_reasoning": true,
-      "supports_prompt_caching": true
+      "supports_prompt_caching": true,
+      "input_cost_per_token": 1e-06,
+      "output_cost_per_token": 5e-06
     },
     "anthropic/claude-sonnet-4-5-20250929": {
       "mode": "chat",
@@ -69,7 +81,9 @@
       "supports_function_calling": true,
       "supports_response_schema": true,
       "supports_reasoning": true,
-      "supports_prompt_caching": true
+      "supports_prompt_caching": true,
+      "input_cost_per_token": 3e-06,
+      "output_cost_per_token": 1.5e-05
     },
     "anthropic/claude-opus-4-1-20250805": {
       "mode": "chat"
@@ -82,7 +96,9 @@
       "supports_function_calling": true,
       "supports_response_schema": true,
       "supports_reasoning": true,
-      "supports_prompt_caching": true
+      "supports_prompt_caching": true,
+      "input_cost_per_token": 5e-06,
+      "output_cost_per_token": 2.5e-05
     },
     "anthropic/claude-fable-5": {
       "mode": "chat",
@@ -92,7 +108,9 @@
       "supports_function_calling": true,
       "supports_response_schema": true,
       "supports_reasoning": true,
-      "supports_prompt_caching": true
+      "supports_prompt_caching": true,
+      "input_cost_per_token": 1e-05,
+      "output_cost_per_token": 5e-05
     },
     "anthropic/claude-sonnet-4-5": {
       "mode": "chat",
@@ -102,7 +120,9 @@
       "supports_function_calling": true,
       "supports_response_schema": true,
       "supports_reasoning": true,
-      "supports_prompt_caching": true
+      "supports_prompt_caching": true,
+      "input_cost_per_token": 3e-06,
+      "output_cost_per_token": 1.5e-05
     },
     "anthropic/claude-sonnet-5": {
       "mode": "chat",
@@ -112,7 +132,9 @@
       "supports_function_calling": true,
       "supports_response_schema": true,
       "supports_reasoning": true,
-      "supports_prompt_caching": true
+      "supports_prompt_caching": true,
+      "input_cost_per_token": 2e-06,
+      "output_cost_per_token": 1e-05
     },
     "anthropic/claude-sonnet-5-5": {
       "mode": "chat",
@@ -122,7 +144,9 @@
       "supports_function_calling": true,
       "supports_response_schema": true,
       "supports_reasoning": true,
-      "supports_prompt_caching": true
+      "supports_prompt_caching": true,
+      "input_cost_per_token": 2e-06,
+      "output_cost_per_token": 1e-05
     },
     "anthropic/claude-opus-4-5": {
       "mode": "chat",
@@ -132,7 +156,9 @@
       "supports_function_calling": true,
       "supports_response_schema": true,
       "supports_reasoning": true,
-      "supports_prompt_caching": true
+      "supports_prompt_caching": true,
+      "input_cost_per_token": 5e-06,
+      "output_cost_per_token": 2.5e-05
     },
     "anthropic/claude-opus-4-6-20260205": {
       "mode": "chat",
@@ -142,7 +168,9 @@
       "supports_function_calling": true,
       "supports_response_schema": true,
       "supports_reasoning": true,
-      "supports_prompt_caching": true
+      "supports_prompt_caching": true,
+      "input_cost_per_token": 5e-06,
+      "output_cost_per_token": 2.5e-05
     },
     "anthropic/claude-opus-4-7-20260416": {
       "mode": "chat",
@@ -152,7 +180,9 @@
       "supports_function_calling": true,
       "supports_response_schema": true,
       "supports_reasoning": true,
-      "supports_prompt_caching": true
+      "supports_prompt_caching": true,
+      "input_cost_per_token": 5e-06,
+      "output_cost_per_token": 2.5e-05
     },
     "anthropic/claude-fable-5-1": {
       "mode": "chat",
@@ -162,7 +192,9 @@
       "supports_function_calling": true,
       "supports_response_schema": true,
       "supports_reasoning": true,
-      "supports_prompt_caching": true
+      "supports_prompt_caching": true,
+      "input_cost_per_token": 1e-05,
+      "output_cost_per_token": 5e-05
     },
     "anthropic/claude-opus-5-5": {
       "mode": "chat",
@@ -172,7 +204,9 @@
       "supports_function_calling": true,
       "supports_response_schema": true,
       "supports_reasoning": true,
-      "supports_prompt_caching": true
+      "supports_prompt_caching": true,
+      "input_cost_per_token": 4e-06,
+      "output_cost_per_token": 2e-05
     },
     "anthropic/claude-opus-5": {
       "mode": "chat",
@@ -182,7 +216,9 @@
       "supports_function_calling": true,
       "supports_response_schema": true,
       "supports_reasoning": true,
-      "supports_prompt_caching": true
+      "supports_prompt_caching": true,
+      "input_cost_per_token": 5e-06,
+      "output_cost_per_token": 2.5e-05
     },
     "anthropic/claude-mythos-5": {
       "mode": "chat",
@@ -192,7 +228,9 @@
       "supports_function_calling": true,
       "supports_response_schema": true,
       "supports_reasoning": true,
-      "supports_prompt_caching": true
+      "supports_prompt_caching": true,
+      "input_cost_per_token": 1e-05,
+      "output_cost_per_token": 5e-05
     },
     "anthropic/claude-mythos-5-1": {
       "mode": "chat",
@@ -202,7 +240,9 @@
       "supports_function_calling": true,
       "supports_response_schema": true,
       "supports_reasoning": true,
-      "supports_prompt_caching": true
+      "supports_prompt_caching": true,
+      "input_cost_per_token": 1e-05,
+      "output_cost_per_token": 5e-05
     },
     "anthropic/claude-mythos-preview": {
       "mode": "chat",
@@ -212,7 +252,9 @@
       "supports_function_calling": true,
       "supports_response_schema": true,
       "supports_reasoning": true,
-      "supports_prompt_caching": true
+      "supports_prompt_caching": true,
+      "input_cost_per_token": 1e-05,
+      "output_cost_per_token": 5e-05
     },
     "anthropic/claude-haiku-5-5": {
       "mode": "chat",
@@ -222,7 +264,9 @@
       "supports_function_calling": true,
       "supports_response_schema": true,
       "supports_reasoning": true,
-      "supports_prompt_caching": true
+      "supports_prompt_caching": true,
+      "input_cost_per_token": 1e-07,
+      "output_cost_per_token": 5e-07
     },
     "anthropic/claude-mythos-5-2": {
       "mode": "chat",
@@ -232,7 +276,9 @@
       "supports_function_calling": true,
       "supports_response_schema": true,
       "supports_reasoning": true,
-      "supports_prompt_caching": true
+      "supports_prompt_caching": true,
+      "input_cost_per_token": 8e-06,
+      "output_cost_per_token": 4e-05
     },
     "anthropic/claude-fable-5-2": {
       "mode": "chat",
@@ -242,7 +288,9 @@
       "supports_function_calling": true,
       "supports_response_schema": true,
       "supports_reasoning": true,
-      "supports_prompt_caching": true
+      "supports_prompt_caching": true,
+      "input_cost_per_token": 8e-06,
+      "output_cost_per_token": 4e-05
     }
   }
 }

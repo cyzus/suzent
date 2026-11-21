@@ -6,7 +6,9 @@
       "max_output_tokens": 8192,
       "supports_function_calling": true,
       "supports_reasoning": true,
-      "supports_prompt_caching": true
+      "supports_prompt_caching": true,
+      "input_cost_per_token": 3e-07,
+      "output_cost_per_token": 1.2e-06
     },
     "minimax/MiniMax-M2.1": {
       "mode": "chat",
@@ -14,7 +16,9 @@
       "max_output_tokens": 8192,
       "supports_function_calling": true,
       "supports_reasoning": true,
-      "supports_prompt_caching": true
+      "supports_prompt_caching": true,
+      "input_cost_per_token": 3e-07,
+      "output_cost_per_token": 1.2e-06
     },
     "minimax/MiniMax-M2.1-lightning": {
       "mode": "chat",
@@ -22,7 +26,9 @@
       "max_output_tokens": 8192,
       "supports_function_calling": true,
       "supports_reasoning": true,
-      "supports_prompt_caching": true
+      "supports_prompt_caching": true,
+      "input_cost_per_token": 3e-07,
+      "output_cost_per_token": 2.4e-06
     },
     "minimax/MiniMax-M2.5-lightning": {
       "mode": "chat",
@@ -30,7 +36,9 @@
       "max_output_tokens": 8192,
       "supports_function_calling": true,
       "supports_reasoning": true,
-      "supports_prompt_caching": true
+      "supports_prompt_caching": true,
+      "input_cost_per_token": 3e-07,
+      "output_cost_per_token": 2.4e-06
     },
     "minimax/MiniMax-M2": {
       "mode": "chat",
@@ -38,7 +46,9 @@
       "max_output_tokens": 8192,
       "supports_function_calling": true,
       "supports_reasoning": true,
-      "supports_prompt_caching": true
+      "supports_prompt_caching": true,
+      "input_cost_per_token": 3e-07,
+      "output_cost_per_token": 1.2e-06
     },
     "minimax/MiniMax-M3": {
       "mode": "chat",
@@ -47,7 +57,9 @@
       "supports_vision": true,
       "supports_function_calling": true,
       "supports_reasoning": true,
-      "supports_prompt_caching": true
+      "supports_prompt_caching": true,
+      "input_cost_per_token": 3e-07,
+      "output_cost_per_token": 1.2e-06
     },
     "minimax/speech-02-hd": {
       "mode": "tts",
@@ -91,7 +103,9 @@
       "supports_vision": true,
       "supports_function_calling": true,
       "supports_reasoning": true,
-      "supports_prompt_caching": true
+      "supports_prompt_caching": true,
+      "input_cost_per_token": 1.5e-07,
+      "output_cost_per_token": 6e-07
     },
     "minimax/minimax-latest": {
       "mode": "chat"
