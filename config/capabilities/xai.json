@@ -9,7 +9,9 @@
       "supports_function_calling": true,
       "supports_response_schema": true,
       "supports_reasoning": true,
-      "supports_prompt_caching": true
+      "supports_prompt_caching": true,
+      "input_cost_per_token": 2e-06,
+      "output_cost_per_token": 6e-06
     },
     "xai/grok-4.5-latest": {
       "mode": "chat",
@@ -19,7 +21,9 @@
       "supports_function_calling": true,
       "supports_response_schema": true,
       "supports_reasoning": true,
-      "supports_prompt_caching": true
+      "supports_prompt_caching": true,
+      "input_cost_per_token": 2e-06,
+      "output_cost_per_token": 6e-06
     },
     "xai/grok-3": {
       "mode": "chat",
@@ -264,7 +268,9 @@
       "supports_response_schema": true,
       "supported_endpoints": [
         "/v1/responses"
-      ]
+      ],
+      "input_cost_per_token": 1.25e-06,
+      "output_cost_per_token": 2.5e-06
     },
     "xai/grok-4.20-beta-0309-reasoning": {
       "mode": "chat",
@@ -274,7 +280,9 @@
       "supports_function_calling": true,
       "supports_reasoning": true,
       "supports_prompt_caching": true,
-      "supports_response_schema": true
+      "supports_response_schema": true,
+      "input_cost_per_token": 1.25e-06,
+      "output_cost_per_token": 2.5e-06
     },
     "xai/grok-4.20-0309-reasoning": {
       "mode": "chat",
@@ -284,7 +292,9 @@
       "supports_function_calling": true,
       "supports_reasoning": true,
       "supports_response_schema": true,
-      "supports_prompt_caching": true
+      "supports_prompt_caching": true,
+      "input_cost_per_token": 1.25e-06,
+      "output_cost_per_token": 2.5e-06
     },
     "xai/grok-4.20-beta-0309-non-reasoning": {
       "mode": "chat",
@@ -293,7 +303,9 @@
       "supports_vision": true,
       "supports_function_calling": true,
       "supports_prompt_caching": true,
-      "supports_response_schema": true
+      "supports_response_schema": true,
+      "input_cost_per_token": 1.25e-06,
+      "output_cost_per_token": 2.5e-06
     },
     "xai/grok-beta": {
       "mode": "chat",
@@ -310,7 +322,9 @@
       "supports_reasoning": true,
       "supports_prompt_caching": true,
       "supports_vision": true,
-      "supports_response_schema": true
+      "supports_response_schema": true,
+      "input_cost_per_token": 1e-06,
+      "output_cost_per_token": 2e-06
     },
     "xai/grok-code-fast-1": {
       "mode": "chat",
@@ -320,7 +334,9 @@
       "supports_reasoning": true,
       "supports_prompt_caching": true,
       "supports_vision": true,
-      "supports_response_schema": true
+      "supports_response_schema": true,
+      "input_cost_per_token": 1e-06,
+      "output_cost_per_token": 2e-06
     },
     "xai/grok-code-fast-1-0825": {
       "mode": "chat",
@@ -330,7 +346,9 @@
       "supports_reasoning": true,
       "supports_prompt_caching": true,
       "supports_vision": true,
-      "supports_response_schema": true
+      "supports_response_schema": true,
+      "input_cost_per_token": 1e-06,
+      "output_cost_per_token": 2e-06
     },
     "xai/grok-vision-beta": {
       "mode": "chat",
@@ -347,7 +365,9 @@
       "supports_function_calling": true,
       "supports_response_schema": true,
       "supports_reasoning": true,
-      "supports_prompt_caching": true
+      "supports_prompt_caching": true,
+      "input_cost_per_token": 1.25e-06,
+      "output_cost_per_token": 2.5e-06
     },
     "xai/grok-4.3-latest": {
       "mode": "chat",
@@ -357,7 +377,9 @@
       "supports_function_calling": true,
       "supports_response_schema": true,
       "supports_reasoning": true,
-      "supports_prompt_caching": true
+      "supports_prompt_caching": true,
+      "input_cost_per_token": 1.25e-06,
+      "output_cost_per_token": 2.5e-06
     },
     "xai/grok-4.20-0309-non-reasoning": {
       "mode": "chat",
@@ -366,20 +388,24 @@
       "supports_vision": true,
       "supports_function_calling": true,
       "supports_response_schema": true,
-      "supports_prompt_caching": true
+      "supports_prompt_caching": true,
+      "input_cost_per_token": 1.25e-06,
+      "output_cost_per_token": 2.5e-06
     },
     "xai/grok-4.20-multi-agent-0309": {
       "mode": "chat",
       "max_input_tokens": 1000000,
       "max_output_tokens": 1000000,
       "supports_vision": true,
-      "supports_function_calling": false,
+      "supports_function_calling": true,
       "supports_response_schema": true,
       "supports_reasoning": true,
       "supports_prompt_caching": true,
       "supported_endpoints": [
         "/v1/responses"
-      ]
+      ],
+      "input_cost_per_token": 1.25e-06,
+      "output_cost_per_token": 2.5e-06
     },
     "xai/grok-build-0.1": {
       "mode": "chat",
@@ -389,7 +415,9 @@
       "supports_function_calling": true,
       "supports_response_schema": true,
       "supports_reasoning": true,
-      "supports_prompt_caching": true
+      "supports_prompt_caching": true,
+      "input_cost_per_token": 1e-06,
+      "output_cost_per_token": 2e-06
     },
     "xai/grok-4.6": {
       "mode": "chat",
@@ -399,7 +427,9 @@
       "supports_function_calling": true,
       "supports_response_schema": true,
       "supports_reasoning": true,
-      "supports_prompt_caching": true
+      "supports_prompt_caching": true,
+      "input_cost_per_token": 2e-06,
+      "output_cost_per_token": 6e-06
     },
     "xai/grok-build-latest": {
       "mode": "chat",
@@ -409,7 +439,9 @@
       "supports_function_calling": true,
       "supports_response_schema": true,
       "supports_reasoning": true,
-      "supports_prompt_caching": true
+      "supports_prompt_caching": true,
+      "input_cost_per_token": 2e-06,
+      "output_cost_per_token": 6e-06
     },
     "xai/grok-4.20": {
       "mode": "chat",
@@ -419,7 +451,9 @@
       "supports_function_calling": true,
       "supports_response_schema": true,
       "supports_reasoning": true,
-      "supports_prompt_caching": true
+      "supports_prompt_caching": true,
+      "input_cost_per_token": 1.25e-06,
+      "output_cost_per_token": 2.5e-06
     },
     "xai/grok-4.20-reasoning": {
       "mode": "chat",
@@ -429,7 +463,9 @@
       "supports_function_calling": true,
       "supports_response_schema": true,
       "supports_reasoning": true,
-      "supports_prompt_caching": true
+      "supports_prompt_caching": true,
+      "input_cost_per_token": 1.25e-06,
+      "output_cost_per_token": 2.5e-06
     },
     "xai/grok-4.20-reasoning-latest": {
       "mode": "chat",
@@ -439,7 +475,9 @@
       "supports_function_calling": true,
       "supports_response_schema": true,
       "supports_reasoning": true,
-      "supports_prompt_caching": true
+      "supports_prompt_caching": true,
+      "input_cost_per_token": 1.25e-06,
+      "output_cost_per_token": 2.5e-06
     },
     "xai/grok-imagine-image": {
       "mode": "image_generation",
@@ -490,7 +528,9 @@
       "supports_vision": true,
       "supports_function_calling": true,
       "supports_response_schema": true,
-      "supports_prompt_caching": true
+      "supports_prompt_caching": true,
+      "input_cost_per_token": 1.25e-06,
+      "output_cost_per_token": 2.5e-06
     },
     "xai/grok-4.20-non-reasoning-latest": {
       "mode": "chat",
@@ -499,33 +539,39 @@
       "supports_vision": true,
       "supports_function_calling": true,
       "supports_response_schema": true,
-      "supports_prompt_caching": true
+      "supports_prompt_caching": true,
+      "input_cost_per_token": 1.25e-06,
+      "output_cost_per_token": 2.5e-06
     },
     "xai/grok-4.20-multi-agent": {
       "mode": "chat",
       "max_input_tokens": 1000000,
       "max_output_tokens": 1000000,
       "supports_vision": true,
-      "supports_function_calling": false,
+      "supports_function_calling": true,
       "supports_response_schema": true,
       "supports_reasoning": true,
       "supports_prompt_caching": true,
       "supported_endpoints": [
         "/v1/responses"
-      ]
+      ],
+      "input_cost_per_token": 1.25e-06,
+      "output_cost_per_token": 2.5e-06
     },
     "xai/grok-4.20-multi-agent-latest": {
       "mode": "chat",
       "max_input_tokens": 1000000,
       "max_output_tokens": 1000000,
       "supports_vision": true,
-      "supports_function_calling": false,
+      "supports_function_calling": true,
       "supports_response_schema": true,
       "supports_reasoning": true,
       "supports_prompt_caching": true,
       "supported_endpoints": [
         "/v1/responses"
-      ]
+      ],
+      "input_cost_per_token": 1.25e-06,
+      "output_cost_per_token": 2.5e-06
     },
     "xai/grok-imagine-video": {
       "mode": "video_generation"
@@ -547,7 +593,9 @@
       "supports_function_calling": true,
       "supports_response_schema": true,
       "supports_reasoning": true,
-      "supports_prompt_caching": true
+      "supports_prompt_caching": true,
+      "input_cost_per_token": 2e-06,
+      "output_cost_per_token": 6e-06
     },
     "xai/grok-imagine-video-1.5-lite": {
       "mode": "video_generation"
@@ -560,7 +608,9 @@
       "supports_function_calling": true,
       "supports_response_schema": true,
       "supports_reasoning": true,
-      "supports_prompt_caching": true
+      "supports_prompt_caching": true,
+      "input_cost_per_token": 1.25e-06,
+      "output_cost_per_token": 2.5e-06
     },
     "xai/grok-4.20-beta": {
       "mode": "chat",
@@ -570,7 +620,9 @@
       "supports_function_calling": true,
       "supports_response_schema": true,
       "supports_reasoning": true,
-      "supports_prompt_caching": true
+      "supports_prompt_caching": true,
+      "input_cost_per_token": 1.25e-06,
+      "output_cost_per_token": 2.5e-06
     },
     "xai/grok-4.20-beta-0309": {
       "mode": "chat",
@@ -580,7 +632,9 @@
       "supports_function_calling": true,
       "supports_response_schema": true,
       "supports_reasoning": true,
-      "supports_prompt_caching": true
+      "supports_prompt_caching": true,
+      "input_cost_per_token": 1.25e-06,
+      "output_cost_per_token": 2.5e-06
     },
     "xai/grok-4.20-beta-latest": {
       "mode": "chat",
@@ -590,7 +644,9 @@
       "supports_function_calling": true,
       "supports_response_schema": true,
       "supports_reasoning": true,
-      "supports_prompt_caching": true
+      "supports_prompt_caching": true,
+      "input_cost_per_token": 1.25e-06,
+      "output_cost_per_token": 2.5e-06
     },
     "xai/grok-4.20-beta-latest-non-reasoning": {
       "mode": "chat",
@@ -599,7 +655,9 @@
       "supports_vision": true,
       "supports_function_calling": true,
       "supports_response_schema": true,
-      "supports_prompt_caching": true
+      "supports_prompt_caching": true,
+      "input_cost_per_token": 1.25e-06,
+      "output_cost_per_token": 2.5e-06
     },
     "xai/grok-4.20-beta-latest-reasoning": {
       "mode": "chat",
@@ -609,7 +667,9 @@
       "supports_function_calling": true,
       "supports_response_schema": true,
       "supports_reasoning": true,
-      "supports_prompt_caching": true
+      "supports_prompt_caching": true,
+      "input_cost_per_token": 1.25e-06,
+      "output_cost_per_token": 2.5e-06
     },
     "xai/grok-4.20-beta-non-reasoning": {
       "mode": "chat",
@@ -618,7 +678,9 @@
       "supports_vision": true,
       "supports_function_calling": true,
       "supports_response_schema": true,
-      "supports_prompt_caching": true
+      "supports_prompt_caching": true,
+      "input_cost_per_token": 1.25e-06,
+      "output_cost_per_token": 2.5e-06
     },
     "xai/grok-4.20-beta-reasoning": {
       "mode": "chat",
@@ -628,7 +690,9 @@
       "supports_function_calling": true,
       "supports_response_schema": true,
       "supports_reasoning": true,
-      "supports_prompt_caching": true
+      "supports_prompt_caching": true,
+      "input_cost_per_token": 1.25e-06,
+      "output_cost_per_token": 2.5e-06
     },
     "xai/grok-4.20-experimental-beta-0304": {
       "mode": "chat",
@@ -638,7 +702,9 @@
       "supports_function_calling": true,
       "supports_response_schema": true,
       "supports_reasoning": true,
-      "supports_prompt_caching": true
+      "supports_prompt_caching": true,
+      "input_cost_per_token": 1.25e-06,
+      "output_cost_per_token": 2.5e-06
     },
     "xai/grok-4.20-experimental-beta-0304-non-reasoning": {
       "mode": "chat",
@@ -647,7 +713,9 @@
       "supports_vision": true,
       "supports_function_calling": true,
       "supports_response_schema": true,
-      "supports_prompt_caching": true
+      "supports_prompt_caching": true,
+      "input_cost_per_token": 1.25e-06,
+      "output_cost_per_token": 2.5e-06
     },
     "xai/grok-4.20-experimental-beta-0304-reasoning": {
       "mode": "chat",
@@ -657,7 +725,9 @@
       "supports_function_calling": true,
       "supports_response_schema": true,
       "supports_reasoning": true,
-      "supports_prompt_caching": true
+      "supports_prompt_caching": true,
+      "input_cost_per_token": 1.25e-06,
+      "output_cost_per_token": 2.5e-06
     },
     "xai/grok-4.20-experimental-beta-latest": {
       "mode": "chat",
@@ -667,7 +737,9 @@
       "supports_function_calling": true,
       "supports_response_schema": true,
       "supports_reasoning": true,
-      "supports_prompt_caching": true
+      "supports_prompt_caching": true,
+      "input_cost_per_token": 1.25e-06,
+      "output_cost_per_token": 2.5e-06
     },
     "xai/grok-4.20-experimental-beta-non-reasoning-latest": {
       "mode": "chat",
@@ -676,7 +748,9 @@
       "supports_vision": true,
       "supports_function_calling": true,
       "supports_response_schema": true,
-      "supports_prompt_caching": true
+      "supports_prompt_caching": true,
+      "input_cost_per_token": 1.25e-06,
+      "output_cost_per_token": 2.5e-06
     },
     "xai/grok-4.20-experimental-beta-reasoning-latest": {
       "mode": "chat",
@@ -686,7 +760,9 @@
       "supports_function_calling": true,
       "supports_response_schema": true,
       "supports_reasoning": true,
-      "supports_prompt_caching": true
+      "supports_prompt_caching": true,
+      "input_cost_per_token": 1.25e-06,
+      "output_cost_per_token": 2.5e-06
     },
     "xai/grok-4.20-multi-agent-beta-latest": {
       "mode": "chat",
@@ -696,10 +772,12 @@
       "max_input_tokens": 1000000,
       "max_output_tokens": 1000000,
       "supports_vision": true,
-      "supports_function_calling": false,
+      "supports_function_calling": true,
       "supports_response_schema": true,
       "supports_reasoning": true,
-      "supports_prompt_caching": true
+      "supports_prompt_caching": true,
+      "input_cost_per_token": 1.25e-06,
+      "output_cost_per_token": 2.5e-06
     },
     "xai/grok-4.20-multi-agent-experimental-beta-0304": {
       "mode": "chat",
@@ -709,10 +787,12 @@
       "max_input_tokens": 1000000,
       "max_output_tokens": 1000000,
       "supports_vision": true,
-      "supports_function_calling": false,
+      "supports_function_calling": true,
       "supports_response_schema": true,
       "supports_reasoning": true,
-      "supports_prompt_caching": true
+      "supports_prompt_caching": true,
+      "input_cost_per_token": 1.25e-06,
+      "output_cost_per_token": 2.5e-06
     },
     "xai/grok-4.20-multi-agent-experimental-beta-latest": {
       "mode": "chat",
@@ -722,10 +802,12 @@
       "max_input_tokens": 1000000,
       "max_output_tokens": 1000000,
       "supports_vision": true,
-      "supports_function_calling": false,
+      "supports_function_calling": true,
       "supports_response_schema": true,
       "supports_reasoning": true,
-      "supports_prompt_caching": true
+      "supports_prompt_caching": true,
+      "input_cost_per_token": 1.25e-06,
+      "output_cost_per_token": 2.5e-06
     },
     "xai/grok-4.20-non-reasoning-gv2": {
       "mode": "chat",
@@ -734,7 +816,9 @@
       "supports_vision": true,
       "supports_function_calling": true,
       "supports_response_schema": true,
-      "supports_prompt_caching": true
+      "supports_prompt_caching": true,
+      "input_cost_per_token": 1.25e-06,
+      "output_cost_per_token": 2.5e-06
     },
     "xai/grok-4.20-reasoning-gv2": {
       "mode": "chat",
@@ -744,7 +828,9 @@
       "supports_function_calling": true,
       "supports_response_schema": true,
       "supports_reasoning": true,
-      "supports_prompt_caching": true
+      "supports_prompt_caching": true,
+      "input_cost_per_token": 1.25e-06,
+      "output_cost_per_token": 2.5e-06
     },
     "xai/grok-voice-3.0": {
       "mode": "chat",

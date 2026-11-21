@@ -11,7 +11,9 @@
       "supports_function_calling": true,
       "supports_response_schema": true,
       "supports_reasoning": true,
-      "supports_prompt_caching": true
+      "supports_prompt_caching": true,
+      "input_cost_per_token": 1.74e-06,
+      "output_cost_per_token": 3.48e-06
     },
     "tencent/deepseek-v4-flash": {
       "mode": "chat",
@@ -24,7 +26,9 @@
       "supports_function_calling": true,
       "supports_response_schema": true,
       "supports_reasoning": true,
-      "supports_prompt_caching": true
+      "supports_prompt_caching": true,
+      "input_cost_per_token": 1.4e-07,
+      "output_cost_per_token": 2.8e-07
     },
     "tencent/deepseek-v4-pro-0813": {
       "mode": "chat",
@@ -37,7 +41,9 @@
       "supports_function_calling": true,
       "supports_response_schema": true,
       "supports_reasoning": true,
-      "supports_prompt_caching": true
+      "supports_prompt_caching": true,
+      "input_cost_per_token": 1.32e-06,
+      "output_cost_per_token": 3.96e-06
     },
     "tencent/deepseek-v4.1-flash": {
       "mode": "chat",
@@ -50,7 +56,9 @@
       "supports_function_calling": true,
       "supports_response_schema": true,
       "supports_reasoning": true,
-      "supports_prompt_caching": true
+      "supports_prompt_caching": true,
+      "input_cost_per_token": 3e-07,
+      "output_cost_per_token": 1.2e-06
     },
     "tencent/glm-5.3-flashx": {
       "mode": "chat",
@@ -64,7 +72,9 @@
       "supports_function_calling": true,
       "supports_response_schema": true,
       "supports_reasoning": true,
-      "supports_prompt_caching": true
+      "supports_prompt_caching": true,
+      "input_cost_per_token": 3.7e-07,
+      "output_cost_per_token": 1.25e-06
     },
     "tencent/glm-5.3-flash": {
       "mode": "chat",
@@ -78,7 +88,9 @@
       "supports_function_calling": true,
       "supports_response_schema": true,
       "supports_reasoning": true,
-      "supports_prompt_caching": true
+      "supports_prompt_caching": true,
+      "input_cost_per_token": 1.5e-07,
+      "output_cost_per_token": 5e-07
     },
     "tencent/glm-5.3": {
       "mode": "chat",
@@ -91,7 +103,9 @@
       "supports_function_calling": true,
       "supports_response_schema": true,
       "supports_reasoning": true,
-      "supports_prompt_caching": true
+      "supports_prompt_caching": true,
+      "input_cost_per_token": 1.4e-06,
+      "output_cost_per_token": 4.4e-06
     },
     "tencent/glm-5.2": {
       "mode": "chat",
@@ -104,7 +118,9 @@
       "supports_function_calling": true,
       "supports_response_schema": true,
       "supports_reasoning": true,
-      "supports_prompt_caching": true
+      "supports_prompt_caching": true,
+      "input_cost_per_token": 1.4e-06,
+      "output_cost_per_token": 4.4e-06
     },
     "tencent/kimi-k3": {
       "mode": "chat",
@@ -117,7 +133,9 @@
       "supports_function_calling": true,
       "supports_response_schema": true,
       "supports_reasoning": true,
-      "supports_prompt_caching": true
+      "supports_prompt_caching": true,
+      "input_cost_per_token": 3e-06,
+      "output_cost_per_token": 1.5e-05
     },
     "tencent/kimi-k2.8-preview": {
       "mode": "chat",
@@ -130,7 +148,9 @@
       "supports_function_calling": true,
       "supports_response_schema": true,
       "supports_reasoning": true,
-      "supports_prompt_caching": true
+      "supports_prompt_caching": true,
+      "input_cost_per_token": 1e-06,
+      "output_cost_per_token": 4e-06
     },
     "tencent/kimi-k2.7-code-highspeed": {
       "mode": "chat",
@@ -143,7 +163,9 @@
       "supports_function_calling": true,
       "supports_response_schema": true,
       "supports_reasoning": true,
-      "supports_prompt_caching": true
+      "supports_prompt_caching": true,
+      "input_cost_per_token": 1.9e-06,
+      "output_cost_per_token": 8e-06
     },
     "tencent/kimi-k2.7-code": {
       "mode": "chat",
@@ -156,7 +178,9 @@
       "supports_function_calling": true,
       "supports_response_schema": true,
       "supports_reasoning": true,
-      "supports_prompt_caching": true
+      "supports_prompt_caching": true,
+      "input_cost_per_token": 9.5e-07,
+      "output_cost_per_token": 4e-06
     },
     "tencent/minimax-m3": {
       "mode": "chat",
@@ -167,7 +191,9 @@
       "supports_vision": false,
       "supports_function_calling": true,
       "supports_reasoning": true,
-      "supports_prompt_caching": true
+      "supports_prompt_caching": true,
+      "input_cost_per_token": 3e-07,
+      "output_cost_per_token": 1.2e-06
     },
     "tencent/seedream-image-v5.0-flash": {
       "mode": "image_generation",
@@ -198,7 +224,9 @@
       "supports_function_calling": true,
       "supports_response_schema": true,
       "supports_reasoning": true,
-      "supports_prompt_caching": true
+      "supports_prompt_caching": true,
+      "input_cost_per_token": 4.17e-07,
+      "output_cost_per_token": 1.2505e-06
     },
     "tencent/hy4-preview": {
       "mode": "chat",
@@ -207,7 +235,9 @@
       "supports_function_calling": true,
       "supports_response_schema": true,
       "supports_reasoning": true,
-      "supports_prompt_caching": true
+      "supports_prompt_caching": true,
+      "input_cost_per_token": 4.17e-07,
+      "output_cost_per_token": 1.2505e-06
     }
   }
 }
