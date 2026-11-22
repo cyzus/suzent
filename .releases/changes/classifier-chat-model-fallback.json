@@ -1,0 +1,1 @@
+{"products": {"desktop": "patch"}, "summary": "When the auto-approval reviewer model can't be reached, Suzent now tries the chat's own model before falling back to asking you."}

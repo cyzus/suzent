@@ -8,7 +8,7 @@ import {
   type SuzentBotStageId,
   portableMulberry32,
   resolveSuzentStage,
-  useRng,
+  seedRng,
 } from '../../lib/suzentBot';
 
 export interface SuzentBotMarkProps {
@@ -159,7 +159,7 @@ export const SuzentBotMark: React.FC<SuzentBotMarkProps> = React.memo(
     useIsoLayoutEffect(() => {
       const svg = svgRef.current;
       if (!svg) return undefined;
-      useRng(portableMulberry32((Math.random() * 0x100000000) >>> 0));
+      seedRng(portableMulberry32((Math.random() * 0x100000000) >>> 0));
       const engine = new SuzentBotEngine(() => configRef.current);
       engineRef.current = engine;
       let raf = 0;

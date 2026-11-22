@@ -19,4 +19,14 @@ describe('processEvent RUN_ERROR', () => {
 
     expect(result.error).toBe('boom');
   });
+
+  it('keeps the failure code so a stalled model can get a localized hint', () => {
+    const result = processEvent(
+      { type: 'RUN_ERROR', data: { message: 'Request timed out.', code: 'model_stalled' } },
+      []
+    );
+
+    expect(result.error).toBe('Request timed out.');
+    expect(result.errorCode).toBe('model_stalled');
+  });
 });

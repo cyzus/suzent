@@ -1,0 +1,1 @@
+{"products": {"desktop": "patch"}, "summary": "Models on OpenAI-compatible providers such as DeepSeek get 15 seconds to connect instead of 5, so a slow proxy or network no longer fails the request with \"Request timed out.\""}
