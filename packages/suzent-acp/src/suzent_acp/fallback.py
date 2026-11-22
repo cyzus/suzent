@@ -128,9 +128,14 @@ def serve_not_installed(argv: list[str]) -> int:
         return 0
     print(NOT_INSTALLED, file=sys.stderr)
 
-    def write(text: str) -> None:
-        sys.stdout.write(text)
-        sys.stdout.flush()
+    # ACP frames are UTF-8 whatever the locale; a Windows code page stdout
+    # cannot encode the "→" in the sign-in description.
+    def readline() -> str:
+        return sys.stdin.buffer.readline().decode("utf-8", "replace")
 
-    serve(sys.stdin.readline, write)
+    def write(text: str) -> None:
+        sys.stdout.buffer.write(text.encode("utf-8"))
+        sys.stdout.buffer.flush()
+
+    serve(readline, write)
     return 0

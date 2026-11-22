@@ -144,18 +144,21 @@ def test_module_answers_handshake_without_suzent(tmp_path: Path) -> None:
     }
     result = subprocess.run(
         [sys.executable, "-m", "suzent_acp"],
-        input=json.dumps(request) + "\n",
+        input=(json.dumps(request) + "\n").encode(),
         capture_output=True,
-        text=True,
         timeout=30,
         env={
             "HOME": str(tmp_path),
             "USERPROFILE": str(tmp_path),
             "PATH": "",
             "PYTHONPATH": str(PACKAGE_SRC),
+            # A Windows code page must not break the UTF-8 protocol stream.
+            "PYTHONIOENCODING": "cp1252",
         },
         check=True,
     )
-    reply = json.loads(result.stdout)
-    assert reply["result"]["authMethods"][0]["id"] == AGENT_AUTH_ID
-    assert "not installed" in result.stderr
+    reply = json.loads(result.stdout.decode("utf-8"))
+    method = reply["result"]["authMethods"][0]
+    assert method["id"] == AGENT_AUTH_ID
+    assert "→" in method["description"]
+    assert b"not installed" in result.stderr
