@@ -1,0 +1,64 @@
+name: Publish suzent-acp
+
+# Publishes packages/suzent-acp, the launcher the ACP Registry installs with
+# uvx, to PyPI through trusted publishing. Runs when its version changes on
+# main; a version already on PyPI is left alone, so a rerun is harmless. The
+# Registry picks up a new PyPI version on its own within the hour.
+on:
+  push:
+    branches: [main]
+    paths:
+      - packages/suzent-acp/pyproject.toml
+  workflow_dispatch:
+
+concurrency:
+  group: publish-suzent-acp
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    environment: pypi
+    permissions:
+      contents: read
+      id-token: write
+    defaults:
+      run:
+        working-directory: packages/suzent-acp
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install uv
+        run: curl -LsSf https://astral.sh/uv/install.sh | sh
+
+      - name: Skip a version already on PyPI
+        id: check
+        run: |
+          version=$(python3 -c "import tomllib; print(tomllib.load(open('pyproject.toml', 'rb'))['project']['version'])")
+          status=$(curl -s -o /dev/null -w '%{http_code}' "https://pypi.org/pypi/suzent-acp/$version/json")
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          if [ "$status" = "200" ]; then
+            echo "suzent-acp $version is already on PyPI"
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build
+        if: steps.check.outputs.publish == 'true'
+        run: uv build --out-dir dist
+
+      - name: Answer the ACP handshake from the built wheel
+        if: steps.check.outputs.publish == 'true'
+        run: |
+          reply=$(echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":1}}' \
+            | HOME="$RUNNER_TEMP" uvx --from dist/*.whl suzent-acp)
+          echo "$reply"
+          echo "$reply" | python3 -c "import json,sys; assert json.load(sys.stdin)['result']['authMethods']"
+
+      - name: Publish
+        if: steps.check.outputs.publish == 'true'
+        run: uv publish --trusted-publishing always dist/*

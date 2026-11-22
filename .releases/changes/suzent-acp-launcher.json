@@ -1,0 +1,5 @@
+{
+  "products": {"desktop": "none"},
+  "summary": "Add suzent-acp, a uvx launcher that lets editors from the ACP Registry use the installed Suzent.",
+  "reason": "suzent-acp is versioned and published to PyPI on its own; the desktop app and backend are unchanged."
+}

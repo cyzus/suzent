@@ -124,7 +124,9 @@ app too.
 1. Keep Suzent running (`suzent start`, or the
    [background service](./automation.md#keep-suzent-running-in-the-background)).
 2. In your editor's settings for external agents, add a custom agent with the
-   command `suzent` and the argument `acp`.
+   command `suzent` and the argument `acp`. If [uv](https://docs.astral.sh/uv/)
+   is installed, the command `uvx` with the argument `suzent-acp` also works,
+   and finds Suzent even when your editor doesn't see your terminal's `PATH`.
 3. Choose **Pair with Suzent** when your editor asks you to sign in. In
    **Settings → ACP Agents → Editor connections**, compare the code with the
    login terminal, check the confirmation box, and approve the request.
