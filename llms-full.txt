@@ -2739,7 +2739,9 @@ app too.
 1. Keep Suzent running (`suzent start`, or the
    [background service](https://suzent.com/docs/features/automation#keep-suzent-running-in-the-background)).
 2. In your editor's settings for external agents, add a custom agent with the
-   command `suzent` and the argument `acp`.
+   command `suzent` and the argument `acp`. If [uv](https://docs.astral.sh/uv/)
+   is installed, the command `uvx` with the argument `suzent-acp` also works,
+   and finds Suzent even when your editor doesn't see your terminal's `PATH`.
 3. Choose **Pair with Suzent** when your editor asks you to sign in. In
    **Settings → ACP Agents → Editor connections**, compare the code with the
    login terminal, check the confirmation box, and approve the request.
@@ -13552,11 +13554,31 @@ a different grant and cannot resume the old grant's sessions. Local processes an
 `--no-require-auth` remain within Suzent's trusted-local boundary; pairing is not an
 OS sandbox or a restriction on shared memory or the agent's other tools.
 
-For Registry submission, publish a version containing this flow first, pin its
-distribution in the registry manifest, and run the Registry's startup/auth checks
-against that published artifact. Include the required license URL and monochrome
-SVG icon, and document that a local Suzent backend and configured model are needed.
-The implementation alone does not publish a package or register Suzent.
+### Registry distribution: `suzent-acp`
+
+The [ACP Registry](https://github.com/agentclientprotocol/registry) installs
+agents with `npx`, `uvx` or a portable binary on a clean machine, which the
+desktop build is not. `packages/suzent-acp` is the `uvx` package it uses: a
+stdlib-only launcher, independently versioned, with no bridge of its own.
+
+The bridge speaks the backend's private loopback API (`/chat` streaming,
+`/acp/auth/*`), so it must ship with the backend it talks to. The launcher finds
+the installed CLI and replaces itself with `suzent acp <args>` (a child process
+on Windows), checking, in the desktop app's order, `SUZENT_DIR`, the installer's
+`<data dir>/install-dir.txt`, `~/suzent` (each as `.venv/bin/suzent`), then
+`suzent` on `PATH`. Editors often start agents with a minimal `PATH`, hence the
+workspace lookup first. Terminal-auth arguments reach `suzent acp` unchanged.
+
+Without an installation it answers `initialize` with the same `authMethods` as
+`suzent acp` (a test keeps the two identical), so the Registry's auth check and
+an editor's sign-in screen see a well-formed agent, and returns an install
+message for every session or authentication request.
+
+Releasing: bump `version` in `packages/suzent-acp/pyproject.toml`; on merge,
+`publish-suzent-acp.yml` publishes it to PyPI through trusted publishing (the
+`pypi` environment) and the Registry picks it up within an hour. Only a change
+to the launcher itself needs a new version. `packages/suzent-acp/registry/suzent/`
+holds the `agent.json` and `icon.svg` submitted to the Registry.
 
 ## 2. It is a translator, not a second agent
 
