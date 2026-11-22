@@ -50,6 +50,44 @@ def test_real_cli_registry_handshake_without_running_backend(tmp_path):
     assert response["id"] == 1
 
 
+def test_stdio_is_utf8_under_a_legacy_code_page(tmp_path):
+    (tmp_path / ".pytest").touch()
+    payload = request(
+        1,
+        "initialize",
+        {
+            "protocolVersion": 1,
+            "clientInfo": {"name": "编辑器 Zed"},
+            "clientCapabilities": {"auth": {"terminal": True}},
+        },
+    )
+    env = {
+        key: value
+        for key, value in os.environ.items()
+        if key not in {"PYTHONUTF8", "PYTHONIOENCODING"}
+    }
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "suzent.cli",
+            "acp",
+            "--server-url",
+            "http://127.0.0.1:1",
+        ],
+        input=(json.dumps(payload, ensure_ascii=False) + "\n").encode("utf-8"),
+        capture_output=True,
+        timeout=30,
+        # A Windows code page such as cp1252 can encode neither the client name
+        # nor the "→" in the sign-in description; the protocol is UTF-8 anyway.
+        env={**env, "SUZENT_DATA_DIR": str(tmp_path), "PYTHONIOENCODING": "cp1252"},
+    )
+    assert result.returncode == 0, result.stderr.decode("utf-8", "replace")
+    methods = json.loads(result.stdout.decode("utf-8"))["result"]["authMethods"]
+    assert methods[0]["args"] == ["--login", "--client-name", "编辑器 Zed"]
+    assert "→" in methods[1]["description"]
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize("terminal", [True, False])
 async def test_auth_methods_require_terminal_capability(terminal):

@@ -1033,12 +1033,17 @@ async def serve_stdio(
         print("ACP pairing requires a local Suzent backend", file=sys.stderr)
         return 1
     write_lock = asyncio.Lock()
+    # ACP frames are UTF-8 whatever the locale. Text streams follow the
+    # console code page on Windows, which cannot carry a non-Latin prompt in
+    # or the "→" in a sign-in description out, so use the byte streams.
+    stdin = sys.stdin.buffer
+    stdout = sys.stdout.buffer
 
     async def send(message: dict[str, Any]) -> None:
         line = json.dumps(message, ensure_ascii=False, separators=(",", ":"))
         async with write_lock:
-            sys.stdout.write(line + "\n")
-            sys.stdout.flush()
+            stdout.write((line + "\n").encode("utf-8"))
+            stdout.flush()
 
     server = ACPAgentServer(
         backend,
@@ -1053,10 +1058,10 @@ async def serve_stdio(
         while True:
             # A thread read keeps this portable: connect_read_pipe on stdin is
             # unavailable on Windows' proactor loop.
-            line = await asyncio.to_thread(sys.stdin.readline)
-            if line == "":
+            raw = await asyncio.to_thread(stdin.readline)
+            if raw == b"":
                 break
-            line = line.strip()
+            line = raw.decode("utf-8", "replace").strip()
             if not line:
                 continue
             try:
