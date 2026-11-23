@@ -27,7 +27,8 @@ want kept apart from everything else. Quick, one-off questions are fine in
 [chat apps](../05-chat-apps/README.md) go to **Social**.
 
 Create a project from the **Projects** list in the sidebar, or pick one on the
-new-chat screen. A chat can be moved to another project later; deleting a
+new-chat screen. To start a chat in a project straight away, hover over the
+project in the sidebar and click the pencil button next to its name. A chat can be moved to another project later; deleting a
 project moves its chats to **Home**.
 
 To move or delete several chats at once, select them the way you would select

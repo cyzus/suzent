@@ -124,30 +124,28 @@ flow. You can also open **Setup guide** from **Settings → About**. The standal
    listed; existing assignments are kept. Adjust them later in
    **Settings → Model Roles**.
 
-Provider and role settings remain available after setup:
-
-Once the UI is open, go to **Settings → Providers** to configure your API key. The most common starting points:
+To add a provider yourself, or another one later, open **Settings → Providers**. The most common starting points:
 
 <Tabs groupId="provider">
 <TabItem value="openai" label="OpenAI" default>
 
 **Get your key:** [platform.openai.com/api-keys](https://platform.openai.com/api-keys) → Create new secret key (starts with `sk-...`)
 
-In Settings, find **OpenAI** under **Add a provider** and open its card. On the **API keys** tab, paste your key and click **Save**. Then click **Test connection** and tick the models you want on the **Models** tab. Changes save on their own.
+In Settings, find **OpenAI** under **Add a provider** and open its card. On the **API keys** tab, paste your key and click **Save**. Then click **Test connection**; its models show up in the chat's model selector. Changes save on their own.
 
 </TabItem>
 <TabItem value="anthropic" label="Anthropic">
 
 **Get your key:** [console.anthropic.com/settings/keys](https://console.anthropic.com/settings/keys) → Create Key (starts with `sk-ant-...`)
 
-In Settings, find **Anthropic** under **Add a provider** and open its card. On the **API keys** tab, paste your key and click **Save**. Then click **Test connection** and tick the models you want on the **Models** tab. Changes save on their own.
+In Settings, find **Anthropic** under **Add a provider** and open its card. On the **API keys** tab, paste your key and click **Save**. Then click **Test connection**; its models show up in the chat's model selector. Changes save on their own.
 
 </TabItem>
 <TabItem value="gemini" label="Google Gemini">
 
 **Get your key (free tier available):** [aistudio.google.com/app/apikey](https://aistudio.google.com/app/apikey) → Create API Key (starts with `AIza...`)
 
-In Settings, find **Google Gemini** under **Add a provider** and open its card. On the **API keys** tab, paste your key and click **Save**. Then click **Test connection** and tick the models you want on the **Models** tab. Changes save on their own.
+In Settings, find **Google Gemini** under **Add a provider** and open its card. On the **API keys** tab, paste your key and click **Save**. Then click **Test connection**; its models show up in the chat's model selector. Changes save on their own.
 
 </TabItem>
 </Tabs>

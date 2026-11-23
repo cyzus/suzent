@@ -30,7 +30,9 @@ In every mode, your explicit "deny" rules and Suzent's built-in safety checks
 mode, a shell command the safety checks would block is put to you instead of
 refused outright, and if the reviewer can't decide, it asks you. The reviewer uses the **Permission
 Review** model role, which falls back to **Decision**; see
-[Model roles](../../04-models/model-roles.md). The reviewer explains its
+[Model roles](../../04-models/model-roles.md). If that model can't be reached,
+the chat's own model reviews the action instead, and only if that fails too
+does Suzent ask you. The reviewer explains its
 concern in the language you are writing in, and if you refuse a flagged action,
 the agent is told why so it doesn't simply try the same thing again.
 

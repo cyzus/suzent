@@ -33,8 +33,14 @@ Each server in **Configured Servers** has three icon buttons, **Test**, **Edit**
 and **Remove** (hover to see their names). **Test** connects again and lists the server's tools.
 
 A stdio server started with `npx` or `uv` may download its package the first
-time it runs, so the check made when you add it can time out. Wait a minute and
-click **Test**, which allows more time.
+time it runs, so the check made when you add it can time out. Suzent keeps
+installing it in the background, and the server shows **Preparing: installing
+on first launch** until it is ready. You can also wait a minute and click
+**Test**, which allows more time.
+
+A server that can't start or can't be reached doesn't stop your chats. Its
+card shows **Unreachable** with the reason, the agent works without its tools,
+and Suzent tries it again on the next message.
 
 ## Choosing where a server is used
 
