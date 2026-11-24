@@ -12335,8 +12335,9 @@ Manual runs can choose `android`, `ios`, or `both`; Android is the default.
 An iOS-only retry can use the same tag with `platforms=ios`, without
 rebuilding Android or modifying its published assets. `submit_for_review`
 (default on) controls whether the uploaded iOS build is submitted to App Review.
-`publish_to_play` (default on) and `play_track` (default `alpha`, closed
-testing) control the Google Play rollout.
+`publish_to_play` (default on) and `play_track` (default `production`, the
+public listing) control the Google Play rollout. Dispatch with
+`play_track=alpha` to send a build to closed testing only.
 Tag pushes alone do not publish: the explicit dispatch also works with GitHub's
 built-in token, whose tag pushes do not trigger another workflow.
 
@@ -12419,9 +12420,10 @@ A version already live on the track is left alone, and a bundle uploaded by an
 earlier failed attempt is reused, so rerunning the job is safe; a failed attempt
 discards its edit.
 
-Production needs Google's production access first (for newer personal developer
-accounts, after the closed-testing requirement is met). Once granted, dispatch
-with `play_track=production`, or change the workflow default.
+The automatic dispatch after a mobile Release PR merge uses the default, so every
+mobile release goes to production. Production needed Google's production access
+first, which Suzent has; a fork using a newer personal developer account must
+meet the closed-testing requirement and dispatch with `play_track=alpha` until then.
 
 ## Outputs and numbering
 
