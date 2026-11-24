@@ -7,6 +7,7 @@ export const GITHUB_LATEST =
 export const MIRROR_RELEASES = "https://registry.npmmirror.com/-/binary/suzent";
 const RELEASE_TAG = /^v(\d+)\.(\d+)\.(\d+)$/;
 export const MS_STORE_URL = downloads.microsoftStore;
+export const GOOGLE_PLAY_URL = downloads.googlePlay;
 
 async function reachable(url: string, ms: number): Promise<boolean> {
   const controller = new AbortController();

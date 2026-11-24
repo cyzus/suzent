@@ -70,8 +70,10 @@ platform's interface.
 4. **Production**: create a release with the same AAB, pick countries, and
    send for review. First reviews often take several days.
 
-Each later release is the AAB from the matching `mobile-vX.Y.Z` GitHub
-Release, uploaded by hand; CI does not publish to Play.
+Once the app is live, later releases are published by CI: the `google-play`
+job of the Release mobile workflow uploads the AAB from the matching
+`mobile-vX.Y.Z` release to the `play_track` track (see
+[Mobile releases](../../08-developing/contributing/mobile-releases.md#google-play)).
 
 ## Before submitting
 
