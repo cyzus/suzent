@@ -7,7 +7,7 @@ import { SiteNav } from "../site-nav";
 import { HeroArt } from "./HeroArt";
 import { DotCube, type DotFieldPointer } from "./DotSphere";
 import styles from "./index.module.css";
-import { GITHUB_LATEST, MIRROR_RELEASES, MS_STORE_URL, useDownloadSource } from "../../lib/download-source";
+import { GITHUB_LATEST, GOOGLE_PLAY_URL, MIRROR_RELEASES, MS_STORE_URL, useDownloadSource } from "../../lib/download-source";
 import { detectDownloadPlatform, type DownloadPlatform } from "../../lib/download-platform";
 
 const UNIX_CMD = `curl -fsSL https://raw.githubusercontent.com/cyzus/suzent/main/scripts/setup.sh | bash`;
@@ -312,12 +312,14 @@ function InstallerDownloads(): ReactNode {
     ? `${MIRROR_RELEASES}/${mirrorTag}/${asset}`
     : `${GITHUB_LATEST}/${asset}`;
   const primaryUrl = os === "ios" ? "/download/ios/"
-    : os === "android" ? "/download/android/"
+    : os === "android" ? (china ? "/download/android/" : GOOGLE_PLAY_URL)
     : os === "windows" ? MS_STORE_URL : downloadUrl;
   const primaryLabel = os === "ios"
     ? t({ id: "homepage.download.appStore", message: "Download on the App Store" })
     : os === "android"
-      ? t({ id: "homepage.download.androidPrimary", message: "Download Android APK" })
+      ? china
+        ? t({ id: "homepage.download.androidPrimary", message: "Download Android APK" })
+        : t({ id: "homepage.download.googlePlay", message: "Get it on Google Play" })
       : os === "windows"
         ? t({ id: "homepage.download.microsoftStore", message: "Microsoft Store" })
         : t({ id: `homepage.download.for.${os}`, message: `Download for ${name}` });
@@ -376,7 +378,7 @@ function InstallerDownloads(): ReactNode {
               })}
             </option>
             <option value="ios">iOS · App Store</option>
-            <option value="android">Android · APK</option>
+            <option value="android">Android · Google Play</option>
             <option value="macos">macOS · Universal</option>
             <option value="windows">Windows · x86_64</option>
             <option value="linux">Linux · x86_64</option>
