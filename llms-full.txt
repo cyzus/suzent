@@ -335,30 +335,28 @@ flow. You can also open **Setup guide** from **Settings → About**. The standal
    listed; existing assignments are kept. Adjust them later in
    **Settings → Model Roles**.
 
-Provider and role settings remain available after setup:
-
-Once the UI is open, go to **Settings → Providers** to configure your API key. The most common starting points:
+To add a provider yourself, or another one later, open **Settings → Providers**. The most common starting points:
 
 <Tabs groupId="provider">
 <TabItem value="openai" label="OpenAI" default>
 
 **Get your key:** [platform.openai.com/api-keys](https://platform.openai.com/api-keys) → Create new secret key (starts with `sk-...`)
 
-In Settings, find **OpenAI** under **Add a provider** and open its card. On the **API keys** tab, paste your key and click **Save**. Then click **Test connection** and tick the models you want on the **Models** tab. Changes save on their own.
+In Settings, find **OpenAI** under **Add a provider** and open its card. On the **API keys** tab, paste your key and click **Save**. Then click **Test connection**; its models show up in the chat's model selector. Changes save on their own.
 
 </TabItem>
 <TabItem value="anthropic" label="Anthropic">
 
 **Get your key:** [console.anthropic.com/settings/keys](https://console.anthropic.com/settings/keys) → Create Key (starts with `sk-ant-...`)
 
-In Settings, find **Anthropic** under **Add a provider** and open its card. On the **API keys** tab, paste your key and click **Save**. Then click **Test connection** and tick the models you want on the **Models** tab. Changes save on their own.
+In Settings, find **Anthropic** under **Add a provider** and open its card. On the **API keys** tab, paste your key and click **Save**. Then click **Test connection**; its models show up in the chat's model selector. Changes save on their own.
 
 </TabItem>
 <TabItem value="gemini" label="Google Gemini">
 
 **Get your key (free tier available):** [aistudio.google.com/app/apikey](https://aistudio.google.com/app/apikey) → Create API Key (starts with `AIza...`)
 
-In Settings, find **Google Gemini** under **Add a provider** and open its card. On the **API keys** tab, paste your key and click **Save**. Then click **Test connection** and tick the models you want on the **Models** tab. Changes save on their own.
+In Settings, find **Google Gemini** under **Add a provider** and open its card. On the **API keys** tab, paste your key and click **Save**. Then click **Test connection**; its models show up in the chat's model selector. Changes save on their own.
 
 </TabItem>
 </Tabs>
@@ -563,8 +561,9 @@ reports into a one-page brief in `brief.md`" gets better results than
   group related chats into a [project](https://suzent.com/docs/using/projects).
 - **Archive what's finished.** Right-click a chat (or a selection of chats)
   and choose **Archive chat** to clear it out of the sidebar without deleting
-  it. Archived chats still show up in search. To list them, choose **Show
-  archived chats** from the **…** menu next to **Projects**; they collect under
+  it. Archived chats still show up in search. To list them, hover over
+  **Projects** in the sidebar, open the **…** menu that appears, and choose
+  **Show archived chats**; they collect under
   **Archived** at the bottom of the sidebar, where **Unarchive chat** brings one
   back.
   The mobile app doesn't list archived chats.
@@ -818,7 +817,8 @@ want kept apart from everything else. Quick, one-off questions are fine in
 [chat apps](https://suzent.com/docs/chat-apps) go to **Social**.
 
 Create a project from the **Projects** list in the sidebar, or pick one on the
-new-chat screen. A chat can be moved to another project later; deleting a
+new-chat screen. To start a chat in a project straight away, hover over the
+project in the sidebar and click the pencil button next to its name. A chat can be moved to another project later; deleting a
 project moves its chats to **Home**.
 
 To move or delete several chats at once, select them the way you would select
@@ -1341,6 +1341,10 @@ without you prompting each step. Use it when "done" is easy to check, such as
 - After each turn, a quick check (using the **Goal Judge** model role, which falls back to
   **Decision**) decides
   whether the goal is met. If not, the agent continues automatically.
+- A goal isn't counted as met while the project still has open tasks, while
+  files changed in the last turn haven't been checked by running a command
+  such as the tests, or while the last command it ran failed. The agent is
+  told which of these is holding it back.
 - It stops when the goal is achieved, or pauses after 20 turns.
 - Anything you type takes priority. Your message runs first, then the goal
   continues.
@@ -3761,7 +3765,9 @@ In every mode, your explicit "deny" rules and Suzent's built-in safety checks
 mode, a shell command the safety checks would block is put to you instead of
 refused outright, and if the reviewer can't decide, it asks you. The reviewer uses the **Permission
 Review** model role, which falls back to **Decision**; see
-[Model roles](https://suzent.com/docs/models/model-roles). The reviewer explains its
+[Model roles](https://suzent.com/docs/models/model-roles). If that model can't be reached,
+the chat's own model reviews the action instead, and only if that fails too
+does Suzent ask you. The reviewer explains its
 concern in the language you are writing in, and if you refuse a flagged action,
 the agent is told why so it doesn't simply try the same thing again.
 
@@ -3943,8 +3949,14 @@ Each server in **Configured Servers** has three icon buttons, **Test**, **Edit**
 and **Remove** (hover to see their names). **Test** connects again and lists the server's tools.
 
 A stdio server started with `npx` or `uv` may download its package the first
-time it runs, so the check made when you add it can time out. Wait a minute and
-click **Test**, which allows more time.
+time it runs, so the check made when you add it can time out. Suzent keeps
+installing it in the background, and the server shows **Preparing: installing
+on first launch** until it is ready. You can also wait a minute and click
+**Test**, which allows more time.
+
+A server that can't start or can't be reached doesn't stop your chats. Its
+card shows **Unreachable** with the reason, the agent works without its tools,
+and Suzent tries it again on the next message.
 
 ## Choosing where a server is used
 
@@ -4505,8 +4517,9 @@ Use Claude models with an API key from the Anthropic Console.
 2. Open **Settings → Providers**. Under **Add a provider**, find **Anthropic**
    (or type its name in the search box) and click it to open its card.
 3. On the **API keys** tab, paste the key and click **Save**.
-4. Click **Test connection**, then tick the models you want on the
-   **Models** tab.
+4. Click **Test connection**. Its models then show up in the chat's model
+   selector. Star the ones you use most on the **Models** tab to list them
+   first.
 
 Changes save on their own, and Anthropic then moves up to the providers you
 have set up.
@@ -4540,8 +4553,9 @@ Use a Bailian Token Plan or Coding Plan subscription from Alibaba Cloud. One pla
    (or type its name in the search box) and click it to open its card.
 3. On the **API keys** tab, pick your **Plan** (see [plan choices](#plan-choices)),
    then paste the key and click **Save**.
-4. Click **Test connection**, then tick the models you want on the
-   **Models** tab.
+4. Click **Test connection**. Its models then show up in the chat's model
+   selector. Star the ones you use most on the **Models** tab to list them
+   first.
 
 Changes save on their own, and Bailian Plan then moves up to the providers you
 have set up.
@@ -4620,8 +4634,9 @@ Use the models included in a ClinePass subscription from Cline, such as GLM, Kim
 2. Open **Settings → Providers**. Under **Add a provider**, find **ClinePass**
    (or type its name in the search box) and click it to open its card.
 3. On the **API keys** tab, paste the key and click **Save**.
-4. Click **Test connection**, then tick the models you want on the
-   **Models** tab.
+4. Click **Test connection**. Its models then show up in the chat's model
+   selector. Star the ones you use most on the **Models** tab to list them
+   first.
 
 Changes save on their own, and ClinePass then moves up to the providers you
 have set up.
@@ -4655,8 +4670,9 @@ Use Qwen models with a pay-as-you-go API key from Alibaba Cloud Model Studio (Ba
    (or type its name in the search box) and click it to open its card.
 3. On the **API keys** tab, pick your **Region** (see [region choices](#region-choices)),
    then paste the key and click **Save**.
-4. Click **Test connection**, then tick the models you want on the
-   **Models** tab.
+4. Click **Test connection**. Its models then show up in the chat's model
+   selector. Star the ones you use most on the **Models** tab to list them
+   first.
 
 Changes save on their own, and Qwen (DashScope) then moves up to the providers you
 have set up.
@@ -4707,8 +4723,9 @@ Use DeepSeek's low-cost chat and reasoning models.
 2. Open **Settings → Providers**. Under **Add a provider**, find **DeepSeek**
    (or type its name in the search box) and click it to open its card.
 3. On the **API keys** tab, paste the key and click **Save**.
-4. Click **Test connection**, then tick the models you want on the
-   **Models** tab.
+4. Click **Test connection**. Its models then show up in the chat's model
+   selector. Star the ones you use most on the **Models** tab to list them
+   first.
 
 Changes save on their own, and DeepSeek then moves up to the providers you
 have set up.
@@ -4745,8 +4762,9 @@ Use Gemini models with an API key from Google AI Studio. A free tier is availabl
 2. Open **Settings → Providers**. Under **Add a provider**, find **Google Gemini**
    (or type its name in the search box) and click it to open its card.
 3. On the **API keys** tab, paste the key and click **Save**.
-4. Click **Test connection**, then tick the models you want on the
-   **Models** tab.
+4. Click **Test connection**. Its models then show up in the chat's model
+   selector. Star the ones you use most on the **Models** tab to list them
+   first.
 
 Changes save on their own, and Google Gemini then moves up to the providers you
 have set up.
@@ -4780,8 +4798,9 @@ Use the models on Huawei Cloud's ModelArts MaaS, on the Token Plan or pay as you
    (or type its name in the search box) and click it to open its card.
 3. On the **API keys** tab, pick your **Plan** (see [plan choices](#plan-choices)),
    then paste the key and click **Save**.
-4. Click **Test connection**, then tick the models you want on the
-   **Models** tab.
+4. Click **Test connection**. Its models then show up in the chat's model
+   selector. Star the ones you use most on the **Models** tab to list them
+   first.
 
 Changes save on their own, and Huawei Cloud MaaS then moves up to the providers you
 have set up.
@@ -4827,8 +4846,9 @@ Use the models in your Kimi Code subscription, Kimi's coding plan, with the API 
    (or type its name in the search box) and click it to open its card.
 3. On the **API keys** tab, pick your **Region** (see [region choices](#region-choices)),
    then paste the key and click **Save**.
-4. Click **Test connection**, then tick the models you want on the
-   **Models** tab.
+4. Click **Test connection**. Its models then show up in the chat's model
+   selector. Star the ones you use most on the **Models** tab to list them
+   first.
 
 Changes save on their own, and Kimi Code then moves up to the providers you
 have set up.
@@ -4880,8 +4900,9 @@ Use MiniMax models with an API key from the MiniMax platform.
    (or type its name in the search box) and click it to open its card.
 3. On the **API keys** tab, pick your **Region** (see [region choices](#region-choices)),
    then paste the key and click **Save**.
-4. Click **Test connection**, then tick the models you want on the
-   **Models** tab.
+4. Click **Test connection**. Its models then show up in the chat's model
+   selector. Star the ones you use most on the **Models** tab to list them
+   first.
 
 Changes save on their own, and MiniMax then moves up to the providers you
 have set up.
@@ -4929,8 +4950,9 @@ Use Kimi models, known for long context, with a pay-as-you-go API key from Moons
    (or type its name in the search box) and click it to open its card.
 3. On the **API keys** tab, pick your **Region** (see [region choices](#region-choices)),
    then paste the key and click **Save**.
-4. Click **Test connection**, then tick the models you want on the
-   **Models** tab.
+4. Click **Test connection**. Its models then show up in the chat's model
+   selector. Star the ones you use most on the **Models** tab to list them
+   first.
 
 Changes save on their own, and Kimi (Moonshot) then moves up to the providers you
 have set up.
@@ -4981,8 +5003,9 @@ Use the models Ollama hosts in its cloud, with an API key from your ollama.com a
 2. Open **Settings → Providers**. Under **Add a provider**, find **Ollama Cloud**
    (or type its name in the search box) and click it to open its card.
 3. On the **API keys** tab, paste the key and click **Save**.
-4. Click **Test connection**, then tick the models you want on the
-   **Models** tab.
+4. Click **Test connection**. Its models then show up in the chat's model
+   selector. Star the ones you use most on the **Models** tab to list them
+   first.
 
 Changes save on their own, and Ollama Cloud then moves up to the providers you
 have set up.
@@ -5019,8 +5042,9 @@ Use GPT and other OpenAI models with an API key from your OpenAI account.
 2. Open **Settings → Providers**. Under **Add a provider**, find **OpenAI**
    (or type its name in the search box) and click it to open its card.
 3. On the **API keys** tab, paste the key and click **Save**.
-4. Click **Test connection**, then tick the models you want on the
-   **Models** tab.
+4. Click **Test connection**. Its models then show up in the chat's model
+   selector. Star the ones you use most on the **Models** tab to list them
+   first.
 
 Changes save on their own, and OpenAI then moves up to the providers you
 have set up.
@@ -5058,8 +5082,9 @@ Use the models included in an OpenCode Go subscription.
 2. Open **Settings → Providers**. Under **Add a provider**, find **OpenCode Go**
    (or type its name in the search box) and click it to open its card.
 3. On the **API keys** tab, paste the key and click **Save**.
-4. Click **Test connection**, then tick the models you want on the
-   **Models** tab.
+4. Click **Test connection**. Its models then show up in the chat's model
+   selector. Star the ones you use most on the **Models** tab to list them
+   first.
 
 Changes save on their own, and OpenCode Go then moves up to the providers you
 have set up.
@@ -5092,8 +5117,9 @@ Reach hundreds of models (GPT, Claude, Gemini, Llama, Mistral, and more) with a 
 2. Open **Settings → Providers**. Under **Add a provider**, find **OpenRouter**
    (or type its name in the search box) and click it to open its card.
 3. On the **API keys** tab, paste the key and click **Save**.
-4. Click **Test connection**, then tick the models you want on the
-   **Models** tab.
+4. Click **Test connection**. Its models then show up in the chat's model
+   selector. Star the ones you use most on the **Models** tab to list them
+   first.
 
 Changes save on their own, and OpenRouter then moves up to the providers you
 have set up.
@@ -5131,8 +5157,9 @@ Use the models on Baidu Qianfan, through a personal or enterprise Token Plan or 
    (or type its name in the search box) and click it to open its card.
 3. On the **API keys** tab, pick your **Plan** (see [plan choices](#plan-choices)),
    then paste the key and click **Save**.
-4. Click **Test connection**, then tick the models you want on the
-   **Models** tab.
+4. Click **Test connection**. Its models then show up in the chat's model
+   selector. Star the ones you use most on the **Models** tab to list them
+   first.
 
 Changes save on their own, and Baidu Qianfan then moves up to the providers you
 have set up.
@@ -5183,8 +5210,9 @@ Use StepFun's Step models, on the Step Plan or pay as you go.
    (or type its name in the search box) and click it to open its card.
 3. On the **API keys** tab, pick your **Plan** (see [plan choices](#plan-choices)),
    then paste the key and click **Save**.
-4. Click **Test connection**, then tick the models you want on the
-   **Models** tab.
+4. Click **Test connection**. Its models then show up in the chat's model
+   selector. Star the ones you use most on the **Models** tab to list them
+   first.
 
 Changes save on their own, and StepFun then moves up to the providers you
 have set up.
@@ -5234,8 +5262,9 @@ Use Hunyuan and the other models on Tencent Cloud, through a Token Plan, a Codin
    (or type its name in the search box) and click it to open its card.
 3. On the **API keys** tab, pick your **Plan** (see [plan choices](#plan-choices)),
    then paste the key and click **Save**.
-4. Click **Test connection**, then tick the models you want on the
-   **Models** tab.
+4. Click **Test connection**. Its models then show up in the chat's model
+   selector. Star the ones you use most on the **Models** tab to list them
+   first.
 
 Changes save on their own, and Tencent Cloud then moves up to the providers you
 have set up.
@@ -5285,8 +5314,9 @@ Use Doubao and the other models on Volcengine Ark (ByteDance), through the Codin
    (or type its name in the search box) and click it to open its card.
 3. On the **API keys** tab, pick your **Plan** (see [plan choices](#plan-choices)),
    then paste the key and click **Save**.
-4. Click **Test connection**, then tick the models you want on the
-   **Models** tab.
+4. Click **Test connection**. Its models then show up in the chat's model
+   selector. Star the ones you use most on the **Models** tab to list them
+   first.
 
 Changes save on their own, and Volcengine Ark then moves up to the providers you
 have set up.
@@ -5332,8 +5362,9 @@ Use Grok models with an API key from xAI.
 2. Open **Settings → Providers**. Under **Add a provider**, find **xAI (Grok)**
    (or type its name in the search box) and click it to open its card.
 3. On the **API keys** tab, paste the key and click **Save**.
-4. Click **Test connection**, then tick the models you want on the
-   **Models** tab.
+4. Click **Test connection**. Its models then show up in the chat's model
+   selector. Star the ones you use most on the **Models** tab to list them
+   first.
 
 Changes save on their own, and xAI (Grok) then moves up to the providers you
 have set up.
@@ -5367,8 +5398,9 @@ Use Xiaomi MiMo models through their OpenAI-compatible API, pay as you go or on 
    (or type its name in the search box) and click it to open its card.
 3. On the **API keys** tab, pick your **Plan** (see [plan choices](#plan-choices)),
    then paste the key and click **Save**.
-4. Click **Test connection**, then tick the models you want on the
-   **Models** tab.
+4. Click **Test connection**. Its models then show up in the chat's model
+   selector. Star the ones you use most on the **Models** tab to list them
+   first.
 
 Changes save on their own, and Xiaomi MiMo then moves up to the providers you
 have set up.
@@ -5416,8 +5448,9 @@ Use GLM models with an API key from Zhipu's BigModel platform in China or from Z
    (or type its name in the search box) and click it to open its card.
 3. On the **API keys** tab, pick your **Plan** (see [plan choices](#plan-choices)),
    then paste the key and click **Save**.
-4. Click **Test connection**, then tick the models you want on the
-   **Models** tab.
+4. Click **Test connection**. Its models then show up in the chat's model
+   selector. Star the ones you use most on the **Models** tab to list them
+   first.
 
 Changes save on their own, and Zhipu GLM / Z.ai then moves up to the providers you
 have set up.
@@ -5470,7 +5503,8 @@ use it like any other provider.
 3. On the **API keys** tab, fill in **Base URL** and **Master Key**, clicking
    **Save** for each.
 4. Click **Test connection** to load the models your proxy
-   exposes, then tick the ones you want on the **Models** tab.
+   exposes, then star the ones you want on the **Models** tab. They show up
+   in the chat's model selector, starred ones first.
 
 Changes save on their own.
 
@@ -5508,7 +5542,8 @@ you say leaves your machine.
 2. Open **Settings → Providers**. Under **Add a provider**, find **Ollama**
    (or type its name in the search box) and click it to open its card.
 3. Click **Test connection** to list the models you have pulled,
-   then tick the ones you want on the **Models** tab.
+   then star the ones you want on the **Models** tab. They show up in the
+   chat's model selector, starred ones first.
 
 Changes save on their own.
 
@@ -5550,8 +5585,9 @@ server you control, Suzent can talk to it directly.
 2. Open **Settings → Providers**. Under **Add a provider**, find **SGLang**
    (or type its name in the search box) and click it to open its card.
 3. On the **API keys** tab, enter the server's **Base URL** and click **Save**.
-4. Click **Test connection**, then tick the models you want on the
-   **Models** tab.
+4. Click **Test connection**, then star at least one model on the
+   **Models** tab. The server's models then show up in the chat's model
+   selector, starred ones first.
 
 Changes save on their own.
 
@@ -5585,8 +5621,9 @@ server you control, Suzent can talk to it directly.
 2. Open **Settings → Providers**. Under **Add a provider**, find **vLLM**
    (or type its name in the search box) and click it to open its card.
 3. On the **API keys** tab, enter the server's **Base URL** and click **Save**.
-4. Click **Test connection**, then tick the models you want on the
-   **Models** tab.
+4. Click **Test connection**, then star at least one model on the
+   **Models** tab. The server's models then show up in the chat's model
+   selector, starred ones first.
 
 Changes save on their own.
 
@@ -5689,8 +5726,9 @@ model selector in the chat window.
 3. On the **API keys** tab, paste your key and click **Save**. **Get a … API
    key** links to the page where you create one.
 4. Click **Test connection**. This checks the key and loads the
-   models it can use.
-5. Tick the models you want on the **Models** tab.
+   models it can use, which then show up in the chat's model selector.
+5. On the **Models** tab, star the models you use most. Starred models are
+   listed first in the model selector.
 
 Changes save on their own. Keys are stored in your operating system's keychain
 (or, where there is none, an encrypted file on your computer), never in
@@ -5763,6 +5801,21 @@ change the key and Base URL later, fetch its models, or remove it with
 
 Once you have models, decide which one does which job in
 [Model roles](https://suzent.com/docs/models/model-roles).
+
+## Pick a model in the chat
+
+The model selector next to the message box lists the models of every provider
+you have set up, grouped by provider. Starred models come first, under
+**★ Starred**.
+
+- Type in the search box at the top to find a model or provider.
+- Click a provider's name to open or fold its group. At first only the group
+  of the chat's current model is open; after that the selector remembers your
+  choice.
+- Click the star next to a model to star or unstar it.
+- Click the refresh button to fetch the providers' model lists again, for
+  example after a provider releases a new model. Suzent also does this on its
+  own when you open the app.
 
 ## Tips
 
