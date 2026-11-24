@@ -178,7 +178,7 @@ def main() -> None:
         required=True,
         help="Directory with metadata.json and notes.md from mobile_release.py",
     )
-    parser.add_argument("--track", default="alpha")
+    parser.add_argument("--track", default="production")
     parser.add_argument("--package", default="com.suzent.mobile")
     args = parser.parse_args()
     raw = os.environ.get("GOOGLE_PLAY_SERVICE_ACCOUNT_JSON")
