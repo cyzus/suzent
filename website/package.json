@@ -39,6 +39,6 @@
     "tailwindcss": "^4.0.0",
     "@tailwindcss/postcss": "^4.0.0",
     "prettier": "^3.6.2",
-    "serve": "^14.2.4"
+    "serve": "^14.2.8"
   }
 }
