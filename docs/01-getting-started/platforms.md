@@ -33,7 +33,7 @@ system — use the
 
 ## Phone
 
-The Suzent app for Android and iOS (currently in preview) is a remote control
+The Suzent app for Android and iOS, on Google Play and the App Store, is a remote control
 for the agent on your computer. Nothing runs on the phone itself, so your
 memory and keys stay home. To get it and pair it, see
 [Mobile app](../03-features/mobile.md). To look around before you pair, the app

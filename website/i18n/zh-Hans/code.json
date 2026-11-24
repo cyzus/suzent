@@ -353,6 +353,9 @@
   "homepage.download.androidPrimary": {
     "message": "下载 Android APK"
   },
+  "homepage.download.googlePlay": {
+    "message": "从 Google Play 下载"
+  },
   "homepage.download.all": {
     "message": "所有下载与安装方式"
   }
