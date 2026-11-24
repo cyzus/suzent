@@ -14,8 +14,9 @@ Use Grok models with an API key from xAI.
 2. Open **Settings → Providers**. Under **Add a provider**, find **xAI (Grok)**
    (or type its name in the search box) and click it to open its card.
 3. On the **API keys** tab, paste the key and click **Save**.
-4. Click **Test connection**, then tick the models you want on the
-   **Models** tab.
+4. Click **Test connection**. Its models then show up in the chat's model
+   selector. Star the ones you use most on the **Models** tab to list them
+   first.
 
 Changes save on their own, and xAI (Grok) then moves up to the providers you
 have set up.

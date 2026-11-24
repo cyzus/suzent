@@ -15,8 +15,9 @@ Use a Bailian Token Plan or Coding Plan subscription from Alibaba Cloud. One pla
    (or type its name in the search box) and click it to open its card.
 3. On the **API keys** tab, pick your **Plan** (see [plan choices](#plan-choices)),
    then paste the key and click **Save**.
-4. Click **Test connection**, then tick the models you want on the
-   **Models** tab.
+4. Click **Test connection**. Its models then show up in the chat's model
+   selector. Star the ones you use most on the **Models** tab to list them
+   first.
 
 Changes save on their own, and Bailian Plan then moves up to the providers you
 have set up.
