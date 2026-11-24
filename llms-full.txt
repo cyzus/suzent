@@ -152,7 +152,7 @@ system — use the
 
 ## Phone
 
-The Suzent app for Android and iOS (currently in preview) is a remote control
+The Suzent app for Android and iOS, on Google Play and the App Store, is a remote control
 for the agent on your computer. Nothing runs on the phone itself, so your
 memory and keys stay home. To get it and pair it, see
 [Mobile app](https://suzent.com/docs/features/mobile). To look around before you pair, the app
@@ -2329,8 +2329,7 @@ for each phone.
 
 <Callout type="info" title="note">
 
-The mobile app is a preview. It works, but it isn't in the App Store or Google
-Play yet, and some desktop features are missing (see [Limits](#limits)).
+Some desktop features aren't in the mobile app yet (see [Limits](#limits)).
 
 </Callout>
 
@@ -2338,8 +2337,8 @@ Play yet, and some desktop features are missing (see [Limits](#limits)).
 
 | | Requirement | Where to get it |
 |---|---|---|
-| **Android** | Android 8 or later | Download the [latest APK](https://suzent.com/download/android/) and install it. Earlier versions are on [GitHub Releases](https://github.com/cyzus/suzent/releases) under `mobile-v...`. |
-| **iPhone and iPad** | iOS 17 or later | Join the [TestFlight beta](https://suzent.com/download/ios/): install Apple's TestFlight app, open the invitation, and accept it to install Suzent. Places depend on an approved build and room in the test group. |
+| **Android** | Android 8 or later | Install from [Google Play](https://play.google.com/store/apps/details?id=com.suzent.mobile). Where Google Play isn't available, download the [latest APK](https://suzent.com/download/android/) instead; earlier versions are on [GitHub Releases](https://github.com/cyzus/suzent/releases) under `mobile-v...`. |
+| **iPhone and iPad** | iOS 17 or later | Install from the [App Store](https://suzent.com/download/ios/). To try upcoming features early, join the [TestFlight beta](https://testflight.apple.com/join/gjcSRyZj). |
 
 The app's [privacy policy](https://suzent.com/mobile-privacy) is also linked
 from the connection screen and from **Settings → About**.
@@ -2603,7 +2602,7 @@ adding a second one.
 
 ## Limits
 
-The preview doesn't yet have:
+The mobile app doesn't yet have:
 
 - notifications, so the phone stays quiet until you open the app;
 - the computer's side panel for displays the agent keeps updating (they show in the reply instead);
