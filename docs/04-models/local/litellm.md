@@ -18,7 +18,8 @@ use it like any other provider.
 3. On the **API keys** tab, fill in **Base URL** and **Master Key**, clicking
    **Save** for each.
 4. Click **Test connection** to load the models your proxy
-   exposes, then tick the ones you want on the **Models** tab.
+   exposes, then star the ones you want on the **Models** tab. They show up
+   in the chat's model selector, starred ones first.
 
 Changes save on their own.
 

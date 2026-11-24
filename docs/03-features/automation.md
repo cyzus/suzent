@@ -201,6 +201,10 @@ without you prompting each step. Use it when "done" is easy to check, such as
 - After each turn, a quick check (using the **Goal Judge** model role, which falls back to
   **Decision**) decides
   whether the goal is met. If not, the agent continues automatically.
+- A goal isn't counted as met while the project still has open tasks, while
+  files changed in the last turn haven't been checked by running a command
+  such as the tests, or while the last command it ran failed. The agent is
+  told which of these is holding it back.
 - It stops when the goal is achieved, or pauses after 20 turns.
 - Anything you type takes priority. Your message runs first, then the goal
   continues.

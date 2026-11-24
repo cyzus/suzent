@@ -19,7 +19,8 @@ you say leaves your machine.
 2. Open **Settings → Providers**. Under **Add a provider**, find **Ollama**
    (or type its name in the search box) and click it to open its card.
 3. Click **Test connection** to list the models you have pulled,
-   then tick the ones you want on the **Models** tab.
+   then star the ones you want on the **Models** tab. They show up in the
+   chat's model selector, starred ones first.
 
 Changes save on their own.
 

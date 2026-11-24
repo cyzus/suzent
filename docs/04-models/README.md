@@ -26,8 +26,9 @@ model selector in the chat window.
 3. On the **API keys** tab, paste your key and click **Save**. **Get a … API
    key** links to the page where you create one.
 4. Click **Test connection**. This checks the key and loads the
-   models it can use.
-5. Tick the models you want on the **Models** tab.
+   models it can use, which then show up in the chat's model selector.
+5. On the **Models** tab, star the models you use most. Starred models are
+   listed first in the model selector.
 
 Changes save on their own. Keys are stored in your operating system's keychain
 (or, where there is none, an encrypted file on your computer), never in
@@ -100,6 +101,21 @@ change the key and Base URL later, fetch its models, or remove it with
 
 Once you have models, decide which one does which job in
 [Model roles](./model-roles.md).
+
+## Pick a model in the chat
+
+The model selector next to the message box lists the models of every provider
+you have set up, grouped by provider. Starred models come first, under
+**★ Starred**.
+
+- Type in the search box at the top to find a model or provider.
+- Click a provider's name to open or fold its group. At first only the group
+  of the chat's current model is open; after that the selector remembers your
+  choice.
+- Click the star next to a model to star or unstar it.
+- Click the refresh button to fetch the providers' model lists again, for
+  example after a provider releases a new model. Suzent also does this on its
+  own when you open the app.
 
 ## Tips
 

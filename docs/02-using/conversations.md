@@ -21,8 +21,9 @@ reports into a one-page brief in `brief.md`" gets better results than
   group related chats into a [project](./projects.md).
 - **Archive what's finished.** Right-click a chat (or a selection of chats)
   and choose **Archive chat** to clear it out of the sidebar without deleting
-  it. Archived chats still show up in search. To list them, choose **Show
-  archived chats** from the **…** menu next to **Projects**; they collect under
+  it. Archived chats still show up in search. To list them, hover over
+  **Projects** in the sidebar, open the **…** menu that appears, and choose
+  **Show archived chats**; they collect under
   **Archived** at the bottom of the sidebar, where **Unarchive chat** brings one
   back.
   The mobile app doesn't list archived chats.

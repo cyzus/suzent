@@ -15,8 +15,9 @@ server you control, Suzent can talk to it directly.
 2. Open **Settings → Providers**. Under **Add a provider**, find **vLLM**
    (or type its name in the search box) and click it to open its card.
 3. On the **API keys** tab, enter the server's **Base URL** and click **Save**.
-4. Click **Test connection**, then tick the models you want on the
-   **Models** tab.
+4. Click **Test connection**, then star at least one model on the
+   **Models** tab. The server's models then show up in the chat's model
+   selector, starred ones first.
 
 Changes save on their own.
 
