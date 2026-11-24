@@ -398,6 +398,37 @@ async def test_a_correction_hides_the_old_claim_and_writes_the_new(store, monkey
     assert '> "I moved to Lisbon last month"' in log
 
 
+async def test_a_fact_from_another_agent_is_relayed_not_explicit(store, monkeypatch):
+    mgr = _manager(store, monkeypatch)
+
+    result = await mgr.apply_memory_update(
+        user_id="u1",
+        chat_id="",
+        fact="User prefers pnpm over npm",
+        evidence="use pnpm, not npm",
+        via="claude-code",
+    )
+
+    assert result["written"] == "User prefers pnpm over npm"
+    log = _log(store)
+    assert "`kind:user source:external_agent via:claude-code`" in log
+    assert "explicit" not in log
+
+
+async def test_a_lesson_from_another_agent_keeps_its_kind(store, monkeypatch):
+    mgr = _manager(store, monkeypatch)
+
+    await mgr.apply_memory_update(
+        user_id="u1",
+        chat_id="",
+        fact="uv sync needs --frozen in CI",
+        kind="experience",
+        via="codex",
+    )
+
+    assert "`kind:experience source:outcome via:codex`" in _log(store)
+
+
 # --- tool ---
 
 

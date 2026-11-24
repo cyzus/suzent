@@ -2444,6 +2444,27 @@ async function a2aJson<T>(res: Response, fallback: string): Promise<T> {
   return (await res.json()) as T;
 }
 
+export interface MemoryExternalAccess {
+  write_enabled: boolean;
+}
+
+export async function fetchMemoryExternalAccess(): Promise<MemoryExternalAccess | null> {
+  const res = await fetch(`${getApiBase()}/memory/external-access`);
+  if (!res.ok) return null;
+  return (await res.json()) as MemoryExternalAccess;
+}
+
+export async function saveMemoryExternalAccess(
+  writeEnabled: boolean
+): Promise<MemoryExternalAccess> {
+  const res = await fetch(`${getApiBase()}/memory/external-access`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ write_enabled: writeEnabled }),
+  });
+  return a2aJson<MemoryExternalAccess>(res, 'Failed to update memory access');
+}
+
 export async function fetchA2AStatus(): Promise<A2AStatus | null> {
   const res = await fetch(`${getApiBase()}/a2a/status`);
   if (!res.ok) return null;

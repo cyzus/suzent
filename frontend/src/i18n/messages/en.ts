@@ -1023,6 +1023,15 @@ export const en = {
       embeddingModelLabel: 'Embedding model',
       extractionModelLabel: 'Extraction model',
       modelNotConfigured: 'Not configured',
+      otherAgentsTitle: 'Other agents',
+      otherAgentsDesc:
+        'Let Claude Code, Codex, Cursor and other MCP apps on this computer search your memory. Add this command to the app as an MCP server. Nothing leaves your computer.',
+      otherAgentsCommand: 'Claude Code',
+      otherAgentsOtherApps: 'Other apps: command suzent, arguments mcp serve',
+      otherAgentsWrite: 'Let them save memories',
+      otherAgentsWriteDesc:
+        'Saved memories are marked with the agent that wrote them, and Suzent files them into your notes like any other. They can never delete or change what is already there.',
+      otherAgentsSaveFailed: 'Could not save this setting',
       dreamTitle: 'Memory organizing',
       statusBarIdle: 'Memory idle',
       openMemorySettings: 'Open memory settings',

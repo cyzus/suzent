@@ -1117,6 +1117,15 @@ export const zhCN = {
       embeddingModelLabel: '向量模型',
       extractionModelLabel: '抽取模型',
       modelNotConfigured: '未配置',
+      otherAgentsTitle: '其他 agent',
+      otherAgentsDesc:
+        '让这台电脑上的 Claude Code、Codex、Cursor 等支持 MCP 的应用搜索你的记忆。把下面的命令加到应用里作为 MCP 服务器即可。数据不会离开你的电脑。',
+      otherAgentsCommand: 'Claude Code',
+      otherAgentsOtherApps: '其他应用：命令填 suzent，参数填 mcp serve',
+      otherAgentsWrite: '允许它们保存记忆',
+      otherAgentsWriteDesc:
+        '保存的记忆会标明是哪个 agent 写的，Suzent 会像其他记忆一样整理进你的笔记。它们不能删除或修改已有的记忆。',
+      otherAgentsSaveFailed: '设置保存失败',
       dreamTitle: '记忆整理',
       statusBarIdle: '记忆空闲',
       openMemorySettings: '打开记忆设置',

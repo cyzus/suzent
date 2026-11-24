@@ -182,6 +182,9 @@ from suzent.routes.memory_routes import (
     get_memory_stats,
     consolidate_memory,
     lint_memory,
+    get_external_access,
+    save_external_access,
+    remember_from_external_agent,
     get_dream_status,
 )
 from suzent.routes.sandbox_routes import (
@@ -1489,6 +1492,9 @@ app = Starlette(
         Route("/memory/dream/status", get_dream_status, methods=["GET"]),
         Route("/memory/consolidate", consolidate_memory, methods=["POST"]),
         Route("/memory/lint", lint_memory, methods=["POST"]),
+        Route("/memory/external-access", get_external_access, methods=["GET"]),
+        Route("/memory/external-access", save_external_access, methods=["POST"]),
+        Route("/memory/remember", remember_from_external_agent, methods=["POST"]),
         Route(
             "/session/{session_id}/state",
             get_session_state,

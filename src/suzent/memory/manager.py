@@ -720,6 +720,7 @@ class MemoryManager:
         category: str = "context",
         horizon: str = "durable",
         evidence: str = "",
+        via: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Record what the user asked to remember, retract or correct, or what the
         agent learned from an outcome or a source it read.
@@ -732,6 +733,10 @@ class MemoryManager:
         claims too. One marked *wrong* also goes on the rejected list, so capture,
         the dream and lint keep it from coming back. *outdated* only hides it: the claim
         was true once and the dream may still keep it as history.
+
+        *via* names another agent (Claude Code, Codex, ...) writing through the memory
+        MCP server. Its word is relayed, so a User fact from it is tagged
+        `source:external_agent` and never `explicit`.
 
         Returns `{"retracted": [...], "written": str | None}`.
         """
@@ -782,15 +787,19 @@ class MemoryManager:
                     tags = ["kind:experience", "source:outcome"]
                 case "world":
                     tags = ["kind:world", "source:tool_output"]
+                case _ if via:
+                    tags = ["kind:user", "source:external_agent"]
                 case _:
                     tags = ["kind:user", "source:user_said", "explicit"]
+            if via:
+                tags.append(f"via:{via}")
             if horizon == "dated":
                 stale = now + timedelta(days=capture.DATED_STALE_DAYS)
                 tags += ["dated", f"stale_after:{stale.strftime('%Y-%m-%d')}"]
             if retract:
                 tags.append("revision")
             await store.append_daily_log(
-                chat_id=chat_id or "memory_update",
+                chat_id=chat_id or ("external_agent" if via else "memory_update"),
                 facts=[
                     {
                         "content": written,

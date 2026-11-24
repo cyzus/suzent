@@ -10,6 +10,8 @@ This package splits CLI commands into focused modules:
 - memory: lint, cleanup
 """
 
+import sys
+
 import typer
 
 # Must precede every other suzent import: quiets logging that would otherwise
@@ -68,15 +70,28 @@ def main(
     Suzent CLI - Your Digital Co-worker Manager.
     """
     _configure_console_encoding()
-    if ctx.invoked_subcommand == "acp":
-        # `suzent acp` speaks JSON-RPC on stdout, so no log line may land there
-        # -- not even the DEBUG output -v would otherwise enable.
+    if _stdout_is_reserved(ctx):
+        # `suzent acp` and `suzent mcp serve` speak JSON-RPC on stdout, and
+        # `suzent mcp skill` prints a file, so no log line may land there -- not
+        # even the DEBUG output -v would otherwise enable.
         from suzent.acp.server import redirect_logs_to_stderr
 
         redirect_logs_to_stderr("DEBUG" if verbose else "WARNING")
     else:
         configure_logging(verbose)
     load_environment()
+
+
+def _stdout_is_reserved(ctx: typer.Context, argv: list[str] | None = None) -> bool:
+    if ctx.invoked_subcommand == "acp":
+        return True
+    if ctx.invoked_subcommand != "mcp":
+        return False
+    # Click has already split off the group's own arguments by now, so the
+    # subcommand is only visible in argv.
+    args = sys.argv[1:] if argv is None else argv
+    words = [arg for arg in args[args.index("mcp") + 1 :] if not arg.startswith("-")]
+    return bool(words) and words[0] in {"serve", "skill"}
 
 
 # Register top-level commands (start, doctor, update, upgrade, setup-build_tools)

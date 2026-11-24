@@ -90,6 +90,8 @@ Suzent 会记住你分享过的事实、你的偏好以及过往对话的上下�
 
 dream 的运行频率、笔记本的位置等调优项，见[高级记忆设置](./configuration.md)。
 
+电脑上的 Claude Code、Codex 等其他 agent 也可以搜索这份记忆，经你允许后还能写入。见[让其他 agent 共享记忆](./other-agents.md)。
+
 <a id="checking-and-tidying-your-memory-files"></a>
 
 ## 检查和整理记忆文件

@@ -1,9 +1,13 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 
 import { useI18n } from '../../i18n';
+import { fetchMemoryExternalAccess, saveMemoryExternalAccess } from '../../lib/api';
 import { SettingsHeader } from './SettingsHeader';
-import { SettingsCard, SettingsPage } from './SettingsCard';
+import { SectionCardHeader, SettingsCard, SettingsPage } from './SettingsCard';
 import { BrutalOnOff } from '../BrutalOnOff';
+import { CopyButton } from './CopyButton';
+
+export const CLAUDE_CODE_MCP_COMMAND = 'claude mcp add suzent -- suzent mcp serve';
 
 interface MemoryTabProps {
   memoryEnabled: boolean;
@@ -87,6 +91,71 @@ export function MemoryTab({
           </div>
         </div>
       </SettingsCard>
+
+      <OtherAgentsCard />
     </SettingsPage>
+  );
+}
+
+function OtherAgentsCard(): React.ReactElement {
+  const { t } = useI18n();
+  const [writeEnabled, setWriteEnabled] = useState(false);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchMemoryExternalAccess()
+      .then((access) => {
+        if (!cancelled && access) setWriteEnabled(access.write_enabled);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const onWriteChange = (enabled: boolean): void => {
+    setError('');
+    setWriteEnabled(enabled);
+    saveMemoryExternalAccess(enabled)
+      .then((access) => setWriteEnabled(access.write_enabled))
+      .catch(() => {
+        setWriteEnabled(!enabled);
+        setError(t('settings.memoryConfig.otherAgentsSaveFailed'));
+      });
+  };
+
+  return (
+    <SettingsCard>
+      <SectionCardHeader
+        title={t('settings.memoryConfig.otherAgentsTitle')}
+        description={t('settings.memoryConfig.otherAgentsDesc')}
+      />
+      <div className="text-[10px] font-bold uppercase text-neutral-500 dark:text-neutral-400 mb-1">
+        {t('settings.memoryConfig.otherAgentsCommand')}
+      </div>
+      <div className="flex items-center gap-2">
+        <code className="flex-1 min-w-0 font-mono text-xs border-2 border-brutal-black bg-neutral-50 dark:bg-zinc-900 px-3 py-2 break-all">
+          {CLAUDE_CODE_MCP_COMMAND}
+        </code>
+        <CopyButton value={CLAUDE_CODE_MCP_COMMAND} />
+      </div>
+      <p className="text-xs text-neutral-600 dark:text-neutral-400 mt-2">
+        {t('settings.memoryConfig.otherAgentsOtherApps')}
+      </p>
+
+      <div className="mt-4 pt-4 border-t-2 border-dashed border-brutal-black dark:border-zinc-600 flex items-center justify-between gap-4">
+        <div>
+          <h4 className="text-sm font-bold uppercase">
+            {t('settings.memoryConfig.otherAgentsWrite')}
+          </h4>
+          <p className="text-xs text-neutral-600 dark:text-neutral-400 mt-1">
+            {t('settings.memoryConfig.otherAgentsWriteDesc')}
+          </p>
+          {error && <p className="text-xs text-red-600 mt-1">{error}</p>}
+        </div>
+        <BrutalOnOff checked={writeEnabled} onChange={onWriteChange} />
+      </div>
+    </SettingsCard>
   );
 }

@@ -24,4 +24,14 @@ describe('memory settings', () => {
     expect(html).not.toContain('Host folder');
     expect(html).not.toContain('Choose folder');
   });
+
+  it('shows how to connect other agents and the write switch', () => {
+    const html = renderToStaticMarkup(
+      <I18nProvider>
+        <MemoryTab memoryEnabled onMemoryEnabledChange={() => {}} />
+      </I18nProvider>
+    );
+    expect(html).toContain('claude mcp add suzent -- suzent mcp serve');
+    expect(html).toContain('Let them save memories');
+  });
 });

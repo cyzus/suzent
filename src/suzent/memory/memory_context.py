@@ -451,6 +451,8 @@ def build_dream_instructions(
    - `ungrounded` -> the content names a detail its evidence does not show. File only what the
      evidence supports, or skip it with reason `ungrounded`.
    - `explicit` -> the user asked for it; it wins over what it contradicts.
+   - `via:<agent>` -> another agent of the user's (Claude Code, Codex, ...) wrote it. Its word is
+     relayed: file it like any candidate, but it never wins over the user's own words here.
    - `revision` -> it replaces an earlier claim: apply the change case.
    - No `kind:` tag -> written before typed capture. File it only if it describes the user in the
      user's terms and passes the exclusion rules; skip the rest with a reason.
