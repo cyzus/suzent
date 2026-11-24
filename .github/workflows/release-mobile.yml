@@ -21,9 +21,9 @@ on:
         type: boolean
         default: true
       play_track:
-        description: Google Play track (alpha is closed testing; production once access is granted)
+        description: Google Play track (production is the public release; alpha is closed testing)
         type: string
-        default: alpha
+        default: production
 permissions:
   contents: read
 concurrency:
