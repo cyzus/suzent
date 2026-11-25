@@ -1763,9 +1763,8 @@ if __name__ == "__main__":
     original_host, original_port = host, port
     # The desktop app always sets SUZENT_PORT, but only as a hint for its child
     # backend; any other SUZENT_PORT is the user's choice and must be honoured.
-    port_is_explicit = (
-        bool(_port_str) and os.getenv("SUZENT_RUN_MODE") != "desktop-child"
-    )
+    desktop_child = os.getenv("SUZENT_RUN_MODE") == "desktop-child"
+    port_is_explicit = bool(_port_str) and not desktop_child
     host, port = resolve_mesh_bind(
         host,
         port,
@@ -1826,20 +1825,37 @@ if __name__ == "__main__":
     # For explicit ports (e.g., 8000), this verifies the port is available immediately,
     # and if it fails (e.g., Windows Hyper-V reserved ports), we can forceful exit
     # before uvicorn/tokio start up, avoiding PyO3 panics during graceful shutdown.
+    def _bind(bind_host: str, bind_port: int) -> _socket.socket:
+        sock = _socket.socket(_socket.AF_INET, _socket.SOCK_STREAM)
+        try:
+            # On Windows SO_REUSEADDR lets a second server bind a port that is
+            # already listening, so two backends silently split the requests.
+            if sys.platform == "win32":
+                sock.setsockopt(_socket.SOL_SOCKET, _socket.SO_EXCLUSIVEADDRUSE, 1)
+            else:
+                sock.setsockopt(_socket.SOL_SOCKET, _socket.SO_REUSEADDR, 1)
+            sock.bind((bind_host, bind_port))
+            sock.listen()
+        except OSError:
+            sock.close()
+            raise
+        return sock
+
     _sock = None
     try:
-        _sock = _socket.socket(_socket.AF_INET, _socket.SOCK_STREAM)
-        # On Windows SO_REUSEADDR lets a second server bind a port that is
-        # already listening, so two backends silently split the requests.
-        if sys.platform == "win32":
-            _sock.setsockopt(_socket.SOL_SOCKET, _socket.SO_EXCLUSIVEADDRUSE, 1)
-        else:
-            _sock.setsockopt(_socket.SOL_SOCKET, _socket.SO_REUSEADDR, 1)
         try:
-            _sock.bind((host, port))
+            _sock = _bind(host, port)
         except OSError as e:
-            raise e
-        _sock.listen()
+            # Another Suzent (an older install, or a service from a checkout)
+            # holding the mesh port must not stop the desktop app opening.
+            if not (desktop_child and port != original_port):
+                raise
+            logger.warning(
+                f"Mesh port {port} is in use ({e}); this window runs on "
+                f"{original_host} without the device mesh until that port is free"
+            )
+            host, port = original_host, original_port
+            _sock = _bind(host, port)
         _sock.set_inheritable(True)
         effective_port = _sock.getsockname()[1]
         report_port(effective_port)
@@ -1868,7 +1884,7 @@ if __name__ == "__main__":
         raise
 
     async def main():
-        if port == 0:
+        if port == 0 or desktop_child:
             # Start process-lifetime monitors only when launched by Tauri (port=0 mode).
             # These threads must be started inside the async loop so os._exit() doesn't
             # fire before the event loop is running.
