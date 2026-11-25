@@ -89,7 +89,7 @@ the bundled runtime into standard installers:
 `scripts/build_desktop_runtime.py` builds the runtime for the platform it runs
 on: it copies uv's python-build-standalone CPython 3.12 (never installing into
 uv's own copy), installs Suzent and its locked dependencies non-editable with
-the `social` and `camera` extras the built-in plugins need, strips Tcl/Tk and
+the `social`, `camera` and `wake` extras the built-in plugins need, strips Tcl/Tk and
 test suites, precompiles bytecode (the install dir may be read-only) and checks
 that the result imports and does not point at a checkout. It also copies the
 tracked `config/`, `skills/`, `plugins/` and `extensions/browser/` into

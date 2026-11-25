@@ -34,7 +34,7 @@ OUT = ROOT / "apps" / "desktop" / "resources"
 PYTHON_VERSION = "3.12"
 # Built-in plugins' extras: an installed app has no uv.lock to resolve them
 # against later, so they ship with the runtime, as in the MSIX package.
-DEFAULT_EXTRAS = ("social", "camera")
+DEFAULT_EXTRAS = ("social", "camera", "wake")
 RESOURCE_PATHS = ("config", "skills", "plugins", "extensions/browser")
 # Never imported by Suzent; tkinter also drags in Tcl/Tk.
 STRIP = (
