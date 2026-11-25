@@ -566,6 +566,11 @@ function systemLanguage(): string {
   return process.env.LC_ALL || process.env.LANG || app.getLocale();
 }
 
+// Chromium otherwise keeps its cookie key in the login keychain, and macOS
+// asks for the password on every launch of a build whose signature changed
+// (any unsigned or ad-hoc build). The window keeps nothing secret there.
+if (process.platform === 'darwin') app.commandLine.appendSwitch('use-mock-keychain');
+
 if (!app.requestSingleInstanceLock()) {
   app.exit(0);
 } else {
