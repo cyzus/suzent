@@ -119,8 +119,9 @@ jobs:
         run: |
           if [[ "$SIGN" != "true" ]]; then
             export CSC_IDENTITY_AUTO_DISCOVERY=false
-            # Unsigned builds still need an ad-hoc signature to run on Apple silicon.
-            args=(-c.mac.identity=-)
+            # Unsigned: the bundle runs here because nothing is quarantined,
+            # and Electron's and CPython's own binaries carry ad-hoc signatures.
+            args=(-c.mac.identity=null)
           fi
           npm run dist -- "${args[@]}"
         env:
@@ -161,8 +162,8 @@ jobs:
           ditto "$mount/SUZENT.app" "$HOME/Applications/SUZENT.app"
           hdiutil detach "$mount"
           app="$HOME/Applications/SUZENT.app"
-          codesign --verify --deep --strict "$app"
           if [[ "$SIGN" == "true" ]]; then
+            codesign --verify --deep --strict "$app"
             spctl --assess --type execute -vv "$app"
             xcrun stapler validate "$app"
           fi
