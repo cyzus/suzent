@@ -1,26 +1,26 @@
 import React from 'react';
 import { useI18n } from '../i18n';
+import { desktopWindow, isDesktop } from '../lib/desktop';
 import { detectDesktopPlatform, type DesktopPlatform } from '../lib/titleBarPlatform';
 
 export const TitleBar: React.FC<{ startup?: boolean }> = ({ startup = false }) => {
-  const [isTauri, setIsTauri] = React.useState(false);
+  const [desktop, setDesktop] = React.useState(false);
   const [isMaximized, setIsMaximized] = React.useState(false);
   const [platform, setPlatform] = React.useState<DesktopPlatform>('unknown');
   const { t } = useI18n();
 
   React.useEffect(() => {
-    setIsTauri(!!window.__TAURI__);
+    setDesktop(isDesktop());
     setPlatform(detectDesktopPlatform(navigator.userAgent, navigator.platform));
   }, []);
 
-  if (!isTauri || (platform === 'windows' && !startup) || platform === 'macos') return null;
+  if (!desktop || (platform === 'windows' && !startup) || platform === 'macos') return null;
 
-  const appWindow = window.__TAURI__?.window.getCurrentWindow();
   const windowsStartup = startup && platform === 'windows';
   const controlWidth = windowsStartup ? 'w-9' : 'w-11';
 
   const handleMaximize = async () => {
-    await appWindow?.toggleMaximize();
+    await desktopWindow.toggleMaximize();
     // Toggle local state for icon swap
     setIsMaximized(!isMaximized);
   };
@@ -53,7 +53,7 @@ export const TitleBar: React.FC<{ startup?: boolean }> = ({ startup = false }) =
       >
         {/* Minimize */}
         <button
-          onClick={() => appWindow?.minimize()}
+          onClick={() => desktopWindow.minimize()}
           className={minimizeButtonClass}
           title={t('titlebar.minimize')}
         >
@@ -107,7 +107,7 @@ export const TitleBar: React.FC<{ startup?: boolean }> = ({ startup = false }) =
 
         {/* Close */}
         <button
-          onClick={() => appWindow?.close()}
+          onClick={() => desktopWindow.close()}
           className={closeButtonClass}
           title={t('titlebar.close')}
         >

@@ -32,6 +32,7 @@ def local_setup_request(
     if not origin:
         return allow_originless
     if origin in {
+        "suzent://app",
         "tauri://localhost",
         "http://tauri.localhost",
         "https://tauri.localhost",

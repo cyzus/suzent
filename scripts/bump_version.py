@@ -30,11 +30,13 @@ VERSION_FILES = (
     VersionFile("frontend/package.json", "json"),
     VersionFile("apps/suzent-installer/tauri.conf.json", "json"),
     VersionFile("apps/suzent-installer/package.json", "json"),
+    VersionFile("apps/desktop/package.json", "json"),
     VersionFile("src-tauri/Cargo.toml", "toml"),
     VersionFile("apps/suzent-installer/Cargo.toml", "toml"),
     VersionFile("pyproject.toml", "toml"),
     VersionFile("frontend/package-lock.json", "package-lock"),
     VersionFile("src-tauri/package-lock.json", "package-lock"),
+    VersionFile("apps/desktop/package-lock.json", "package-lock"),
     VersionFile("apps/suzent-installer/package-lock.json", "package-lock"),
     VersionFile("src-tauri/Cargo.lock", "named-lock", "suzent"),
     VersionFile(

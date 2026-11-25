@@ -1,0 +1,8 @@
+node_modules/
+dist/
+build-test/
+release/
+resources/runtime/
+resources/suzent/
+resources/frontend/
+icons/

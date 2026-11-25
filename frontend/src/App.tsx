@@ -3,7 +3,7 @@ import { WorkspacePanelHost, WorkspacePanelProvider } from './components/Workspa
 import { DesktopContextMenu } from './components/DesktopContextMenu';
 import { SetupGate } from './components/settings/SetupGate';
 import React, { useState } from 'react';
-import { invoke } from '@tauri-apps/api/core';
+import { desktopShell, desktopWindow, invoke, listen, openDialog } from './lib/desktop';
 import {
   ArrowPathIcon,
   CheckCircleIcon,
@@ -120,7 +120,6 @@ type BootstrapStageState = 'pending' | 'running' | 'succeeded' | 'skipped' | 'fa
 function BootstrapWindowBar(): React.ReactElement {
   const locale = getInitialLocale();
   const t = (key: string, params?: Record<string, string>) => tForLocale(locale, key, params);
-  const appWindow = window.__TAURI__?.window.getCurrentWindow();
   const [isMaximized, setIsMaximized] = React.useState(false);
   const isMac = React.useMemo(
     () => detectDesktopPlatform(navigator.userAgent, navigator.platform) === 'macos',
@@ -130,11 +129,11 @@ function BootstrapWindowBar(): React.ReactElement {
   async function handleDrag(event: React.MouseEvent<HTMLDivElement>): Promise<void> {
     const target = event.target as HTMLElement;
     if (target.closest('button')) return;
-    await appWindow?.startDragging();
+    await desktopWindow.startDragging();
   }
 
   async function handleMaximize(): Promise<void> {
-    await appWindow?.toggleMaximize();
+    await desktopWindow.toggleMaximize();
     setIsMaximized((prev) => !prev);
   }
 
@@ -156,7 +155,7 @@ function BootstrapWindowBar(): React.ReactElement {
           <button
             type="button"
             onMouseDown={(event) => event.stopPropagation()}
-            onClick={() => appWindow?.minimize()}
+            onClick={() => desktopWindow.minimize()}
             className="h-full w-10 flex items-center justify-center hover:bg-neutral-100"
             title={t('titlebar.minimize')}
           >
@@ -174,7 +173,7 @@ function BootstrapWindowBar(): React.ReactElement {
           <button
             type="button"
             onMouseDown={(event) => event.stopPropagation()}
-            onClick={() => appWindow?.close()}
+            onClick={() => desktopWindow.close()}
             className="h-full w-10 flex items-center justify-center hover:bg-brutal-red hover:text-white"
             title={t('titlebar.close')}
           >
@@ -480,7 +479,6 @@ function AppInner(): React.ReactElement {
     desktop && desktopPlatform !== 'windows' && desktopPlatform !== 'macos';
   const showWindowsWindowControls = desktop && desktopPlatform === 'windows';
   const showMacWindowControls = desktop && desktopPlatform === 'macos';
-  const appWindow = window.__TAURI__?.window.getCurrentWindow();
 
   // Use refs so the interval callback always sees the latest values without re-creating the interval.
   const refreshChatListRef = React.useRef(refreshChatList);
@@ -514,14 +512,12 @@ function AppInner(): React.ReactElement {
     if (isWeb()) return;
     let unlisten: (() => void) | undefined;
     let cancelled = false;
-    void import('@tauri-apps/api/event').then(({ listen }) =>
-      listen<string>('tray-open-chat', (event) => {
-        openChatFromTrayRef.current(event.payload);
-      }).then((stop) => {
-        if (cancelled) stop();
-        else unlisten = stop;
-      })
-    );
+    void listen<string>('tray-open-chat', (chatId) => {
+      openChatFromTrayRef.current(chatId);
+    }).then((stop) => {
+      if (cancelled) stop();
+      else unlisten = stop;
+    });
     return () => {
       cancelled = true;
       unlisten?.();
@@ -706,7 +702,7 @@ function AppInner(): React.ReactElement {
   }
 
   async function toggleWindowMaximize(): Promise<void> {
-    await appWindow?.toggleMaximize();
+    await desktopWindow.toggleMaximize();
     setIsWindowMaximized((prev) => !prev);
   }
 
@@ -721,7 +717,7 @@ function AppInner(): React.ReactElement {
       return;
     }
 
-    appWindow?.startDragging().catch(() => {
+    desktopWindow.startDragging().catch(() => {
       // No-op: dragging is best-effort for custom titlebars.
     });
   }
@@ -802,7 +798,7 @@ function AppInner(): React.ReactElement {
     <WorkspacePanelProvider navigationKey={`${currentChatId}:${mainView}`}>
       <div
         className={`h-full w-full bg-neutral-50 dark:bg-zinc-900 text-brutal-black dark:text-white font-sans ${
-          showMacWindowControls ? 'macos-tauri-webview' : ''
+          showMacWindowControls && desktopShell() === 'tauri' ? 'macos-tauri-webview' : ''
         }`}
       >
         {isDesktop() && <DesktopContextMenu onSettings={() => openSettings()} />}
@@ -850,6 +846,7 @@ function AppInner(): React.ReactElement {
             <header
               className={`app-header relative border-b-3 border-brutal-black px-4 md:px-6 flex items-center justify-between gap-4 md:gap-6 bg-brutal-white dark:bg-zinc-800 flex-shrink-0 h-12`}
               onMouseDown={handleHeaderMouseDown}
+              data-window-drag={showWindowsWindowControls || showMacWindowControls ? '' : undefined}
             >
               <div className="flex min-w-0 flex-1 items-center gap-2 md:gap-0">
                 {showMacWindowControls && !isLeftSidebarOpen ? <MacTrafficLightsSpacer /> : null}
@@ -927,7 +924,7 @@ function AppInner(): React.ReactElement {
                 {showWindowsWindowControls ? (
                   <div className="absolute right-0 top-0 bottom-0 flex text-brutal-black dark:text-white overflow-hidden">
                     <button
-                      onClick={() => appWindow?.minimize()}
+                      onClick={() => desktopWindow.minimize()}
                       className="h-full w-9 flex items-center justify-center hover:bg-brutal-black dark:hover:bg-zinc-600 hover:text-brutal-white transition-colors"
                       title={t('titlebar.minimize')}
                     >
@@ -966,7 +963,7 @@ function AppInner(): React.ReactElement {
                       )}
                     </button>
                     <button
-                      onClick={() => appWindow?.close()}
+                      onClick={() => desktopWindow.close()}
                       className="h-full w-9 flex items-center justify-center hover:bg-brutal-red hover:text-white transition-colors"
                       title={t('titlebar.close')}
                     >
@@ -1119,8 +1116,7 @@ function BootstrapInstallScreen({
   const chooseInstallDir = React.useCallback(async () => {
     if (running) return;
     try {
-      const { open } = await import('@tauri-apps/plugin-dialog');
-      const selected = await open({
+      const selected = await openDialog({
         directory: true,
         multiple: false,
         title: t('bootstrap.chooseInstallDir'),
@@ -1576,35 +1572,34 @@ export default function App({ children }: AppProps = {}) {
         });
     }
 
-    import('@tauri-apps/api/event').then(({ listen }) => {
-      listen<number>('backend-ready', (event) => {
-        rememberBackendPort(event.payload);
+    void (async () => {
+      unlisten = await listen<number>('backend-ready', (port) => {
+        rememberBackendPort(port);
         setBackendReady(true);
         setBackendError(null);
         setBackendStartingAtStartup(false);
         setBackendStartingAfterInstall(false);
         setBootstrapStatusState(null);
-      }).then((fn) => {
-        unlisten = fn;
       });
-      listen<StartupFailure>('backend-error', (event) => {
+      unlistenErr = await listen<StartupFailure>('backend-error', (failure) => {
         setBackendStartingAtStartup(false);
         setBackendStartingAfterInstall(false);
-        setBackendError(event.payload);
-      }).then((fn) => {
-        unlistenErr = fn;
+        setBackendError(failure);
       });
-      listen<BootstrapStatus>('bootstrap-required', (event) => {
+      unlistenBootstrap = await listen<BootstrapStatus>('bootstrap-required', (status) => {
         setBootstrapChecked(true);
         setBackendError(null);
         setBackendReady(false);
         setBackendStartingAtStartup(false);
         setBackendStartingAfterInstall(false);
-        setBootstrapStatusState(event.payload);
-      }).then((fn) => {
-        unlistenBootstrap = fn;
+        setBootstrapStatusState(status);
       });
-    });
+      if (cancelled) {
+        unlisten?.();
+        unlistenErr?.();
+        unlistenBootstrap?.();
+      }
+    })();
     return () => {
       cancelled = true;
       unlisten?.();

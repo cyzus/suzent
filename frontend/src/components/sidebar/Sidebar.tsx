@@ -1,4 +1,5 @@
 import React from 'react';
+import { desktopWindow, isDesktop as isDesktopShell } from '../../lib/desktop';
 import { useI18n } from '../../i18n';
 import { detectDesktopPlatform } from '../../lib/titleBarPlatform';
 import { PanelResizeHandle } from '../PanelResizeHandle';
@@ -40,15 +41,14 @@ export function Sidebar({
     []
   );
   const canDragWindowFromSidebar =
-    !!window.__TAURI__ && (desktopPlatform === 'windows' || desktopPlatform === 'macos');
-  const appWindow = window.__TAURI__?.window.getCurrentWindow();
+    isDesktopShell() && (desktopPlatform === 'windows' || desktopPlatform === 'macos');
 
   function handleSidebarHeaderMouseDown(event: React.MouseEvent<HTMLElement>): void {
     if (!canDragWindowFromSidebar) return;
     const target = event.target as HTMLElement;
     const interactiveSelector = 'button, a, input, textarea, select, [role="button"]';
     if (target.closest(interactiveSelector)) return;
-    appWindow?.startDragging().catch(() => {});
+    desktopWindow.startDragging().catch(() => {});
   }
 
   return (
@@ -96,6 +96,7 @@ export function Sidebar({
         <div
           className="h-12 flex items-center justify-start px-4 border-b-3 border-brutal-black bg-white dark:bg-zinc-800 sticky top-0 z-10 shrink-0"
           onMouseDown={handleSidebarHeaderMouseDown}
+          data-window-drag={canDragWindowFromSidebar ? '' : undefined}
         >
           {titlebarControls}
 

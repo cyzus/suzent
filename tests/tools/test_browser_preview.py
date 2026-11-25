@@ -227,6 +227,7 @@ async def test_preview_rejects_untrusted_origins_before_registration(
 @pytest.mark.parametrize(
     "origin",
     [
+        "suzent://app",
         "tauri://localhost",
         "http://tauri.localhost",
         "https://tauri.localhost",

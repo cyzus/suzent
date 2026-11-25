@@ -3428,3 +3428,48 @@ html[data-motion='reduced'] .reasoning-thinking-label::after {
     animation: activity-rail-dot-fade 1.2s ease-in-out infinite !important;
   }
 }
+
+/* Electron moves the window through CSS instead of a startDragging() call.
+   Tauri's drag attribute and the header/sidebar drag areas become drag
+   regions; anything interactive inside them must stay clickable. */
+html.electron-shell [data-tauri-drag-region],
+html.electron-shell [data-window-drag] {
+  app-region: drag;
+}
+
+html.electron-shell
+  [data-tauri-drag-region]
+  :is(
+    button,
+    a,
+    input,
+    textarea,
+    select,
+    label,
+    summary,
+    [role='button'],
+    [role='menuitem'],
+    [role='tab'],
+    [tabindex],
+    [contenteditable],
+    [data-no-drag]
+  ),
+html.electron-shell
+  [data-window-drag]
+  :is(
+    button,
+    a,
+    input,
+    textarea,
+    select,
+    label,
+    summary,
+    [role='button'],
+    [role='menuitem'],
+    [role='tab'],
+    [tabindex],
+    [contenteditable],
+    [data-no-drag]
+  ) {
+  app-region: no-drag;
+}

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { desktopWindow, isDesktop, registerGlobalShortcut } from '../lib/desktop';
 import { getApiBase } from '../lib/api';
 import { WakeListener, type WakeErrorCode } from '../lib/voice/wakeListener';
 
@@ -93,26 +94,17 @@ export function useVoiceHotkey(accelerator: string, onPress: () => void): void {
   const onPressRef = useRef(onPress);
   onPressRef.current = onPress;
   useEffect(() => {
-    if (!accelerator || typeof window === 'undefined' || !window.__TAURI__) return;
+    if (!accelerator || !isDesktop()) return;
     let disposed = false;
-    let registered = false;
+    let unregister: (() => void) | undefined;
     void (async () => {
       try {
-        const shortcuts = await import('@tauri-apps/plugin-global-shortcut');
-        if (disposed) return;
-        await shortcuts.register(accelerator, (event) => {
-          if (event.state !== 'Pressed') return;
-          void (async () => {
-            const { getCurrentWindow } = await import('@tauri-apps/api/window');
-            const appWindow = getCurrentWindow();
-            await appWindow.show();
-            await appWindow.unminimize();
-            await appWindow.setFocus();
-          })().catch(() => undefined);
+        const stop = await registerGlobalShortcut(accelerator, () => {
+          void desktopWindow.reveal().catch(() => undefined);
           onPressRef.current();
         });
-        registered = true;
-        if (disposed) await shortcuts.unregister(accelerator);
+        if (disposed) stop();
+        else unregister = stop;
       } catch (err) {
         // Taken by another app, or not a valid accelerator.
         console.warn(`Voice shortcut ${accelerator} not registered:`, err);
@@ -120,11 +112,7 @@ export function useVoiceHotkey(accelerator: string, onPress: () => void): void {
     })();
     return () => {
       disposed = true;
-      if (registered) {
-        void import('@tauri-apps/plugin-global-shortcut')
-          .then((shortcuts) => shortcuts.unregister(accelerator))
-          .catch(() => undefined);
-      }
+      unregister?.();
     };
   }, [accelerator]);
 }

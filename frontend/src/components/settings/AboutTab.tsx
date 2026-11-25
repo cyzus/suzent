@@ -1,4 +1,5 @@
 import { BrutalButton } from '../BrutalButton';
+import { openUrl } from '../../lib/desktop';
 import React, { useCallback, useEffect, useState } from 'react';
 
 import { useI18n } from '../../i18n';
@@ -40,14 +41,7 @@ function formatVersion(value: string | null | undefined, unavailable: string): s
   return value.startsWith('v') ? value : `v${value}`;
 }
 
-async function openExternal(url: string): Promise<void> {
-  if (window.__TAURI__) {
-    const { open } = await import('@tauri-apps/plugin-shell');
-    await open(url);
-  } else {
-    window.open(url, '_blank', 'noopener,noreferrer');
-  }
-}
+const openExternal = openUrl;
 
 export function AboutTab(): React.ReactElement {
   const { t, locale } = useI18n();

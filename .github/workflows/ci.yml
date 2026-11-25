@@ -160,6 +160,74 @@ jobs:
       working-directory: frontend
       run: npm run format:check
 
+  desktop:
+    name: Desktop (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+    - name: Set up Python 3.12
+      uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+      with:
+        python-version: "3.12"
+
+    - name: Set up uv
+      uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+
+    - name: Set up Node.js
+      uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      with:
+        node-version: '22'
+        cache: npm
+        cache-dependency-path: |
+          frontend/package-lock.json
+          apps/desktop/package-lock.json
+
+    - name: Install backend
+      run: uv sync --locked
+
+    - name: Build frontend
+      working-directory: frontend
+      run: |
+        npm ci
+        npm run build
+
+    - name: Install desktop shell
+      working-directory: apps/desktop
+      run: npm ci
+
+    - name: Unit tests
+      working-directory: apps/desktop
+      run: npm test
+
+    - name: Build
+      working-directory: apps/desktop
+      run: npm run build
+
+    # Starts the real app on a real backend from this checkout and quits it.
+    - name: Smoke test
+      working-directory: apps/desktop
+      shell: bash
+      run: |
+        if [[ "$RUNNER_OS" == "Linux" ]]; then
+          xvfb-run -a npm run e2e -- --screenshot "$RUNNER_TEMP/desktop.png"
+        else
+          npm run e2e -- --screenshot "$RUNNER_TEMP/desktop.png"
+        fi
+
+    - name: Upload screenshot
+      if: always()
+      uses: actions/upload-artifact@v7
+      with:
+        name: desktop-${{ matrix.os }}
+        path: ${{ runner.temp }}/desktop.png
+        if-no-files-found: ignore
+
   rust:
     name: Rust
     runs-on: ubuntu-22.04
@@ -187,7 +255,7 @@ jobs:
 
         if [[ -z "$range" ]]; then
           touched=true
-        elif git diff --name-only "$range" | grep -qE '^(src-tauri|apps)/'; then
+        elif git diff --name-only "$range" | grep -qE '^(src-tauri|apps/suzent-installer)/'; then
           touched=true
         else
           touched=false
