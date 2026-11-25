@@ -29,5 +29,8 @@
     "url": "https://github.com/cyzus/suzent.git",
     "directory": "apps/desktop"
   },
-  "desktopName": "suzent-desktop.desktop"
+  "desktopName": "suzent-desktop.desktop",
+  "dependencies": {
+    "electron-updater": "6.8.12"
+  }
 }

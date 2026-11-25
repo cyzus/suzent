@@ -40,6 +40,7 @@ import { installShim } from './cliShim';
 import { resolveLayout, type Layout } from './layout';
 import { extractJsonPayload, runServiceCli } from './service';
 import { SuzentTray } from './tray';
+import { DesktopUpdater } from './updater';
 
 const APP_ID = 'com.suzent.app';
 const SCHEME = 'suzent';
@@ -239,10 +240,60 @@ function desktopAbout(): Record<string, unknown> {
   };
 }
 
-function updateStatus(): string {
-  // Self-update arrives with the packaged installers; a development run is
-  // updated through git.
-  return JSON.stringify({ current_version: appVersion, update_available: false });
+let updater: DesktopUpdater | null = null;
+
+/** Installed builds update themselves; a development run is updated through git. */
+function createUpdater(): DesktopUpdater | null {
+  if (!app.isPackaged || layout.mode !== 'bundled') return null;
+  // Loaded only here: electron-updater reads app-update.yml on import.
+  const { autoUpdater } = require('electron-updater') as typeof import('electron-updater');
+  return new DesktopUpdater(autoUpdater, {
+    currentVersion: appVersion,
+    dataDir: layout.dataDir,
+    env: process.env,
+    beforeInstall: async () => {
+      exiting = true;
+      // The service runs from this install's runtime, which the installer
+      // replaces: stop it now and start it again from the new version.
+      if (backend && !backend.owned) {
+        try {
+          await runServiceCli(layout, 'uv', ['stop']);
+          fs.mkdirSync(path.dirname(restartServiceMarker()), { recursive: true });
+          fs.writeFileSync(restartServiceMarker(), appVersion);
+        } catch (error) {
+          console.warn('Could not stop the background service before updating:', error);
+        }
+      }
+      await stopBackend();
+      backendStopped = true;
+    },
+    log: (message) => console.log(message),
+  });
+}
+
+function restartServiceMarker(): string {
+  return path.join(layout.dataDir, 'desktop', 'restart-service-after-update');
+}
+
+/** Starts the service an update stopped, before the window looks for a backend. */
+async function restartServiceAfterUpdate(): Promise<void> {
+  const marker = restartServiceMarker();
+  if (!fs.existsSync(marker)) return;
+  fs.rmSync(marker, { force: true });
+  try {
+    await runServiceCli(layout, 'uv', ['start']);
+    const deadline = Date.now() + 30_000;
+    while (Date.now() < deadline && !(await fetchHealth(SERVICE_PORT, 1000))) {
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+  } catch (error) {
+    console.warn('Could not restart the background service after updating:', error);
+  }
+}
+
+async function updateStatus(): Promise<string> {
+  if (!updater) return JSON.stringify({ current_version: appVersion, update_available: false });
+  return JSON.stringify(await updater.check());
 }
 
 function stringArg(args: Record<string, unknown>, key: string): string {
@@ -302,16 +353,19 @@ const commands: Record<string, Handler> = {
     app.exit(0);
   },
   check_for_update: () => updateStatus(),
-  get_staged_update: () => null,
-  get_auto_update_enabled: () => false,
-  set_auto_update_enabled: () => {
-    throw new Error('Automatic updates are not available in this build yet.');
+  get_staged_update: () => updater?.stagedTag() ?? null,
+  get_auto_update_enabled: () => updater?.autoUpdate ?? false,
+  set_auto_update_enabled: (args) => {
+    if (!updater) throw new Error('This build is updated through git, not automatically.');
+    updater.setAutoUpdate(Boolean(args.enabled));
   },
-  start_update_and_restart: () => {
-    throw new Error('Updates are not available in this build yet.');
+  start_update_and_restart: async () => {
+    if (!updater) throw new Error('This build is updated through git: run `git pull`.');
+    await updater.installNow();
   },
-  apply_staged_update_now: () => {
-    throw new Error('No update is ready to install');
+  apply_staged_update_now: async () => {
+    if (!updater) throw new Error('No update is ready to install');
+    await updater.applyStaged();
   },
   get_service_status: () => serviceStatus(),
   set_service_enabled: (args) => setServiceEnabled(Boolean(args.enabled)),
@@ -545,8 +599,10 @@ if (!app.requestSingleInstanceLock()) {
     } catch (error) {
       console.error('System tray unavailable; closing the window will quit Suzent:', error);
     }
-    void startBackend();
+    void restartServiceAfterUpdate().finally(() => void startBackend());
     installCliCommand();
+    updater = createUpdater();
+    updater?.start();
   });
 
   app.on('activate', () => reveal());

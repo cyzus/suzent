@@ -64,3 +64,10 @@ linux:
   executableName: suzent-desktop
   synopsis: Your sovereign personal AI agent
   maintainer: SUZENT Team <cyzus@outlook.com>
+
+# electron-updater reads this (as app-update.yml) to find new releases.
+publish:
+  provider: github
+  owner: cyzus
+  repo: suzent
+  releaseType: release
