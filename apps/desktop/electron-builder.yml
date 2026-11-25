@@ -52,6 +52,20 @@ mac:
     NSCameraUsageDescription: Suzent takes a photo when you ask it to use the camera.
 dmg:
   title: Suzent ${version}
+  # Artwork from scripts/generate_installer_art.py; the arrow sits between
+  # these two icon positions.
+  background: installer/dmg-background.png
+  window:
+    width: 540
+    height: 380
+  iconSize: 96
+  contents:
+    - x: 140
+      y: 200
+    - x: 400
+      y: 200
+      type: link
+      path: /Applications
 
 linux:
   target:
