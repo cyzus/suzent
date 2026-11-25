@@ -17,13 +17,23 @@ on:
         description: 'Sign and notarize (macOS) with the release certificates'
         type: boolean
         default: false
+  # The desktop release builds the installers here and attaches them, with
+  # the electron-updater feeds (latest*.yml), to the draft release `tag`.
+  workflow_call:
+    inputs:
+      tag:
+        type: string
+        required: true
+      sign:
+        type: boolean
+        default: true
 
 permissions:
   contents: read
 
 concurrency:
-  group: desktop-installers-${{ github.ref }}
-  cancel-in-progress: true
+  group: desktop-installers-${{ inputs.tag || github.ref }}
+  cancel-in-progress: ${{ !inputs.tag }}
 
 jobs:
   installer:
@@ -43,9 +53,13 @@ jobs:
     runs-on: ${{ matrix.os }}
     environment: ${{ inputs.sign && 'mobile-release' || null }}
     timeout-minutes: 90
+    permissions:
+      contents: write
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.tag || github.ref }}
 
       - name: Set up uv
         uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
@@ -191,6 +205,33 @@ jobs:
           path: ${{ runner.temp }}/desktop.png
           if-no-files-found: ignore
 
+      # Each Mac runner writes a latest-mac.yml for its own arch; the
+      # merge-mac-feed job below joins them into the one the app reads.
+      - name: Attach to the draft release
+        if: inputs.tag
+        shell: bash
+        working-directory: apps/desktop/release
+        run: |
+          shopt -s nullglob
+          if [[ "$RUNNER_OS" == "macOS" ]]; then
+            mv latest-mac.yml "latest-mac-$(uname -m).yml"
+            gh release upload "$RELEASE_TAG" Suzent-*.dmg Suzent-*.zip Suzent-*.blockmap --clobber
+          else
+            gh release upload "$RELEASE_TAG" Suzent-*.exe Suzent-*.AppImage Suzent-*.deb Suzent-*.blockmap latest*.yml --clobber
+          fi
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ inputs.tag }}
+
+      - name: Keep the Mac update feed
+        if: inputs.tag && runner.os == 'macOS'
+        uses: actions/upload-artifact@v7
+        with:
+          name: mac-feed-${{ matrix.os }}
+          path: apps/desktop/release/latest-mac-*.yml
+          if-no-files-found: error
+
       - name: Upload installers
         uses: actions/upload-artifact@v7
         with:
@@ -204,3 +245,33 @@ jobs:
           retention-days: 7
           compression-level: 0
           if-no-files-found: error
+
+  merge-mac-feed:
+    if: inputs.tag
+    needs: installer
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.tag }}
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: mac-feed-*
+          path: feeds
+          merge-multiple: true
+
+      - name: Publish latest-mac.yml
+        run: |
+          uv run --no-project --with pyyaml==6.0.3 python scripts/merge_mac_update_feed.py feeds/latest-mac-*.yml > latest-mac.yml
+          cat latest-mac.yml
+          gh release upload "$RELEASE_TAG" latest-mac.yml --clobber
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ inputs.tag }}

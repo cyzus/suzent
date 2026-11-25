@@ -20,11 +20,15 @@ Moving from Tauri to Electron (see [Desktop shell](architecture/desktop-shell.md
   CI smoke tests on all three platforms. Self-contained installers for
   Windows, macOS and Linux built with electron-builder around the bundled
   Python runtime (no git clone or uv sync on the user's machine), installed
-  and started in CI.
-- **Next:** self-update through electron-updater with an
-  npmmirror route for mainland China; a one-time move for existing git-checkout
-  installs; an in-app browser pane the agent drives over CDP; then releases
-  switch over and `src-tauri/` and `apps/suzent-installer/` are removed.
+  and started in CI. Self-update through electron-updater (GitHub, or a mirror
+  feed), and an opt-in move for Git-checkout installs triggered by an
+  `installer-migration.json` release asset.
+- **Next:** an npmmirror route for the installers and update feed in mainland
+  China (npmmirror only serves single files of allow-listed packages); smaller
+  installers (the runtime is about 1.2 GB unpacked, mostly pyarrow, lancedb,
+  OpenCV and Playwright); an in-app browser pane; then turning on the move for
+  Git installs, pointing the setup scripts and user docs at the installers, and
+  removing `src-tauri/` and `apps/suzent-installer/`.
 
 ## ACP integration
 

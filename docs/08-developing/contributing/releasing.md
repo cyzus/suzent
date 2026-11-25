@@ -203,6 +203,31 @@ notes, all eight application/installer assets, the `suzent-webui.zip` web UI
 bundle (rebuilt from the tag in both asset modes), and `SHA256SUMS`. Do not manually
 publish a partially populated draft.
 
+Every desktop release also builds the Electron app's standard installers
+(`desktop-installers.yml`, called with the tag): `Suzent-<version>-win-x64.exe`,
+`-mac-arm64.dmg`/`.zip`, `-mac-x64.dmg`/`.zip`, `-linux-x86_64.AppImage` and
+`-linux-amd64.deb`, with their blockmaps and the electron-updater feeds
+`latest.yml`, `latest-mac.yml` (both Mac architectures, joined by
+`scripts/merge_mac_update_feed.py`) and `latest-linux.yml`. Each installer is
+installed and started on its runner before it is attached, and `SHA256SUMS`
+covers them.
+
+Git-checkout installs keep updating through Git until a release carries an
+`installer-migration.json` asset. When it does, the updater moves them to the
+standard installer instead: it downloads and checks that platform's installer,
+stops the old install, removes its shortcuts and `suzent` command, installs the
+app and moves the background service onto it; `~/.suzent` is shared, so data
+carries over. Attach the marker only after testing the installers on real
+machines:
+
+```bash
+echo '{}' > installer-migration.json
+gh release upload vX.Y.Z installer-migration.json
+```
+
+Removing the asset stops further moves. Each move is recorded in the old
+checkout's `.suzent/migrated-to-installer.json`.
+
 Once the release is published, the `publish-npm` job copies its files into four
 npm packages, `@suzent/desktop-win32-x64`, `desktop-darwin-arm64`,
 `desktop-darwin-x64` and `desktop-linux-x64`, each holding that platform's app
