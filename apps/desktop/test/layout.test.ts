@@ -42,7 +42,7 @@ test('Windows looks for python.exe at the runtime root', () => {
 });
 
 test('a development run uses the checkout it lives in', () => {
-  const repo = path.join('/src', 'suzent');
+  const repo = path.resolve('/src', 'suzent');
   const venv = path.join(repo, '.venv', 'bin', 'python');
   const layout = resolveLayout({
     resourcesPath: '/electron/resources',
