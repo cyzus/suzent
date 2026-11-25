@@ -205,9 +205,9 @@ publish a partially populated draft.
 
 Every desktop release also builds the Electron app's standard installers
 (`desktop-installers.yml`, called with the tag): `Suzent-<version>-win-x64.exe`,
-`-mac-arm64.dmg`/`.zip`, `-mac-x64.dmg`/`.zip`, `-linux-x86_64.AppImage` and
+`-mac-arm64.dmg`/`.zip`, `-linux-x86_64.AppImage` and
 `-linux-amd64.deb`, with their blockmaps and the electron-updater feeds
-`latest.yml`, `latest-mac.yml` (both Mac architectures, joined by
+`latest.yml`, `latest-mac.yml` (written per Mac architecture and joined by
 `scripts/merge_mac_update_feed.py`) and `latest-linux.yml`. Each installer is
 installed and started on its runner before it is attached, and `SHA256SUMS`
 covers them.

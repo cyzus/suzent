@@ -44,10 +44,9 @@ jobs:
         include:
           - name: Windows x64
             os: windows-latest
+          # No Intel Mac build: lancedb publishes no macOS x86_64 wheels.
           - name: macOS arm64
             os: macos-latest
-          - name: macOS x64
-            os: macos-15-intel
           - name: Linux x64
             os: ubuntu-24.04
     runs-on: ${{ matrix.os }}

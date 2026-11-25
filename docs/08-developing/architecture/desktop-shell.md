@@ -83,7 +83,7 @@ the bundled runtime into standard installers:
 | Platform | Installers | Installs to |
 | --- | --- | --- |
 | Windows | NSIS, one click, per user (no admin prompt) | `%LOCALAPPDATA%\Programs\SUZENT` |
-| macOS | `.dmg` and `.zip`, signed with the hardened runtime and notarized | `/Applications/SUZENT.app` |
+| macOS (Apple silicon) | `.dmg` and `.zip`, signed with the hardened runtime and notarized | `/Applications/SUZENT.app` |
 | Linux | AppImage and `.deb` | `/opt/SUZENT` (deb) |
 
 `scripts/build_desktop_runtime.py` builds the runtime for the platform it runs
@@ -110,7 +110,7 @@ mount point changes every run. `suzent update`, `upgrade` and `repair` refuse
 to run in a bundled install, which updates as a whole.
 
 `.github/workflows/desktop-installers.yml` builds the installers on Windows,
-macOS (arm64 and x64) and Linux, installs each one as a user would (silent
+macOS (Apple silicon) and Linux, installs each one as a user would (silent
 NSIS install, the app copied out of the dmg, `apt install` of the deb, the
 extracted AppImage), checks the `suzent` command, runs the smoke test against
 the installed app and, on Windows, uninstalls it again. Run it by hand with

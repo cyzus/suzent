@@ -20,8 +20,12 @@ fn installer_bases(tag: &str) -> Vec<String> {
         .collect()
 }
 
+/// The release opts in and has an installer for this platform (there is no
+/// Intel Mac build).
 pub(super) fn offered(tag: &str) -> bool {
-    network::fetch_release_file(&installer_bases(tag), MARKER).is_ok()
+    let bases = installer_bases(tag);
+    network::fetch_release_file(&bases, MARKER).is_ok()
+        && release_checksum(&bases, &installer_asset(tag)).is_ok()
 }
 
 pub(super) fn installer_asset(tag: &str) -> String {
