@@ -23,7 +23,7 @@ import {
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import { Backend, StartupFailure, type StartupError } from './backend';
 import {
@@ -126,6 +126,8 @@ try { localStorage.setItem('SUZENT_PORT', '${port}'); } catch (e) {}`
   emit('backend-ready', port);
 }
 
+let startupAbort: AbortController | null = null;
+
 function startBackend(): Promise<void> {
   if (startup) return startup;
   startup = (async () => {
@@ -133,7 +135,8 @@ function startBackend(): Promise<void> {
     backend = null;
     startupError = null;
     try {
-      const next = await Backend.connect({ layout, appVersion });
+      startupAbort = new AbortController();
+      const next = await Backend.connect({ layout, appVersion, signal: startupAbort.signal });
       backend = next;
       console.log(`Backend ${next.owned ? 'started' : 'attached'} on port ${next.port}`);
       await publishPort(next.port);
@@ -148,6 +151,7 @@ function startBackend(): Promise<void> {
     }
   })().finally(() => {
     startup = null;
+    startupAbort = null;
   });
   return startup;
 }
@@ -332,7 +336,7 @@ const commands: Record<string, Handler> = {
     const url = stringArg(args, 'url');
     if (!safeExternal(url)) throw new Error(`Refusing to open ${url}`);
     if (url.startsWith('file:')) {
-      const error = await shell.openPath(new URL(url).pathname.replace(/^\/([A-Za-z]:)/, '$1'));
+      const error = await shell.openPath(fileURLToPath(url));
       if (error) throw new Error(error);
       return;
     }
@@ -531,9 +535,11 @@ if (!app.requestSingleInstanceLock()) {
   // first, so the window close they cause is let through instead of hiding.
   app.on('before-quit', (event) => {
     exiting = true;
-    if (backendStopped || !backend?.owned) return;
+    if (backendStopped || (!startup && !backend?.owned)) return;
     event.preventDefault();
-    void stopBackend().finally(() => {
+    // A backend still starting is killed rather than left running alone.
+    startupAbort?.abort();
+    void (startup ?? Promise.resolve()).then(stopBackend).finally(() => {
       backendStopped = true;
       app.quit();
     });

@@ -4,6 +4,7 @@ import json
 import os
 import sys
 import threading
+import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 
@@ -27,21 +28,32 @@ class Handler(BaseHTTPRequestHandler):
         if self.path == "/health":
             self._send(
                 200,
-                {"app": "suzent", "status": "ok", "version": VERSION, "source_root": ROOT},
+                {
+                    "app": "suzent",
+                    "status": "ok",
+                    "version": VERSION,
+                    "source_root": ROOT,
+                },
             )
         else:
             self._send(404, {})
 
     def do_POST(self) -> None:
-        if self.path == "/service/stop" and self.headers.get("X-Suzent-Service-Token") == TOKEN:
+        if (
+            self.path == "/service/stop"
+            and self.headers.get("X-Suzent-Service-Token") == TOKEN
+        ):
             self._send(200, {"ok": True})
             threading.Thread(target=server.shutdown).start()
         else:
             self._send(403, {})
 
 
-server = HTTPServer(("127.0.0.1", 0), Handler)
 runtime = Path(os.environ["SUZENT_DATA_DIR"]) / "runtime"
+if os.environ.get("FAKE_SLOW_START"):
+    (runtime / "fake.pid").write_text(str(os.getpid()))
+    time.sleep(60)
+server = HTTPServer(("127.0.0.1", 0), Handler)
 (runtime / "server.port").write_text(str(server.server_address[1]))
 if os.environ.get("FAKE_EXIT_EARLY"):
     sys.exit(3)

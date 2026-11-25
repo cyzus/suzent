@@ -97,3 +97,26 @@ test(
     assert.ok(Date.now() - started < 10_000);
   }
 );
+
+test(
+  'aborting a start kills the backend that is still starting',
+  { skip: process.platform === 'win32' },
+  async () => {
+    const { layout } = sourceLayout();
+    const env = { ...process.env, FAKE_SLOW_START: '1', SUZENT_DATA_DIR: layout.dataDir };
+    const controller = new AbortController();
+    const started = Backend.start(0, {
+      layout,
+      appVersion: '9.9.9',
+      env,
+      signal: controller.signal,
+    });
+    const pidFile = path.join(layout.dataDir, 'runtime', 'fake.pid');
+    while (!fs.existsSync(pidFile)) await new Promise((resolve) => setTimeout(resolve, 50));
+    const pid = Number(fs.readFileSync(pidFile, 'utf8'));
+    controller.abort();
+    await assert.rejects(started, /cancelled/);
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    assert.throws(() => process.kill(pid, 0));
+  }
+);

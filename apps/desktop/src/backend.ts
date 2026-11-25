@@ -47,6 +47,8 @@ export interface BackendOptions {
   platform?: NodeJS.Platform;
   /** `uv` for a source checkout without a .venv. */
   uv?: string;
+  /** Aborting kills a backend that is still starting. */
+  signal?: AbortSignal;
 }
 
 export class Backend {
@@ -138,6 +140,8 @@ export class Backend {
       SUZENT_HOST: '127.0.0.1',
       SUZENT_RUN_MODE: 'desktop-child',
       SUZENT_SERVICE_CONTROL_TOKEN: controlToken,
+      // On Windows the backend ignores stdin EOF; this makes it exit with us.
+      SUZENT_PARENT_PID: String(process.pid),
       PYTHONUNBUFFERED: '1',
       LOG_FILE: logFile,
     };
@@ -156,6 +160,11 @@ export class Backend {
     const spawnError = new Promise<never>((_, reject) => {
       child.once('error', (error) =>
         reject(new StartupFailure(`Failed to start backend: ${error.message}`))
+      );
+      const signal = options.signal;
+      if (signal?.aborted) reject(new StartupFailure('Backend start was cancelled'));
+      signal?.addEventListener('abort', () =>
+        reject(new StartupFailure('Backend start was cancelled'))
       );
     });
     const backendPromise = (async () => {
