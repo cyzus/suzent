@@ -10,7 +10,10 @@ function tempDir(): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'suzent-shim-'));
 }
 
-test('writes the wrapper, then leaves it alone', () => {
+// The wrapper is a shell script for macOS and Linux; Windows uses resources\bin.
+const unixOnly = { skip: process.platform === 'win32' };
+
+test('writes the wrapper, then leaves it alone', unixOnly, () => {
   const bin = tempDir();
   const result = installShim(bin, '/Applications/SUZENT.app/Contents/MacOS/SUZENT', '/r', {});
   assert.equal(result, 'written');
@@ -24,7 +27,7 @@ test('writes the wrapper, then leaves it alone', () => {
   assert.equal(installShim(bin, '/elsewhere/SUZENT', '/r2', {}), 'written');
 });
 
-test('never replaces a suzent command that is not ours', () => {
+test('never replaces a suzent command that is not ours', unixOnly, () => {
   const bin = tempDir();
   const target = path.join(bin, 'suzent');
   fs.writeFileSync(target, '#!/bin/sh\nexec ~/suzent/.venv/bin/suzent "$@"\n');

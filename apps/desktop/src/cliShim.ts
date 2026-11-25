@@ -32,7 +32,7 @@ export function shimScript(appExe: string, resourcesDir: string): string {
 
 /** An AppImage runs from a fresh mount point each launch; nothing can point there. */
 export function isStableInstall(resourcesDir: string, env: NodeJS.ProcessEnv): boolean {
-  return !env.APPIMAGE && !resourcesDir.includes(`${path.sep}.mount_`);
+  return !env.APPIMAGE && !/[\\/]\.mount_/.test(resourcesDir);
 }
 
 /**
