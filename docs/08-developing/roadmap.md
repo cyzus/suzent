@@ -17,10 +17,11 @@ Moving from Tauri to Electron (see [Desktop shell](architecture/desktop-shell.md
 - **Done:** Electron shell in `apps/desktop/` with the Tauri app's behaviour
   (backend start/attach, tray and live status, close prompt, notifications,
   global shortcuts, embedded web pages), one frontend bridge for both shells,
-  CI smoke tests on all three platforms.
-- **Next:** self-contained installers for Windows, macOS and Linux built with
-  electron-builder around the bundled Python runtime (no git clone or uv sync
-  on the user's machine); self-update through electron-updater with an
+  CI smoke tests on all three platforms. Self-contained installers for
+  Windows, macOS and Linux built with electron-builder around the bundled
+  Python runtime (no git clone or uv sync on the user's machine), installed
+  and started in CI.
+- **Next:** self-update through electron-updater with an
   npmmirror route for mainland China; a one-time move for existing git-checkout
   installs; an in-app browser pane the agent drives over CDP; then releases
   switch over and `src-tauri/` and `apps/suzent-installer/` are removed.

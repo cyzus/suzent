@@ -4,5 +4,5 @@ build-test/
 release/
 resources/runtime/
 resources/suzent/
-resources/frontend/
+frontend/
 icons/

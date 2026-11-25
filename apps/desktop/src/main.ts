@@ -36,6 +36,7 @@ import {
 } from './closeAction';
 import { EmbeddedPages, isWebUrl } from './embeddedPages';
 import { fetchHealth, isSuzentOk, SERVICE_PORT } from './health';
+import { installShim } from './cliShim';
 import { resolveLayout, type Layout } from './layout';
 import { extractJsonPayload, runServiceCli } from './service';
 import { SuzentTray } from './tray';
@@ -87,6 +88,24 @@ const shortcuts = new Set<string>();
 
 function iconPath(name: string): string {
   return path.join(app.getAppPath(), 'icons', name);
+}
+
+/** `suzent` in a terminal on macOS and Linux; the Windows installer does its own. */
+function installCliCommand(): void {
+  if (layout.mode !== 'bundled' || process.platform === 'win32') return;
+  try {
+    const result = installShim(
+      path.join(app.getPath('home'), '.local', 'bin'),
+      app.getPath('exe'),
+      process.resourcesPath,
+      process.env
+    );
+    if (result === 'skipped-foreign') {
+      console.warn('~/.local/bin/suzent belongs to another install; leaving it as it is.');
+    }
+  } catch (error) {
+    console.warn('Could not install the suzent command:', error);
+  }
 }
 
 function frontendDir(): string {
@@ -527,6 +546,7 @@ if (!app.requestSingleInstanceLock()) {
       console.error('System tray unavailable; closing the window will quit Suzent:', error);
     }
     void startBackend();
+    installCliCommand();
   });
 
   app.on('activate', () => reveal());

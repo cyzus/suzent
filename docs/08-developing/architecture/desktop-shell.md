@@ -75,6 +75,47 @@ turned into a hide. The tray polls `/focal/chats` every four seconds and
 shows chats waiting on the user and chats running; on Windows the icon gets a
 red dot when something waits.
 
+## Installers
+
+`apps/desktop/electron-builder.yml` wraps the shell, the frontend build and
+the bundled runtime into standard installers:
+
+| Platform | Installers | Installs to |
+| --- | --- | --- |
+| Windows | NSIS, one click, per user (no admin prompt) | `%LOCALAPPDATA%\Programs\SUZENT` |
+| macOS | `.dmg` and `.zip`, signed with the hardened runtime and notarized | `/Applications/SUZENT.app` |
+| Linux | AppImage and `.deb` | `/opt/SUZENT` (deb) |
+
+`scripts/build_desktop_runtime.py` builds the runtime for the platform it runs
+on: it copies uv's python-build-standalone CPython 3.12 (never installing into
+uv's own copy), installs Suzent and its locked dependencies non-editable with
+the `social` and `camera` extras the built-in plugins need, strips Tcl/Tk and
+test suites, precompiles bytecode (the install dir may be read-only) and checks
+that the result imports and does not point at a checkout. It also copies the
+tracked `config/`, `skills/`, `plugins/` and `extensions/browser/` into
+`resources/suzent` with a `bundle.json`.
+
+`bundle.json` next to the runtime is how a backend started without the shell's
+environment (the background service, the `suzent` command) still knows it is
+bundled: `bundled_resources_dir()` in `suzent/config/paths.py` looks for it
+beside `sys.prefix`.
+
+The `suzent` command comes with the install. `installer/bin/` holds a
+`suzent.cmd` and a `suzent` script that run `python -m suzent.cli` on the
+bundled runtime. The Windows installer adds `resources\bin` to the user's
+`PATH` (`installer/installer.nsh`) and removes it on uninstall; on macOS and
+Linux the app writes `~/.local/bin/suzent` on launch (`src/cliShim.ts`),
+never over a `suzent` that it did not write, and not from an AppImage, whose
+mount point changes every run. `suzent update`, `upgrade` and `repair` refuse
+to run in a bundled install, which updates as a whole.
+
+`.github/workflows/desktop-installers.yml` builds the installers on Windows,
+macOS (arm64 and x64) and Linux, installs each one as a user would (silent
+NSIS install, the app copied out of the dmg, `apt install` of the deb, the
+extracted AppImage), checks the `suzent` command, runs the smoke test against
+the installed app and, on Windows, uninstalls it again. Run it by hand with
+`sign` to sign and notarize the macOS builds with the release certificates.
+
 ## Development
 
 ```bash
@@ -86,6 +127,16 @@ npm run dev                 # builds and opens the app on the frontend build
 SUZENT_DEV_URL=http://127.0.0.1:18080 npm run dev   # against `npm run dev` in frontend/
 npm test                    # unit tests (node:test)
 npm run e2e                 # starts the app and its backend, checks it, quits
+```
+
+To build installers locally:
+
+```bash
+(cd frontend && npm ci && npm run build)
+python scripts/build_desktop_runtime.py
+cd apps/desktop
+npm run dist:dir            # unpacked app in release/, quickest to try
+npm run dist                # the installers for this platform
 ```
 
 `npm run e2e -- --app <packaged executable>` runs the same smoke test

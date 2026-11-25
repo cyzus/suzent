@@ -1,0 +1,66 @@
+# Standard installers around the self-contained runtime.
+# Before building: `npm run build` here, `npm run build` in frontend/, and
+# `python scripts/build_desktop_runtime.py` at the repo root.
+appId: com.suzent.app
+productName: SUZENT
+copyright: Copyright © SUZENT Team
+directories:
+  output: release
+  buildResources: installer
+files:
+  - dist/**/*
+  - icons/**/*
+  - frontend/**/*
+  - package.json
+asar: true
+extraResources:
+  - from: resources/runtime
+    to: runtime
+  - from: resources/suzent
+    to: suzent
+  - from: installer/bin
+    to: bin
+artifactName: Suzent-${version}-${os}-${arch}.${ext}
+
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+  icon: icons/icon.ico
+nsis:
+  # Per-user, no administrator prompt, and updates install silently.
+  oneClick: true
+  perMachine: false
+  shortcutName: Suzent
+  uninstallDisplayName: Suzent
+  createDesktopShortcut: always
+  include: installer/installer.nsh
+
+mac:
+  target:
+    - target: dmg
+    - target: zip
+  category: public.app-category.productivity
+  icon: icons/icon.icns
+  minimumSystemVersion: '11.0'
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlements: installer/entitlements.mac.plist
+  entitlementsInherit: installer/entitlements.mac.plist
+  extendInfo:
+    NSMicrophoneUsageDescription: Suzent listens for voice input and its wake word.
+    NSCameraUsageDescription: Suzent takes a photo when you ask it to use the camera.
+dmg:
+  title: Suzent ${version}
+
+linux:
+  target:
+    - target: AppImage
+      arch: [x64]
+    - target: deb
+      arch: [x64]
+  icon: icons/icon.png
+  category: Utility
+  executableName: suzent-desktop
+  synopsis: Your sovereign personal AI agent
+  maintainer: SUZENT Team <cyzus@outlook.com>
