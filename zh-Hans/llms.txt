@@ -85,6 +85,7 @@ Full documentation: https://suzent.com/zh-Hans/llms-full.txt
 - [Agent Communication](https://suzent.com/zh-Hans/docs/developing/architecture/agent-inbox)
 - [Canvas (A2UI)](https://suzent.com/zh-Hans/docs/developing/architecture/canvas)
 - [Chat Storage](https://suzent.com/zh-Hans/docs/developing/architecture/chat-storage)
+- [Desktop shell](https://suzent.com/zh-Hans/docs/developing/architecture/desktop-shell)
 - [Focal Agent (Suzent Regent)](https://suzent.com/zh-Hans/docs/developing/architecture/focal-agent)
 - [Memory Architecture](https://suzent.com/zh-Hans/docs/developing/architecture/memory-architecture)
 - [Memory Internals](https://suzent.com/zh-Hans/docs/developing/architecture/memory-internals)
