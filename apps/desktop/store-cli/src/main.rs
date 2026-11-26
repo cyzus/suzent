@@ -35,11 +35,20 @@ fn main() -> ExitCode {
         eprintln!("Cannot find the Suzent resources next to this command.");
         return ExitCode::from(1);
     };
-    ignore_ctrl_c();
-    match cli_command(&resources, &data_dir(), &args).status() {
-        Ok(status) => ExitCode::from(status.code().unwrap_or(1).clamp(0, 255) as u8),
+    let mut child = match cli_command(&resources, &data_dir(), &args).spawn() {
+        Ok(child) => child,
         Err(error) => {
             eprintln!("Cannot start the bundled Python: {error}");
+            return ExitCode::from(1);
+        }
+    };
+    // Only after spawning: the ignore attribute is inherited, and Python must
+    // still get Ctrl+C to stop and clean up.
+    ignore_ctrl_c();
+    match child.wait() {
+        Ok(status) => ExitCode::from(status.code().unwrap_or(1).clamp(0, 255) as u8),
+        Err(error) => {
+            eprintln!("Lost the bundled Python: {error}");
             ExitCode::from(1)
         }
     }

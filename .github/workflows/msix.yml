@@ -269,6 +269,7 @@ jobs:
           # Runners have no interactive session, so the task may be unavailable here.
           & $alias --startup-task status
           if ($LASTEXITCODE -ne 0) { Write-Warning 'Start-at-login state unavailable on this runner' }
+          exit 0
 
       - name: Smoke test bundled backend
         shell: pwsh
