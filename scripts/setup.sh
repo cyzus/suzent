@@ -2,12 +2,25 @@
 # SUZENT Setup & Update Script
 # Usage:
 #   Fresh install:  curl -fsSL https://raw.githubusercontent.com/cyzus/suzent/main/scripts/setup.sh | bash
-#   Update:         suzent update   (or re-run this script inside the repo)
-#   Flags (env):    SUZENT_DIR=~/suzent  SUZENT_BRANCH=main  SUZENT_SKIP_PLAYWRIGHT=1
+#   From source:    curl -fsSL https://raw.githubusercontent.com/cyzus/suzent/main/scripts/setup.sh | bash -s -- --source
+#   Update:         the app updates itself; source installs run `suzent update`
+#   Flags (env):    SUZENT_INSTALL=package|source (default: the release's installer,
+#                     falling back to a source install when the release has none)
+#                   SUZENT_HEADLESS=1|0 (Linux; default: on when there is no display)
+#                   SUZENT_DIR=~/suzent  SUZENT_BRANCH=main  SUZENT_SKIP_PLAYWRIGHT=1
 #                   SUZENT_CHINA_MIRROR=1|0 (default: detect from the network)
 #                   SUZENT_REPO_URL=...  SUZENT_RELEASE_BASE_URL=...
 
 set -euo pipefail
+
+INSTALL_MODE="${SUZENT_INSTALL:-}"
+for arg in "$@"; do
+    case "$arg" in
+        --source) INSTALL_MODE=source ;;
+        --package) INSTALL_MODE=package ;;
+        *) echo "Unknown option: $arg (use --source or --package)" >&2; exit 2 ;;
+    esac
+done
 
 # ── Colours ──────────────────────────────────────────────────────────────────
 RED='\033[0;31m'; YELLOW='\033[0;33m'; GREEN='\033[0;32m'; CYAN='\033[0;36m'; RESET='\033[0m'
@@ -235,8 +248,8 @@ prepare_npm_release() {
     RELEASE_BASES=("file://$dir" "${RELEASE_BASES[@]}")
 }
 
-download_release_asset() {
-    local asset="$1" dest="$2" base sums expected actual tmp
+download_release_asset() {  # args: asset destination [max seconds]
+    local asset="$1" dest="$2" max_time="${3:-300}" base sums expected actual tmp
     tmp="$dest.download"
     prepare_npm_release
     for base in "${RELEASE_BASES[@]}"; do
@@ -246,7 +259,7 @@ download_release_asset() {
             warn "No checksum for $asset at $base; trying the next source."
             continue
         fi
-        if ! curl --connect-timeout 15 --max-time 300 -fL "$base/$asset" -o "$tmp"; then
+        if ! curl --connect-timeout 15 --max-time "$max_time" -fL "$base/$asset" -o "$tmp"; then
             warn "Download from $base failed; trying the next source."
             continue
         fi
@@ -308,6 +321,238 @@ install_uv_from_mirror() {
     rm -rf "$tmp"
     export PATH="$HOME/.local/bin:$PATH"
 }
+
+# ── Install from the release's installer ─────────────────────────────────────
+# A normal install is the same self-contained app the website offers: its own
+# Python runtime and dependencies, updated by the app itself. A source install
+# (--source) is for developers, and also what this script falls back to when
+# the release has no installer for this machine.
+APP_SHIM_MARKER="# managed-by: suzent-desktop"
+PACKAGE_NOTE=""
+LINUX_APP_DIR="$HOME/.local/share/suzent/app"
+
+# release_asset_matching <regex>: the name of the release file that matches,
+# read from the release's SHA256SUMS, so only files the release vouches for.
+release_asset_matching() {
+    local base sums name
+    for base in "${RELEASE_BASES[@]}"; do
+        sums="$(curl -fsSL --connect-timeout 15 --max-time 60 "$base/SHA256SUMS" 2>/dev/null || true)"
+        [ -n "$sums" ] || continue
+        name="$(printf '%s\n' "$sums" | awk '{ file = $2; sub(/^\*/, "", file); print file }' | grep -E "$1" | head -n 1 || true)"
+        [ -n "$name" ] && { echo "$name"; return 0; }
+        return 1
+    done
+    return 1
+}
+
+# The installers are large, and npmmirror does not carry them yet. In China
+# mode they are only taken from a mirror unless --package asks for GitHub.
+download_installer() {  # args: asset destination
+    local saved=("${RELEASE_BASES[@]}") base kept=() status
+    if china_mirror_enabled && [ -z "$RELEASE_BASE_URL" ] && [ "$INSTALL_MODE" != "package" ]; then
+        for base in "${RELEASE_BASES[@]}"; do
+            [[ "$base" == "$GITHUB_RELEASE_BASE"* ]] || kept+=("$base")
+        done
+        RELEASE_BASES=(${kept[@]+"${kept[@]}"})
+    fi
+    status=0
+    if [ ${#RELEASE_BASES[@]} -eq 0 ]; then
+        PACKAGE_NOTE="No mirror serves the app installer yet, so this installs from source through the mirrors. Use --package to download the app from GitHub instead."
+        status=1
+    else
+        info "Downloading $1 (several hundred MB)..."
+        download_release_asset "$1" "$2" 3600 || status=$?
+    fi
+    RELEASE_BASES=("${saved[@]}")
+    return $status
+}
+
+# The same `suzent` command the app writes on its first start (cliShim.ts),
+# so the app later takes it over instead of seeing someone else's.
+write_app_shim() {  # args: app executable, resources dir
+    local target="$HOME/.local/bin/suzent" quote_app quote_res
+    if [ -e "$target" ] || [ -L "$target" ]; then
+        if grep -q "$APP_SHIM_MARKER" "$target" 2>/dev/null; then
+            :
+        elif grep -q "auto-generated by setup.sh" "$target" 2>/dev/null \
+            && [ ! -d "$(sed -n 's/^cd "\(.*\)"$/\1/p' "$target")/.git" ]; then
+            :  # a source install's command whose checkout is gone
+        else
+            warn "$target belongs to another Suzent install; leaving it. Use $2/bin/suzent instead."
+            return 0
+        fi
+    fi
+    quote_app="'${1//\'/\'\"\'\"\'}'"
+    quote_res="'${2//\'/\'\"\'\"\'}'"
+    mkdir -p "$HOME/.local/bin"
+    cat > "$target.$$.tmp" <<SHIM
+#!/bin/sh
+$APP_SHIM_MARKER
+SUZENT_RESOURCES=$quote_res
+if [ ! -x "\$SUZENT_RESOURCES/bin/suzent" ]; then
+  echo "Suzent is no longer at \$SUZENT_RESOURCES. Open the Suzent app once to fix this command." >&2
+  exit 1
+fi
+SUZENT_APP=$quote_app SUZENT_RESOURCES="\$SUZENT_RESOURCES" exec "\$SUZENT_RESOURCES/bin/suzent" "\$@"
+SHIM
+    chmod 755 "$target.$$.tmp"
+    mv -f "$target.$$.tmp" "$target"
+    add_to_path_config "$HOME/.local/bin"
+    ok "'suzent' command ready ($target)"
+}
+
+app_is_running() {  # args: pgrep -f pattern
+    command -v pgrep &>/dev/null && pgrep -f "$1" &>/dev/null
+}
+
+install_macos_app() {
+    local asset dest dmg mount app_dir
+    [ "$(uname -m)" = "arm64" ] || { info "No installer for Intel Macs; installing from source."; return 1; }
+    asset="$(release_asset_matching '^Suzent-.*-mac-arm64\.dmg$')" || return 1
+    if [ -d "/Applications/SUZENT.app" ] || { [ ! -d "$HOME/Applications/SUZENT.app" ] && [ -w /Applications ]; }; then
+        app_dir="/Applications"
+    else
+        app_dir="$HOME/Applications"
+    fi
+    dest="$app_dir/SUZENT.app"
+    if app_is_running "$dest/Contents/MacOS/SUZENT"; then
+        info "Quitting the running Suzent to replace it..."
+        osascript -e 'quit app "SUZENT"' &>/dev/null || true
+        for _ in $(seq 1 30); do app_is_running "$dest/Contents/MacOS/SUZENT" || break; sleep 1; done
+        app_is_running "$dest/Contents/MacOS/SUZENT" && die "Quit Suzent, then run this command again."
+    fi
+    dmg="$(mktemp -d)/$asset"
+    download_installer "$asset" "$dmg" || { rm -rf "$(dirname "$dmg")"; return 1; }
+    mount="$(mktemp -d)"
+    hdiutil attach "$dmg" -nobrowse -readonly -quiet -mountpoint "$mount" </dev/null || die "Could not open $asset."
+    mkdir -p "$app_dir"
+    rm -rf "$dest.new"
+    if ! ditto "$mount/SUZENT.app" "$dest.new"; then
+        hdiutil detach "$mount" -quiet || true
+        die "Could not copy Suzent to $app_dir."
+    fi
+    hdiutil detach "$mount" -quiet || true
+    rm -rf "$(dirname "$dmg")" "$mount"
+    xattr -dr com.apple.quarantine "$dest.new" 2>/dev/null || true
+    rm -rf "$dest" && mv "$dest.new" "$dest"
+    ok "Suzent installed in $app_dir"
+    write_app_shim "$dest/Contents/MacOS/SUZENT" "$dest/Contents/Resources"
+    INSTALLED_HINT="Open ${CYAN}Suzent${RESET} from $app_dir or Launchpad, or run ${CYAN}suzent start${RESET}."
+}
+
+linux_is_headless() {
+    case "$(parse_mirror_choice "${SUZENT_HEADLESS:-}")" in
+        1) return 0 ;;
+        0) return 1 ;;
+    esac
+    [ -z "${DISPLAY:-}" ] && [ -z "${WAYLAND_DISPLAY:-}" ]
+}
+
+# Desktop Debian/Ubuntu: the .deb, which the app updates itself.
+install_linux_deb() {
+    local asset staging sudo_cmd=()
+    command -v apt-get &>/dev/null && command -v dpkg &>/dev/null || return 1
+    if [ "$(id -u)" -ne 0 ]; then
+        command -v sudo &>/dev/null || return 1
+        sudo_cmd=(sudo)
+    fi
+    asset="$(release_asset_matching '^Suzent-.*-linux-amd64\.deb$')" || return 1
+    staging="$(mktemp -d)"
+    download_installer "$asset" "$staging/$asset" || { rm -rf "$staging"; return 1; }
+    chmod 755 "$staging"
+    chmod 644 "$staging/$asset"
+    info "Installing the package (asks for your password)..."
+    if ! ${sudo_cmd[@]+"${sudo_cmd[@]}"} apt-get install -y "$staging/$asset" </dev/null; then
+        rm -rf "$staging"
+        warn "The package did not install; using the portable app instead."
+        return 1
+    fi
+    rm -rf "$staging"
+    ok "Suzent installed in /opt/SUZENT"
+    write_app_shim "/opt/SUZENT/suzent-desktop" "/opt/SUZENT/resources"
+    INSTALLED_HINT="Open ${CYAN}Suzent${RESET} from your app menu, or run ${CYAN}suzent start${RESET}."
+}
+
+# Servers and other distributions: the AppImage unpacked into a fixed folder,
+# with no FUSE, root or display needed. Running this script again updates it.
+install_linux_portable() {
+    local asset staging icon
+    asset="$(release_asset_matching '^Suzent-.*\.AppImage$')" || return 1
+    staging="$(dirname "$LINUX_APP_DIR")/.staging"
+    rm -rf "$staging" && mkdir -p "$staging"
+    download_installer "$asset" "$staging/$asset" || { rm -rf "$staging"; return 1; }
+    chmod +x "$staging/$asset"
+    info "Unpacking the app..."
+    (cd "$staging" && "./$asset" --appimage-extract >/dev/null </dev/null) || die "Could not unpack $asset."
+    [ -x "$staging/squashfs-root/resources/bin/suzent" ] || die "$asset has no suzent command inside."
+    rm -rf "$LINUX_APP_DIR.old"
+    [ -d "$LINUX_APP_DIR" ] && mv "$LINUX_APP_DIR" "$LINUX_APP_DIR.old"
+    mv "$staging/squashfs-root" "$LINUX_APP_DIR"
+    rm -rf "$staging" "$LINUX_APP_DIR.old"
+    ok "Suzent installed in $LINUX_APP_DIR"
+    write_app_shim "$LINUX_APP_DIR/suzent-desktop" "$LINUX_APP_DIR/resources"
+    if linux_is_headless; then
+        INSTALLED_HINT="Run ${CYAN}suzent serve${RESET} for the backend, or ${CYAN}suzent web${RESET} to use Suzent in a browser. Run this command again to update."
+        return 0
+    fi
+    icon="$LINUX_APP_DIR/suzent-desktop.png"
+    mkdir -p "$HOME/.local/share/applications"
+    cat > "$HOME/.local/share/applications/suzent.desktop" <<DESKTOP
+[Desktop Entry]
+Type=Application
+Name=Suzent
+Comment=Your sovereign personal AI agent
+Exec="$LINUX_APP_DIR/suzent-desktop" %U
+Icon=$([ -f "$icon" ] && echo "$icon" || echo suzent-desktop)
+Categories=Utility;
+Terminal=false
+DESKTOP
+    INSTALLED_HINT="Open ${CYAN}Suzent${RESET} from your app menu, or run ${CYAN}suzent start${RESET}. Run this command again to update."
+}
+
+install_linux_app() {
+    [ "$(uname -m)" = "x86_64" ] || { info "No installer for $(uname -m) Linux; installing from source."; return 1; }
+    if ! linux_is_headless && install_linux_deb; then
+        return 0
+    fi
+    install_linux_portable
+}
+
+try_package_install() {
+    if [ -z "$RELEASE_TAG" ]; then
+        return 1
+    fi
+    INSTALLED_HINT=""
+    prepare_npm_release
+    case "$OS" in
+        Darwin) install_macos_app ;;
+        Linux) install_linux_app ;;
+        *) return 1 ;;
+    esac
+}
+
+if [ "$IS_UPDATE" = true ] && [ "$INSTALL_MODE" != "package" ]; then
+    INSTALL_MODE=source
+    info "Found a source install in $SUZENT_DIR; updating it. Use --package to install the app instead."
+fi
+case "$INSTALL_MODE" in
+    source) ;;
+    package|"")
+        if [ "${SUZENT_DEV_SETUP:-0}" != "1" ] && try_package_install; then
+            echo ""
+            ok "SUZENT $RELEASE_TAG installed!"
+            echo ""
+            echo -e "  ${YELLOW}Next:${RESET} $INSTALLED_HINT"
+            echo -e "  Your data stays in ${CYAN}~/.suzent${RESET}."
+            echo ""
+            exit 0
+        fi
+        [ "$INSTALL_MODE" = "package" ] \
+            && die "Release ${RELEASE_TAG:-(none)} has no installer this machine can use. Run without --package to install from source."
+        info "${PACKAGE_NOTE:-No app installer for this machine in ${RELEASE_TAG:-this release}; installing from source.}"
+        ;;
+    *) die "SUZENT_INSTALL must be package or source, not '$INSTALL_MODE'." ;;
+esac
 
 # ── Check: git ────────────────────────────────────────────────────────────────
 if ! command -v git &>/dev/null; then

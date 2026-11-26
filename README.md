@@ -44,7 +44,7 @@ SUZENT runs on Windows, macOS, and Linux.
 
 <a href="https://apps.microsoft.com/detail/9MZQ1HHXHVZT?mode=full"><img src="https://get.microsoft.com/images/en-us%20dark.svg" alt="Get it from Microsoft" width="200" /></a>
 
-To install with the terminal or the [desktop installer](https://suzent.com/#download) instead, follow the steps below. Git is the only prerequisite; everything else is installed for you.
+To install with the terminal or the [desktop installer](https://suzent.com/#download) instead, follow the steps below. The command downloads the same self-contained app as the desktop installer and installs it silently, with nothing to set up first. On a computer the app does not cover yet (an Intel Mac, ARM Linux), it installs from source instead, which needs Git.
 
 **macOS / Linux**
 ```bash
@@ -55,6 +55,10 @@ curl -fsSL https://raw.githubusercontent.com/cyzus/suzent/main/scripts/setup.sh 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/cyzus/suzent/main/scripts/setup.ps1 | iex"
 ```
+
+On a Linux server with no display, you get the app without its window: run `suzent serve` for the backend or `suzent web` to use it from a browser.
+
+Developers who want a git checkout to work on add `--source` (`… | bash -s -- --source`, or `$env:SUZENT_INSTALL="source"` before the PowerShell command).
 
 Then start it and add a model under **Settings → Providers**:
 
@@ -67,7 +71,7 @@ No API key? Pick [Ollama](docs/04-models/local/ollama.md) and run everything on 
 <details>
 <summary><b>Installing from mainland China</b></summary>
 
-Nothing to configure. Setup checks the network first: when Google is unreachable but the mainland mirrors answer, it downloads Suzent itself (from its Gitee mirror), Python, Python packages, the Playwright browser and uv from mainland mirrors. The Windows desktop installer also shows a "use mainland mirrors" switch, and updates keep whatever you chose.
+Nothing to configure. Setup checks the network first: when Google is unreachable but the mainland mirrors answer, it downloads Suzent itself (from its Gitee mirror), Python, Python packages, the Playwright browser and uv from mainland mirrors. The mainland mirrors do not carry the app installer yet, so on these networks setup installs from source through the mirrors; add `--package` (or `SUZENT_INSTALL=package`) to download the app from GitHub instead. The Windows desktop installer also shows a "use mainland mirrors" switch, and updates keep whatever you chose.
 
 If `raw.githubusercontent.com` does not load, fetch the same script from jsDelivr:
 

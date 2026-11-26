@@ -45,8 +45,6 @@ Follow the installer to choose your workspace and set up Suzent. Internet access
 
 ### Use the terminal
 
-**Prerequisites:** [Node.js 20+](https://nodejs.org/) and [Git](https://git-scm.com/downloads).
-
 <Tabs groupId="os">
 <TabItem value="windows" label="Windows" default>
 
@@ -64,11 +62,22 @@ curl -fsSL https://raw.githubusercontent.com/cyzus/suzent/main/scripts/setup.sh 
 </TabItem>
 </Tabs>
 
-The script installs Suzent and any missing dependencies (Python/uv, Rust, build tools).
+The command downloads the same app as the desktop installer and installs it without asking anything:
+
+- **Windows:** into `%LOCALAPPDATA%\Programs\Suzent`, with Start menu and desktop shortcuts. Set `$env:SUZENT_APP_DIR` first to pick another folder.
+- **Mac:** into Applications (or the Applications folder in your home folder when the main one is not writable).
+- **Linux with a desktop:** the `.deb` package on Debian and Ubuntu (it asks for your password), otherwise a portable copy in `~/.local/share/suzent/app` with an app menu entry.
+- **Linux server with no display:** the same portable copy. Run `suzent serve` for the backend, or `suzent web` to use Suzent from a browser. Run the command again to update.
+
+After that the app keeps itself up to date. Your data stays in `~/.suzent`, whichever way you installed.
+
+On a computer the app does not cover yet (an Intel Mac, ARM Linux), or when a release has no installer, the command installs from source instead. That needs [Git](https://git-scm.com/downloads), and installs Python, uv and the other dependencies for you.
+
+**Developers:** add `--source` to get a git checkout you can work on (`curl … | bash -s -- --source`, or `$env:SUZENT_INSTALL="source"` before the PowerShell command). An existing source install keeps updating as one.
 
 ### Installing from mainland China
 
-Setup picks mirrors from the network it runs on: when Google is unreachable but the mainland mirrors answer, Suzent itself (from its Gitee mirror), Python, Python packages, the Playwright browser and uv come from mainland mirrors. There is nothing to turn on.
+Setup picks mirrors from the network it runs on: when Google is unreachable but the mainland mirrors answer, Suzent itself (from its Gitee mirror), Python, Python packages, the Playwright browser and uv come from mainland mirrors. There is nothing to turn on. The mainland mirrors do not carry the app installer yet, so on these networks setup installs from source through the mirrors. Add `--package` (or set `SUZENT_INSTALL=package`) to download the app from GitHub instead.
 
 If `raw.githubusercontent.com` does not load, fetch the same script from jsDelivr:
 
