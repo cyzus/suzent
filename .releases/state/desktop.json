@@ -355,6 +355,7 @@
     ".releases/changes/slim-chat-rows.json",
     ".releases/changes/slim-deps-web-fetch.json",
     ".releases/changes/social-reload-stops-old-stack.json",
+    ".releases/changes/source-checkout-electron.json",
     ".releases/changes/startup-retry-in-place.json",
     ".releases/changes/store-electron.json",
     ".releases/changes/streaming-peek-format.json",
