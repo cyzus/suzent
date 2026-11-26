@@ -1,6 +1,7 @@
 import asyncio
 import sys
 from collections.abc import Awaitable, Callable, Coroutine
+from urllib.parse import urlsplit
 from typing import Annotated, Any, Literal, TypeVar
 from playwright.async_api import (
     async_playwright,
@@ -29,9 +30,16 @@ from suzent.tools.browser.snapshot import (
     format_snapshot_element,
 )
 from suzent.tools.browser.preview import PreviewFrames
-from suzent.tools.base import Tool, ToolGroup, ToolErrorCode, ToolResult
+from suzent.tools.browser.script import (
+    SCRIPT_TIMEOUT_MS,
+    script_error,
+    script_expression,
+    script_result,
+    script_stopped,
+)
+from suzent.tools.base import RememberAs, Tool, ToolGroup, ToolErrorCode, ToolResult
 from suzent.logger import get_logger
-from pydantic_ai import RunContext
+from pydantic_ai import ApprovalRequired, RunContext
 
 from suzent.core.agent_deps import AgentDeps
 
@@ -490,6 +498,39 @@ class BrowserSessionManager:
 
         return await self._run_on_main_loop(_snap())
 
+    async def run_script(self, site: str, code: str) -> ToolResult:
+        async def _evaluate() -> dict[str, Any]:
+            async with self._action_lock:
+                self._snapshot_generation += 1
+                # The same DevTools call as the bridges, so a top-level throw
+                # ends the script on every backend alike.
+                devtools = await self._page.context.new_cdp_session(self._page)
+                try:
+                    return await devtools.send(
+                        "Runtime.evaluate",
+                        {
+                            "expression": script_expression(site, code),
+                            "awaitPromise": True,
+                            "returnByValue": True,
+                            "userGesture": True,
+                            "timeout": SCRIPT_TIMEOUT_MS,
+                        },
+                    )
+                finally:
+                    await devtools.detach()
+
+        try:
+            result = await self._run_on_main_loop(_evaluate())
+        except PlaywrightError as exc:
+            return script_stopped(str(exc).splitlines()[0])
+        details = result.get("exceptionDetails")
+        if details:
+            exception = details.get("exception") or {}
+            return script_error(
+                site, str(exception.get("description") or details.get("text") or "")
+            )
+        return script_result(result["result"].get("value"))
+
     async def interact(
         self, action: str, ref: str, value: str | None = None
     ) -> ToolResult:
@@ -745,9 +786,23 @@ OBSERVED_AFTER = frozenset(
         "refresh",
         "click_coords",
         "select_tab",
+        "run_js",
     }
 )
 OBSERVE_DELAY = 0.3
+NOT_IN_BATCH = frozenset({"batch", "run_js", "snapshot"})
+VALUE_COMMANDS = frozenset({"fill", "type", "press"})
+
+
+def parse_batch_step(step: str) -> tuple[str, list[str]]:
+    """``"fill @g1e2 some text"`` becomes ``("fill", ["@g1e2", "some text"])``."""
+    command, _, rest = step.strip().partition(" ")
+    if command in NOT_IN_BATCH:
+        raise ValueError(f"batch steps cannot use {command}")
+    if command in VALUE_COMMANDS:
+        ref, _, value = rest.strip().partition(" ")
+        return command, [ref, value]
+    return command, rest.split()
 
 
 class BrowsingTool(Tool):
@@ -759,38 +814,120 @@ class BrowsingTool(Tool):
         super().__init__(**kwargs)
         self.session_mgr = BrowserSessionManager.get_instance()
 
+    # Only run_js asks first: it runs arbitrary code with the user's sign-in on
+    # that site, where every other command is one bounded, visible action.
+
+    @classmethod
+    def is_readonly_call(cls, args: dict[str, Any]) -> bool:
+        return args.get("command") != "run_js"
+
+    @classmethod
+    def invalid_call_reason(cls, args: dict[str, Any]) -> str | None:
+        if args.get("command") != "run_js":
+            return None
+        try:
+            BrowserCommand.model_validate(
+                {
+                    "command": "run_js",
+                    "arguments": args.get("arguments") or [],
+                    "site": args.get("site"),
+                }
+            )
+        except ValidationError as exc:
+            return "; ".join(e["msg"] for e in exc.errors(include_input=False))
+        return None
+
+    @classmethod
+    def remember_as(cls, args: dict[str, Any]) -> RememberAs:
+        site = str(args.get("site") or "")
+        if args.get("command") != "run_js" or not site:
+            return RememberAs(None)
+        return RememberAs(
+            {"command": "run_js", "site": site},
+            f"scripts on {urlsplit(site).netloc}",
+        )
+
     async def _execute(
-        self, command: str, arguments: list[str] | None = None
+        self,
+        command: str,
+        arguments: list[str] | None = None,
+        site: str | None = None,
     ) -> ToolResult:
         """Run *command*; after one that can change the page, observe it too.
 
         Returning the new page with the action saves the agent a separate
         snapshot call per step, as Playwright MCP and browser-use do.
         """
-        result = await self._run(command, arguments)
+        if command == "batch":
+            return await self._batch(arguments)
+        result = await self._run(command, arguments, site)
         if not result.success or command not in OBSERVED_AFTER:
             return result
+        return await self._observed(result, command)
+
+    async def _observed(self, result: ToolResult, command: str) -> ToolResult:
         # Let a click that starts a navigation commit before observing.
         await asyncio.sleep(OBSERVE_DELAY)
         observed = await self._run("snapshot", [])
+        head = (
+            result.message
+            if command in {"run_js", "batch"}
+            else f"{command} completed."
+        )
         if not observed.success:
-            return ToolResult.success_result(
-                f"{command} completed. Call snapshot to observe the page.",
+            return ToolResult(
+                success=result.success,
+                message=f"{head} Call snapshot to observe the page.",
+                error_code=result.error_code,
                 metadata=result.metadata,
             )
-        return ToolResult.success_result(
-            f"{command} completed. Current page:\n{observed.message}",
+        return ToolResult(
+            success=result.success,
+            message=f"{head}\nCurrent page:\n{observed.message}",
+            error_code=result.error_code,
             metadata={**result.metadata, "snapshot": observed.metadata},
         )
 
+    async def _batch(self, steps: list[str] | None) -> ToolResult:
+        """Run several actions in one call, stopping at the first that fails."""
+        try:
+            BrowserCommand.model_validate(
+                {"command": "batch", "arguments": steps or []}
+            )
+            parsed = [parse_batch_step(step) for step in steps or []]
+        except (ValidationError, ValueError) as exc:
+            message = (
+                "; ".join(e["msg"] for e in exc.errors(include_input=False))
+                if isinstance(exc, ValidationError)
+                else str(exc)
+            )
+            return ToolResult.error_result(ToolErrorCode.INVALID_ARGUMENT, message)
+        for index, (command, arguments) in enumerate(parsed, start=1):
+            result = await self._run(command, arguments)
+            if not result.success:
+                failed = ToolResult.error_result(
+                    result.error_code or ToolErrorCode.EXECUTION_FAILED,
+                    f"Step {index} ({command}) failed: {result.message} "
+                    f"Steps before it completed.",
+                )
+                return await self._observed(failed, "batch")
+        done = ToolResult.success_result(
+            f"batch completed {len(parsed)} steps.", metadata={"command": "batch"}
+        )
+        return await self._observed(done, "batch")
+
     async def _run(
-        self, command: str, arguments: list[str] | None = None
+        self,
+        command: str,
+        arguments: list[str] | None = None,
+        site: str | None = None,
     ) -> ToolResult:
         try:
             request = BrowserCommand.model_validate(
                 {
                     "command": command,
                     "arguments": arguments if arguments is not None else [],
+                    "site": site,
                 }
             )
         except ValidationError as exc:
@@ -845,6 +982,8 @@ class BrowsingTool(Tool):
                     return await self.session_mgr.tabs()
                 case "select_tab":
                     return await self.session_mgr.select_tab(args[0])
+                case "run_js":
+                    return await self.session_mgr.run_script(str(request.site), args[0])
                 case "snapshot":
                     return await self.session_mgr.get_snapshot(
                         interactive_only=arguments == ["-i"],
@@ -905,22 +1044,35 @@ class BrowsingTool(Tool):
                 "scroll",
                 "tabs",
                 "select_tab",
+                "batch",
+                "run_js",
             ],
             Field(description="Browser command to execute."),
         ],
         arguments: Annotated[
             list[str] | None,
             Field(
-                description="tabs: [] lists stable tab IDs ([controlled] marks the tab this tool acts on, [user-viewing] marks the tab the user is currently looking at); select_tab: [tab-id] switches tabs; open: [url] or []; snapshot: [] or [offset, limit<=100] or [-i]; click/dblclick/hover: [ref]; fill/type/press: [ref, value]; click_coords: [x, y]; scroll: [dx, dy] or []; back/forward/reload/refresh: []. Use exact @gNeN refs from the latest snapshot; selectors are not accepted.",
+                description="tabs: [] lists stable tab IDs ([controlled] marks the tab this tool acts on, [user-viewing] marks the tab the user is currently looking at); select_tab: [tab-id] switches tabs; open: [url] or []; snapshot: [] or [offset, limit<=100] or [-i]; click/dblclick/hover: [ref]; fill/type/press: [ref, value]; click_coords: [x, y]; scroll: [dx, dy] or []; back/forward/reload/refresh: []; batch: up to 20 steps written as '<command> <arguments>', e.g. ['fill @g1e2 Ada Lovelace', 'fill @g1e3 ada@example.com', 'click @g1e4']; run_js: [code], the body of an async function run in the page, which may await and returns a JSON value. Use exact @gNeN refs from the latest snapshot; selectors are not accepted.",
+            ),
+        ] = None,
+        site: Annotated[
+            str | None,
+            Field(
+                description="run_js only: the origin of the page the code runs on, e.g. https://example.com. The user approves code per site, and it is refused if the page is elsewhere.",
             ),
         ] = None,
     ) -> ToolResult:
         """Control a browser session to navigate and interact with web pages.
 
-        open, click, press, back/forward/reload, click_coords and select_tab return the updated page with fresh element refs, so act on those directly; call snapshot only to page through more elements or after fill/type/hover/scroll.
+        open, click, press, back/forward/reload, click_coords, select_tab, batch and run_js return the updated page with fresh element refs, so act on those directly; call snapshot only to page through more elements or after fill/type/hover/scroll.
+
+        Use batch for several known steps, such as filling a form. Use run_js only when the snapshot and actions cannot do the job, such as reading data from many elements at once: the user is asked before code runs on a site.
 
         Args:
-            command: The command to execute (open, snapshot, click, fill, scroll, back, forward, refresh, click_coords).
+            command: The command to execute (open, snapshot, click, fill, scroll, back, forward, refresh, click_coords, batch, run_js).
             arguments: Command-specific string arguments. Refs expire after navigation or another snapshot.
+            site: The page's origin, for run_js.
         """
-        return await self._execute(command, arguments)
+        if command == "run_js" and not ctx.tool_call_approved:
+            raise ApprovalRequired(metadata={"site": site})
+        return await self._execute(command, arguments, site)

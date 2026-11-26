@@ -16,6 +16,13 @@ from suzent.tools.browser.snapshot import (
     format_snapshot_element,
 )
 from suzent.tools.browser.bridge import BrowserBridge
+from suzent.tools.browser.script import (
+    SCRIPT_TIMEOUT_MS,
+    script_error,
+    script_expression,
+    script_result,
+    script_stopped,
+)
 from suzent.tools.browser.extension.bridge import bridge
 
 
@@ -53,6 +60,27 @@ class BridgeSession:
         if result.get("exceptionDetails"):
             raise ValueError("Page changed during the action. Take a fresh snapshot.")
         return result["result"].get("value")
+
+    async def run_script(self, site: str, code: str) -> ToolResult:
+        self.invalidate()
+        try:
+            result = await self.cdp(
+                "Runtime.evaluate",
+                expression=script_expression(site, code),
+                awaitPromise=True,
+                returnByValue=True,
+                userGesture=True,
+                timeout=SCRIPT_TIMEOUT_MS,
+            )
+        except ValueError as exc:
+            return script_stopped(str(exc))
+        details = result.get("exceptionDetails")
+        if details:
+            exception = details.get("exception") or {}
+            return script_error(
+                site, str(exception.get("description") or details.get("text") or "")
+            )
+        return script_result(result["result"].get("value"))
 
     async def on_event(self, method: str, params: dict[str, Any]) -> None:
         if method == "Page.frameNavigated" and not params.get("frame", {}).get(
@@ -322,6 +350,8 @@ class BridgeSession:
                 )
             if command == "snapshot":
                 return await self.snapshot(args, interactive_only)
+            if command == "run_js":
+                return await self.run_script(str(request.site), args[0])
             if command in {"click", "dblclick", "hover", "fill", "type", "press"}:
                 await self.interact(command, args)
             elif command == "click_coords":

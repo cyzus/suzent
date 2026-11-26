@@ -72,7 +72,7 @@ Tools that are **stateless** (e.g. `web_search`, `webpage_fetch`) omit `RunConte
 |------|----------|---------|-------------|
 | WebSearchTool | `web_search` | — | Web search via SearXNG or DuckDuckGo |
 | WebpageTool | `webpage_fetch` | — | Fetch and extract webpage content as markdown |
-| BrowsingTool | `browser_action` | — | Control a headless browser (Playwright) |
+| BrowsingTool | `browser_action` | — | Control the built-in, managed or extension browser. Only `run_js` asks. |
 | DesktopTool | `desktop` | — | Optional. Host-only agent-desktop CLI. Registered by the `desktop` plugin, which is off by default. Reads are allowed; mutations ask. |
 
 ### Filesystem
@@ -290,7 +290,13 @@ See [Social Messaging](../../05-chat-apps/README.md) for platform setup.
 
 Control your existing Chrome/Edge tabs and logins through the Suzent browser extension, or use a managed Playwright browser with optional persistent profiles. Direct CDP attachment remains an advanced option. All modes use the native tool; MCP is optional. See [Browser](../../03-features/tools/browser.md) for extension installation, pairing, tab selection, and snapshot pagination.
 
-**Commands:** `tabs`, `select_tab`, `open`, `snapshot`, `click`, `dblclick`, `hover`, `fill`, `type`, `scroll`, `back`, `forward`, `reload`, `refresh`, `press`, `click_coords`
+**Commands:** `tabs`, `select_tab`, `open`, `snapshot`, `click`, `dblclick`, `hover`, `fill`, `type`, `scroll`, `back`, `forward`, `reload`, `refresh`, `press`, `click_coords`, `batch`, `run_js`
+
+Page-changing commands return a fresh snapshot with their result. `batch` runs up to 20 steps written as `"<command> <arguments>"` (for example `"fill @g1e2 Ada Lovelace"`), stops at the first failure, and returns one snapshot at the end. It cannot contain `snapshot`, `batch` or `run_js`.
+
+`run_js` is the only command that needs approval. The tool keeps `requires_approval = False` and raises `ApprovalRequired` for `run_js` alone, so other commands never pause the run. The call carries `site`, which must be the page's exact origin (`site_origin()`; `invalid_call_reason` refuses anything else). That keeps remembered rules exact: `remember_as` stores `exact_input` `{"command": "run_js", "site": ...}`, and Settings → Browser lists and edits the same global rules through `/permissions/rules`. `is_readonly_call` is true for every other command.
+
+The code is the body of an async function. `script.py` wraps it behind a top-level `if (location.origin !== site) throw` statement and evaluates the whole script with `Runtime.evaluate` (`awaitPromise`, `returnByValue`, a 15 s `timeout` and a matching `Promise.race`). It runs on all three backends: the bridges' CDP relay, and a CDP session for Playwright. Because a top-level throw ends the script, code that closes the wrapper early to add its own statements still never runs on another origin. Results are JSON, truncated to 10,000 characters.
 
 ### `speak`
 

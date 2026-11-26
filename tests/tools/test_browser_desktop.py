@@ -166,7 +166,7 @@ async def test_page_changing_actions_return_the_new_page(
     tool = BrowsingTool()
     calls: list[str] = []
 
-    async def run(command: str, arguments: list[str] | None = None):
+    async def run(command: str, arguments: list[str] | None = None, site=None):
         calls.append(command)
         if command == "snapshot":
             return tool_module.ToolResult.success_result(

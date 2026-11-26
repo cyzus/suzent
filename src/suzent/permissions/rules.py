@@ -39,8 +39,15 @@ def match_rule(
         expected = matcher.value if isinstance(matcher.value, dict) else {}
         if "command" in expected:
             actual = args.get("content") or args.get("command")
-            return str(actual or "").strip() == str(expected["command"]).strip()
-        return all(args.get(key) == value for key, value in expected.items())
+            if str(actual or "").strip() != str(expected["command"]).strip():
+                return False
+        # Every other remembered field must match too, so a rule for one
+        # browser site never answers for another.
+        return all(
+            args.get(key) == value
+            for key, value in expected.items()
+            if key != "command"
+        )
     if matcher.type == "command_prefix":
         command = str(args.get("content") or args.get("command") or "").strip()
         prefix = str(matcher.value or "").strip()
