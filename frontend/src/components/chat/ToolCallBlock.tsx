@@ -543,6 +543,15 @@ const ToolCallBlockComponent: React.FC<ToolCallBlockProps> = ({
         value && typeof value === 'object' && !Array.isArray(value)
           ? (value as Record<string, unknown>)
           : {};
+      if (typeof valueObject.site === 'string') {
+        return [
+          t('toolCallBlock.ruleExplanationSite', {
+            action: permissionActionLabel(action),
+            scope: destination,
+            site: valueObject.site,
+          }),
+        ];
+      }
       const rawCommand = String(valueObject.command || '');
       const compact = rawCommand.trim().replace(/\s+/g, ' ');
       const command = compact.length > 120 ? `${compact.slice(0, 117)}...` : compact;

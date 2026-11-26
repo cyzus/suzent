@@ -1046,6 +1046,21 @@ export const zhCN = {
       restartRequiredManually: '已保存。请重启 Suzent 后端以使新的网络绑定生效。',
     },
     browser: {
+      sites: {
+        title: '可以运行代码的网站',
+        description:
+          '普通浏览器操作做不到的事，agent 可以申请在网页里运行自己的代码，用的是你在这个网站的登录身份。你可以设置哪些网站不用再问，哪些网站一律不允许。',
+        empty: '还没有网站。agent 申请时，你也可以直接选择“该网站上的代码 · 始终”。',
+        site: '网站',
+        choice: '选择',
+        allow: '允许',
+        block: '禁止',
+        allowed: '已允许',
+        blocked: '已禁止',
+        add: '保存',
+        remove: '移除',
+        error: '网站权限更新失败，请重试。',
+      },
       extension: '使用我的浏览器（扩展）',
       extensionConnected: '已连接',
       extensionDisconnected: '未连接',
@@ -2984,6 +2999,7 @@ export const zhCN = {
     permissionPolicyAllowed: '策略允许',
     ruleScopeSession: '当前对话',
     ruleScopeGlobal: '所有对话',
+    ruleExplanationSite: '{action} 将允许代码在{scope}内直接在 {site} 上运行，不再询问',
     ruleExplanationCommand: '{action} 将为{scope}创建命令规则：`{command}`',
     ruleExplanationTool: '{action} 将为{scope}创建覆盖 {tool} 工具的规则。',
     ruleExplanationGeneric: '{action} 将为{scope}创建作用域规则。',
@@ -3006,6 +3022,11 @@ export const zhCN = {
   permissionDock: {
     allowOptions: '选择允许范围',
     once: '仅本次',
+    runScript: '在 {site} 上运行代码',
+    scriptReason:
+      '这段代码会以你在 {site} 的登录身份运行，你在这个网站上能看到、能改的，它都能看到、能改。',
+    siteSession: '{site} 上的代码 · 当前聊天',
+    siteAlways: '{site} 上的代码 · 始终',
     commandSession: '这条命令 · 当前聊天',
     commandAlways: '这条命令 · 始终',
     allow: '允许',

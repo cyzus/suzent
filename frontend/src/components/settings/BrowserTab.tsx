@@ -15,6 +15,7 @@ import { BrutalButton } from '../BrutalButton';
 import { RefreshButton } from '../RefreshButton';
 import { SettingsCard, SettingsPage } from './SettingsCard';
 import { BrowserExtensionSetup } from './BrowserExtensionSetup';
+import { BrowserSitePermissions } from './BrowserSitePermissions';
 import { SettingsHeader } from './SettingsHeader';
 
 export function BrowserTab(): React.ReactElement {
@@ -193,6 +194,7 @@ export function BrowserTab(): React.ReactElement {
           </div>
         </SettingsCard>
       )}
+      <BrowserSitePermissions />
     </SettingsPage>
   );
 }
