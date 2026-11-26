@@ -1,40 +1,51 @@
 # MSIX (Microsoft Store) package
 
-The Store build is the normal Tauri app plus a relocatable Python runtime with
-Suzent installed in it. The Tauri exe detects this layout and runs in
-**packaged mode** (`src-tauri/src/packaged.rs`).
+The Store build is the Electron desktop app (`apps/desktop`) unpacked, with the
+same bundled Python runtime the installers ship, plus a small `suzent.exe`
+helper (`apps/desktop/store-cli`). Electron reports `process.windowsStore`
+inside the package, and the app behaves as a Store install.
 
 ## Layout
 
 ```text
 pkg\
   AppxManifest.xml            rendered from AppxManifest.template.xml
-  suzent.exe                  Tauri release exe (built with tauri.conf.store.json)
-  Assets\                     StoreLogo / Square44x44 / Square150x150 (from src-tauri/icons),
-                              plus unplated Square44x44 targetsize icons (from packaging/msix/assets)
+  SUZENT.exe                  Electron app (electron-builder --dir, win-unpacked)
+  Assets\                     StoreLogo / Square44x44 / Square150x150 and the unplated
+                              Square44x44 targetsize icons (all from packaging/msix/assets)
   resources.pri               makepri index of Assets; without it the shell ignores the
                               unplated icons and draws the logo on an accent-coloured plate
-  runtime\python\             python-build-standalone CPython 3.12 + locked deps + suzent
-  app\config\  app\skills\  app\plugins\  app\extensions\browser\   tracked repo files (SUZENT_PROJECT_DIR)
+  resources\app.asar          the Electron shell and web UI
+  resources\runtime\python\   CPython 3.12 + locked deps + suzent (scripts/build_desktop_runtime.py)
+  resources\suzent\           config/ skills/ plugins/ extensions/browser (SUZENT_PROJECT_DIR)
+  resources\bin\suzent.exe    store-cli: the `suzent` alias and the start-at-login switch
 ```
 
-In packaged mode the app:
+In the package the app:
 
-- starts `runtime\python\python.exe -m suzent.server` with
-  `SUZENT_PROJECT_DIR=<pkg>\app`, `PYTHONDONTWRITEBYTECODE=1` and `PYTHONNOUSERSITE=1`;
-- keeps all writable state in `~/.suzent` (also `PLAYWRIGHT_BROWSERS_PATH` and
-  `UV_CACHE_DIR`, because `%LOCALAPPDATA%` is virtualized per package);
-- attaches only to backends that report `source_root: null`;
-- disables the self-updater and installer ("updated through the Microsoft Store");
-- implements the Settings > Background service toggle with the package's
-  `StartupTask` (`TaskId="SuzentStartup"`, disabled by default).
+- runs the backend from `resources\runtime\python` exactly as the installed app
+  does, keeping all writable state in `~/.suzent` (`%LOCALAPPDATA%` is
+  virtualized per package, so the Playwright and uv caches live there too);
+- never updates itself: the Store does ("updated through the Microsoft Store");
+- implements Settings > Background service with the package's `StartupTask`
+  (`TaskId="SuzentStartup"`, off by default), switched by
+  `resources\bin\suzent.exe --startup-task enable|disable|status`, because only
+  a process inside the package may change it;
+- offers the `suzent` command through the execution alias, which points at the
+  same helper; it runs `python -m suzent.cli` with the app's environment and
+  refuses `update`, `upgrade` and `repair`.
+
+Store users of the earlier Tauri package update to this one like any other
+version: the Identity Name, Publisher and `Application Id="App"` are unchanged,
+so data in `~/.suzent` and Start pins carry over.
 
 ## Icons
 
 `assets\` holds `Square44x44Logo.targetsize-<n>_altform-unplated.png` and
 `..._altform-lightunplated.png` for sizes 16, 20, 24, 30, 32, 36, 40, 48, 60, 64, 72, 80, 96
-and 256, each a Lanczos downscale of `src-tauri/icons/icon.png`. Regenerate them when the app
-icon changes.
+and 256, each a Lanczos downscale of the app icon (`apps/desktop/icons/icon.png`), next to
+`StoreLogo.png`, `Square44x44Logo.png` and `Square150x150Logo.png`. Regenerate them when
+the app icon changes.
 
 ## Manifest placeholders
 
@@ -43,33 +54,27 @@ icon changes.
 | `{{IDENTITY_NAME}}` | Partner Center Package/Identity/Name | `MSIX_IDENTITY_NAME` |
 | `{{PUBLISHER}}` | Partner Center Package/Identity/Publisher (`CN=...`) | `MSIX_PUBLISHER` |
 | `{{PUBLISHER_DISPLAY_NAME}}` | Partner Center PublisherDisplayName | `MSIX_PUBLISHER_DISPLAY_NAME` |
-| `{{VERSION}}` | app version + `.0`, e.g. `0.20.0.0` | `src-tauri/tauri.conf.json` |
+| `{{VERSION}}` | app version + `.0`, e.g. `0.20.0.0` | `apps/desktop/package.json` |
 
 ## Building locally
 
 The CI workflow (`.github/workflows/msix.yml`) is the reference. By hand, on Windows:
 
-1. `uv python install 3.12` and copy that interpreter dir to `pkg\runtime\python`.
-2. `uv export --frozen --no-dev --extra social --extra camera --no-editable --no-hashes --no-emit-project > req.txt`
-   (the built-in plugins' extras must be bundled: the package has no `uv.lock`
-   or writable environment to install them into later), then
-   `uv pip install --python pkg\runtime\python\python.exe --break-system-packages -r req.txt`
-   and `uv pip install --python ... --break-system-packages --no-deps .`.
-3. Delete the files that make signtool fail (`DLLs\tcl86t.dll`, `DLLs\tk86t.dll`,
-   `vcruntime140.dll`, `vcruntime140_1.dll`) together with `tcl\`, `Lib\tkinter`,
-   `Lib\idlelib`, `Lib\turtledemo`, `DLLs\_tkinter.pyd`; then `python -m compileall -q`.
-4. Copy `config\`, `skills\`, `plugins\` and `extensions\browser\` (tracked files only)
-   to `pkg\app\`. The browser extension is served from there by Settings > Browser.
-5. `cd src-tauri; npx tauri build --no-bundle --config tauri.conf.store.json` and copy
-   `target\release\suzent.exe` to `pkg\`.
-6. Render the manifest, copy `packaging\msix\assets\*.png` into `pkg\Assets\`, and build
-   `pkg\resources.pri` with `makepri` as the Pack step in `msix.yml` does. Then either `makeappx pack /d pkg /p Suzent.msix /o`, or for a
-   quick test with Developer Mode on: `Add-AppxPackage -Register pkg\AppxManifest.xml`.
+1. Build the web UI (`cd frontend; npm ci; npm run build`), then the runtime:
+   `uv run --no-project python scripts/build_desktop_runtime.py`.
+2. `cd apps/desktop; npm ci; npm run dist:dir`, and copy `release\win-unpacked` to `pkg\`.
+3. `cd apps/desktop/store-cli; cargo build --release`, and copy `target\release\suzent.exe`
+   to `pkg\resources\bin\`.
+4. Delete `vcruntime140.dll` and `vcruntime140_1.dll` from `pkg\resources\runtime\python`
+   (signtool rejects them; the VCLibs framework dependency provides them).
+5. Render the manifest, copy `packaging\msix\assets\*.png` into `pkg\Assets\`, and build
+   `pkg\resources.pri` with `makepri` as the Pack step in `msix.yml` does. Then either
+   `makeappx pack /d pkg /p Suzent.msix /o`, or for a quick test with Developer Mode on:
+   `Add-AppxPackage -Register pkg\AppxManifest.xml`.
 
-To run a test build next to an existing Suzent, give it its own identifier
-(a copy of `tauri.conf.store.json` with another `identifier`), its own manifest
-`Identity Name`, and its own data dir by building with the environment variable
-`SUZENT_DATA_DIR_NAME=.suzent-preview`.
+To run a test build next to an existing Suzent, give the manifest its own
+`Identity Name` and the app its own data dir with the environment variable
+`SUZENT_DATA_DIR`.
 
 ## Publishing to the Microsoft Store
 
@@ -105,7 +110,7 @@ refuses to publish the CI test identity.
 - Pull requests and branch pushes never publish.
 
 **Versions.** The manifest version is the app version from
-`src-tauri/tauri.conf.json` plus `.0` (the Store requires the fourth part to be
+`apps/desktop/package.json` plus `.0` (the Store requires the fourth part to be
 0, and each submission must be higher than the last). On a tag, the build fails
 before doing any work if the tag is not `v<app version>`. Re-running a publish
 for a version the Store already has will be rejected by Partner Center.
@@ -115,3 +120,10 @@ gate, set the submission option *Publish this submission manually* (Partner
 Center > the app > Pricing and availability > Publishing) so a certified
 build waits until someone releases it. Runs never overlap: the publish job
 uses the `msstore-publish` concurrency group and is never cancelled.
+
+**Testers first.** To send releases to a Partner Center package flight instead
+of everyone, create the flight in Partner Center and set its ID as the
+`MSIX_FLIGHT_ID` repository variable; a manual run can also pass `flight_id`.
+Clear the variable to ship to everyone again. Use this for the first Electron
+package, so a few people check that the update from the Tauri package keeps
+their data and pins.
