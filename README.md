@@ -274,7 +274,7 @@ The full index lives in [docs/README.md](docs/README.md).
 ## **TECH STACK**
 
 *   **BACKEND**: Python 3.12, FastAPI, pydantic-ai, litellm, SQLite.
-*   **FRONTEND**: React, TypeScript, Tailwind, Vite, Tauri.
+*   **FRONTEND**: React, TypeScript, Tailwind, Vite, Electron.
 *   **MEMORY**: Markdown files as the source of truth, LanceDB hybrid (vector + full-text) index.
 *   **SANDBOX**: Docker (optional).
 *   **EXTENSIBILITY**: MCP, portable `SKILL.md` packages.

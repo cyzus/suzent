@@ -628,27 +628,6 @@ fi
 command -v uv &>/dev/null || die "uv installation failed. See https://docs.astral.sh/uv/"
 ok "uv $(uv --version | awk '{print $2}')"
 
-ensure_rust() {
-    if command -v cargo &>/dev/null; then
-        ok "Rust/Cargo $(cargo --version | awk '{print $2}')"
-        return
-    fi
-
-    if [ -x "$HOME/.cargo/bin/cargo" ]; then
-        refresh_path
-        if command -v cargo &>/dev/null; then
-            ok "Rust/Cargo $(cargo --version | awk '{print $2}')"
-            return
-        fi
-    fi
-
-    info "Installing Rustup/Cargo for developer mode..."
-    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-    refresh_path
-    command -v cargo &>/dev/null || die "Rust installation failed. Restart your shell and re-run."
-    ok "Rust/Cargo $(cargo --version | awk '{print $2}')"
-}
-
 # ── macOS: Xcode CLI tools ────────────────────────────────────────────────────
 if [ "$OS" = "Darwin" ]; then
     if ! xcode-select -p &>/dev/null; then
@@ -869,15 +848,13 @@ download_webui() {
 [ "${SUZENT_DEV_SETUP:-0}" = "1" ] || download_webui || true
 
 install_dev_deps() {
-    ensure_rust
-
     info "Installing frontend dependencies (npm install)..."
     (cd frontend && npm install) || die "npm install failed in frontend/."
     ok "Frontend dependencies ready"
 
-    info "Installing src-tauri dependencies (npm install)..."
-    (cd src-tauri && npm install) || die "npm install failed in src-tauri/."
-    ok "Tauri JS dependencies ready"
+    info "Installing desktop shell dependencies (npm install in apps/desktop)..."
+    (cd apps/desktop && npm install) || die "npm install failed in apps/desktop/."
+    ok "Desktop shell dependencies ready"
 
     # `suzent web` serves the SPA out of src/suzent/webui/, which is a build
     # artifact rather than source. Nothing else in this script produces it, so
@@ -888,12 +865,21 @@ install_dev_deps() {
     else
         warn "Web UI build failed -- 'suzent web' will report no bundle (non-fatal)."
     fi
+
+    # `suzent start` runs this shell from the checkout on the built web UI;
+    # `suzent start --dev` runs it on the Vite dev server instead.
+    info "Building the desktop shell (apps/desktop)..."
+    if (cd apps/desktop && npm run build); then
+        ok "Desktop shell built (suzent start)"
+    else
+        warn "Desktop shell build failed -- run 'npm run build' in apps/desktop (non-fatal)."
+    fi
 }
 
 if [ "${SUZENT_DEV_SETUP:-0}" = "1" ]; then
     install_dev_deps
 else
-    info "Skipping frontend/Tauri npm dependencies for normal user setup."
+    info "Skipping frontend and desktop shell npm dependencies for normal user setup."
     info "Set SUZENT_DEV_SETUP=1 before running setup to prepare developer mode."
 fi
 

@@ -453,23 +453,73 @@ def test_get_ui_binary_prefers_packaged_executable(monkeypatch, tmp_path):
     assert cli_main._get_ui_binary(tmp_path / "app") is None
 
 
-@pytest.mark.parametrize("development", [False, True])
-def test_get_ui_binary_selects_build_for_workspace(monkeypatch, tmp_path, development):
-    if not development:
-        (tmp_path / ".suzent-bootstrap-complete").touch()
+def test_get_ui_binary_ignores_local_tauri_builds(monkeypatch, tmp_path):
     monkeypatch.setattr(cli_main, "IS_WINDOWS", True)
-    managed = tmp_path / "bin" / "suzent-ui.exe"
     local_build = tmp_path / "src-tauri" / "target" / "release" / "suzent.exe"
-    managed.parent.mkdir(parents=True)
     local_build.parent.mkdir(parents=True)
+    local_build.write_bytes(b"local")
+    assert cli_main._get_ui_binary(tmp_path) is None
+
+    managed = tmp_path / "bin" / "suzent-ui.exe"
+    managed.parent.mkdir(parents=True)
     managed.write_bytes(b"managed")
     (managed.parent / "version.txt").write_text("v1.2.3", encoding="utf-8")
-    local_build.write_bytes(b"local")
-    local_build.touch()
+    assert cli_main._get_ui_binary(tmp_path) == managed
 
-    assert cli_main._get_ui_binary(tmp_path) == (
-        local_build if development else managed
+
+def _build_source_desktop(root):
+    electron = root / "apps" / "desktop" / "node_modules" / "electron"
+    (electron / "dist").mkdir(parents=True)
+    (electron / "path.txt").write_text("electron.exe", encoding="utf-8")
+    (electron / "dist" / "electron.exe").write_bytes(b"exe")
+    (root / "apps" / "desktop" / "dist").mkdir()
+    (root / "apps" / "desktop" / "dist" / "main.js").write_text("", encoding="utf-8")
+    (root / "frontend" / "dist").mkdir(parents=True)
+    (root / "frontend" / "dist" / "index.html").write_text("", encoding="utf-8")
+    return electron / "dist" / "electron.exe"
+
+
+def test_source_desktop_command_needs_shell_and_web_ui(tmp_path):
+    assert cli_main._source_desktop_command(tmp_path) is None
+    electron = _build_source_desktop(tmp_path)
+    assert cli_main._source_desktop_command(tmp_path) == [
+        str(electron),
+        str(tmp_path / "apps" / "desktop"),
+    ]
+    (tmp_path / "frontend" / "dist" / "index.html").unlink()
+    assert cli_main._source_desktop_command(tmp_path) is None
+
+
+@pytest.mark.parametrize("bootstrapped", [False, True])
+def test_start_runs_electron_from_a_development_checkout(
+    monkeypatch, tmp_path, bootstrapped
+):
+    if bootstrapped:
+        (tmp_path / ".suzent-bootstrap-complete").touch()
+    app = typer.Typer()
+    cli_main.register_commands(app)
+    electron = _build_source_desktop(tmp_path)
+    release_ui = tmp_path / "bin" / "suzent-ui.exe"
+    launches = []
+    monkeypatch.setattr(cli_main, "get_project_root", lambda: tmp_path)
+    monkeypatch.setattr(cli_main, "_notify_update_available", lambda root: None)
+    monkeypatch.setattr(cli_main, "_get_ui_binary", lambda root: release_ui)
+    monkeypatch.setattr(
+        cli_main,
+        "_launch_detached",
+        lambda cmd, **kwargs: launches.append((cmd, kwargs["env"])),
     )
+    monkeypatch.setattr(cli_main, "_report_detached", lambda *args, **kwargs: None)
+
+    result = runner.invoke(app, ["start"])
+
+    assert result.exit_code == 0
+    command, env = launches[0]
+    if bootstrapped:
+        assert command == [str(release_ui)]
+    else:
+        assert command == [str(electron), str(tmp_path / "apps" / "desktop")]
+        assert env["SUZENT_DIR"] == str(tmp_path)
 
 
 @pytest.mark.parametrize(
@@ -853,7 +903,7 @@ def test_dev_update_uses_upstream_and_never_downloads_release_ui(monkeypatch, tm
     assert not any(command[:2] == ["git", "switch"] for command in command_args)
     assert ["git", "merge", "--ff-only", "@{upstream}"] in command_args
     npm_ci_dirs = [cwd for command, cwd in commands if command == ["npm", "ci"]]
-    assert npm_ci_dirs == [tmp_path / "frontend", tmp_path / "src-tauri"]
+    assert npm_ci_dirs == [tmp_path / "frontend", tmp_path / "apps" / "desktop"]
     assert (["rebuild-desktop"], tmp_path) in commands
     assert cli_main._read_update_channel(tmp_path) == "dev"
 

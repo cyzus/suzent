@@ -44,7 +44,10 @@ clickable.
   Store package already uses.
 - **Source** (development): the checkout that contains `apps/desktop`, or
   `SUZENT_DIR`. The backend runs from the checkout's `.venv`, or `uv run` when
-  there is none.
+  there is none. `suzent start` in a development checkout runs this shell
+  (`apps/desktop/node_modules/electron` on `apps/desktop`) on `frontend/dist`;
+  `suzent start --dev` and `npm run dev` in `apps/desktop` run it on the Vite
+  dev server through `SUZENT_DEV_URL`.
 
 Writable state always lives in the data dir (`~/.suzent`, or
 `SUZENT_DATA_DIR`).

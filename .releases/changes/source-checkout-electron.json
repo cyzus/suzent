@@ -1,0 +1,1 @@
+{"products": {"desktop": "patch"}, "summary": "Source checkouts now run the Electron desktop app: `suzent start --dev` hot-reloads the frontend and developer setup no longer needs Rust."}

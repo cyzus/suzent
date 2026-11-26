@@ -16,10 +16,15 @@ uv sync --all-extras
 uv run suzent start --dev
 ```
 
-> **Note**: `suzent start` launches a built desktop app; it never implicitly
-> enters development mode. Use `--dev` for the debug backend + Tauri dev.
-> For a headless debug backend only, use
-> `uv run suzent serve --debug`.
+`suzent start --dev` starts the debug backend, then runs the Electron shell in
+`apps/desktop` on the Vite dev server, so frontend edits hot-reload in the
+window. It installs the `frontend/` and `apps/desktop/` npm dependencies when
+they are missing. `suzent stop` ends both.
+
+Plain `suzent start` in a source checkout runs the same shell on the built web
+UI (`frontend/dist`) instead; build it with `npm run build` in `frontend/` and
+then in `apps/desktop/`. For a headless debug backend only, use
+`uv run suzent serve --debug`.
 
 To update an existing development checkout, run:
 
@@ -27,104 +32,43 @@ To update an existing development checkout, run:
 uv run suzent update
 ```
 
-This fast-forwards the current branch from its configured upstream and installs the Python and frontend
-dependencies from the lockfiles. Suzent detects that this is a source checkout
-and selects the development channel automatically. Bootstrapped installations
-continue to use the stable channel.
+This fast-forwards the current branch from its configured upstream, installs the
+Python and npm dependencies from the lockfiles, and rebuilds the web UI and the
+desktop shell. Suzent detects that this is a source checkout and selects the
+development channel automatically.
 
 CLI development updates require a clean working tree and a configured upstream.
 Untracked files, unfinished Git operations, detached HEAD, or divergent history
 must be handled manually. Updates do not switch branches or stash your work.
-
-Alternatively, select your existing checkout in the installer and click **Update
-this workspace**. This runs the standalone updater, not copied shell commands:
-it fetches the current branch's upstream, pins the commit, stops this installation,
-fast-forwards the same branch, synchronizes the existing `.venv`, and rebuilds
-both daily desktop launch targets. Node.js/npm, Rust, uv, and the platform build
-tools must already be available. Finish any development/watch tasks before updating.
-
-Local changes or attached-branch Git conflicts require **Back up and update**
-confirmation. The updater verifies a snapshot under the existing
-`<checkout>/.suzent/update-recovery/` directory before clearing tracked changes;
-changes are not automatically reapplied. Ignored data and untracked working files
-are not deleted; a file blocking the fast-forward stops the update safely.
-Detached checkouts/rebases, missing upstreams, and diverged branches still require
-manual attention. Failed updates restore source, locked Python dependencies, and
-desktop backups, or retain the journal and report that repair is required. Use the
-installer's repair button for an interrupted operation. Database changes are not
-covered by source rollback.
-
-### One checkout for development and daily use
-
-Keep your chosen installation directory and its single `.venv`. Run
-`suzent start --dev` for development, or build the desktop with
-`npm run build:dist` in `src-tauri` and use `suzent start` for daily use.
-Stop the existing backend and its background service before switching modes.
-The update channel does not select the launch mode.
-
-Installer branch selections (`--branch` or `SUZENT_BRANCH`) build the desktop
-from that checkout instead of downloading a release desktop. Node.js/npm, Rust,
-and the platform's Tauri build prerequisites must be installed. A failed build
-stops the desktop stage rather than silently installing a mismatched binary.
-
-Both modes use the current Python source and dependencies; daily mode is not
-an isolated stable version. After manually checking out another revision,
-sync its locked dependencies and rebuild the desktop before launching.
-Save local changes first and back up user data before migrations: checking out
-old source does not roll back a database. A saved custom installation path is
-retained even if its environment is broken; repair that location rather than
-silently installing another copy in the default user directory.
 
 `uv sync --all-extras` installs every optional dependency group (chat apps,
 camera and `dev`; equivalent to the `all` extra). For a minimal runtime
 without dev tooling, use `uv sync`; chat apps and the camera install their
 packages when they are set up, as in a normal install.
 
-To run the backend and frontend in separate terminals instead, see
-[Development Modes](#development-modes) below.
+To set up a fresh developer checkout with the setup script instead, run it with
+`SUZENT_DEV_SETUP=1` and `--source`; it installs the npm dependencies and builds
+the web UI and the desktop shell.
 
 ## Prerequisites
 
-### Required for All Development
-
 - **Node.js** 20.x or higher
-- **Python** 3.12 or higher
+- **Python** 3.12 or higher, managed with [uv](https://docs.astral.sh/uv/)
 
-### Required for Desktop App Mode
-
-- **Rust** 1.75 or higher
-  ```bash
-  # Windows
-  winget install --id Rustlang.Rustup
-
-  # Or download from https://rustup.rs/
-  ```
-
-### Platform-Specific Requirements
-
-**Windows**
-- Microsoft Visual C++ Build Tools
-- WebView2 Runtime (usually pre-installed on Windows 10/11)
-
-**macOS**
-```bash
-xcode-select --install
-```
-
-**Linux (Ubuntu/Debian)**
-```bash
-sudo apt-get update
-sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.0-dev \
-  libappindicator3-dev librsvg2-dev patchelf
-```
+The desktop shell is Electron, so developing it needs no Rust toolchain or
+platform webview packages. Rust is only needed to work on the setup window
+(`apps/desktop-setup`), the Microsoft Store helper (`apps/desktop/store-cli`) or
+the legacy Tauri code (`src-tauri`, `apps/suzent-installer`).
 
 ## Development Modes
 
-### Desktop App Mode
+### One command
 
-Uses Tauri to create a native desktop window. Requires Rust.
+```bash
+uv run suzent start --dev
+```
 
-> Install Python dependencies first with `uv sync --all-extras` (see [Quick Start](#quick-start)).
+### Separate terminals
 
 **Terminal 1** - Start Python backend:
 ```bash
@@ -151,49 +95,31 @@ This will:
 4. Attach to the backend from Terminal 1, or start one from the checkout if none is running
 
 Closing the window also stops the Vite server it started. `npm start` opens the
-shell on the last `frontend/dist` build instead. The legacy Tauri shell still runs
-with `cd src-tauri && npm run dev`.
+shell on the last `frontend/dist` build instead.
+
+### Browser only
+
+`npm run dev` in `frontend/` serves the web console at `http://127.0.0.1:18080`
+against the running backend. See [Web UI](web-ui.md).
 
 ### Local Ports
 
 Default local endpoints for development:
 
 - Backend API: `http://127.0.0.1:25314`
-- Frontend dev server: `http://127.0.0.1:18080`
-
-To avoid Windows reserved-port conflicts, frontend port values are sourced from:
-
-- `frontend/vite.config.ts` (`server.port`)
-- `src-tauri/tauri.conf.json` (`build.devUrl`)
-
+- Frontend dev server: `http://127.0.0.1:18080` (`server.port` in
+  `frontend/vite.config.ts`, and `SUZENT_DEV_URL` for the shell)
 
 ## Configuration
 
-### Development vs Production
-
-| Config File | Mode | Backend |
-|-------------|------|---------|
-| `tauri.conf.json` | Development | External (port 25314) |
-| `tauri.conf.prod.json` | Production | Bundled Python + uv venv |
-
-**Development mode** (`npm run dev`):
-- No bundled backend - expects backend running on the local API endpoint
-- Frontend hot-reload enabled
-- DevTools available (right-click in window)
-
-**Production mode** (`npm run build`):
-- Bundles Python runtime + uv + suzent wheel as resources
-- Creates venv on first launch, then auto-starts backend on dynamic port
-- All assets bundled into single installer
-
 ### Environment Variables
-
-The backend automatically detects bundled environment through:
 
 | Variable | Purpose |
 |----------|---------|
-| `SUZENT_PORT` | Dynamically assigned port (0 = OS picks) |
+| `SUZENT_PORT` | Backend port (0 = OS picks) |
 | `SUZENT_HOST` | Bound to `127.0.0.1` in production |
+| `SUZENT_DIR` | Source checkout the desktop shell runs the backend from |
+| `SUZENT_DEV_URL` | Page the desktop shell loads instead of the built web UI |
 | `SUZENT_DATA_DIR` | User data directory (defaults to `~/.suzent`) |
 | `CHATS_DB_PATH` | SQLite database path |
 | `LANCEDB_URI` | LanceDB vector store path |
@@ -201,21 +127,13 @@ The backend automatically detects bundled environment through:
 | `SKILLS_DIR` | Advanced extra skills directory override |
 | `SUZENT_CAPABILITIES_TO_REPO` | Explicit maintainer opt-in that writes capability data into tracked `config/capabilities/` files instead of the user-data overlay. Normal and developer modes do not set it. See [Model Capabilities](../architecture/model-capabilities.md). |
 
-### Tauri Configuration
-
-Edit `src-tauri/tauri.conf.json` to customize:
-- Window size and behavior
-- Application name and version
-- Bundle settings
-- Security policies
-
 ## Hot Reload Behavior
 
 | Component | Hot reload | Action on change |
 |-----------|------------|------------------|
 | Frontend (React) | Yes | Automatic |
 | Backend (Python) | No | Restart manually |
-| Rust code | No | Restart Tauri |
+| Desktop shell (`apps/desktop/src`) | No | Run `npm run dev` again |
 
 ## Architecture Notes
 
@@ -236,87 +154,28 @@ existing frontend event contract.
 |------|---------|
 | Install dependencies | `uv sync --all-extras` |
 | Start backend | `uv run python src/suzent/server.py` |
-| Start desktop dev (Electron) | `cd apps/desktop && npm run dev` |
-| Start legacy Tauri dev | `cd src-tauri && npm run dev` |
-| Bundle Python backend | `python scripts/bundle_python.py` |
-| Build full app | `cd src-tauri && npm run build:full` |
-| Build Tauri only | `cd src-tauri && npm run build` |
+| Start everything for development | `uv run suzent start --dev` |
+| Start the desktop shell with hot reload | `cd apps/desktop && npm run dev` |
+| Run the shell's unit tests | `cd apps/desktop && npm test` |
+| Build the bundled Python runtime | `uv run --no-project python scripts/build_desktop_runtime.py` |
+| Build installers for this platform | `cd apps/desktop && npm run dist` |
 
-## Production Build
+## Installer Build
 
-Build the complete standalone application:
-
-```bash
-cd src-tauri
-npm run build:full
-```
-
-This automatically bundles the Python runtime, uv, and suzent wheel, then builds the Tauri application.
-
-**Convenience scripts:**
-
-```powershell
-# Windows
-.\scripts\build_tauri.ps1
-```
+Release CI builds every installer (`.github/workflows/desktop-installers.yml`).
+To build one locally for the platform you are on:
 
 ```bash
-# macOS / Linux
-./scripts/build_tauri.sh
+cd frontend && npm ci && npm run build && cd ..
+uv run --no-project python scripts/build_desktop_runtime.py
+cd apps/desktop && npm ci && npm run dist
 ```
 
-### Build Artifacts
-
-| Platform | Location |
-|----------|----------|
-| Windows | `src-tauri/target/release/bundle/msi/SUZENT_x.x.x_x64_en-US.msi` |
-| macOS | `src-tauri/target/release/bundle/dmg/SUZENT_x.x.x_x64.dmg` |
-| Linux | `src-tauri/target/release/bundle/appimage/suzent_x.x.x_amd64.AppImage` |
-
-**Bundle size** — the bundled app is 80–150 MB (Python runtime, uv, LanceDB).
-Playwright/Chromium (~300 MB) is downloaded separately on first launch.
-
-## Desktop App Architecture
-
-```
-+-------------------------------------------+
-|           Tauri Application               |
-|  +--------------+    +------------------+ |
-|  |   Webview    |    |  Rust Process    | |
-|  |   (React)    |    |  - Backend       | |
-|  |  Frontend    |--->|    Lifecycle     | |
-|  |  Built       |    |  - Port Mgmt     | |
-|  |  Assets      |    |  - First-Run     | |
-|  +--------------+    |    Setup         | |
-|         |            +------------------+ |
-|         +-----HTTP API------+             |
-|             (localhost:dynamic)           |
-+-------------------------------------------+
-                    |
-            +-------v--------+
-            | Python Backend |
-            | (uv-managed    |
-            |  venv)         |
-            +----------------+
-```
-
-## First-Run Behavior
-
-When the desktop app launches for the first time (or after an update):
-
-1. **Venv Creation** (~10–30 seconds): Rust runs `uv venv` with bundled Python, then installs the suzent wheel. A version marker prevents re-running on subsequent launches.
-2. **Playwright Install** (~1–2 minutes): Chromium is downloaded for the browsing tool. Non-fatal — retries on first use if it fails.
-3. **Config Sync**: Example configs and skills are copied to the app data directory. Existing files are preserved.
-
-## Application Data Location
-
-| Platform | Location |
-|----------|----------|
-| Windows | `%APPDATA%\com.suzent.app\` |
-| macOS | `~/Library/Application Support/com.suzent.app/` |
-| Linux | `~/.config/com.suzent.app/` |
-
-Contents: `backend-venv/`, `chats.db`, `memory/`, `skills/`, `sandbox-data/`, `config/`
+The installers land in `apps/desktop/release/`. Each carries a relocatable
+CPython with Suzent installed in it, so the app needs nothing else on the
+machine. Data lives in `~/.suzent`, shared with every other way of running
+Suzent. See [Desktop shell](../architecture/desktop-shell.md) for how the shell
+finds its backend.
 
 ## Logo standard
 
@@ -349,15 +208,6 @@ storage layout, and failure behavior.
 
 ## Troubleshooting
 
-### Backend Issues
-
-**"resource path doesn't exist" during `npm run dev`**
-
-This is expected. Development mode does not use the bundled backend. Start the Python backend manually:
-```bash
-python src/suzent/server.py
-```
-
 **Backend not responding**
 
 Verify backend is running:
@@ -366,49 +216,19 @@ curl http://localhost:25314/config
 ```
 Should return JSON configuration.
 
-### Rust/Tauri Issues
-
-**"cargo: command not found"**
-
-Install Rust from https://rustup.rs/ and restart your terminal.
-
-**Cargo build fails**
-
-Update Rust and clean the build:
-```bash
-rustup update
-cd src-tauri && cargo clean
-```
-
-### Frontend Issues
-
 **Frontend shows connection errors**
 
 1. Verify backend is running: `curl http://localhost:25314/config`
-2. Check browser console for the actual error
+2. Open DevTools in the window and check the console for the actual error
 3. Ensure CORS is working (should be by default)
 
 **Changes not appearing**
 
-- Frontend changes: Should auto-reload. Try hard refresh (Ctrl+Shift+R).
+- Frontend changes: Should auto-reload. Try a hard refresh (Ctrl+Shift+R).
 - Backend changes: Restart the backend (Ctrl+C, then restart).
-- Rust changes: Restart Tauri dev server.
+- Desktop shell changes: Close the window and run `npm run dev` again.
 
-### Built App Issues
+**`suzent start` says no desktop build was found**
 
-**Bundle script fails — missing `build` package:**
-```bash
-uv pip install build
-```
-
-**Backend fails to start in the built app**
-
-- Check `~/suzent_startup.log` for startup logs.
-- Delete `backend-venv/` in the [app data directory](#application-data-location) to force
-  venv re-creation on the next launch.
-
-### General Issues
-
-**First build is very slow**
-
-The first Rust build takes 5-10 minutes to compile all dependencies. Subsequent builds are faster due to caching.
+Run `npm install` and `npm run build` in `frontend/` and then in
+`apps/desktop/`, or use `suzent start --dev`.

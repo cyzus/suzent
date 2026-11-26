@@ -45,12 +45,16 @@ cp .env.example .env
 python src/suzent/server.py
 ```
 
-### Frontend Setup
+### Desktop App Setup
 ```bash
-cd src-tauri
+cd apps/desktop
 npm install
 npm run dev
 ```
+
+This starts the frontend's Vite dev server and opens the Electron window on it,
+so frontend edits hot-reload. `uv run suzent start --dev` does the backend and
+this in one command.
 
 ## 📝 Code Style
 

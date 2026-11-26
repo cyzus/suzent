@@ -42,7 +42,7 @@ _UPDATE_CHANNEL_FILE = ".suzent/update-channel"
 _STABLE_CHANNEL = "stable"
 # How long a detached start waits for the backend before reporting readiness.
 _READY_TIMEOUT = 30.0
-# Port the Tauri/Vite dev frontend serves on.
+# Port the Vite dev frontend serves on.
 DEV_FRONTEND_PORT = 18080
 _DEV_CHANNEL = "dev"
 _UPDATE_HELPER_ENV = "SUZENT_UPDATE_HELPER"
@@ -114,35 +114,70 @@ def _refuse_in_bundled_install(command: str) -> None:
 
 
 def _get_ui_binary(root: Path) -> Path | None:
-    """Return the managed release UI, falling back to a local release build."""
+    """Return the packaged or managed release UI, if one is installed."""
     # Packaged (MSIX) builds: the desktop exe runs this CLI through its
     # execution alias and names itself, since it lives outside any workspace.
     packaged_ui = os.environ.get("SUZENT_PACKAGED_UI")
     if packaged_ui and Path(packaged_ui).is_file():
         return Path(packaged_ui)
     name = "suzent-ui.exe" if IS_WINDOWS else "suzent-ui"
-    release_name = "suzent.exe" if IS_WINDOWS else "suzent"
     managed_release = root / _BIN_DIR / name
-    local_release = root / "src-tauri" / "target" / "release" / release_name
-    if (
-        _is_development_workspace(root) or _read_update_channel(root) == _DEV_CHANNEL
-    ) and local_release.is_file():
-        return local_release
 
-    # `suzent update` installs the UI and its version marker atomically. Prefer
-    # that managed pair over a locally-built executable whose newer mtime does
-    # not imply compatibility with the checked-out backend.
+    # `suzent update` installs the UI and its version marker atomically.
     if managed_release.exists() and (root / _BIN_DIR / "version.txt").exists():
         return managed_release
+    if managed_release.exists() and _is_ui_binary_current(root, managed_release):
+        return managed_release
+    return None
 
-    candidates = [
-        managed_release,
-        local_release,
-    ]
-    existing = [p for p in candidates if p.exists() and _is_ui_binary_current(root, p)]
-    if not existing:
+
+def _electron_executable(app_dir: Path) -> Path | None:
+    """The Electron binary npm installed for the desktop shell at ``app_dir``."""
+    package = app_dir / "node_modules" / "electron"
+    try:
+        relative = (package / "path.txt").read_text(encoding="utf-8").strip()
+    except OSError:
         return None
-    return max(existing, key=lambda p: p.stat().st_mtime)
+    executable = package / "dist" / relative
+    return executable if relative and executable.is_file() else None
+
+
+def _source_desktop_command(root: Path) -> list[str] | None:
+    """Run the Electron shell from this checkout, once it and the web UI are built.
+
+    Source checkouts have no installed desktop app of their own: the shell in
+    ``apps/desktop`` runs against the checkout's backend and ``frontend/dist``.
+    """
+    app_dir = root / "apps" / "desktop"
+    electron = _electron_executable(app_dir)
+    if electron is None:
+        return None
+    if not (app_dir / "dist" / "main.js").is_file():
+        return None
+    if not (root / "frontend" / "dist" / "index.html").is_file():
+        return None
+    return [str(electron), str(app_dir)]
+
+
+def _stop_source_desktop(root: Path) -> None:
+    """Stop every Electron process running from this checkout's apps/desktop."""
+    electron_dir = (root / "apps" / "desktop" / "node_modules" / "electron").resolve()
+    doomed = []
+    for process in psutil.process_iter(["exe"]):
+        exe = process.info.get("exe")
+        if exe and Path(exe).resolve().is_relative_to(electron_dir):
+            doomed.append(process)
+    for process in doomed:
+        typer.echo(f"🛑 Stopping the desktop app (PID {process.pid})...")
+        try:
+            process.kill()
+        except psutil.Error:
+            pass
+    psutil.wait_procs(doomed, timeout=5)
+
+
+def _uses_source_desktop(root: Path) -> bool:
+    return _is_development_workspace(root) or _read_update_channel(root) == _DEV_CHANNEL
 
 
 def _update_channel_path(root: Path) -> Path:
@@ -1354,7 +1389,7 @@ def _stop_frontend() -> bool:
         return False
 
     typer.echo(f"🛑 Stopping dev frontend (PID {process.pid})...")
-    # `npm run dev` is only the launcher: Vite and the Tauri binary run as its
+    # `npm run dev` is only the launcher: Vite and Electron run as its
     # children and are what actually hold the port.
     doomed = [*_children_of(process), process]
     for victim in doomed:
@@ -1575,44 +1610,42 @@ def run_command(
 
 
 def _rebuild_development_ui(root: Path) -> None:
-    """Replace both desktop launch targets only after a matching build succeeds."""
-    project_version = read_project_version(root / "pyproject.toml")
-    if not project_version:
-        raise OSError("Cannot determine the source version for the desktop build")
-    target = root / "src-tauri" / "target"
-    binary = target / "release" / ("suzent.exe" if IS_WINDOWS else "suzent")
-    target.mkdir(parents=True, exist_ok=True)
-    backup_dir = Path(tempfile.mkdtemp(prefix="suzent-ui-backup-", dir=target))
-    backup = backup_dir / binary.name
-    if binary.exists():
-        binary.replace(backup)
+    """Build the web UI and the Electron shell that `suzent start` runs here.
+
+    The previous builds are set aside first and put back if either build
+    fails, so a rolled-back update keeps launching the desktop it had.
+    """
+    outputs = [root / "frontend" / "dist", root / "apps" / "desktop" / "dist"]
+    (root / ".suzent").mkdir(exist_ok=True)
+    backup_dir = Path(
+        tempfile.mkdtemp(prefix="suzent-ui-backup-", dir=root / ".suzent")
+    )
+    saved = []
     try:
+        for index, output in enumerate(outputs):
+            if output.exists():
+                aside = backup_dir / str(index)
+                output.replace(aside)
+                saved.append((output, aside))
         run_command(
-            ["npm", "run", "build:dist", "--", "--no-bundle"],
-            cwd=root / "src-tauri",
+            ["npm", "run", "build"], cwd=root / "frontend", shell_on_windows=True
+        )
+        run_command(
+            ["npm", "run", "build"],
+            cwd=root / "apps" / "desktop",
             shell_on_windows=True,
-            env={**os.environ, "CARGO_TARGET_DIR": str(target.resolve())},
         )
-        if not binary.is_file():
-            raise OSError(f"Desktop build produced no executable at {binary}")
-        bin_dir = root / _BIN_DIR
-        bin_dir.mkdir(parents=True, exist_ok=True)
-        staged_binary = backup_dir / "new-ui"
-        staged_version = backup_dir / "new-version.txt"
-        shutil.copy2(binary, staged_binary)
-        staged_version.write_text(f"v{project_version}", encoding="utf-8")
-        _replace_ui_files(
-            bin_dir / ("suzent-ui.exe" if IS_WINDOWS else "suzent-ui"),
-            bin_dir / "version.txt",
-            staged_binary,
-            staged_version,
-        )
+        if _source_desktop_command(root) is None:
+            raise OSError(
+                "Desktop build left no runnable Electron shell in "
+                f"{root / 'apps' / 'desktop'}"
+            )
     except (OSError, subprocess.CalledProcessError) as error:
         try:
-            if backup.exists():
-                backup.replace(binary)
-            else:
-                binary.unlink(missing_ok=True)
+            for output in outputs:
+                shutil.rmtree(output, ignore_errors=True)
+            for output, aside in saved:
+                aside.replace(output)
         except OSError as restore_error:
             raise OSError(
                 f"{error}; desktop rollback failed: {restore_error}. "
@@ -1873,10 +1906,10 @@ def _terminate_process_gracefully(process: subprocess.Popen, timeout: float = 5.
 
 
 def _ensure_npm_deps(root: Path):
-    """Install npm deps in frontend/ and src-tauri/ if node_modules is stale."""
+    """Install npm deps in frontend/ and apps/desktop/ if node_modules is stale."""
     for npm_dir, label in [
         (root / "frontend", "frontend"),
-        (root / "src-tauri", "tauri"),
+        (root / "apps" / "desktop", "desktop shell"),
     ]:
         nm = npm_dir / "node_modules"
         pkg = npm_dir / "package.json"
@@ -1898,7 +1931,7 @@ def register_commands(app: typer.Typer):
         dev: bool = typer.Option(
             False,
             "--dev",
-            help="Force developer mode (backend in debug + Tauri dev), skipping the pre-built UI binary",
+            help="Developer mode: backend in debug and the Electron shell on the Vite dev server, so frontend edits hot-reload",
         ),
         docs: bool = typer.Option(
             False, "--docs", help="Run documentation server instead of app"
@@ -1923,6 +1956,27 @@ def register_commands(app: typer.Typer):
         if dev:
             debug = True
 
+        source_desktop = (
+            _source_desktop_command(root)
+            if not dev and _uses_source_desktop(root)
+            else None
+        )
+        if source_desktop:
+            typer.echo("  • Launching the desktop app from this checkout...")
+            try:
+                _launch_detached(
+                    source_desktop,
+                    log_name="desktop",
+                    env=_ui_launch_env(
+                        {"SUZENT_DIR": str(root), "SUZENT_PORT": str(port)}
+                    ),
+                )
+            except OSError as error:
+                typer.echo(f"  ❌ Could not launch the desktop app: {error}")
+                raise typer.Exit(code=1)
+            _report_detached(port, log_name="desktop")
+            return
+
         ui_bin = None if dev else _get_ui_binary(root)
         if ui_bin:
             # Pre-built binary manages both backend and webview internally, and
@@ -1946,15 +2000,14 @@ def register_commands(app: typer.Typer):
 
         if not dev:
             typer.echo(
-                f"  ❌ No desktop build found in {root}. Build the desktop app "
-                "from this checkout, or use `suzent start --dev`."
+                f"  ❌ No desktop build found in {root}. Build it with `npm install` "
+                "and `npm run build` in frontend/ and apps/desktop/, or use "
+                "`suzent start --dev`."
             )
             raise typer.Exit(code=1)
 
         # ── Explicit developer launch ───────────────────────────────────────
         typer.echo("  * Starting in developer mode (--dev).")
-        ensure_cargo_in_path()
-        ensure_msvc_linker()
 
         backend_running = _is_suzent_server_running("127.0.0.1", port, attempts=3)
         ports_to_check = [(DEV_FRONTEND_PORT, "Frontend")]
@@ -1995,9 +2048,9 @@ def register_commands(app: typer.Typer):
                 backend_cmd.append("--debug")
             _launch_detached(backend_cmd, log_name="backend", cwd=root, env=backend_env)
 
-        typer.echo("  • Starting frontend (Tauri dev)...")
+        typer.echo("  • Starting the desktop shell on the Vite dev server...")
         _ensure_npm_deps(root)
-        # The frontend is detached too, so a Tauri or Vite crash no longer takes
+        # The frontend is detached too, so an Electron or Vite crash no longer takes
         # the backend down with it -- the failure lands in the frontend log and
         # the backend keeps serving.
         frontend_cmd = ["npm", "run", "dev"]
@@ -2007,7 +2060,7 @@ def register_commands(app: typer.Typer):
         _launch_detached(
             frontend_cmd,
             log_name="frontend",
-            cwd=root / "src-tauri",
+            cwd=root / "apps" / "desktop",
             env={**backend_env, "SUZENT_DIR": str(root)},
         )
         _report_detached(port, log_name="frontend")
@@ -2243,7 +2296,7 @@ def register_commands(app: typer.Typer):
         dev: bool = typer.Option(
             False,
             "--dev",
-            help="Force developer mode (backend in debug + Tauri dev), skipping the pre-built UI binary",
+            help="Developer mode: backend in debug and the Electron shell on the Vite dev server, so frontend edits hot-reload",
         ),
     ):
         """Stop a running Suzent backend and dev frontend, then start again."""
@@ -2269,18 +2322,21 @@ def register_commands(app: typer.Typer):
             DEFAULT_PORT, "--port", "-p", help="Backend port to connect to"
         ),
     ):
-        """Start only the Tauri frontend (assumes backend is already running)."""
+        """Start only the desktop app (assumes backend is already running)."""
         root = get_project_root()
 
         typer.echo(f"🖥️  Starting SUZENT UI (connecting to backend on port {port})...")
         _notify_update_available(root)
 
+        source_desktop = (
+            _source_desktop_command(root) if _uses_source_desktop(root) else None
+        )
         ui_bin = _get_ui_binary(root)
-        if ui_bin:
+        if source_desktop or ui_bin:
             env = _ui_launch_env({"SUZENT_DIR": str(root), "SUZENT_PORT": str(port)})
             try:
                 _launch_detached(
-                    [str(_macos_launch_target(root, ui_bin))],
+                    source_desktop or [str(_macos_launch_target(root, ui_bin))],
                     log_name="desktop",
                     env=env,
                 )
@@ -2290,18 +2346,17 @@ def register_commands(app: typer.Typer):
             _report_detached(port, log_name="desktop")
             return
 
-        ensure_cargo_in_path()
-        ensure_msvc_linker()
         _ensure_npm_deps(root)
 
         env = os.environ.copy()
         env["SUZENT_PORT"] = str(port)
+        env["SUZENT_DIR"] = str(root)
 
         frontend_cmd = ["npm", "run", "dev"]
         if IS_WINDOWS:
             frontend_cmd = ["cmd", "/c", *frontend_cmd]
         _launch_detached(
-            frontend_cmd, log_name="frontend", cwd=root / "src-tauri", env=env
+            frontend_cmd, log_name="frontend", cwd=root / "apps" / "desktop", env=env
         )
         _report_detached(port, log_name="frontend")
 
@@ -2440,6 +2495,14 @@ def register_commands(app: typer.Typer):
         try:
             for pid in _windows_app_suzent_pids(exclude_pids=exclude_pids):
                 _stop_windows_process(pid, "suzent process")
+        except Exception:
+            pass
+
+        # npm ci deletes node_modules, which Windows refuses while the source
+        # desktop's electron.exe or the dev Vite server still runs from it.
+        _stop_frontend()
+        try:
+            _stop_source_desktop(root)
         except Exception:
             pass
 
@@ -2734,7 +2797,7 @@ def register_commands(app: typer.Typer):
                 )
                 run_command(
                     ["npm", "ci"],
-                    cwd=root / "src-tauri",
+                    cwd=root / "apps" / "desktop",
                     shell_on_windows=True,
                 )
                 typer.echo(

@@ -274,7 +274,7 @@ GitHub 同步通过私有仓库携带可迁移的配置、用户技能和 Markdo
 ## **技术栈**
 
 *   **后端**：Python 3.12、FastAPI、pydantic-ai、litellm、SQLite。
-*   **前端**：React、TypeScript、Tailwind、Vite、Tauri。
+*   **前端**：React、TypeScript、Tailwind、Vite、Electron。
 *   **记忆**：Markdown 文件为唯一可信来源，LanceDB 混合（向量 + 全文）索引。
 *   **沙盒**：Docker（可选）。
 *   **扩展性**：MCP、可移植的 `SKILL.md` 技能包。
