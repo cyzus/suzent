@@ -395,7 +395,8 @@ function Remove-StaleSourceShim {
     $shim = Join-Path $env:USERPROFILE ".local\bin\suzent.cmd"
     if (-not (Test-Path $shim)) { return }
     $text = Get-Content -Raw $shim
-    if ($text -match 'cd /d "([^"]+)"' -and $text -match 'uv run suzent' -and -not (Test-Path (Join-Path $Matches[1] ".git"))) {
+    if ($text -notmatch 'uv run suzent' -or $text -notmatch 'cd /d "([^"]+)"') { return }
+    if (-not (Test-Path (Join-Path $Matches[1] ".git"))) {
         Remove-Item -Force $shim
         Write-Info "Removed the 'suzent' command of a source install that no longer exists."
     }
