@@ -178,3 +178,18 @@ def test_voice_websocket_new_chat_project(monkeypatch, query, expected):
         _drain(websocket, lambda f: isinstance(f, dict) and f.get("type") == "closed")
     [created] = app.state.fake_db.chats.values()
     assert created["project_id"] == expected
+
+
+@pytest.mark.parametrize(
+    "origin", ["suzent://app", "tauri://localhost", "http://tauri.localhost"]
+)
+def test_desktop_shell_origins_may_open_voice_sockets(origin):
+    from suzent.auth_boundary import voice_origin_allowed
+
+    assert voice_origin_allowed(origin, "127.0.0.1:25314")
+
+
+def test_foreign_origin_may_not_open_voice_sockets():
+    from suzent.auth_boundary import voice_origin_allowed
+
+    assert not voice_origin_allowed("https://evil.example", "127.0.0.1:25314")
