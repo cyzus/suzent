@@ -40,6 +40,7 @@ import { installShim } from './cliShim';
 import { resolveLayout, type Layout } from './layout';
 import { extractJsonPayload, runServiceCli } from './service';
 import { keepShellLog } from './shellLog';
+import { runStartupTask, storeHelperPath, storeServiceStatus, type StartupTaskAction } from './storeStartup';
 import { SuzentTray } from './tray';
 import { DesktopUpdater } from './updater';
 
@@ -203,10 +204,22 @@ function showNotification(title: string, body: string): void {
 }
 
 async function serviceStatus(): Promise<string> {
+  if (process.windowsStore) return storeStartup('status');
   return extractJsonPayload(await runServiceCli(layout, 'uv', ['status', '--json']));
 }
 
+/** The Store package starts at login through its StartupTask, not a service. */
+async function storeStartup(action: StartupTaskAction): Promise<string> {
+  const task = await runStartupTask(storeHelperPath(process.resourcesPath), action);
+  if (action === 'enable' && !task.enabled) {
+    throw new Error(task.error ?? 'Windows left start at login off.');
+  }
+  const ready = backend ? await backend.isRunning() : false;
+  return storeServiceStatus(task, backend ? { port: backend.port, ready } : null, appVersion);
+}
+
 async function setServiceEnabled(enabled: boolean): Promise<string> {
+  if (process.windowsStore) return storeStartup(enabled ? 'enable' : 'disable');
   if (enabled) {
     await runServiceCli(layout, 'uv', ['install']);
     return serviceStatus();
@@ -247,7 +260,8 @@ let updater: DesktopUpdater | null = null;
 
 /** Installed builds update themselves; a development run is updated through git. */
 function createUpdater(): DesktopUpdater | null {
-  if (!app.isPackaged || layout.mode !== 'bundled') return null;
+  // The Microsoft Store updates its package itself.
+  if (!app.isPackaged || layout.mode !== 'bundled' || process.windowsStore) return null;
   // Loaded only here: electron-updater reads app-update.yml on import.
   const { autoUpdater } = require('electron-updater') as typeof import('electron-updater');
   return new DesktopUpdater(autoUpdater, {
@@ -292,6 +306,12 @@ async function restartServiceAfterUpdate(): Promise<void> {
   } catch (error) {
     console.warn('Could not restart the background service after updating:', error);
   }
+}
+
+function noUpdaterReason(): string {
+  return process.windowsStore
+    ? 'This Suzent is updated through the Microsoft Store.'
+    : 'This build is updated through git: run `git pull`.';
 }
 
 async function updateStatus(): Promise<string> {
@@ -359,11 +379,11 @@ const commands: Record<string, Handler> = {
   get_staged_update: () => updater?.stagedTag() ?? null,
   get_auto_update_enabled: () => updater?.autoUpdate ?? false,
   set_auto_update_enabled: (args) => {
-    if (!updater) throw new Error('This build is updated through git, not automatically.');
+    if (!updater) throw new Error(noUpdaterReason());
     updater.setAutoUpdate(Boolean(args.enabled));
   },
   start_update_and_restart: async () => {
-    if (!updater) throw new Error('This build is updated through git: run `git pull`.');
+    if (!updater) throw new Error(noUpdaterReason());
     await updater.installNow();
   },
   apply_staged_update_now: async () => {
@@ -373,7 +393,7 @@ const commands: Record<string, Handler> = {
   get_service_status: () => serviceStatus(),
   set_service_enabled: (args) => setServiceEnabled(Boolean(args.enabled)),
   restart_background_service: async () => {
-    await runServiceCli(layout, 'uv', ['restart']);
+    if (!process.windowsStore) await runServiceCli(layout, 'uv', ['restart']);
     return serviceStatus();
   },
   get_service_log_path: () => path.join(layout.dataDir, 'runtime', 'server.log'),
