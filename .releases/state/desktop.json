@@ -100,6 +100,7 @@
     ".releases/changes/desktop-assembly-scene.json",
     ".releases/changes/desktop-composer-height.json",
     ".releases/changes/desktop-computer-use.json",
+    ".releases/changes/desktop-faster-install.json",
     ".releases/changes/desktop-mailbox-thread-step-details.json",
     ".releases/changes/desktop-notification-click.json",
     ".releases/changes/desktop-permission-card-visuals.json",
