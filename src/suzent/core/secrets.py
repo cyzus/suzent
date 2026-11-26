@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import json
 import os
 import sqlite3
+import sys
 from pathlib import Path
 from typing import Optional, Protocol
 
@@ -130,6 +132,91 @@ class KeyringBackend:
         except Exception:
             pass
         self._cache[self._meta_key] = None
+
+
+class KeychainVaultBackend(KeyringBackend):
+    """All secrets in one macOS keychain item.
+
+    macOS asks for the login password before a program reads an item that a
+    different program stored, once per item. Keeping every secret in a single
+    item means at most one prompt when the app's identity changes (a new
+    unsigned build, or the move from a source install's Python), instead of
+    one per key. The first run copies the per-key items older versions wrote,
+    and leaves them in place for those versions.
+    """
+
+    _VAULT_KEY = "__suzent_vault__"
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._vault: dict[str, str] | None = None
+        self._refused = False
+
+    def get(self, key: str) -> Optional[str]:
+        return self._load().get(key)
+
+    def set(self, key: str, value: str) -> None:
+        self._fresh()[key] = value
+        self._save()
+
+    def delete(self, key: str) -> None:
+        if self._fresh().pop(key, None) is not None:
+            self._save()
+
+    def _fresh(self) -> dict[str, str]:
+        """The vault as stored now, so a write keeps other processes' changes."""
+        self._vault = None
+        self._refused = False
+        return self._load()
+
+    def list_keys(self) -> list[str]:
+        return sorted(self._load())
+
+    def _load(self) -> dict[str, str]:
+        if self._vault is not None:
+            return self._vault
+        raw = self._read(self._VAULT_KEY)
+        if self._refused:
+            # The user said no; asking for every older item would only add prompts.
+            self._vault = {}
+            return self._vault
+        if raw is not None:
+            try:
+                self._vault = {str(k): str(v) for k, v in json.loads(raw).items()}
+                return self._vault
+            except (ValueError, AttributeError):
+                logger.warning("The Suzent keychain item is unreadable; rebuilding it")
+        self._vault, complete = self._read_per_key_items()
+        # A refused read would drop that key for good once the vault exists;
+        # keep it in memory and copy again next run instead.
+        if self._vault and complete:
+            self._save()
+        return self._vault
+
+    def _read_per_key_items(self) -> tuple[dict[str, str], bool]:
+        names = self._read(self._meta_key)
+        if names is None:
+            return {}, not self._refused
+        vault: dict[str, str] = {}
+        for name in filter(None, names.split("\x00")):
+            value = self._read(name)
+            if value:
+                vault[name] = value
+        if vault:
+            logger.info("Moved {} secrets into one keychain item", len(vault))
+        return vault, not self._refused
+
+    def _read(self, key: str) -> Optional[str]:
+        try:
+            return self._kr.get_password(_SERVICE_NAME, key)
+        except self._kr.errors.KeyringError as exc:
+            logger.warning("Could not read '{}' from the keychain: {}", key, exc)
+            self._refused = True
+            return None
+
+    def _save(self) -> None:
+        payload = json.dumps(self._vault or {}, sort_keys=True)
+        self._kr.set_password(_SERVICE_NAME, self._VAULT_KEY, payload)
 
 
 class EncryptedSQLiteBackend:
@@ -300,7 +387,9 @@ def get_secret_manager() -> SecretManager:
         backend = EncryptedSQLiteBackend()
     else:
         try:
-            backend = KeyringBackend()
+            backend = (
+                KeychainVaultBackend() if sys.platform == "darwin" else KeyringBackend()
+            )
         except RuntimeError:
             logger.warning(
                 "OS keyring unavailable, falling back to encrypted SQLite secret backend"

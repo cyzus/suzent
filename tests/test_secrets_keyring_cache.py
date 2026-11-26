@@ -71,3 +71,69 @@ def test_a_refused_read_is_not_asked_again(fake: CountingKeyring) -> None:
     assert backend.get("ANTHROPIC_API_KEY") is None
     assert backend.get("ANTHROPIC_API_KEY") is None
     assert fake.reads.count("ANTHROPIC_API_KEY") == 1
+
+
+def test_vault_copies_per_key_items_once(fake: CountingKeyring) -> None:
+    from suzent.core.secrets import KeychainVaultBackend
+
+    fake.store[("suzent", "__suzent_keys__")] = "A\x00B"
+    fake.store[("suzent", "A")] = "1"
+    fake.store[("suzent", "B")] = "2"
+    first = KeychainVaultBackend()
+    assert first.get("A") == "1"
+    assert first.list_keys() == ["A", "B"]
+    assert fake.store[("suzent", "A")] == "1"
+
+    fake.reads.clear()
+    second = KeychainVaultBackend()
+    assert second.get("B") == "2"
+    assert second.get("A") == "1"
+    assert fake.reads == ["__suzent_vault__"]
+
+
+def test_vault_writes_stay_in_one_item(fake: CountingKeyring) -> None:
+    from suzent.core.secrets import KeychainVaultBackend
+
+    backend = KeychainVaultBackend()
+    backend.set("A", "1")
+    backend.set("B", "2")
+    backend.delete("A")
+    assert set(fake.store) == {("suzent", "__suzent_vault__")}
+    fresh = KeychainVaultBackend()
+    assert fresh.list_keys() == ["B"]
+
+
+def test_vault_is_not_written_after_a_refused_read(fake: CountingKeyring) -> None:
+    from suzent.core.secrets import KeychainVaultBackend
+
+    fake.store[("suzent", "__suzent_keys__")] = "A\x00B"
+    fake.store[("suzent", "A")] = "1"
+    fake.store[("suzent", "B")] = "2"
+    fake.deny.add("B")
+    backend = KeychainVaultBackend()
+    assert backend.get("A") == "1"
+    assert backend.get("B") is None
+    assert ("suzent", "__suzent_vault__") not in fake.store
+
+
+def test_refused_vault_asks_for_nothing_else(fake: CountingKeyring) -> None:
+    from suzent.core.secrets import KeychainVaultBackend
+
+    fake.store[("suzent", "__suzent_keys__")] = "A"
+    fake.store[("suzent", "A")] = "1"
+    fake.deny.add("__suzent_vault__")
+    backend = KeychainVaultBackend()
+    assert backend.get("A") is None
+    assert backend.list_keys() == []
+    assert fake.reads == ["__suzent_vault__"]
+
+
+def test_vault_write_keeps_another_process_change(fake: CountingKeyring) -> None:
+    from suzent.core.secrets import KeychainVaultBackend
+
+    ours = KeychainVaultBackend()
+    theirs = KeychainVaultBackend()
+    ours.set("A", "1")
+    theirs.set("B", "2")
+    ours.set("C", "3")
+    assert KeychainVaultBackend().list_keys() == ["A", "B", "C"]
