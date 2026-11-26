@@ -1,6 +1,7 @@
 import asyncio
 import json
 import os
+from contextlib import nullcontext
 
 from pydantic import ValidationError
 from starlette.requests import Request
@@ -13,6 +14,11 @@ from suzent.tools.browser.tool import BrowserSessionManager
 from suzent.tools.browser.extension.session import session as extension_session
 from suzent.tools.browser.extension.bridge import bridge
 from suzent.tools.browser.extension.routes import local_setup_request
+from suzent.tools.browser.desktop import (
+    desktop_bridge,
+    desktop_session,
+    effective_mode,
+)
 
 logger = get_logger(__name__)
 
@@ -25,25 +31,27 @@ async def browser_status_endpoint(request: Request) -> JSONResponse:
         return JSONResponse({"error": "Use the local Suzent app"}, status_code=403)
     settings = await asyncio.to_thread(BrowserSettings.load)
     manager = BrowserSessionManager.get_instance()
+    mode = effective_mode(settings.connection_mode)
     result = {
-        "mode": settings.connection_mode,
+        "mode": mode,
         "browser": settings.channel,
         "connected": False,
         "selected": False,
         "title": None,
     }
     try:
-        if settings.connection_mode == "extension":
-            result["connected"] = bridge.socket is not None
-            if bridge.socket:
-                result.update(await bridge.request("status"))
+        if mode in {"extension", "desktop"}:
+            connection = bridge if mode == "extension" else desktop_bridge
+            result["connected"] = connection.socket is not None
+            if connection.socket:
+                result.update(await connection.request("status"))
             if request.method == "POST":
-                await bridge.request("focus")
+                await connection.request("focus")
         else:
             async with manager._action_lock:
                 page = manager._page
                 if (
-                    manager.settings.connection_mode == settings.connection_mode
+                    effective_mode(manager.settings.connection_mode) == mode
                     and page
                     and not page.is_closed()
                 ):
@@ -111,6 +119,8 @@ async def browser_settings_endpoint(request: Request) -> JSONResponse:
                     effective = await asyncio.to_thread(BrowserSettings.load)
                     if effective.connection_mode != "extension":
                         await extension_session.close()
+                    if effective.connection_mode != "desktop":
+                        await desktop_session.close()
                     if (
                         manager._playwright
                         and manager.settings.connection_mode
@@ -118,12 +128,15 @@ async def browser_settings_endpoint(request: Request) -> JSONResponse:
                     ):
                         await manager.close_session()
                     if previous.connection_mode != effective.connection_mode:
-                        clients = list(manager._websockets) + list(
-                            extension_session.clients
+                        clients = (
+                            list(manager._websockets)
+                            + list(extension_session.clients)
+                            + list(desktop_session.clients)
                         )
                         for client in clients:
                             await manager.remove_client(client)
                             await extension_session.remove_client(client)
+                            await desktop_session.remove_client(client)
                             try:
                                 await asyncio.wait_for(
                                     client.close(code=1000), timeout=1
@@ -165,34 +178,36 @@ async def browser_websocket_endpoint(websocket: WebSocket):
     close_code = 1000
     try:
         async with session_mgr._action_lock:
-            mode = (await asyncio.to_thread(BrowserSettings.load)).connection_mode
+            mode = effective_mode(
+                (await asyncio.to_thread(BrowserSettings.load)).connection_mode
+            )
             if websocket.query_params.get("mode") != mode:
                 close_code = 1008
                 return
-            if mode == "extension":
+            bridged = {"extension": extension_session, "desktop": desktop_session}
+            if mode in bridged:
                 if session_mgr._playwright:
                     await session_mgr.close_session()
                 await websocket.accept()
-                async with extension_session.lock:
-                    extension_session.clients.append(websocket)
-                    await extension_session.start_streaming()
+                async with bridged[mode].lock:
+                    bridged[mode].clients.append(websocket)
+                    await bridged[mode].start_streaming()
             else:
                 await session_mgr.add_client(websocket)
         while True:
             data = await websocket.receive_json()
             try:
-                if mode == "extension":
-                    async with session_mgr._action_lock:
-                        if (
-                            await asyncio.to_thread(BrowserSettings.load)
-                        ).connection_mode != mode:
-                            break
-                        await extension_session.handle_preview(data)
-                else:
-                    if (
-                        await asyncio.to_thread(BrowserSettings.load)
-                    ).connection_mode != mode:
+                async with (
+                    session_mgr._action_lock if mode in bridged else nullcontext()
+                ):
+                    current = effective_mode(
+                        (await asyncio.to_thread(BrowserSettings.load)).connection_mode
+                    )
+                    if current != mode:
                         break
+                    if mode in bridged:
+                        await bridged[mode].handle_preview(data)
+                if mode not in bridged:
                     await session_mgr.handle_client_message(data)
             except ValueError as exc:
                 await websocket.send_json({"type": "error", "message": str(exc)})
@@ -201,6 +216,7 @@ async def browser_websocket_endpoint(websocket: WebSocket):
     finally:
         await session_mgr.remove_client(websocket)
         await extension_session.remove_client(websocket)
+        await desktop_session.remove_client(websocket)
         try:
             await asyncio.wait_for(websocket.close(code=close_code), timeout=1)
         except (RuntimeError, OSError, TimeoutError):

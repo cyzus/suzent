@@ -7,7 +7,7 @@
 #   Flags (env):    SUZENT_INSTALL=package|source (default: the release's installer,
 #                     falling back to a source install when the release has none)
 #                   SUZENT_HEADLESS=1|0 (Linux; default: on when there is no display)
-#                   SUZENT_DIR=~/suzent  SUZENT_BRANCH=main  SUZENT_SKIP_PLAYWRIGHT=1
+#                   SUZENT_DIR=~/suzent  SUZENT_BRANCH=main
 #                   SUZENT_CHINA_MIRROR=1|0 (default: detect from the network)
 #                   SUZENT_REPO_URL=...  SUZENT_RELEASE_BASE_URL=...
 
@@ -897,15 +897,8 @@ else
     info "Set SUZENT_DEV_SETUP=1 before running setup to prepare developer mode."
 fi
 
-# ── Playwright Chromium ───────────────────────────────────────────────────────
-if [ "${SUZENT_SKIP_PLAYWRIGHT:-0}" != "1" ]; then
-    info "Installing Playwright Chromium (for web browsing tool)..."
-    if [ -x ".venv/bin/playwright" ]; then
-        .venv/bin/playwright install chromium || warn "Playwright install failed — web browsing may not work (non-fatal)."
-    else
-        uv run playwright install chromium || warn "Playwright install failed — web browsing may not work (non-fatal)."
-    fi
-fi
+# The browser tool uses the desktop app's browser, an installed Chrome or
+# Edge, or downloads Chromium the first time it needs one.
 
 # ── Global CLI shim ───────────────────────────────────────────────────────────
 INSTALL_BIN="$HOME/.local/bin"

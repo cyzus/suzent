@@ -240,6 +240,7 @@ from suzent.routes.session_routes import (
     get_memory_file,
     reindex_memories,
 )
+from suzent.tools.browser.desktop import desktop_browser_websocket
 from suzent.routes.browser_routes import (
     browser_settings_endpoint,
     browser_status_endpoint,
@@ -1194,8 +1195,10 @@ async def shutdown():
         from suzent.tools.browser.tool import BrowserSessionManager
 
         from suzent.tools.browser.extension.session import session as extension_session
+        from suzent.tools.browser.desktop import desktop_session
 
         await _stop(extension_session.close(), "BrowserExtension")
+        await _stop(desktop_session.close(), "DesktopBrowser")
         await _stop(
             BrowserSessionManager.get_instance().close_session(), "BrowserSession"
         )
@@ -1561,6 +1564,7 @@ app = Starlette(
         Route("/browser/extension/connect", extension_connect_page),
         Route("/browser/extension/download", extension_download),
         WebSocketRoute("/ws/browser-extension", extension_websocket),
+        WebSocketRoute("/ws/browser-desktop", desktop_browser_websocket),
         Route("/browser/settings", browser_settings_endpoint, methods=["GET", "POST"]),
         Route("/browser/status", browser_status_endpoint, methods=["GET", "POST"]),
         Route("/browser/preview-tab", browser_preview_tab_endpoint, methods=["POST"]),
@@ -1830,6 +1834,12 @@ if __name__ == "__main__":
                 port_file.unlink()
         except Exception:
             pass
+        try:
+            from suzent.tools.browser.desktop import desktop_bridge
+
+            desktop_bridge.unpublish()
+        except OSError:
+            pass
 
     def report_port(effective_port: int) -> None:
         """Report the server port via multiple channels for reliability."""
@@ -1844,6 +1854,12 @@ if __name__ == "__main__":
 
         # Write to file for CLI discovery
         write_port_file(effective_port)
+        try:
+            from suzent.tools.browser.desktop import desktop_bridge
+
+            desktop_bridge.publish(effective_port)
+        except OSError as error:
+            logger.warning(f"The desktop app's browser cannot connect: {error}")
 
     import socket as _socket
     import threading

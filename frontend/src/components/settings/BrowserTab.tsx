@@ -94,6 +94,7 @@ export function BrowserTab(): React.ReactElement {
                 )
               }
               options={[
+                { value: 'desktop', label: t('settings.browser.desktop') },
                 { value: 'extension', label: t('settings.browser.extension') },
                 { value: 'managed', label: t('settings.browser.managed') },
                 {
@@ -103,6 +104,11 @@ export function BrowserTab(): React.ReactElement {
                 },
               ]}
             />
+            {data.settings.connection_mode === 'desktop' && (
+              <p className="mt-2 text-sm text-neutral-600 dark:text-neutral-400">
+                {t('settings.browser.desktopHelp')}
+              </p>
+            )}
             {data.settings.connection_mode === 'extension' && <BrowserExtensionSetup />}
             {data.settings.connection_mode === 'existing' && (
               <div className="text-sm">
@@ -138,7 +144,7 @@ export function BrowserTab(): React.ReactElement {
                     </p>
                   )}
                 </div>
-                {data.settings.connection_mode === 'managed' && (
+                {['managed', 'desktop'].includes(data.settings.connection_mode) && (
                   <div className="grid gap-4 sm:grid-cols-2">
                     <div>
                       <label className="flex items-center gap-3 font-bold">
@@ -146,11 +152,7 @@ export function BrowserTab(): React.ReactElement {
                           type="checkbox"
                           className="h-5 w-5 accent-black"
                           checked={data.settings.persistent}
-                          disabled={
-                            busy ||
-                            data.settings.connection_mode !== 'managed' ||
-                            data.environment_overrides.includes('persistent')
-                          }
+                          disabled={busy || data.environment_overrides.includes('persistent')}
                           onChange={(event) => void update({ persistent: event.target.checked })}
                         />
                         {t('settings.browser.persistent')}
@@ -165,11 +167,7 @@ export function BrowserTab(): React.ReactElement {
                           type="checkbox"
                           className="h-5 w-5 accent-black"
                           checked={!data.settings.headless}
-                          disabled={
-                            busy ||
-                            data.settings.connection_mode !== 'managed' ||
-                            data.environment_overrides.includes('headless')
-                          }
+                          disabled={busy || data.environment_overrides.includes('headless')}
                           onChange={(event) => void update({ headless: !event.target.checked })}
                         />
                         {t('settings.browser.visible')}

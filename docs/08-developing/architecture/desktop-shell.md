@@ -75,6 +75,36 @@ turned into a hide. The tray polls `/focal/chats` every four seconds and
 shows chats waiting on the user and chats running; on Windows the icon gets a
 red dot when something waits.
 
+## The agent's browser
+
+The Electron shell hosts the browser tool's pages (`connection_mode`
+`desktop`, the default). `apps/desktop/src/agentBrowser.ts` keeps one
+`WebContentsView` per agent tab in the `persist:suzent-agent-browser`
+partition: sandboxed, no preload, every permission request and download
+refused, navigation limited to http(s) and `about:blank`. Each tab's
+`webContents.debugger` carries DevTools commands, so no remote-debugging port
+is opened and the app's own page is never reachable.
+
+`agentBrowserLink.ts` dials the backend's `/ws/browser-desktop` on loopback
+and authenticates with the token the backend writes at start to
+`runtime/desktop-browser-<port>.token` (mode 0600; Windows relies on the
+profile folder's ACL). The backend refuses connections that carry an `Origin`
+header, so web pages cannot use the socket. The protocol is the browser
+extension's (`tabs`, `select`, `open`, `cdp`, `status`, `focus`, `detach`), and
+`src/suzent/tools/browser/extension/session.py`'s `BridgeSession` serves both;
+only an allow-list of `Page`, `Runtime.evaluate` and `Input` methods is
+relayed.
+
+While the Browser panel is closed, the controlled page stays shown in a 1×1
+pixel view with `Emulation.setDeviceMetricsOverride` at 1280×800: Chromium
+drops input to hidden pages and stops painting them. The panel
+(`AgentBrowserPane.tsx`) calls `agent_browser_show` with its bounds, which
+clears the override and lays the page over the panel.
+
+Without the app (web UI, headless service) `effective_mode` reports `managed`
+and the Playwright session runs instead; it prefers an installed Chrome or
+Edge and downloads Chromium only when neither exists.
+
 ## Installers
 
 `apps/desktop/electron-builder.yml` wraps the shell, the frontend build and

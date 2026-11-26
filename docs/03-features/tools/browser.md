@@ -1,7 +1,7 @@
 ---
 sidebar_position: 6
 title: Browser
-description: Let the agent browse in its own browser, or in your Chrome or Edge with your logins through the Suzent extension.
+description: Let the agent browse inside the Suzent app where you can watch it, in a browser of its own, or in your Chrome or Edge with your logins through the Suzent extension.
 ---
 
 # Browser
@@ -10,21 +10,38 @@ The agent can open web pages, click, type, and read what's on screen. It can do
 this in a browser of its own, or in your everyday Chrome or Edge, where you're
 already signed in. Choose in **Settings → Browser**.
 
-## Option 1: The agent's own browser (default)
+## Option 1: The built-in browser (default)
 
-By default the agent uses a separate, invisible Chromium browser that has
-nothing to do with your personal browsing. In **Settings → Browser** you can:
+In the Suzent desktop app the agent browses inside the app. Open the
+**Browser** panel in the right sidebar to see the page it is working on. The
+page is live: you can scroll, click, type, or sign in yourself, and the agent
+carries on from there. With the panel closed the agent keeps working out of
+sight.
+
+The built-in browser keeps its own logins, separate from the app and from your
+everyday browser. It can only open web pages, never files on your computer,
+and it never gets your camera, microphone, location or downloads.
+
+When the app is closed, for example while Suzent runs as a background service
+or you use the web UI, the agent uses its own browser (Option 2) instead.
+
+## Option 2: The agent's own browser
+
+Select **Launch a managed browser** in **Settings → Browser** to always use a
+separate, invisible browser. It uses Chrome or Edge if one is installed, and
+otherwise downloads Chromium the first time the agent needs it. You can:
 
 - choose **Chromium**, **Chrome**, or **Edge** (browsers that aren't installed
-  are greyed out; click **Check installed browsers** after installing one);
+  are greyed out; click **Refresh** after installing one);
 - turn on **Remember browser logins** so sites stay signed in between sessions;
 - turn on **Show browser window** to watch it work, or to sign in or solve a
   verification step yourself.
 
+These options also apply when the built-in browser falls back to this one.
 Changes apply on the agent's next browser action. Its saved logins are kept in
 `~/.suzent/browser_profile` and never mixed with your own browser profile.
 
-## Option 2: Your own browser, with the Suzent extension
+## Option 3: Your own browser, with the Suzent extension
 
 Use this when the agent needs your tabs and logins, such as your email or an
 internal site.
@@ -61,7 +78,8 @@ from your browser's Extensions page with Developer mode on (**Load unpacked**).
 When the agent uses your own browser, Suzent shows the connection status and the
 selected tab's title. Click **Show tab** to bring that tab forward, or turn on
 **Live preview** to watch inside Suzent. For the agent's own browser, the
-preview is on by default.
+preview is on by default. The built-in browser needs no preview: the Browser
+panel shows the page itself.
 
 Both you and the agent can use the browser at the same time, so avoid clicking
 around in the selected tab while the agent is in the middle of a step.
@@ -91,6 +109,6 @@ before starting Suzent:
 | `SUZENT_BROWSER_CHANNEL` | `chromium` (default), `chrome`, or `msedge` |
 | `SUZENT_BROWSER_PERSISTENT` | `true` to remember logins |
 | `SUZENT_BROWSER_HEADLESS` | `false` to show the window |
-| `SUZENT_BROWSER_CONNECTION_MODE` | `existing` for the direct connection above |
+| `SUZENT_BROWSER_CONNECTION_MODE` | `desktop` (default), `managed`, `extension`, or `existing` for the direct connection above |
 
 Environment variables override the desktop settings.

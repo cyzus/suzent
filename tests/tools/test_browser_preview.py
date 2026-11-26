@@ -17,6 +17,7 @@ from suzent.tools.browser.config import BrowserSettings
 from suzent.tools.browser.preview import PreviewFrames
 from suzent.tools.browser.tool import BrowserSessionManager
 from suzent.tools.browser import config as browser_config
+from suzent.tools.browser import bridge as transport_module
 from suzent.tools.browser.extension import bridge as bridge_module
 from suzent.tools.browser.extension import session as session_module
 from suzent.tools.browser.extension import routes as extension_routes
@@ -275,9 +276,8 @@ async def test_extension_timeout_resets_session_and_replaces_pending_screenshot(
     if close_fails:
         socket.close.side_effect = RuntimeError("Already closed")
     connection.socket = socket
-    monkeypatch.setattr(bridge_module, "REQUEST_TIMEOUT", 0.01)
-    monkeypatch.setattr(session_module, "bridge", connection)
-    session = session_module.ExtensionSession()
+    monkeypatch.setattr(transport_module, "REQUEST_TIMEOUT", 0.01)
+    session = session_module.BridgeSession(connection)
     session.selected = "tab-1"
     session.streaming = True
     session.world = 42
@@ -315,8 +315,7 @@ async def test_replacement_succeeds_when_old_socket_cannot_close(
     old = AsyncMock()
     old.close.side_effect = error
     connection.socket = old
-    monkeypatch.setattr(session_module, "bridge", connection)
-    session = session_module.ExtensionSession()
+    session = session_module.BridgeSession(connection)
     session.selected = "tab-old"
     session.streaming = True
     session.refs["old"] = (0, {})
@@ -351,8 +350,7 @@ async def test_managed_preview_cannot_receive_extension_frames_after_mode_change
     manager = BrowserSessionManager(BrowserSettings())
     connection = bridge_module.ExtensionBridge()
     connection.request = AsyncMock()
-    monkeypatch.setattr(session_module, "bridge", connection)
-    extension = session_module.ExtensionSession()
+    extension = session_module.BridgeSession(connection)
     monkeypatch.setattr(browser_routes, "extension_session", extension)
     monkeypatch.setattr(
         browser_routes.BrowserSessionManager, "get_instance", lambda: manager
@@ -393,8 +391,7 @@ async def test_mode_change_closes_preview_without_waiting_for_frontend_poll(
     monkeypatch.delenv("SUZENT_BROWSER_CONNECTION_MODE", raising=False)
     manager = BrowserSessionManager(BrowserSettings())
     connection = bridge_module.ExtensionBridge()
-    monkeypatch.setattr(session_module, "bridge", connection)
-    extension = session_module.ExtensionSession()
+    extension = session_module.BridgeSession(connection)
     monkeypatch.setattr(browser_routes, "extension_session", extension)
     monkeypatch.setattr(
         browser_routes.BrowserSessionManager, "get_instance", lambda: manager
@@ -430,8 +427,7 @@ async def test_stale_preview_reconnect_cannot_opt_into_extension(
 ) -> None:
     manager = BrowserSessionManager(BrowserSettings())
     connection = bridge_module.ExtensionBridge()
-    monkeypatch.setattr(session_module, "bridge", connection)
-    extension = session_module.ExtensionSession()
+    extension = session_module.BridgeSession(connection)
     monkeypatch.setattr(browser_routes, "extension_session", extension)
     monkeypatch.setattr(
         browser_routes.BrowserSessionManager, "get_instance", lambda: manager

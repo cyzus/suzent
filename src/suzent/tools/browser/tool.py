@@ -21,6 +21,7 @@ from suzent.tools.browser.config import (
     normalize_browser_url,
 )
 from suzent.tools.browser.connection import discover_browser_endpoint
+from suzent.tools.browser.detection import available_browsers
 from suzent.tools.browser.snapshot import (
     SNAPSHOT_SCRIPT,
     ELEMENT_STATE_SCRIPT,
@@ -36,6 +37,37 @@ from suzent.core.agent_deps import AgentDeps
 
 logger = get_logger(__name__)
 T = TypeVar("T")
+
+
+CHROMIUM_INSTALL_TIMEOUT = 600
+
+
+async def install_chromium() -> None:
+    """Download Playwright's Chromium, through the China mirrors when enabled."""
+    from suzent.network_region import mirror_env
+
+    logger.info("Downloading Chromium for the browser tool")
+    process = await asyncio.create_subprocess_exec(
+        sys.executable,
+        "-m",
+        "playwright",
+        "install",
+        "chromium",
+        stdout=asyncio.subprocess.DEVNULL,
+        stderr=asyncio.subprocess.DEVNULL,
+        env=mirror_env(),
+    )
+    try:
+        code = await asyncio.wait_for(process.wait(), timeout=CHROMIUM_INSTALL_TIMEOUT)
+    except BaseException:
+        if process.returncode is None:
+            process.kill()
+        await process.wait()
+        raise
+    if code != 0:
+        raise RuntimeError(
+            "Chromium download failed. Install Chrome or Edge, or check the network and retry."
+        ) from None
 
 
 class BrowserSessionManager:
@@ -131,36 +163,7 @@ class BrowserSessionManager:
                 self.settings = desired
                 try:
                     self._playwright = await async_playwright().start()
-                    try:
-                        await self._launch_context(headless)
-                    except Exception as exc:
-                        if (
-                            self.settings.channel != "chromium"
-                            or "executable doesn't exist" not in str(exc).lower()
-                        ):
-                            raise
-                        logger.info("Installing missing Chromium browser")
-                        process = await asyncio.create_subprocess_exec(
-                            sys.executable,
-                            "-m",
-                            "playwright",
-                            "install",
-                            "chromium",
-                            stdout=asyncio.subprocess.DEVNULL,
-                            stderr=asyncio.subprocess.DEVNULL,
-                        )
-                        try:
-                            code = await asyncio.wait_for(process.wait(), timeout=120)
-                        except BaseException:
-                            if process.returncode is None:
-                                process.kill()
-                            await process.wait()
-                            raise
-                        if code != 0:
-                            raise RuntimeError(
-                                "Chromium installation failed. Run uv run playwright install chromium."
-                            ) from None
-                        await self._launch_context(headless)
+                    await self._launch_with_fallback(headless)
                     self._context.set_default_timeout(5000)
                     self._context.set_default_navigation_timeout(15000)
                     self._page = (
@@ -182,7 +185,34 @@ class BrowserSessionManager:
 
         return await self._run_on_main_loop(_launch())
 
-    async def _launch_context(self, headless: bool | None) -> None:
+    async def _launch_with_fallback(self, headless: bool | None) -> None:
+        """Launch, preferring an installed Chrome or Edge over a Chromium download."""
+        try:
+            await self._launch_context(headless)
+            return
+        except Exception as exc:
+            if (
+                self.settings.channel != "chromium"
+                or self.settings.connection_mode == "existing"
+                or "executable doesn't exist" not in str(exc).lower()
+            ):
+                raise
+        installed = await asyncio.to_thread(available_browsers)
+        for channel in ("chrome", "msedge"):
+            if not installed[channel]:
+                continue
+            try:
+                await self._launch_context(headless, channel=channel)
+                logger.info(f"Chromium is not downloaded; using installed {channel}")
+                return
+            except PlaywrightError as exc:
+                logger.warning(f"Could not launch installed {channel}: {exc}")
+        await install_chromium()
+        await self._launch_context(headless)
+
+    async def _launch_context(
+        self, headless: bool | None, channel: str | None = None
+    ) -> None:
         if self.settings.connection_mode == "existing":
             endpoint = await asyncio.to_thread(
                 discover_browser_endpoint, self.settings.channel
@@ -202,9 +232,8 @@ class BrowserSessionManager:
             return
         options = {
             "headless": self.settings.headless if headless is None else headless,
-            "channel": None
-            if self.settings.channel == "chromium"
-            else self.settings.channel,
+            "channel": channel
+            or (None if self.settings.channel == "chromium" else self.settings.channel),
             "timeout": 30000,
         }
         if self.settings.persistent:
@@ -702,6 +731,25 @@ class BrowserSessionManager:
         logger.info("Browser Session Closed.")
 
 
+# Commands that can replace or rearrange the page. Typing, hovering and
+# scrolling leave the snapshot's refs valid, so they return a short receipt.
+OBSERVED_AFTER = frozenset(
+    {
+        "open",
+        "click",
+        "dblclick",
+        "press",
+        "back",
+        "forward",
+        "reload",
+        "refresh",
+        "click_coords",
+        "select_tab",
+    }
+)
+OBSERVE_DELAY = 0.3
+
+
 class BrowsingTool(Tool):
     name = "BrowsingTool"
     tool_name = "browser_action"
@@ -712,6 +760,30 @@ class BrowsingTool(Tool):
         self.session_mgr = BrowserSessionManager.get_instance()
 
     async def _execute(
+        self, command: str, arguments: list[str] | None = None
+    ) -> ToolResult:
+        """Run *command*; after one that can change the page, observe it too.
+
+        Returning the new page with the action saves the agent a separate
+        snapshot call per step, as Playwright MCP and browser-use do.
+        """
+        result = await self._run(command, arguments)
+        if not result.success or command not in OBSERVED_AFTER:
+            return result
+        # Let a click that starts a navigation commit before observing.
+        await asyncio.sleep(OBSERVE_DELAY)
+        observed = await self._run("snapshot", [])
+        if not observed.success:
+            return ToolResult.success_result(
+                f"{command} completed. Call snapshot to observe the page.",
+                metadata=result.metadata,
+            )
+        return ToolResult.success_result(
+            f"{command} completed. Current page:\n{observed.message}",
+            metadata={**result.metadata, "snapshot": observed.metadata},
+        )
+
+    async def _run(
         self, command: str, arguments: list[str] | None = None
     ) -> ToolResult:
         try:
@@ -732,22 +804,29 @@ class BrowsingTool(Tool):
                 isinstance(self.session_mgr, BrowserSessionManager)
                 and self.session_mgr._reload_settings
             ):
+                from suzent.tools.browser.desktop import (
+                    desktop_session,
+                    effective_mode,
+                )
                 from suzent.tools.browser.extension.session import session as extension
 
-                async def extension_action() -> ToolResult | None:
+                async def bridge_action() -> ToolResult | None:
                     async with self.session_mgr._action_lock:
                         settings = await asyncio.to_thread(BrowserSettings.load)
-                        if settings.connection_mode == "extension":
+                        mode = effective_mode(settings.connection_mode)
+                        chosen = {"extension": extension, "desktop": desktop_session}
+                        for name, bridged in chosen.items():
+                            if name != mode and bridged.selected:
+                                await bridged.close()
+                        if mode in chosen:
                             if self.session_mgr._playwright:
                                 await self.session_mgr.close_session()
-                            return await extension.execute(
+                            return await chosen[mode].execute(
                                 request, interactive_only=arguments == ["-i"]
                             )
-                        if extension.selected:
-                            await extension.close()
                     return None
 
-                result = await self.session_mgr._run_on_main_loop(extension_action())
+                result = await self.session_mgr._run_on_main_loop(bridge_action())
                 if result is not None:
                     return result
             replaced = await self.session_mgr.ensure_session()
@@ -789,7 +868,7 @@ class BrowsingTool(Tool):
                 case "scroll":
                     await self.session_mgr.scroll(int(args[0]), int(args[1]))
             return ToolResult.success_result(
-                f"{command} completed. Call snapshot to observe the page.",
+                f"{command} completed.",
                 metadata={"command": command},
             )
         except ValueError as exc:
@@ -838,7 +917,7 @@ class BrowsingTool(Tool):
     ) -> ToolResult:
         """Control a browser session to navigate and interact with web pages.
 
-        Optimal workflow: open <url>, then snapshot to get element refs, then click/fill using refs.
+        open, click, press, back/forward/reload, click_coords and select_tab return the updated page with fresh element refs, so act on those directly; call snapshot only to page through more elements or after fill/type/hover/scroll.
 
         Args:
             command: The command to execute (open, snapshot, click, fill, scroll, back, forward, refresh, click_coords).

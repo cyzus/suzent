@@ -6,7 +6,7 @@
 # Flags (env vars): $env:SUZENT_INSTALL = package|source (default: the release's
 #                     installer, falling back to a source install when it has none)
 #                   $env:SUZENT_APP_DIR (where the app goes; default %LOCALAPPDATA%\Programs\Suzent)
-#                   $env:SUZENT_DIR, $env:SUZENT_BRANCH, $env:SUZENT_SKIP_PLAYWRIGHT
+#                   $env:SUZENT_DIR, $env:SUZENT_BRANCH
 #                   $env:SUZENT_CHINA_MIRROR = 1|0 (default: detect from the network)
 #                   $env:SUZENT_REPO_URL, $env:SUZENT_RELEASE_BASE_URL
 
@@ -14,6 +14,7 @@ param(
     [string]$Dir    = "",
     [string]$Branch = "",
     [switch]$ChinaMirror,
+    # Accepted for old command lines; Chromium is now downloaded on first use.
     [switch]$SkipPlaywright,
     [switch]$Update,
     [switch]$Source,
@@ -27,7 +28,6 @@ $ErrorActionPreference = "Stop"
 $SuzentDir    = if ($Dir)    { $Dir }    elseif ($env:SUZENT_DIR)    { $env:SUZENT_DIR }    else { Join-Path $env:USERPROFILE "suzent" }
 $BranchExplicit = [bool]($Branch -or $env:SUZENT_BRANCH)
 $SuzentBranch = if ($Branch) { $Branch } elseif ($env:SUZENT_BRANCH) { $env:SUZENT_BRANCH } else { "main" }
-$SkipPW       = $SkipPlaywright -or ($env:SUZENT_SKIP_PLAYWRIGHT -eq "1")
 $InstallMode  = if ($Source) { "source" } elseif ($Package) { "package" } elseif ($env:SUZENT_INSTALL) { $env:SUZENT_INSTALL.Trim().ToLowerInvariant() } else { "" }
 if (-not $AppDir -and $env:SUZENT_APP_DIR) { $AppDir = $env:SUZENT_APP_DIR }
 $RepoUrl      = if ($env:SUZENT_REPO_URL) { $env:SUZENT_REPO_URL } else { "https://github.com/cyzus/suzent.git" }
@@ -872,19 +872,8 @@ if (Test-WebView2) {
     }
 }
 
-# -- Playwright Chromium -------------------------------------------------------
-if (-not $SkipPW) {
-    Write-Info "Installing Playwright Chromium (for web browsing tool)..."
-    $playwrightExe = Join-Path $SuzentDir ".venv\Scripts\playwright.exe"
-    if (Test-Path $playwrightExe) {
-        & $playwrightExe install chromium
-    } else {
-        uv run playwright install chromium
-    }
-    if ($LASTEXITCODE -ne 0) {
-        Write-Warn "Playwright install failed - web browsing may not work (non-fatal)."
-    }
-}
+# The browser tool uses the desktop app's browser, an installed Chrome or
+# Edge, or downloads Chromium the first time it needs one.
 
 # -- Global CLI shim -----------------------------------------------------------
 $BinDir = Join-Path $env:USERPROFILE ".local\bin"

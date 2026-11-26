@@ -11,11 +11,7 @@ from pydantic import ValidationError
 
 from suzent.auth_boundary import is_loopback
 from suzent.config.paths import PROJECT_DIR
-from suzent.tools.browser.extension.bridge import (
-    bridge,
-    ExtensionMessage,
-    ExtensionHello,
-)
+from suzent.tools.browser.extension.bridge import bridge, ExtensionHello
 from suzent.tools.browser.extension.session import session
 from suzent.tools.browser.extension.install import install_native_host
 from suzent.logger import get_logger
@@ -159,29 +155,9 @@ async def extension_websocket(websocket: WebSocket) -> None:
                 logger.warning(
                     "Could not install browser endpoint discovery; re-pair if the backend port changes"
                 )
-            previous = bridge.socket
-            try:
-                if previous:
-                    await previous.close(code=1000)
-            except (RuntimeError, OSError):
-                pass
-            finally:
-                if bridge.socket is previous:
-                    await bridge.disconnected()
-            bridge.socket = websocket
+            await bridge.adopt(websocket)
             await websocket.send_json({"type": "ready"})
-        while True:
-            raw = await websocket.receive_text()
-            if bridge.socket is not websocket:
-                return
-            if len(raw) > 8_000_000:
-                await websocket.close(code=1009)
-                return
-            message = ExtensionMessage.model_validate_json(raw)
-            if message.type == "ping":
-                await websocket.send_json({"type": "pong"})
-            else:
-                await bridge.receive(message)
+        await bridge.serve(websocket)
     except (WebSocketDisconnect, TimeoutError, ValidationError, ValueError, OSError):
         try:
             await websocket.close(code=1008)
