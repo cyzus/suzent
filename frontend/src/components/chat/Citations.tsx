@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
+import { isDesktop, openExternal, openUrl } from '../../lib/desktop';
 import { ImageWithFallback } from './ImageWithFallback';
 import { createPortal } from 'react-dom';
 import type { CitationSource } from '../../lib/streamEvents';
@@ -297,23 +298,17 @@ function sourceName(s: CitationSource): string {
 async function openSource(url: string) {
   if (!url) return;
   try {
-    // file:// — open natively under Tauri; in the browser, file:// can't be
+    // file:// — open natively on desktop; in the browser, file:// can't be
     // opened programmatically, so copy the path to the clipboard instead.
     if (url.startsWith('file://')) {
-      if (window.__TAURI__) {
-        const { open } = await import('@tauri-apps/plugin-shell');
-        await open(url);
+      if (isDesktop()) {
+        await openExternal(url);
       } else {
         await navigator.clipboard.writeText(url.replace(/^file:\/\//, ''));
       }
       return;
     }
-    if (window.__TAURI__) {
-      const { open } = await import('@tauri-apps/plugin-shell');
-      await open(url);
-      return;
-    }
-    window.open(url, '_blank', 'noopener,noreferrer');
+    await openUrl(url);
   } catch (err) {
     console.warn('Failed to open citation source', err);
   }

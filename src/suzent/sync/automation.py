@@ -34,9 +34,10 @@ class SyncAutomationRunner:
         while not self._stop_event.is_set():
             sleep_seconds = 4 * 3600
             try:
+                # Listing runs git; off the loop so a slow git never stalls requests.
                 profiles = [
                     profile
-                    for profile in self.service.list_profiles()
+                    for profile in await asyncio.to_thread(self.service.list_profiles)
                     if profile.auto_sync_enabled
                 ]
                 now = time.monotonic()

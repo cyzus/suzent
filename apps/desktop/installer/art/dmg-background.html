@@ -1,0 +1,23 @@
+<!doctype html>
+<!-- macOS disk image window background. Render with scripts/render-dmg-background.mjs;
+     the icons sit at (140, 200) and (400, 200), see electron-builder.yml. -->
+<meta charset="utf-8">
+<style>html,body{margin:0;width:540px;height:380px;overflow:hidden;background:#fafafa}svg{display:block}</style>
+<svg width="540" height="380" viewBox="0 0 540 380" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <radialGradient id="pool" cx="50%" cy="50%" r="50%"><stop offset="0" stop-color="#efefef"/><stop offset=".7" stop-color="#f3f3f3"/><stop offset="1" stop-color="#fafafa" stop-opacity="0"/></radialGradient>
+    <pattern id="grain" width="6" height="6" patternUnits="userSpaceOnUse"><circle cx="3" cy="3" r=".55" fill="#0a0a0a" fill-opacity=".07"/></pattern>
+  </defs>
+  <rect width="540" height="380" fill="#fafafa"/>
+  <rect width="540" height="380" fill="url(#grain)"/>
+  <text x="270" y="50" text-anchor="middle" font-family="'JetBrains Mono', Menlo, Consolas, monospace" font-weight="600" font-size="9" letter-spacing="3.2" fill="#8a8a8a">SUZENT  /  INSTALL</text>
+  <circle cx="140" cy="200" r="78" fill="url(#pool)"/>
+  <circle cx="400" cy="200" r="78" fill="url(#pool)"/>
+  <!-- one orbit through both icons: the app travels along it -->
+  <path d="M140 200 A130 62 0 0 1 400 200" fill="none" stroke="#0a0a0a" stroke-width="1" stroke-dasharray="2 5" stroke-linecap="round"/>
+  <path d="M400 200 A130 62 0 0 1 140 200" fill="none" stroke="#c8c8c8" stroke-width="1" stroke-dasharray="2 5" stroke-linecap="round"/>
+  <circle cx="270" cy="138" r="3.5" fill="#0a0a0a"/>
+  <path d="M326.3 148.1 L334.0 146.0 L328.4 140.4" fill="none" stroke="#0a0a0a" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="270" y="326" text-anchor="middle" font-family="Inter, -apple-system, 'PingFang SC', 'Noto Sans SC', sans-serif" font-weight="600" font-size="14" fill="#0a0a0a">把 Suzent 拖进 Applications</text>
+  <text x="270" y="346" text-anchor="middle" font-family="'JetBrains Mono', Menlo, Consolas, monospace" font-weight="600" font-size="8.5" letter-spacing="2.6" fill="#a3a3a3">DRAG TO INSTALL</text>
+</svg>

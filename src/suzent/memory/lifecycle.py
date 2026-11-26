@@ -323,7 +323,10 @@ async def _initialize_memory_system() -> bool:
             await _migrate_blocks_to_files(memory_store, markdown_store, CONFIG.user_id)
 
         # Add memory tools to CONFIG.tool_options so they appear in frontend
-        tool_options = CONFIG.ensure_tool_options()
+        # Discovery imports every tool module; on a cold disk under antivirus
+        # scanning that takes long enough to stall every request if it ran on
+        # the event loop.
+        tool_options = await asyncio.to_thread(CONFIG.ensure_tool_options)
         for tool_name in ("MemorySearchTool", "MemoryUpdateTool"):
             if tool_name not in tool_options:
                 tool_options.append(tool_name)

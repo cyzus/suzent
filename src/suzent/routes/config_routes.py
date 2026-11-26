@@ -147,6 +147,12 @@ def _first_newly_enabled_provider_models(
 
 async def get_config(request: Request) -> JSONResponse:
     """Return frontend-consumable configuration merged with user preferences."""
+    # Building it can import every tool module the first time, and while the
+    # startup warmer holds the import lock the event loop would wait on it too.
+    return JSONResponse(await asyncio.to_thread(_frontend_config))
+
+
+def _frontend_config() -> dict[str, Any]:
     from suzent.core.context_compressor import resolve_context_limit
 
     db = get_database()
@@ -226,7 +232,7 @@ async def get_config(request: Request) -> JSONResponse:
             "extraction_model": extraction_model,
         }
 
-    return JSONResponse(data)
+    return data
 
 
 async def save_preferences(request: Request) -> JSONResponse:
@@ -1544,7 +1550,8 @@ async def voice_settings(request: Request) -> JSONResponse:
             {
                 **get_voice_settings().model_dump(),
                 "tts_models": router.get_model_ids("tts"),
-                "realtime_options": list_realtime_options(),
+                # Checking providers can import litellm cold; keep it off the loop.
+                "realtime_options": await asyncio.to_thread(list_realtime_options),
             }
         )
     try:
@@ -1565,7 +1572,8 @@ async def voice_settings(request: Request) -> JSONResponse:
             {
                 **settings,
                 "tts_models": router.get_model_ids("tts"),
-                "realtime_options": list_realtime_options(),
+                # Checking providers can import litellm cold; keep it off the loop.
+                "realtime_options": await asyncio.to_thread(list_realtime_options),
             }
         )
     except ValueError as exc:

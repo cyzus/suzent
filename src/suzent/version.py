@@ -52,7 +52,12 @@ def get_backend_source_root(start: Path | None = None) -> Path | None:
 
     source_file = (start or Path(__file__)).resolve()
     for parent in source_file.parents:
-        if read_project_version(parent / "pyproject.toml"):
+        # Only a checkout whose src/ holds this very file: an installed copy
+        # that merely sits somewhere below a checkout (a runtime built inside
+        # the repo, say) is not running from source.
+        if read_project_version(
+            parent / "pyproject.toml"
+        ) and source_file.is_relative_to(parent / "src"):
             return parent
     return None
 
@@ -177,6 +182,10 @@ def get_runtime_kind() -> str:
     if os.getenv("SUZENT_PACKAGED", "").strip() == "1":
         return "bundled"
     if os.getenv("SUZENT_PROJECT_DIR", "").strip():
+        return "bundled"
+    from suzent.config.paths import bundled_resources_dir
+
+    if bundled_resources_dir():
         return "bundled"
     if get_backend_source_root():
         return "source"

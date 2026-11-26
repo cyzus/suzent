@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core';
+import { invoke } from './desktop';
 import { isWeb } from './runtime';
 
 export type DesktopDistribution = 'microsoft_store' | 'github' | 'development' | 'web';

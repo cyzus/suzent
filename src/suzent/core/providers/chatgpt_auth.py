@@ -1,5 +1,11 @@
 from __future__ import annotations
 
+import base64
+import json
+import os
+import sys
+import time
+from pathlib import Path
 from typing import Any
 
 
@@ -26,6 +32,45 @@ def _missing_attr_error(name: str) -> ChatGPTAuthUnavailable:
         "LiteLLM ChatGPT subscription authentication is unavailable or changed. "
         f"Missing expected LiteLLM attribute: {name}."
     )
+
+
+def _auth_file() -> Path:
+    token_dir = os.getenv("CHATGPT_TOKEN_DIR") or os.path.expanduser(
+        "~/.config/litellm/chatgpt"
+    )
+    return Path(token_dir) / os.getenv("CHATGPT_AUTH_FILE", "auth.json")
+
+
+def _jwt_expiry(token: str) -> float | None:
+    try:
+        payload = token.split(".")[1]
+        payload += "=" * (-len(payload) % 4)
+        exp = json.loads(base64.urlsafe_b64decode(payload)).get("exp")
+    except (IndexError, ValueError):
+        return None
+    return float(exp) if isinstance(exp, (int, float)) else None
+
+
+def has_unexpired_token_without_litellm() -> bool | None:
+    """Read LiteLLM's ChatGPT token file directly, without importing LiteLLM.
+
+    Returns None once LiteLLM's authenticator is already loaded, so callers use
+    the real one. Importing LiteLLM cold takes seconds, and this check runs on
+    the event loop whenever the model list is built.
+    """
+    if "litellm.llms.chatgpt.authenticator" in sys.modules:
+        return None
+    try:
+        data = json.loads(_auth_file().read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return False
+    token = data.get("access_token") if isinstance(data, dict) else None
+    if not isinstance(token, str) or not token:
+        return False
+    expires_at = data.get("expires_at")
+    if not isinstance(expires_at, (int, float)):
+        expires_at = _jwt_expiry(token)
+    return expires_at is not None and time.time() < float(expires_at) - 60
 
 
 def create_authenticator() -> Any:

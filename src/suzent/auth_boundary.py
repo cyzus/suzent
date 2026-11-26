@@ -142,7 +142,7 @@ def voice_origin_allowed(origin: str | None, host: str) -> bool:
     """Allow desktop/dev origins and an origin matching the WebSocket Host."""
     if not origin:
         return True
-    if origin.lower() == "tauri://localhost":
+    if origin.lower() in {"suzent://app", "tauri://localhost"}:
         return True
     try:
         parsed = urlsplit(origin)

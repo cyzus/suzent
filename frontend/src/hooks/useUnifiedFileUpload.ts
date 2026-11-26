@@ -1,7 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { listen } from '@tauri-apps/api/event';
-import { readFile } from '@tauri-apps/plugin-fs';
-import { isWeb } from '../lib/runtime';
+import { desktopShell } from '../lib/desktop';
 import { FileAttachment, ImageAttachment } from '../types/api';
 import { getApiBase } from '../lib/api';
 
@@ -148,10 +146,10 @@ export function useUnifiedFileUpload() {
 
   // Handle Tauri Drag and Drop
   useEffect(() => {
-    // Only the desktop shell delivers `tauri://drag-*`, and only there can a
-    // dropped path be read off disk. In a browser this hook stays inert and the
-    // ordinary HTML5 drop handlers take over.
-    if (isWeb()) return;
+    // Tauri swallows HTML5 drops and delivers `tauri://drag-*` with paths to
+    // read off disk instead. A browser and Electron deliver ordinary drops with
+    // File objects, so this hook stays inert there and handleDrop takes over.
+    if (desktopShell() !== 'tauri') return;
 
     let unlistenDrop: (() => void) | undefined;
     let unlistenEnter: (() => void) | undefined;
@@ -159,6 +157,8 @@ export function useUnifiedFileUpload() {
 
     const setupListener = async () => {
       try {
+        const { listen } = await import('@tauri-apps/api/event');
+        const { readFile } = await import('@tauri-apps/plugin-fs');
         unlistenDrop = await listen<{ paths: string[] }>('tauri://drag-drop', async (event) => {
           setIsDragging(false); // Ensure drag state is cleared on drop
           const files: File[] = [];

@@ -1,4 +1,5 @@
 import { createResourceClient } from './resources';
+import { isDesktop } from './desktop';
 import { resourcePaths } from './resourceAPI.generated';
 import {
   AcpAgentDescriptor,
@@ -20,7 +21,7 @@ import socialExampleConfig from '../../../config/social.example.json';
 // set in sessionStorage when the module first loads.
 export function getApiBase(): string {
   // The backend port is injected by the main process into sessionStorage
-  if (window.__TAURI__) {
+  if (isDesktop()) {
     const injectedPort = (window as any).__SUZENT_BACKEND_PORT__;
     if (typeof injectedPort === 'number' && Number.isFinite(injectedPort)) {
       return `http://127.0.0.1:${injectedPort}`;

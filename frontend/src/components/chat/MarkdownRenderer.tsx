@@ -1,4 +1,5 @@
 import { ChatMarkdownImage } from '../ChatImageGallery';
+import { openUrl } from '../../lib/desktop';
 import React from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -277,17 +278,7 @@ export const MarkdownRenderer = React.memo<MarkdownRendererProps>(
       openingLinksRef.current.set(link, now);
 
       try {
-        if (window.__TAURI__) {
-          try {
-            const { open } = await import('@tauri-apps/plugin-shell');
-            await open(link);
-            return;
-          } catch (tauriErr) {
-            console.warn('Tauri shell.open failed, falling back to window.open', tauriErr);
-          }
-        }
-
-        window.open(link, '_blank', 'noopener,noreferrer');
+        await openUrl(link);
       } catch (err) {
         console.warn('Failed to open external link', err);
       } finally {

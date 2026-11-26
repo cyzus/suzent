@@ -61,10 +61,34 @@ describe('ClosePrompt', () => {
     await vi.waitFor(() => expect(events.handler).not.toBeNull());
 
     events.handler?.({ payload: 7 });
-    expect(core.invoke).toHaveBeenCalledWith('ack_close_prompt', { seq: 7 });
+    await vi.waitFor(() =>
+      expect(core.invoke).toHaveBeenCalledWith('ack_close_prompt', { seq: 7 })
+    );
     const [setOpen, setRemember] = hooks.setters;
     expect(setOpen).toHaveBeenCalledWith(true);
     expect(setRemember).toHaveBeenCalledWith(true);
+  });
+
+  it('uses the Electron bridge when the preload exposes one', async () => {
+    const bridge = {
+      invoke: vi.fn(async () => undefined),
+      on: vi.fn((_name: string, handler: (payload: unknown) => void) => {
+        events.handler = (event) => handler(event.payload);
+        return () => undefined;
+      }),
+    };
+    vi.stubGlobal('window', { suzentDesktop: bridge });
+    ClosePrompt();
+    hooks.effects.forEach((effect) => effect());
+    await vi.waitFor(() =>
+      expect(bridge.on).toHaveBeenCalledWith('close-prompt', expect.any(Function))
+    );
+
+    events.handler?.({ payload: 3 });
+    await vi.waitFor(() =>
+      expect(bridge.invoke).toHaveBeenCalledWith('ack_close_prompt', { seq: 3 })
+    );
+    expect(core.invoke).not.toHaveBeenCalled();
   });
 
   it('renders nothing in the browser build', () => {

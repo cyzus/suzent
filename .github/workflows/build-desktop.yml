@@ -337,11 +337,23 @@ jobs:
           GH_REPO: ${{ github.repository }}
           RELEASE_TAG: ${{ needs.prepare-release.outputs.tag }}
 
+  # The Electron app's standard installers and update feeds.
+  electron-installers:
+    needs: prepare-release
+    uses: ./.github/workflows/desktop-installers.yml
+    with:
+      tag: ${{ needs.prepare-release.outputs.tag }}
+      sign: true
+    secrets: inherit
+    permissions:
+      contents: write
+
   publish-release:
     if: >-
       always() &&
       needs.prepare-release.result == 'success' &&
       needs.build-webui.result == 'success' &&
+      needs.electron-installers.result == 'success' &&
       (needs.build.result == 'success' || needs.build.result == 'skipped') &&
       (needs.reuse-assets.result == 'success' || needs.reuse-assets.result == 'skipped')
     needs:
@@ -349,14 +361,15 @@ jobs:
       - build
       - build-webui
       - reuse-assets
+      - electron-installers
     runs-on: ubuntu-22.04
     steps:
       - name: Generate release checksums
         shell: bash
         run: |
           mkdir -p release-assets
-          gh release download "$RELEASE_TAG" --pattern 'suzent-*' --dir release-assets
-          (cd release-assets && sha256sum suzent-* > SHA256SUMS)
+          gh release download "$RELEASE_TAG" --pattern 'suzent-*' --pattern 'Suzent-*' --dir release-assets
+          (cd release-assets && sha256sum suzent-* Suzent-* > SHA256SUMS)
           gh release upload "$RELEASE_TAG" release-assets/SHA256SUMS --clobber
         env:
           GH_TOKEN: ${{ github.token }}

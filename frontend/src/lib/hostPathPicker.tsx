@@ -185,8 +185,8 @@ export async function pickHostDirectory(options: {
   multiple: boolean;
 }): Promise<string | string[] | null> {
   if (!isWeb()) {
-    const { open } = await import('@tauri-apps/plugin-dialog');
-    return open({ directory: true, multiple: options.multiple });
+    const { openDialog } = await import('./desktop');
+    return openDialog({ directory: true, multiple: options.multiple });
   }
 
   return new Promise((resolve) => {

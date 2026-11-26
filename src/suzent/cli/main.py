@@ -100,6 +100,19 @@ def _interrupted_update_message(root: Path) -> str | None:
     )
 
 
+def _refuse_in_bundled_install(command: str) -> None:
+    """Installers ship a fixed runtime; the desktop app updates it as a whole."""
+    from suzent.version import get_runtime_kind
+
+    if get_runtime_kind() == "bundled":
+        typer.echo(
+            f"`suzent {command}` is for source installs. This Suzent came from an "
+            "installer and updates itself: open the app and use Settings > About, "
+            "or download the latest installer from https://suzent.com."
+        )
+        raise typer.Exit(code=1)
+
+
 def _get_ui_binary(root: Path) -> Path | None:
     """Return the managed release UI, falling back to a local release build."""
     # Packaged (MSIX) builds: the desktop exe runs this CLI through its
@@ -2797,6 +2810,7 @@ def register_commands(app: typer.Typer):
         ),
     ):
         """Update Suzent to the latest version."""
+        _refuse_in_bundled_install("update")
         if prefetch:
             typer.echo(prefetch_update(get_project_root()))
             return
@@ -2820,6 +2834,7 @@ def register_commands(app: typer.Typer):
         ),
     ):
         """Alias for `update`."""
+        _refuse_in_bundled_install("upgrade")
         typer.echo(
             "`suzent upgrade` is supported; `suzent update` is the primary command."
         )
@@ -2834,6 +2849,7 @@ def register_commands(app: typer.Typer):
         ),
     ) -> None:
         """Repair the installed stable release with the standalone updater."""
+        _refuse_in_bundled_install("repair")
         root = get_project_root()
         release_file = root / ".suzent" / "release-tag"
         release_tag = (

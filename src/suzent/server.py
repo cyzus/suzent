@@ -409,6 +409,22 @@ agent_inbox_dispatcher = None
 _social_reload_lock = asyncio.Lock()
 
 
+def _warm_heavy_imports() -> None:
+    import importlib
+
+    for module in ("litellm", "litellm.llms.chatgpt.authenticator", "pydantic_ai"):
+        try:
+            importlib.import_module(module)
+        except Exception as e:
+            logger.debug(f"Warm import of {module} failed: {e}")
+    try:
+        from suzent.config import CONFIG
+
+        CONFIG.ensure_tool_options()
+    except Exception as e:
+        logger.debug(f"Warm tool discovery failed: {e}")
+
+
 async def health(_request: Request) -> JSONResponse:
     """Lightweight liveness probe used for process identity and supervision."""
     from suzent.routes.system_routes import get_backend_version
@@ -608,9 +624,13 @@ async def deny_pairing(request: Request) -> JSONResponse:
     return JSONResponse({"success": True})
 
 
-async def _refresh_provider_models() -> None:
+async def _refresh_provider_models(import_warmer: asyncio.Task | None = None) -> None:
     """Background task: discover available models for all configured providers."""
     await asyncio.sleep(3)  # let server finish starting up
+    if import_warmer is not None:
+        # Providers import litellm on the loop; while the warmer thread holds the
+        # import lock that would stall every request.
+        await asyncio.wait({import_warmer})
 
     try:
         from suzent.core.providers import ProviderFactory, PROVIDER_REGISTRY
@@ -721,6 +741,12 @@ async def startup():
 
     logger.info("Application startup - initializing services")
     app.state.background_services_ready = False
+    # A cold litellm import takes seconds (minutes under antivirus scanning);
+    # paying it here in a thread keeps the first request that needs it from
+    # holding the event loop.
+    app.state.import_warmer = asyncio.create_task(
+        asyncio.to_thread(_warm_heavy_imports), name="import_warmer"
+    )
     _rebuild_webui_if_stale()
     if os.getenv("SUZENT_RUN_MODE") == "service":
         app.state.service_resource_guard = asyncio.create_task(
@@ -1014,7 +1040,9 @@ async def startup():
     asyncio.create_task(init_background_services(channel_manager, social_brain))
 
     # Silently refresh model lists for all configured providers in the background.
-    asyncio.create_task(_refresh_provider_models())
+    asyncio.create_task(
+        _refresh_provider_models(getattr(app.state, "import_warmer", None))
+    )
 
 
 def ensure_app_data():
@@ -1195,13 +1223,13 @@ async def shutdown():
 # browser opened against the backend directly.
 _LOOPBACK_ORIGIN_REGEX = r"https?://(localhost|127\.0\.0\.1|\[::1\])(:\d+)?"
 
-# The packaged desktop webview. Tauri v2 does not serve the app from loopback:
-# it uses a custom protocol whose origin is "tauri://localhost" on macOS/Linux
-# and "http://tauri.localhost" on Windows. Neither is a loopback origin, so
-# leaving them out here would let development pass while the released app loses
-# CORS access to its own backend. These are the same origins
-# ``local_setup_request`` already trusts for browser-extension setup.
-_TAURI_ORIGIN_REGEX = r"tauri://localhost|https?://tauri\.localhost"
+# The packaged desktop app does not serve its page from loopback. Electron
+# serves it from the custom "suzent://app" scheme; Tauri v2 used
+# "tauri://localhost" on macOS/Linux and "http://tauri.localhost" on Windows.
+# None is a loopback origin, so leaving them out here would let development
+# pass while the released app loses CORS access to its own backend. These are
+# the same origins ``local_setup_request`` trusts for browser-extension setup.
+_DESKTOP_ORIGIN_REGEX = r"suzent://app|tauri://localhost|https?://tauri\.localhost"
 
 
 def _allowed_origin_regex() -> str:
@@ -1217,7 +1245,7 @@ def _allowed_origin_regex() -> str:
         for o in os.getenv("SUZENT_ALLOWED_ORIGINS", "").split(",")
         if o.strip()
     ]
-    patterns = [_LOOPBACK_ORIGIN_REGEX, _TAURI_ORIGIN_REGEX] + [
+    patterns = [_LOOPBACK_ORIGIN_REGEX, _DESKTOP_ORIGIN_REGEX] + [
         _re.escape(o) for o in extra
     ]
     return "|".join(patterns)
@@ -1763,9 +1791,8 @@ if __name__ == "__main__":
     original_host, original_port = host, port
     # The desktop app always sets SUZENT_PORT, but only as a hint for its child
     # backend; any other SUZENT_PORT is the user's choice and must be honoured.
-    port_is_explicit = (
-        bool(_port_str) and os.getenv("SUZENT_RUN_MODE") != "desktop-child"
-    )
+    desktop_child = os.getenv("SUZENT_RUN_MODE") == "desktop-child"
+    port_is_explicit = bool(_port_str) and not desktop_child
     host, port = resolve_mesh_bind(
         host,
         port,
@@ -1826,20 +1853,49 @@ if __name__ == "__main__":
     # For explicit ports (e.g., 8000), this verifies the port is available immediately,
     # and if it fails (e.g., Windows Hyper-V reserved ports), we can forceful exit
     # before uvicorn/tokio start up, avoiding PyO3 panics during graceful shutdown.
+    def _bind(bind_host: str, bind_port: int) -> _socket.socket:
+        sock = _socket.socket(_socket.AF_INET, _socket.SOCK_STREAM)
+        try:
+            # On Windows SO_REUSEADDR lets a second server bind a port that is
+            # already listening, so two backends silently split the requests.
+            if sys.platform == "win32":
+                sock.setsockopt(_socket.SOL_SOCKET, _socket.SO_EXCLUSIVEADDRUSE, 1)
+            else:
+                sock.setsockopt(_socket.SOL_SOCKET, _socket.SO_REUSEADDR, 1)
+            sock.bind((bind_host, bind_port))
+            sock.listen()
+        except OSError:
+            sock.close()
+            raise
+        return sock
+
+    def _loopback_answers(probe_port: int) -> bool:
+        try:
+            with _socket.create_connection(("127.0.0.1", probe_port), timeout=0.5):
+                return True
+        except OSError:
+            return False
+
     _sock = None
     try:
-        _sock = _socket.socket(_socket.AF_INET, _socket.SOCK_STREAM)
-        # On Windows SO_REUSEADDR lets a second server bind a port that is
-        # already listening, so two backends silently split the requests.
-        if sys.platform == "win32":
-            _sock.setsockopt(_socket.SOL_SOCKET, _socket.SO_EXCLUSIVEADDRUSE, 1)
-        else:
-            _sock.setsockopt(_socket.SOL_SOCKET, _socket.SO_REUSEADDR, 1)
         try:
-            _sock.bind((host, port))
+            # On Windows a server listening on 127.0.0.1 alone does not stop a
+            # 0.0.0.0 bind, yet it still takes every loopback connection, so
+            # the window would talk to it instead of us.
+            if desktop_child and port != original_port and _loopback_answers(port):
+                raise OSError(f"another server answers on 127.0.0.1:{port}")
+            _sock = _bind(host, port)
         except OSError as e:
-            raise e
-        _sock.listen()
+            # Another Suzent (an older install, or a service from a checkout)
+            # holding the mesh port must not stop the desktop app opening.
+            if not (desktop_child and port != original_port):
+                raise
+            logger.warning(
+                f"Mesh port {port} is in use ({e}); this window runs on "
+                f"{original_host} without the device mesh until that port is free"
+            )
+            host, port = original_host, original_port
+            _sock = _bind(host, port)
         _sock.set_inheritable(True)
         effective_port = _sock.getsockname()[1]
         report_port(effective_port)
@@ -1867,8 +1923,48 @@ if __name__ == "__main__":
                 pass
         raise
 
+    def watch_event_loop(
+        loop: asyncio.AbstractEventLoop, stall_s: float = 10.0
+    ) -> None:
+        """Log the loop thread's stack when the event loop stops turning.
+
+        A blocking call on the loop leaves the port open but answers nothing,
+        which from outside looks like a backend that never started.
+        """
+        import time
+        import traceback
+
+        loop_thread = threading.get_ident()
+        last_beat = [time.monotonic()]
+
+        def beat() -> None:
+            last_beat[0] = time.monotonic()
+            loop.call_later(1.0, beat)
+
+        loop.call_soon_threadsafe(beat)
+
+        def watch() -> None:
+            reported = 0.0
+            while True:
+                time.sleep(1.0)
+                stalled = time.monotonic() - last_beat[0]
+                if stalled < stall_s:
+                    reported = 0.0
+                    continue
+                if stalled - reported < 30.0 and reported:
+                    continue
+                reported = stalled
+                frame = sys._current_frames().get(loop_thread)
+                stack = "".join(traceback.format_stack(frame)) if frame else "?"
+                logger.warning(
+                    f"Event loop blocked for {stalled:.0f}s; it is at:\n{stack}"
+                )
+
+        threading.Thread(target=watch, name="loop-watchdog", daemon=True).start()
+
     async def main():
-        if port == 0:
+        watch_event_loop(asyncio.get_running_loop())
+        if port == 0 or desktop_child:
             # Start process-lifetime monitors only when launched by Tauri (port=0 mode).
             # These threads must be started inside the async loop so os._exit() doesn't
             # fire before the event loop is running.

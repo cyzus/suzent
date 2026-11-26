@@ -6,7 +6,7 @@ import { isDesktop } from './runtime';
 /** Tell the native tray menu which language the app is using. */
 export async function publishTrayLanguage(language: string, desktop: boolean): Promise<void> {
   if (!desktop) return;
-  const { invoke } = await import('@tauri-apps/api/core');
+  const { invoke } = await import('./desktop');
   await invoke('set_tray_language', { language });
 }
 
