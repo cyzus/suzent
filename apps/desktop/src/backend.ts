@@ -169,6 +169,7 @@ export class Backend {
     });
     const backendPromise = (async () => {
       const port = await waitForPortFile(portFile, child, logFile);
+      console.log(`Backend (pid ${child.pid}) reported port ${port}; waiting for /health`);
       const backend = new Backend(port, child, controlToken);
       await waitForHealth(backend, options, platform);
       return backend;
@@ -193,6 +194,7 @@ export class Backend {
     }
     const attached = await Backend.attachIfMatching(configured || SERVICE_PORT, options);
     if (attached) return attached;
+    console.log(`No backend to attach to on ${configured || SERVICE_PORT}; starting one`);
     return Backend.start(configured, options);
   }
 }
@@ -235,9 +237,17 @@ async function waitForHealth(
   options: BackendOptions,
   platform: NodeJS.Platform
 ): Promise<void> {
-  const deadline = Date.now() + HEALTH_TIMEOUT_MS;
+  const started = Date.now();
+  const deadline = started + HEALTH_TIMEOUT_MS;
+  let lastNote = started;
   while (Date.now() < deadline) {
     const payload = await fetchHealth(backend.port, 2000);
+    if (!payload && Date.now() - lastNote >= 10_000) {
+      lastNote = Date.now();
+      console.log(
+        `Still no /health answer on ${backend.port} after ${Math.round((lastNote - started) / 1000)}s`
+      );
+    }
     if (payload) {
       const problem = identityProblem(
         payload,

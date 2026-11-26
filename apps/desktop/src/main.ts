@@ -39,6 +39,7 @@ import { fetchHealth, isSuzentOk, SERVICE_PORT } from './health';
 import { installShim } from './cliShim';
 import { resolveLayout, type Layout } from './layout';
 import { extractJsonPayload, runServiceCli } from './service';
+import { keepShellLog } from './shellLog';
 import { SuzentTray } from './tray';
 import { DesktopUpdater } from './updater';
 
@@ -73,6 +74,8 @@ const layout: Layout = resolveLayout({
 });
 const host = trayHostFor(process.platform);
 const appVersion = app.getVersion();
+keepShellLog(layout.dataDir);
+console.log(`Suzent ${appVersion} (${layout.mode}) starting from ${process.execPath}`);
 
 let mainWindow: BrowserWindow | null = null;
 let embedded: EmbeddedPages | null = null;
@@ -542,6 +545,14 @@ function createWindow(): BrowserWindow {
     },
   });
   window.setMenuBarVisibility(false);
+  window.webContents.on('console-message', (event) => {
+    if (event.level === 'warning' || event.level === 'error') {
+      console.log(`[page ${event.level}] ${event.message} (${event.sourceId}:${event.lineNumber})`);
+    }
+  });
+  window.webContents.on('render-process-gone', (_event, details) => {
+    console.error(`Page process gone: ${details.reason} (${details.exitCode})`);
+  });
   window.on('close', onClose);
   window.on('closed', () => {
     mainWindow = null;
