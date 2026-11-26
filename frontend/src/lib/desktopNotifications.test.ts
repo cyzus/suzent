@@ -10,9 +10,11 @@ const core = vi.hoisted(() => ({ invoke: vi.fn(async () => undefined) }));
 vi.mock('@tauri-apps/api/core', () => core);
 
 import {
+  backgroundNotificationTarget,
   bindReplyRun,
   forgetReply,
   notifyDesktop,
+  parseNotificationTarget,
   recordReplyChunk,
   takeReplyOutcome,
   truncateNotificationBody,
@@ -177,4 +179,39 @@ it('uses Regent deliveries as a fallback preview and announces the turn only onc
     preview: 'Hello Two tests failed.',
   });
   expect(takeReplyOutcome('focal-suzent')).toBeNull();
+});
+
+describe('notification targets', () => {
+  beforeEach(() => {
+    core.invoke.mockClear();
+    vi.stubGlobal('window', { __TAURI__: {} });
+    setFocus(false);
+  });
+
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('hands the shell the page a click should open', async () => {
+    await notifyDesktop('Report', 'done', { chatId: 'chat-1' });
+    expect(core.invoke).toHaveBeenCalledWith('show_notification', {
+      title: 'Report',
+      body: 'done',
+      target: { chatId: 'chat-1' },
+    });
+  });
+
+  it('opens the chat a background notification came from, or the Mailbox', () => {
+    expect(backgroundNotificationTarget({ source: 'cron', chat_id: 'cron-3' })).toEqual({
+      chatId: 'cron-3',
+    });
+    expect(backgroundNotificationTarget({ source: 'mailbox' })).toEqual({ view: 'mailbox' });
+    expect(backgroundNotificationTarget({ source: 'goal', chat_id: null })).toBeUndefined();
+  });
+
+  it('reads only targets it knows from a click', () => {
+    expect(parseNotificationTarget({ chatId: 'chat-1' })).toEqual({ chatId: 'chat-1' });
+    expect(parseNotificationTarget({ view: 'mailbox' })).toEqual({ view: 'mailbox' });
+    expect(parseNotificationTarget({ view: 'settings' })).toBeNull();
+    expect(parseNotificationTarget({ chatId: '' })).toBeNull();
+    expect(parseNotificationTarget('chat-1')).toBeNull();
+  });
 });

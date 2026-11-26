@@ -763,7 +763,10 @@ def announce_focal_reply(message: dict[str, Any], text: str) -> None:
         text = str(message.get("content") or "")
     try:
         get_database().create_background_notification(
-            source="focal", title=FOCAL_TITLE, result=text.strip()
+            source="focal",
+            title=FOCAL_TITLE,
+            result=text.strip(),
+            chat_id=FOCAL_CHAT_ID,
         )
     except Exception as exc:
         logger.warning("Failed to queue Focal Agent notification: {}", exc)

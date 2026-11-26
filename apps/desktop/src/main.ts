@@ -138,6 +138,14 @@ function quit(): void {
   app.quit();
 }
 
+/** Takes the window and tray away at once, so a quit waiting on the backend looks finished. */
+function disappear(): void {
+  tray?.destroy();
+  for (const window of BrowserWindow.getAllWindows()) {
+    if (!window.isDestroyed()) window.hide();
+  }
+}
+
 async function publishPort(port: number): Promise<void> {
   const window = mainWindow;
   if (!window || window.isDestroyed()) return;
@@ -185,7 +193,17 @@ async function stopBackend(): Promise<void> {
   await current?.stop();
 }
 
-function showNotification(title: string, body: string): void {
+type NotificationTarget = { chatId: string } | { view: 'mailbox' };
+
+function notificationTarget(value: unknown): NotificationTarget | null {
+  if (!value || typeof value !== 'object') return null;
+  const target = value as Record<string, unknown>;
+  if (typeof target.chatId === 'string' && target.chatId) return { chatId: target.chatId };
+  if (target.view === 'mailbox') return { view: 'mailbox' };
+  return null;
+}
+
+function showNotification(title: string, body: string, target: NotificationTarget | null): void {
   if (!Notification.isSupported()) return;
   const notification = new Notification({ title, body, icon: iconPath('128x128.png') });
   // Windows drops click events of notifications that were garbage collected.
@@ -195,6 +213,7 @@ function showNotification(title: string, body: string): void {
   };
   notification.on('click', () => {
     reveal();
+    if (target) emit('notification-clicked', target);
     forget();
   });
   notification.on('close', forget);
@@ -378,7 +397,12 @@ const commands: Record<string, Handler> = {
   },
   get_service_log_path: () => path.join(layout.dataDir, 'runtime', 'server.log'),
   get_desktop_about: () => desktopAbout(),
-  show_notification: (args) => showNotification(stringArg(args, 'title'), stringArg(args, 'body')),
+  show_notification: (args) =>
+    showNotification(
+      stringArg(args, 'title'),
+      stringArg(args, 'body'),
+      notificationTarget(args.target)
+    ),
   set_tray_language: (args) => tray?.setLanguage(stringArg(args, 'language')),
   ack_close_prompt: (args) => {
     const seq = Number(args.seq);
@@ -629,6 +653,7 @@ if (!app.requestSingleInstanceLock()) {
     exiting = true;
     if (backendStopped || (!startup && !backend?.owned)) return;
     event.preventDefault();
+    disappear();
     // A backend still starting is killed rather than left running alone.
     startupAbort?.abort();
     void (startup ?? Promise.resolve()).then(stopBackend).finally(() => {

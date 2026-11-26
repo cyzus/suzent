@@ -51,7 +51,9 @@ import {
 } from './lib/desktopUpdates';
 import { isBusStreaming, subscribeToBusPayloads } from './hooks/useEventBus';
 import {
+  backgroundNotificationTarget,
   notifyDesktop,
+  parseNotificationTarget,
   bindReplyRun,
   recordReplyChunk,
   takeReplyOutcome,
@@ -504,23 +506,40 @@ function AppInner(): React.ReactElement {
     mobileNavigation.open();
     void loadChat(chatId, { force: true });
   };
+  const openFromNotification = (payload: unknown) => {
+    const target = parseNotificationTarget(payload);
+    if (!target) return;
+    if ('chatId' in target) {
+      openChatFromTray(target.chatId);
+      return;
+    }
+    if (isSettingsOpen) closeSettings();
+    setMainView(target.view);
+    mobileNavigation.open();
+  };
   const openChatFromTrayRef = React.useRef(openChatFromTray);
+  const openFromNotificationRef = React.useRef(openFromNotification);
   React.useEffect(() => {
     openChatFromTrayRef.current = openChatFromTray;
+    openFromNotificationRef.current = openFromNotification;
   });
   React.useEffect(() => {
     if (isWeb()) return;
-    let unlisten: (() => void) | undefined;
+    const stops: Array<() => void> = [];
     let cancelled = false;
+    const keep = (stop: () => void) => {
+      if (cancelled) stop();
+      else stops.push(stop);
+    };
     void listen<string>('tray-open-chat', (chatId) => {
       openChatFromTrayRef.current(chatId);
-    }).then((stop) => {
-      if (cancelled) stop();
-      else unlisten = stop;
-    });
+    }).then(keep);
+    void listen<unknown>('notification-clicked', (target) => {
+      openFromNotificationRef.current(target);
+    }).then(keep);
     return () => {
       cancelled = true;
-      unlisten?.();
+      stops.forEach((stop) => stop());
     };
   }, []);
   React.useEffect(() => {
@@ -572,7 +591,8 @@ function AppInner(): React.ReactElement {
           tRef.current('backgroundNotifications.title', {
             name: chat?.title || tRef.current('backgroundNotifications.untitledChat'),
           }),
-          outcome === 'ready' && preview ? preview : tRef.current(messageKeys[outcome])
+          outcome === 'ready' && preview ? preview : tRef.current(messageKeys[outcome]),
+          { chatId: msg.chat_id }
         );
         playNotificationSound(preferences.sound, outcome);
       }),
@@ -590,7 +610,8 @@ function AppInner(): React.ReactElement {
         const [only] = notifications;
         void notifyDesktop(
           tr('backgroundNotifications.title', { name: only.job_name }),
-          only.result
+          only.result,
+          backgroundNotificationTarget(only)
         );
       } else {
         const summary = tr('backgroundNotifications.manyUpdates', {

@@ -19,6 +19,7 @@ class BackgroundNotificationOperationsMixin:
         title: str,
         result: str,
         job_id: int | None = None,
+        chat_id: str | None = None,
     ) -> int:
         """Persist a bounded notification and return its database ID."""
         notification = BackgroundNotificationModel(
@@ -26,6 +27,7 @@ class BackgroundNotificationOperationsMixin:
             title=title[:200],
             result=result[:2000],
             job_id=job_id,
+            chat_id=chat_id,
         )
         with self._session() as session:
             session.add(notification)

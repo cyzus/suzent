@@ -114,6 +114,7 @@ class DatabaseMigrationMixin:
                 ),
             ),
             ("mailbox_items", (("rule_id", "INTEGER"), ("read_at", "DATETIME"))),
+            ("background_notifications", (("chat_id", "TEXT"),)),
         ):
             if table not in inspector.get_table_names():
                 continue

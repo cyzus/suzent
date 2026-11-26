@@ -2083,3 +2083,11 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         # Graceful shutdown timed out or was interrupted a second time — force exit.
         os._exit(0)
+    # Interpreter exit joins worker threads and runs every job still queued on
+    # them (git status probes, tool calls), which can keep a stopped server
+    # alive until the desktop app kills it and its subprocesses are orphaned.
+    logger.info("Server stopped; exiting")
+    logger.complete()
+    sys.stdout.flush()
+    sys.stderr.flush()
+    os._exit(0)
