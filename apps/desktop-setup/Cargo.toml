@@ -1,0 +1,26 @@
+[package]
+name = "suzent-setup"
+version = "0.1.0"
+edition = "2021"
+description = "Suzent for Windows setup: a drawn installer around the electron-builder package"
+build = "build.rs"
+publish = false
+
+[dependencies]
+tauri = { version = "2.0", features = [] }
+tauri-plugin-dialog = "2.0"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+dirs = "5.0"
+
+[build-dependencies]
+tauri-build = { version = "2.0", features = [] }
+
+[dev-dependencies]
+tempfile = "3"
+
+[profile.release]
+opt-level = "z"
+lto = true
+strip = true
+codegen-units = 1

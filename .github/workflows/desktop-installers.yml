@@ -1,0 +1,286 @@
+name: Desktop installers
+
+# Builds the Electron installers around the bundled runtime on every OS,
+# installs each one the way a user would, and starts it. Signing and
+# notarization run only when asked for, since they need release secrets.
+on:
+  pull_request:
+    paths:
+      - 'apps/desktop/**'
+      - 'apps/desktop-setup/**'
+      - 'scripts/build_desktop_runtime.py'
+      - 'src/suzent/config/paths.py'
+      - 'src/suzent/version.py'
+      - '.github/workflows/desktop-installers.yml'
+  workflow_dispatch:
+    inputs:
+      sign:
+        description: 'Sign and notarize (macOS) with the release certificates'
+        type: boolean
+        default: false
+  # The desktop release builds the installers here and attaches them, with
+  # the electron-updater feeds (latest*.yml), to the draft release `tag`.
+  workflow_call:
+    inputs:
+      tag:
+        type: string
+        required: true
+      sign:
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-installers-${{ inputs.tag || github.ref }}
+  cancel-in-progress: ${{ !inputs.tag }}
+
+jobs:
+  installer:
+    name: ${{ matrix.name }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Windows x64
+            os: windows-latest
+          # No Intel Mac build: lancedb publishes no macOS x86_64 wheels.
+          - name: macOS arm64
+            os: macos-latest
+          - name: Linux x64
+            os: ubuntu-24.04
+    runs-on: ${{ matrix.os }}
+    environment: ${{ inputs.sign && 'mobile-release' || null }}
+    timeout-minutes: 90
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: |
+            frontend/package-lock.json
+            apps/desktop/package-lock.json
+
+      - name: Build frontend
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
+
+      - name: Build the bundled runtime
+        run: uv run --no-project python scripts/build_desktop_runtime.py
+
+      - name: Install desktop shell
+        working-directory: apps/desktop
+        run: npm ci
+
+      - name: Prepare signing
+        if: inputs.sign && runner.os == 'macOS'
+        shell: bash
+        run: |
+          key="$RUNNER_TEMP/AuthKey.p8"
+          printf '%s' "$APP_STORE_CONNECT_KEY_BASE64" | base64 --decode > "$key"
+          {
+            echo "CSC_LINK=$MACOS_CERTIFICATE_BASE64"
+            echo "CSC_KEY_PASSWORD=$MACOS_CERTIFICATE_PASSWORD"
+            echo "APPLE_API_KEY=$key"
+            echo "APPLE_API_KEY_ID=$APP_STORE_CONNECT_KEY_ID"
+            echo "APPLE_API_ISSUER=$APP_STORE_CONNECT_ISSUER_ID"
+          } >> "$GITHUB_ENV"
+        env:
+          MACOS_CERTIFICATE_BASE64: ${{ secrets.MACOS_CERTIFICATE_BASE64 }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          APP_STORE_CONNECT_KEY_BASE64: ${{ secrets.APP_STORE_CONNECT_KEY_BASE64 }}
+          APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+
+      # stapler's HTTP/3 (UDP 443) connection to Apple drops on GitHub's Intel Mac
+      # runners; blocking UDP 443 makes it fall back to TCP (actions/runner-images#14924).
+      - name: Make stapler use TCP to reach Apple
+        if: inputs.sign && runner.os == 'macOS'
+        run: |
+          echo "block return out quick proto udp from any to any port 443" | sudo pfctl -f -
+          sudo pfctl -E
+
+      - name: Build installers
+        working-directory: apps/desktop
+        shell: bash
+        run: |
+          if [[ "$SIGN" != "true" ]]; then
+            export CSC_IDENTITY_AUTO_DISCOVERY=false
+            # Unsigned: the bundle runs here because nothing is quarantined,
+            # and Electron's and CPython's own binaries carry ad-hoc signatures.
+            args=(-c.mac.identity=null)
+          fi
+          npm run dist -- "${args[@]}"
+        env:
+          SIGN: ${{ inputs.sign }}
+
+      # The drawn setup users download: it carries the package above and
+      # runs it silently into the folder they pick.
+      - name: Build setup (Windows)
+        if: runner.os == 'Windows'
+        working-directory: apps/desktop
+        run: node scripts/build-setup.mjs
+
+      - name: Install and start (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        working-directory: apps/desktop
+        run: |
+          $setup = Get-ChildItem release -Filter 'Suzent-Setup-*-win-*.exe' | Select-Object -First 1
+          $dir = Join-Path $env:LOCALAPPDATA 'Programs\Suzent'
+          $run = Start-Process -FilePath $setup.FullName -ArgumentList '--silent', '--dir', "`"$dir`"" -Wait -PassThru
+          if ($run.ExitCode -ne 0) { throw "Setup exited with $($run.ExitCode)" }
+          $app = Join-Path $dir 'SUZENT.exe'
+          if (-not (Test-Path $app)) { throw "Setup did not create $app" }
+          Write-Host "Installed at $app"
+          $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
+          $bin = Join-Path (Split-Path $app) 'resources\bin'
+          if (-not ($userPath -split ';' -contains $bin)) { throw "Installer did not add $bin to PATH" }
+          & (Join-Path $bin 'suzent.cmd') --version
+          if ($LASTEXITCODE -ne 0) { throw 'suzent --version failed' }
+          npm run e2e -- --app $app --screenshot "$env:RUNNER_TEMP\desktop.png"
+          if ($LASTEXITCODE -ne 0) { throw 'smoke test failed' }
+          $uninstaller = Get-ChildItem (Split-Path $app) -Filter 'Uninstall*.exe' | Select-Object -First 1
+          Start-Process -FilePath $uninstaller.FullName -ArgumentList '/S' -Wait
+          Start-Sleep -Seconds 5
+          $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
+          if ($userPath -split ';' -contains $bin) { throw 'Uninstaller left resources\bin on PATH' }
+
+      - name: Install and start (macOS)
+        if: runner.os == 'macOS'
+        shell: bash
+        working-directory: apps/desktop
+        run: |
+          dmg="$(ls release/Suzent-*.dmg | head -1)"
+          mount="$(mktemp -d)"
+          hdiutil attach "$dmg" -nobrowse -mountpoint "$mount"
+          ditto "$mount/SUZENT.app" "$HOME/Applications/SUZENT.app"
+          hdiutil detach "$mount"
+          app="$HOME/Applications/SUZENT.app"
+          if [[ "$SIGN" == "true" ]]; then
+            codesign --verify --deep --strict "$app"
+            spctl --assess --type execute -vv "$app"
+            xcrun stapler validate "$app"
+          fi
+          "$app/Contents/Resources/bin/suzent" --version
+          npm run e2e -- --app "$app/Contents/MacOS/SUZENT" --screenshot "$RUNNER_TEMP/desktop.png"
+          test -x "$HOME/.local/bin/suzent"
+          "$HOME/.local/bin/suzent" --version
+        env:
+          SIGN: ${{ inputs.sign }}
+
+      - name: Install and start (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        working-directory: apps/desktop
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ./release/Suzent-*-linux-amd64.deb
+          test -x /opt/SUZENT/resources/bin/suzent
+          /opt/SUZENT/resources/bin/suzent --version
+          xvfb-run -a npm run e2e -- --app /opt/SUZENT/suzent-desktop --screenshot "$RUNNER_TEMP/desktop.png"
+          "$HOME/.local/bin/suzent" --version
+          appimage="$(ls release/Suzent-*.AppImage | head -1)"
+          chmod +x "$appimage"
+          (cd "$RUNNER_TEMP" && "$OLDPWD/$appimage" --appimage-extract >/dev/null)
+          xvfb-run -a npm run e2e -- --app "$RUNNER_TEMP/squashfs-root/suzent-desktop"
+
+      - name: Report sizes
+        if: always()
+        shell: bash
+        working-directory: apps/desktop
+        run: |
+          ls -l release/ 2>/dev/null | grep -E '\.(exe|dmg|zip|AppImage|deb)$' || true
+
+      - name: Upload screenshot
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: installer-screenshot-${{ matrix.os }}
+          path: ${{ runner.temp }}/desktop.png
+          if-no-files-found: ignore
+
+      # Each Mac runner writes a latest-mac.yml for its own arch; the
+      # merge-mac-feed job below joins them into the one the app reads.
+      - name: Attach to the draft release
+        if: inputs.tag
+        shell: bash
+        working-directory: apps/desktop/release
+        run: |
+          shopt -s nullglob
+          if [[ "$RUNNER_OS" == "macOS" ]]; then
+            mv latest-mac.yml "latest-mac-$(uname -m).yml"
+            gh release upload "$RELEASE_TAG" Suzent-*.dmg Suzent-*.zip Suzent-*.blockmap --clobber
+          else
+            gh release upload "$RELEASE_TAG" Suzent-*.exe Suzent-*.AppImage Suzent-*.deb Suzent-*.blockmap latest*.yml --clobber
+          fi
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ inputs.tag }}
+
+      - name: Keep the Mac update feed
+        if: inputs.tag && runner.os == 'macOS'
+        uses: actions/upload-artifact@v7
+        with:
+          name: mac-feed-${{ matrix.os }}
+          path: apps/desktop/release/latest-mac-*.yml
+          if-no-files-found: error
+
+      - name: Upload installers
+        uses: actions/upload-artifact@v7
+        with:
+          name: installers-${{ matrix.os }}
+          path: |
+            apps/desktop/release/*.exe
+            apps/desktop/release/*.dmg
+            apps/desktop/release/*.zip
+            apps/desktop/release/*.AppImage
+            apps/desktop/release/*.deb
+          retention-days: 7
+          compression-level: 0
+          if-no-files-found: error
+
+  merge-mac-feed:
+    if: inputs.tag
+    needs: installer
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.tag }}
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: mac-feed-*
+          path: feeds
+          merge-multiple: true
+
+      - name: Publish latest-mac.yml
+        run: |
+          uv run --no-project --with pyyaml==6.0.3 python scripts/merge_mac_update_feed.py feeds/latest-mac-*.yml > latest-mac.yml
+          cat latest-mac.yml
+          gh release upload "$RELEASE_TAG" latest-mac.yml --clobber
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ inputs.tag }}

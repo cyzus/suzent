@@ -31,12 +31,9 @@ const awaitingReply = new Map<string, WatchedReply>();
 
 function ensurePermission(): Promise<boolean> {
   if (!permission) {
-    permission = (async () => {
-      const { isPermissionGranted, requestPermission } =
-        await import('@tauri-apps/plugin-notification');
-      if (await isPermissionGranted()) return true;
-      return (await requestPermission()) === 'granted';
-    })().catch(() => false);
+    permission = import('./desktop')
+      .then(({ ensureNotificationPermission }) => ensureNotificationPermission())
+      .catch(() => false);
   }
   return permission;
 }
@@ -52,7 +49,7 @@ export async function notifyDesktop(title: string, body: string): Promise<void> 
     if (!(await ensurePermission())) return;
     // Shown by the desktop shell rather than the plugin, which cannot tell
     // when a notification is clicked; a click brings the main window back.
-    const { invoke } = await import('@tauri-apps/api/core');
+    const { invoke } = await import('./desktop');
     await invoke('show_notification', { title, body: truncateNotificationBody(body) });
   } catch (err) {
     console.warn('[notifications] failed to show notification:', err);

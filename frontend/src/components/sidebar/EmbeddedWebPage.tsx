@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
-import { isTauri } from '@tauri-apps/api/core';
 import { LogicalPosition, LogicalSize } from '@tauri-apps/api/dpi';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { WebviewWindow } from '@tauri-apps/api/webviewWindow';
 import { useI18n } from '../../i18n';
+import { desktopShell, invoke } from '../../lib/desktop';
 
 let nextWebviewId = 0;
 
@@ -16,11 +16,59 @@ export function EmbeddedWebPage({ url, visible }: EmbeddedWebPageProps): React.R
   const { t } = useI18n();
   const containerRef = useRef<HTMLDivElement>(null);
   const [error, setError] = useState<string | null>(null);
-  // Wayland cannot place top-level windows, so Linux keeps the iframe.
-  const native = isTauri() && !navigator.userAgent.includes('Linux');
+  const shell = desktopShell();
+  // Wayland cannot place top-level windows, so Linux keeps the iframe under
+  // Tauri. Electron draws the page inside its own window on every platform.
+  const tauriWindow = shell === 'tauri' && !navigator.userAgent.includes('Linux');
+  const native = tauriWindow || shell === 'electron';
 
   useEffect(() => {
-    if (!native || !visible || !containerRef.current) return;
+    if (shell !== 'electron' || !visible || !containerRef.current) return;
+
+    setError(null);
+    const container = containerRef.current;
+    const id = `web-page-${++nextWebviewId}`;
+    let lastBounds = '';
+    let disposed = false;
+    const bounds = (): { x: number; y: number; width: number; height: number } => {
+      const rect = container.getBoundingClientRect();
+      return {
+        x: Math.round(rect.left),
+        y: Math.round(rect.top),
+        width: Math.max(1, Math.round(rect.width)),
+        height: Math.max(1, Math.round(rect.height)),
+      };
+    };
+    const sync = (): void => {
+      const next = bounds();
+      const key = `${next.x},${next.y},${next.width},${next.height}`;
+      if (key === lastBounds) return;
+      lastBounds = key;
+      void invoke('embedded_page_bounds', { id, bounds: next }).catch(() => undefined);
+    };
+    const initial = bounds();
+    lastBounds = `${initial.x},${initial.y},${initial.width},${initial.height}`;
+    invoke('embedded_page_open', { id, url, bounds: initial }).catch((reason: unknown) => {
+      if (!disposed) setError(String(reason));
+    });
+    // Layout moves the container without resizing it (sidebar slides), so a
+    // ResizeObserver alone would miss those; a frame loop stays cheap.
+    const observer = new ResizeObserver(sync);
+    observer.observe(container);
+    let frame = requestAnimationFrame(function tick() {
+      sync();
+      frame = requestAnimationFrame(tick);
+    });
+    return () => {
+      disposed = true;
+      observer.disconnect();
+      cancelAnimationFrame(frame);
+      void invoke('embedded_page_close', { id }).catch(() => undefined);
+    };
+  }, [shell, url, visible]);
+
+  useEffect(() => {
+    if (!tauriWindow || !visible || !containerRef.current) return;
 
     setError(null);
     const container = containerRef.current;
@@ -97,7 +145,7 @@ export function EmbeddedWebPage({ url, visible }: EmbeddedWebPageProps): React.R
       window.clearInterval(timer);
       if (created) void page?.close();
     };
-  }, [native, url, visible]);
+  }, [tauriWindow, url, visible]);
 
   if (!native) {
     return visible ? (

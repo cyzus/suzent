@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import secrets
 import time
 from pathlib import Path
@@ -49,12 +50,14 @@ def _service(request: Request) -> GitHubSyncService:
 
 async def get_sync_status(request: Request) -> JSONResponse:
     return JSONResponse(
-        _service(request).status(request.query_params.get("profile_id"))
+        await asyncio.to_thread(
+            _service(request).status, request.query_params.get("profile_id")
+        )
     )
 
 
 async def get_sync_quickstart_info(request: Request) -> JSONResponse:
-    return JSONResponse(_service(request).quickstart_info())
+    return JSONResponse(await asyncio.to_thread(_service(request).quickstart_info))
 
 
 async def quickstart_sync(request: Request) -> JSONResponse:
@@ -76,7 +79,7 @@ async def quickstart_sync(request: Request) -> JSONResponse:
 
 
 async def get_sync_profiles(request: Request) -> JSONResponse:
-    profiles = _service(request).list_profiles()
+    profiles = await asyncio.to_thread(_service(request).list_profiles)
     return JSONResponse({"profiles": [p.model_dump(mode="json") for p in profiles]})
 
 

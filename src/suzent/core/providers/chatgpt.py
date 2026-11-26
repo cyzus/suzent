@@ -11,6 +11,7 @@ from suzent.core.providers.chatgpt_auth import (
     get_account_id,
     get_litellm_httpx_client,
     get_valid_access_token,
+    has_unexpired_token_without_litellm,
 )
 from suzent.logger import get_logger
 
@@ -24,6 +25,10 @@ class ChatGPTProvider(BaseProvider):
         return create_authenticator()
 
     def is_authenticated(self, *, refresh: bool = True) -> bool:
+        if not refresh:
+            quick = has_unexpired_token_without_litellm()
+            if quick is not None:
+                return quick
         auth = self._authenticator()
         return bool(get_valid_access_token(auth, refresh=refresh))
 

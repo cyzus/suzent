@@ -72,8 +72,25 @@ def test_run_git_without_token_inherits_env(tmp_path: Path, monkeypatch):
         return subprocess.CompletedProcess(args=argv, returncode=0, stdout="")
 
     monkeypatch.setattr(git_transport.subprocess, "run", fake_run)
+    monkeypatch.setenv("SUZENT_TEST_MARKER", "kept")
     run_git(tmp_path, "status")
-    assert captured["env"] is None
+    assert captured["env"]["SUZENT_TEST_MARKER"] == "kept"
+    assert captured["env"]["GIT_TERMINAL_PROMPT"] == "0"
+    assert "AUTHORIZATION" not in str(captured["env"])
+
+
+def test_run_git_never_waits_on_stdin_or_forever(tmp_path: Path, monkeypatch):
+    captured: dict = {}
+
+    def fake_run(argv, **kwargs):
+        captured.update(kwargs)
+        raise subprocess.TimeoutExpired(argv, kwargs["timeout"])
+
+    monkeypatch.setattr(git_transport.subprocess, "run", fake_run)
+    with pytest.raises(RuntimeError, match="did not finish"):
+        run_git(tmp_path, "remote")
+    assert captured["stdin"] is subprocess.DEVNULL
+    assert captured["timeout"] == git_transport.GIT_TIMEOUT_S
 
 
 def test_redact_auth_header():

@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { openUrl } from '../../lib/desktop';
 
 import { useI18n } from '../../i18n';
 import {
@@ -512,18 +513,7 @@ export function GitHubSyncSection({
 }: GitHubSyncSectionProps): React.ReactElement {
   const { t } = useI18n();
 
-  const openExternal = useCallback(async (url: string) => {
-    try {
-      if (window.__TAURI__) {
-        const { open } = await import('@tauri-apps/plugin-shell');
-        await open(url);
-      } else {
-        window.open(url, '_blank', 'noopener,noreferrer');
-      }
-    } catch {
-      window.open(url, '_blank', 'noopener,noreferrer');
-    }
-  }, []);
+  const openExternal = useCallback((url: string) => openUrl(url), []);
   const [syncStatus, setSyncStatus] = useState<SyncStatus | null>(null);
   const [repoName, setRepoName] = useState('suzent-brain');
   const [repoPath, setRepoPath] = useState('');

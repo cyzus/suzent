@@ -1,0 +1,11 @@
+node_modules/
+dist/
+build-test/
+release/
+resources/runtime/
+resources/suzent/
+frontend/
+icons/
+
+# The installed `suzent` command, shipped by the desktop installers
+!/installer/bin/

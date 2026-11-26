@@ -145,7 +145,7 @@ export function BackendLoadingScreen({
         <div
           className={
             detectDesktopPlatform(navigator.userAgent, navigator.platform) === 'windows'
-              ? 'h-12 shrink-0'
+              ? 'h-10 shrink-0'
               : 'h-8 shrink-0'
           }
           data-tauri-drag-region

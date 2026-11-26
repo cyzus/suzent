@@ -1,6 +1,6 @@
 import { ClipboardDocumentIcon } from '@heroicons/react/24/outline';
 import React, { useCallback, useEffect, useState } from 'react';
-import { invoke } from '@tauri-apps/api/core';
+import { invoke } from '../../lib/desktop';
 
 import { useI18n } from '../../i18n';
 import { BrutalButton, BrutalIconButton } from '../BrutalButton';

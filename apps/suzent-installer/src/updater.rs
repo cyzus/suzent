@@ -9,6 +9,9 @@ use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use crate::network;
+
+#[path = "migrate.rs"]
+mod migrate;
 /// Keeps a captured failure reason short enough to stay readable in the UI.
 const FAILURE_DETAIL_LIMIT: usize = 600;
 
@@ -359,6 +362,18 @@ pub(crate) fn run_inner(args: &[String], repair: bool) -> Result<(), String> {
 
     let paths = UpdatePaths::new(root, &target_tag);
 
+    if !paths.journal.exists() && migrate::offered(&target_tag) {
+        let app = migrate::run(&paths, &target_tag).map_err(|error| {
+            record_failure(&paths, &target_tag, &error);
+            error
+        })?;
+        if flag_value(args, "--relaunch").is_some() || !args.iter().any(|arg| arg == "--silent") {
+            launch_app(&app, &paths.root)?;
+        }
+        println!("Suzent {target_tag} is installed at {}", app.display());
+        return Ok(());
+    }
+
     let recovered_snapshot = if paths.journal.exists() {
         if !repair {
             return Err(format!(
@@ -462,6 +477,15 @@ fn run_prefetch_inner(args: &[String]) -> Result<(), String> {
         "Preparing update download",
         &target_tag,
     )?;
+    if migrate::offered(&target_tag) {
+        migrate::prefetch(&paths, &target_tag).map_err(|error| {
+            record_failure(&paths, &target_tag, &error);
+            error
+        })?;
+        write_status(&paths, "staged", 100, "Update ready to apply", &target_tag)?;
+        println!("Suzent {target_tag} is staged");
+        return Ok(());
+    }
     let target_commit = prepare_target(&paths, &target_tag).map_err(|error| {
         record_failure(&paths, &target_tag, &error);
         error

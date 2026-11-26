@@ -1,0 +1,36 @@
+{
+  "name": "suzent-desktop",
+  "productName": "SUZENT",
+  "version": "0.27.3",
+  "description": "SUZENT - Your Personal Agent",
+  "private": true,
+  "main": "dist/main.js",
+  "author": "SUZENT Team",
+  "license": "Apache-2.0",
+  "scripts": {
+    "build": "node scripts/assets.mjs && tsc -p tsconfig.json",
+    "dev": "npm run build && electron .",
+    "test": "tsc -p tsconfig.test.json && node --test \"build-test/test/**/*.test.js\"",
+    "typecheck": "tsc -p tsconfig.test.json --noEmit",
+    "e2e": "node e2e/smoke.mjs",
+    "dist": "npm run build && node scripts/stage-frontend.mjs && electron-builder --publish never",
+    "dist:dir": "npm run build && node scripts/stage-frontend.mjs && electron-builder --dir --publish never"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.5",
+    "electron": "45.3.2",
+    "electron-builder": "26.18.1",
+    "playwright-core": "1.65.0",
+    "typescript": "5.9.3"
+  },
+  "homepage": "https://suzent.com",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/cyzus/suzent.git",
+    "directory": "apps/desktop"
+  },
+  "desktopName": "suzent-desktop.desktop",
+  "dependencies": {
+    "electron-updater": "6.8.12"
+  }
+}

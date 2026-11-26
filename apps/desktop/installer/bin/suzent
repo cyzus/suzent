@@ -1,0 +1,12 @@
+#!/bin/sh
+# The `suzent` command of an installed Suzent: the bundled runtime's CLI.
+# SUZENT_APP and SUZENT_RESOURCES are set by the wrapper the app writes to
+# ~/.local/bin; run directly, this script finds its own install.
+if [ -z "$SUZENT_RESOURCES" ]; then
+  SUZENT_RESOURCES="$(cd "$(dirname "$0")/.." && pwd -P)"
+fi
+export PYTHONNOUSERSITE=1 PYTHONDONTWRITEBYTECODE=1
+if [ -n "$SUZENT_APP" ]; then
+  export SUZENT_PACKAGED_UI="$SUZENT_APP"
+fi
+exec "$SUZENT_RESOURCES/runtime/python/bin/python3" -m suzent.cli "$@"

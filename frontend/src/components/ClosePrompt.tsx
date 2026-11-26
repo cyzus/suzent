@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { invoke } from '@tauri-apps/api/core';
+import { invoke, listen } from '../lib/desktop';
 import { useI18n } from '../i18n';
 import { isWeb } from '../lib/runtime';
 import { BrutalDialog } from './BrutalDialog';
@@ -20,16 +20,14 @@ export function ClosePrompt(): React.ReactElement | null {
     if (isWeb()) return;
     let unlisten: (() => void) | undefined;
     let cancelled = false;
-    void import('@tauri-apps/api/event').then(({ listen }) =>
-      listen<number>('close-prompt', (event) => {
-        void invoke('ack_close_prompt', { seq: event.payload });
-        setRemember(true);
-        setOpen(true);
-      }).then((stop) => {
-        if (cancelled) stop();
-        else unlisten = stop;
-      })
-    );
+    void listen<number>('close-prompt', (seq) => {
+      void invoke('ack_close_prompt', { seq });
+      setRemember(true);
+      setOpen(true);
+    }).then((stop) => {
+      if (cancelled) stop();
+      else unlisten = stop;
+    });
     return () => {
       cancelled = true;
       unlisten?.();

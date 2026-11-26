@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { openUrl } from '../../lib/desktop';
 import { useI18n } from '../../i18n';
 import { getApiBase } from '../../lib/api';
 import { BrutalButton } from '../BrutalButton';
@@ -46,12 +47,7 @@ export function BrowserExtensionSetup(): React.ReactElement {
     };
   }, []);
 
-  const openExternal = async (url: string): Promise<void> => {
-    if (window.__TAURI__) {
-      const { open } = await import('@tauri-apps/plugin-shell');
-      await open(url);
-    } else window.open(url, '_blank', 'noopener,noreferrer');
-  };
+  const openExternal = openUrl;
 
   const action = async (
     kind: 'chrome' | 'edge' | 'download' | 'pair' | 'revoke'

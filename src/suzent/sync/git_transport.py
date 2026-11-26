@@ -16,6 +16,8 @@ import subprocess
 from pathlib import Path
 
 GITHUB_HTTPS_PREFIX = "https://github.com/"
+# Long enough for a slow clone or push, short enough that a stuck git ends.
+GIT_TIMEOUT_S = 600
 
 _URL_CREDENTIAL_RE = re.compile(r"(https://)([^/@\s]+)@")
 _ACCESS_TOKEN_RE = re.compile(r"(x-access-token:)[^/@\s]+")
@@ -28,16 +30,27 @@ def run_git(cwd: Path | None, *args: str, token: str | None = None) -> str:
     With ``token``, requests to github.com over HTTPS are authenticated and
     interactive credential prompts are disabled.
     """
-    completed = subprocess.run(
-        ["git", *args],
-        cwd=cwd,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        capture_output=True,
-        check=False,
-        env=github_auth_env(token) if token else None,
-    )
+    env = github_auth_env(token) if token else {**os.environ}
+    # Never wait on a prompt: the backend's stdin is the desktop app's pipe,
+    # which stays open, so a git that asks for anything would hang for good.
+    env.setdefault("GIT_TERMINAL_PROMPT", "0")
+    try:
+        completed = subprocess.run(
+            ["git", *args],
+            cwd=cwd,
+            stdin=subprocess.DEVNULL,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            capture_output=True,
+            check=False,
+            env=env,
+            timeout=GIT_TIMEOUT_S,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError(
+            f"git {args[0] if args else ''} did not finish within {GIT_TIMEOUT_S}s"
+        ) from exc
     if completed.returncode != 0:
         detail = redact_git_credentials(
             completed.stderr.strip() or completed.stdout.strip()

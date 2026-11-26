@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
+import { isDesktop, openUrl } from '../../lib/desktop';
 import {
   ArrowPathIcon,
   CameraIcon,
@@ -124,10 +125,9 @@ const INPUT_CLASS =
   'w-full min-w-0 bg-white dark:bg-zinc-900 border-2 border-brutal-black px-3 py-2 font-mono text-xs focus:outline-none dark:text-white dark:placeholder-neutral-500';
 
 async function openExternal(url: string, popup: Window | null): Promise<void> {
-  if (window.__TAURI__) {
+  if (isDesktop()) {
     popup?.close();
-    const { open } = await import('@tauri-apps/plugin-shell');
-    await open(url);
+    await openUrl(url);
   } else if (popup) popup.location.href = url;
   else window.open(url, '_blank', 'noopener,noreferrer');
 }
@@ -172,7 +172,7 @@ export function IntegrationRow({
   const signIn = (): Promise<void> =>
     run(async () => {
       // Opened before the request so the browser treats it as the click's popup.
-      const popup = window.__TAURI__ ? null : window.open('', '_blank');
+      const popup = isDesktop() ? null : window.open('', '_blank');
       // The sign-in page must not be able to steer this window.
       if (popup) popup.opener = null;
       try {

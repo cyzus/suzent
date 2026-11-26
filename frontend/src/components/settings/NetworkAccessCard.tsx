@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { invoke } from '@tauri-apps/api/core';
+import { invoke } from '../../lib/desktop';
 import { isWeb } from '../../lib/runtime';
 import { getInitialLocale, tForLocale, useI18n } from '../../i18n';
 import {

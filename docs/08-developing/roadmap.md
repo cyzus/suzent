@@ -10,6 +10,26 @@ The architecture and protocol pages describe Suzent as it works today. Planned
 work and known gaps live here instead, so readers can tell the two apart. When
 an item ships, move its description into the relevant page and delete it here.
 
+## Desktop shell: Electron and standard installers
+
+Moving from Tauri to Electron (see [Desktop shell](architecture/desktop-shell.md)):
+
+- **Done:** Electron shell in `apps/desktop/` with the Tauri app's behaviour
+  (backend start/attach, tray and live status, close prompt, notifications,
+  global shortcuts, embedded web pages), one frontend bridge for both shells,
+  CI smoke tests on all three platforms. Self-contained installers for
+  Windows, macOS and Linux built with electron-builder around the bundled
+  Python runtime (no git clone or uv sync on the user's machine), installed
+  and started in CI. Self-update through electron-updater (GitHub, or a mirror
+  feed), and an opt-in move for Git-checkout installs triggered by an
+  `installer-migration.json` release asset.
+- **Next:** an npmmirror route for the installers and update feed in mainland
+  China (npmmirror only serves single files of allow-listed packages); smaller
+  installers (the runtime is about 1.2 GB unpacked, mostly pyarrow, lancedb,
+  OpenCV and Playwright); an in-app browser pane; then turning on the move for
+  Git installs, pointing the setup scripts and user docs at the installers, and
+  removing `src-tauri/` and `apps/suzent-installer/`.
+
 ## ACP integration
 
 The settings page supports protocol-driven authentication for outbound agents.

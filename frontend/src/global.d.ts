@@ -12,5 +12,6 @@ interface Window {
       };
     };
   };
+  suzentDesktop?: import('./lib/desktop').ElectronDesktopBridge;
   __SUZENT_BACKEND_PORT__?: number;
 }
