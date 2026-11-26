@@ -51,8 +51,8 @@ class TestHeartbeatAnnounce:
     def _capture(self, monkeypatch: pytest.MonkeyPatch) -> list[tuple]:
         calls: list[tuple] = []
         scheduler = SimpleNamespace(
-            add_notification=lambda source, result, title=None: calls.append(
-                (source, result, title)
+            add_notification=lambda source, result, title=None, chat_id=None: (
+                calls.append((source, result, title, chat_id))
             )
         )
         monkeypatch.setattr(
@@ -70,7 +70,9 @@ class TestHeartbeatAnnounce:
 
         HeartbeatRunner._announce("chat-1234567890", "3 new invoices", db)
 
-        assert calls == [("heartbeat", "3 new invoices", "Inbox watch")]
+        assert calls == [
+            ("heartbeat", "3 new invoices", "Inbox watch", "chat-1234567890")
+        ]
 
     def test_untitled_chat_falls_back_to_short_id(
         self, monkeypatch: pytest.MonkeyPatch
@@ -80,4 +82,4 @@ class TestHeartbeatAnnounce:
 
         HeartbeatRunner._announce("chat-1234567890", "alert", db)
 
-        assert calls == [("heartbeat", "alert", "chat-123")]
+        assert calls == [("heartbeat", "alert", "chat-123", "chat-1234567890")]

@@ -513,6 +513,7 @@ class SchedulerBrain(BaseBrain):
                 {
                     "id": item.id,
                     "job_id": item.job_id,
+                    "chat_id": item.chat_id,
                     "job_name": item.title,
                     "result": item.result,
                     "source": item.source,
@@ -532,18 +533,24 @@ class SchedulerBrain(BaseBrain):
         result: str,
         title: Optional[str] = None,
         job_id: Optional[int] = None,
+        chat_id: Optional[str] = None,
     ) -> None:
         """Persist a notification, keeping it in memory if the database fails."""
         title = title or source
         try:
             get_database().create_background_notification(
-                source=source, title=title, result=result, job_id=job_id
+                source=source,
+                title=title,
+                result=result,
+                job_id=job_id,
+                chat_id=chat_id,
             )
         except Exception as exc:
             logger.warning(f"Failed to persist background notification: {exc}")
             self._pending_notifications.append(
                 {
                     "job_id": job_id,
+                    "chat_id": chat_id,
                     "job_name": title,
                     "result": result[:500],
                     "source": source,
@@ -833,7 +840,11 @@ class SchedulerBrain(BaseBrain):
             )
             if should_announce and response_text:
                 self.add_notification(
-                    "cron", response_text, title=job.name, job_id=job.id
+                    "cron",
+                    response_text,
+                    title=job.name,
+                    job_id=job.id,
+                    chat_id=chat_id,
                 )
 
         except ChatBusyError:

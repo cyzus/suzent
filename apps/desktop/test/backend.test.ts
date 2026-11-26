@@ -2,9 +2,10 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import type { ChildProcess } from 'node:child_process';
 import { test } from 'node:test';
 
-import { Backend, backendCommand, StartupFailure } from '../src/backend';
+import { Backend, backendCommand, killTree, StartupFailure } from '../src/backend';
 import type { Layout } from '../src/layout';
 
 const fixture = path.resolve(__dirname, '..', '..', 'test', 'fixtures', 'fake_backend.py');
@@ -120,3 +121,12 @@ test(
     assert.throws(() => process.kill(pid, 0));
   }
 );
+
+test('killTree falls back to killing the child itself', () => {
+  let killed = 0;
+  const child = { pid: 999_999, kill: () => (killed += 1) } as unknown as ChildProcess;
+  killTree(child, 'linux');
+  // On Windows taskkill finds no such process, so the plain kill still runs.
+  killTree(child, process.platform === 'win32' ? 'win32' : 'darwin');
+  assert.equal(killed, 2);
+});

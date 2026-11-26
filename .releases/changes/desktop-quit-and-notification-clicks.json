@@ -1,0 +1,1 @@
+{"products": {"desktop": "patch"}, "summary": "Quitting from the tray now closes Suzent and its background processes right away, and clicking a notification opens the chat or Mailbox it is about."}

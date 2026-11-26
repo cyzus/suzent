@@ -12,6 +12,9 @@ const MAX_BODY_LENGTH = 200;
 // denial would only show the prompt again on platforms that allow it.
 let permission: Promise<boolean> | null = null;
 
+/** Where a click on the notification takes the user. */
+export type NotificationTarget = { chatId: string } | { view: 'mailbox' };
+
 export type ReplyOutcome = 'ready' | 'approval' | 'failed' | 'stopped';
 
 interface WatchedReply {
@@ -43,17 +46,45 @@ export function truncateNotificationBody(body: string): string {
   return flat.length > MAX_BODY_LENGTH ? `${flat.slice(0, MAX_BODY_LENGTH - 1)}…` : flat;
 }
 
-export async function notifyDesktop(title: string, body: string): Promise<void> {
+export async function notifyDesktop(
+  title: string,
+  body: string,
+  target?: NotificationTarget
+): Promise<void> {
   if (!isDesktop()) return;
   try {
     if (!(await ensurePermission())) return;
     // Shown by the desktop shell rather than the plugin, which cannot tell
-    // when a notification is clicked; a click brings the main window back.
+    // when a notification is clicked. A click brings the main window back and
+    // the shell hands `target` back as a `notification-clicked` event.
     const { invoke } = await import('./desktop');
-    await invoke('show_notification', { title, body: truncateNotificationBody(body) });
+    await invoke('show_notification', {
+      title,
+      body: truncateNotificationBody(body),
+      ...(target ? { target } : {}),
+    });
   } catch (err) {
     console.warn('[notifications] failed to show notification:', err);
   }
+}
+
+/** The page a background notification belongs to, from what the backend knows about it. */
+export function backgroundNotificationTarget(notification: {
+  source?: string;
+  chat_id?: string | null;
+}): NotificationTarget | undefined {
+  if (notification.chat_id) return { chatId: notification.chat_id };
+  if (notification.source === 'mailbox') return { view: 'mailbox' };
+  return undefined;
+}
+
+/** Reads a `notification-clicked` payload, which crosses the shell bridge untyped. */
+export function parseNotificationTarget(payload: unknown): NotificationTarget | null {
+  if (!payload || typeof payload !== 'object') return null;
+  const value = payload as Record<string, unknown>;
+  if (typeof value.chatId === 'string' && value.chatId) return { chatId: value.chatId };
+  if (value.view === 'mailbox') return { view: 'mailbox' };
+  return null;
 }
 
 function freshReply(): WatchedReply {
