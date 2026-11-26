@@ -87,6 +87,9 @@ p { margin: 0; font-size: 14px; line-height: 1.65; color: var(--mute); }
 .meter-head { display: flex; justify-content: space-between; font: 600 10px var(--mono); letter-spacing: .16em; text-transform: uppercase; color: var(--mute); margin-top: 10px; }
 .meter { position: relative; height: 1px; background: var(--line); margin-top: 8px; overflow: hidden; }
 .meter i { position: absolute; inset: 0 auto 0 0; width: 0; background: var(--ink); transition: width .6s ease-out; }
+/* Before the first bytes land: the startup screen's moving bar, never a frozen 0%. */
+.meter.waiting i { width: 22%; transition: none; animation: sweep 1.8s cubic-bezier(.65,0,.35,1) infinite; }
+@keyframes sweep { 0% { left: -28%; width: 22%; } 45% { left: 38%; width: 34%; } 100% { left: 106%; width: 22%; } }
 .log { list-style: none; margin: 14px 0 0; padding: 0; display: grid; gap: 7px; font-size: 13px; }
 .log li { display: grid; grid-template-columns: 14px 1fr; gap: 8px; align-items: center; color: var(--faint); transition: color .25s; }
 .log li::before { content: ''; width: 6px; height: 6px; border: 1px solid currentColor; border-radius: 50%; justify-self: center; }
@@ -288,8 +291,10 @@ code { font: 600 12.5px var(--mono); color: var(--ink); background: #f0f0f0; pad
   const ORDER = ['copying', 'finishing', 'checking'];
   function progress({ phase, percent }) {
     shown = Math.max(shown, percent);
-    $('fill').style.width = shown + '%';
-    $('pct').textContent = String(shown).padStart(2, '0') + '%';
+    const waiting = shown === 0;
+    $('meter').classList.toggle('waiting', waiting);
+    $('fill').style.width = waiting ? '' : shown + '%';
+    $('pct').textContent = waiting ? '' : String(shown).padStart(2, '0') + '%';
     $('meter').setAttribute('aria-valuenow', shown);
     const at = ORDER.indexOf(phase);
     $('log').querySelectorAll('li').forEach((li, i) => { li.className = i < at ? 'done' : i === at ? 'now' : ''; });

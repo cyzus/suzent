@@ -1,6 +1,7 @@
 //! Runs the electron-builder package silently into the chosen folder and
 //! reports progress by how much of the app has landed there.
 
+use std::collections::HashSet;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitStatus};
@@ -87,13 +88,72 @@ pub fn dir_size(dir: &Path) -> u64 {
         .sum()
 }
 
-/// Copying fills 0 to 92%: the package's own last steps (PATH, shortcuts)
-/// and our check take the rest.
-pub fn copy_percent(done: u64, total: u64) -> u8 {
+/// The electron-builder package unpacks its 7z into `%TEMP%\nsXXXX.tmp\7z-out`
+/// first (most of the time), then copies that into the install folder.
+/// Unpacking fills 0 to 70%, the copy 70 to 92%; the package's last steps
+/// (PATH, shortcuts) and our check take the rest.
+pub fn install_percent(unpacked: u64, copied: u64, total: u64) -> u8 {
     if total == 0 {
         return 0;
     }
-    ((done.min(total) as f64 / total as f64) * 92.0) as u8
+    let share = |done: u64| done.min(total) as f64 / total as f64;
+    if copied > 0 {
+        (70.0 + share(copied) * 22.0) as u8
+    } else {
+        (share(unpacked) * 70.0) as u8
+    }
+}
+
+/// NSIS staging folders (`ns*.tmp`) in `temp`.
+fn staging_dirs(temp: &Path) -> HashSet<PathBuf> {
+    let Ok(entries) = std::fs::read_dir(temp) else {
+        return HashSet::new();
+    };
+    entries
+        .flatten()
+        .filter(|entry| {
+            let name = entry.file_name().to_string_lossy().to_lowercase();
+            name.starts_with("ns") && name.ends_with(".tmp") && entry.path().is_dir()
+        })
+        .map(|entry| entry.path())
+        .collect()
+}
+
+/// Tracks how far the package has got by what it has written so far.
+pub struct Watch {
+    temp: PathBuf,
+    dir: PathBuf,
+    total: u64,
+    before: HashSet<PathBuf>,
+    /// Smallest size the install folder has had: an older install there is
+    /// uninstalled first, and only what lands after that counts.
+    floor: u64,
+}
+
+impl Watch {
+    pub fn new(temp: &Path, dir: &Path, total: u64) -> Self {
+        Self {
+            temp: temp.to_path_buf(),
+            dir: dir.to_path_buf(),
+            total,
+            before: staging_dirs(temp),
+            floor: dir_size(dir),
+        }
+    }
+
+    pub fn percent(&mut self) -> u8 {
+        let unpacked = staging_dirs(&self.temp)
+            .difference(&self.before)
+            .map(|staging| dir_size(&staging.join("7z-out")))
+            .max()
+            .unwrap_or(0);
+        let size = dir_size(&self.dir);
+        self.floor = self.floor.min(size);
+        // A few small files (the uninstaller) land before the copy starts.
+        let copied = size.saturating_sub(self.floor);
+        let copied = if copied * 50 < self.total { 0 } else { copied };
+        install_percent(unpacked, copied, self.total)
+    }
 }
 
 fn package_command(package: &Path, dir: &Path) -> Command {
@@ -121,16 +181,14 @@ pub fn run(
     report: impl Fn(Progress) + Send + Sync + 'static,
 ) -> io::Result<()> {
     let report = Arc::new(report);
-    let mut child = package_command(package, dir).spawn()?;
     let finished = Arc::new(AtomicBool::new(false));
+    let mut child = package_command(package, dir).spawn()?;
     let watcher = {
         let (finished, report, dir) = (finished.clone(), report.clone(), dir.to_path_buf());
         thread::spawn(move || {
-            let start = dir_size(&dir);
-            let total = unpacked_bytes.max(1);
+            let mut watch = Watch::new(&std::env::temp_dir(), &dir, unpacked_bytes.max(1));
             while !finished.load(Ordering::Relaxed) {
-                let done = dir_size(&dir).saturating_sub(start.min(total / 2));
-                let percent = copy_percent(done, total);
+                let percent = watch.percent();
                 let phase = if percent >= 92 {
                     Phase::Finishing
                 } else {
@@ -209,11 +267,38 @@ mod tests {
     use super::*;
 
     #[test]
-    fn copying_never_claims_to_be_done() {
-        assert_eq!(copy_percent(0, 100), 0);
-        assert_eq!(copy_percent(50, 100), 46);
-        assert_eq!(copy_percent(500, 100), 92);
-        assert_eq!(copy_percent(5, 0), 0);
+    fn unpacking_then_copying_never_claims_to_be_done() {
+        assert_eq!(install_percent(0, 0, 100), 0);
+        assert_eq!(install_percent(50, 0, 100), 35);
+        assert_eq!(install_percent(100, 0, 100), 70);
+        assert_eq!(install_percent(100, 50, 100), 81);
+        assert_eq!(install_percent(100, 500, 100), 92);
+        assert_eq!(install_percent(5, 5, 0), 0);
+    }
+
+    #[test]
+    fn follows_the_staging_folder_then_the_install_folder() {
+        let work = tempfile::tempdir().unwrap();
+        let (temp, dir) = (work.path().join("temp"), work.path().join("Suzent"));
+        std::fs::create_dir_all(temp.join("nsOLD.tmp").join("7z-out")).unwrap();
+        std::fs::write(
+            temp.join("nsOLD.tmp").join("7z-out").join("x"),
+            vec![0u8; 90],
+        )
+        .unwrap();
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("old"), vec![0u8; 80]).unwrap();
+        let mut watch = Watch::new(&temp, &dir, 100);
+        assert_eq!(watch.percent(), 0);
+
+        std::fs::remove_file(dir.join("old")).unwrap();
+        let out = temp.join("nsA1B2.tmp").join("7z-out");
+        std::fs::create_dir_all(&out).unwrap();
+        std::fs::write(out.join("a"), vec![0u8; 50]).unwrap();
+        assert_eq!(watch.percent(), 35);
+
+        std::fs::write(dir.join("a"), vec![0u8; 50]).unwrap();
+        assert_eq!(watch.percent(), 81);
     }
 
     #[test]
