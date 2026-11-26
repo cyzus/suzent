@@ -20,6 +20,7 @@ from starlette.routing import Route, WebSocketRoute
 from starlette.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
 
+from suzent.tools.browser import bridge as transport_module
 from suzent.tools.browser.extension import bridge as bridge_module
 from suzent.tools.browser.extension import routes as extension_routes
 from suzent.tools.browser.extension.bridge import ExtensionBridge, bridge
@@ -342,7 +343,7 @@ async def test_real_extension_pair_actions_preview_and_disconnect(
                     f"ws://127.0.0.1:{port}/ws/browser-extension",
                 )
                 with monkeypatch.context() as timeout_patch:
-                    timeout_patch.setattr(bridge_module, "REQUEST_TIMEOUT", 0.1)
+                    timeout_patch.setattr(transport_module, "REQUEST_TIMEOUT", 0.1)
                     with pytest.raises(ValueError, match="timed out"):
                         await bridge.request(
                             "cdp",

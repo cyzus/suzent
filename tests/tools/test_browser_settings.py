@@ -39,7 +39,7 @@ async def test_settings_roundtrip_and_manager_startup(settings_path: Path) -> No
     async with make_client() as client:
         initial = await client.get("/browser/settings")
         assert initial.json()["settings"] == {
-            "connection_mode": "managed",
+            "connection_mode": "desktop",
             "persistent": False,
             "headless": True,
             "channel": "chromium",
@@ -137,7 +137,7 @@ async def test_partial_update_preserves_preferences_hidden_by_overrides(
         result = await client.post("/browser/settings", json={"persistent": True})
         assert result.json()["settings"] == {
             "channel": "chrome",
-            "connection_mode": "managed",
+            "connection_mode": "desktop",
             "headless": True,
             "persistent": True,
         }

@@ -47,7 +47,7 @@ keep looking like DuckDuckGo's, check step 1.
 Give the agent a link, or let it pick one from search results, and it reads
 the page as plain text with headings, lists, and links kept. This works for
 public pages only: it doesn't use your logins, so for your email or an
-internal site use [your own browser](./browser.md#option-2-your-own-browser-with-the-suzent-extension).
+internal site use [your own browser](./browser.md#option-3-your-own-browser-with-the-suzent-extension).
 
 The page is fetched directly, without running its scripts, and addresses on
 your own computer or local network (such as `localhost`) aren't fetched. If a
