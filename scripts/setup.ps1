@@ -1,8 +1,12 @@
 # SUZENT Setup & Update Script for Windows
 # Usage:
 #   Fresh install:  powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/cyzus/suzent/main/scripts/setup.ps1 | iex"
-#   Update:         suzent update   (or re-run this script inside the repo)
-# Flags (env vars): $env:SUZENT_DIR, $env:SUZENT_BRANCH, $env:SUZENT_SKIP_PLAYWRIGHT
+#   From source:    $env:SUZENT_INSTALL="source"; irm https://raw.githubusercontent.com/cyzus/suzent/main/scripts/setup.ps1 | iex
+#   Update:         the app updates itself; source installs run `suzent update`
+# Flags (env vars): $env:SUZENT_INSTALL = package|source (default: the release's
+#                     installer, falling back to a source install when it has none)
+#                   $env:SUZENT_APP_DIR (where the app goes; default %LOCALAPPDATA%\Programs\Suzent)
+#                   $env:SUZENT_DIR, $env:SUZENT_BRANCH, $env:SUZENT_SKIP_PLAYWRIGHT
 #                   $env:SUZENT_CHINA_MIRROR = 1|0 (default: detect from the network)
 #                   $env:SUZENT_REPO_URL, $env:SUZENT_RELEASE_BASE_URL
 
@@ -11,7 +15,10 @@ param(
     [string]$Branch = "",
     [switch]$ChinaMirror,
     [switch]$SkipPlaywright,
-    [switch]$Update
+    [switch]$Update,
+    [switch]$Source,
+    [switch]$Package,
+    [string]$AppDir = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -21,6 +28,8 @@ $SuzentDir    = if ($Dir)    { $Dir }    elseif ($env:SUZENT_DIR)    { $env:SUZE
 $BranchExplicit = [bool]($Branch -or $env:SUZENT_BRANCH)
 $SuzentBranch = if ($Branch) { $Branch } elseif ($env:SUZENT_BRANCH) { $env:SUZENT_BRANCH } else { "main" }
 $SkipPW       = $SkipPlaywright -or ($env:SUZENT_SKIP_PLAYWRIGHT -eq "1")
+$InstallMode  = if ($Source) { "source" } elseif ($Package) { "package" } elseif ($env:SUZENT_INSTALL) { $env:SUZENT_INSTALL.Trim().ToLowerInvariant() } else { "" }
+if (-not $AppDir -and $env:SUZENT_APP_DIR) { $AppDir = $env:SUZENT_APP_DIR }
 $RepoUrl      = if ($env:SUZENT_REPO_URL) { $env:SUZENT_REPO_URL } else { "https://github.com/cyzus/suzent.git" }
 $UpdateRemote = if ($env:SUZENT_REPO_URL) { $env:SUZENT_REPO_URL } else { "origin" }
 $UvInstallUrl = if ($env:SUZENT_UV_INSTALL_URL) { $env:SUZENT_UV_INSTALL_URL } else { "https://astral.sh/uv/install.ps1" }
@@ -199,7 +208,7 @@ function Add-NpmReleaseBase {
 # Tries each release source in turn and keeps the first download matching the
 # release's SHA256SUMS, so a mirror can make a download faster, never different.
 function Save-ReleaseAsset {
-    param([string]$Asset, [string]$Destination)
+    param([string]$Asset, [string]$Destination, [int]$TimeoutSec = 300)
     $tmp = "$Destination.download"
     Add-NpmReleaseBase
     foreach ($base in $ReleaseBases) {
@@ -221,7 +230,7 @@ function Save-ReleaseAsset {
             if ($local) {
                 Copy-Item -Force (Join-Path $base $Asset) $tmp
             } else {
-                Invoke-WebRequest -Uri "$base/$Asset" -OutFile $tmp -TimeoutSec 300 -UseBasicParsing
+                Invoke-WebRequest -Uri "$base/$Asset" -OutFile $tmp -TimeoutSec $TimeoutSec -UseBasicParsing
             }
             $actual = (Get-FileHash -Algorithm SHA256 $tmp).Hash.ToLowerInvariant()
             if ($actual -ne $expected) { Write-Warn "Checksum mismatch for $Asset from $base; trying the next source."; continue }
@@ -329,6 +338,121 @@ $ReleaseBases = if ($ReleaseBaseUrl) {
 $IsUpdate = (Test-Path (Join-Path $SuzentDir ".git"))
 
 Write-Ok "Windows detected"
+
+# -- Install from the release's installer --------------------------------------
+# A normal install is the same self-contained app the website offers: its own
+# Python runtime and dependencies, updated by the app itself. A source install
+# (-Source) is for developers, and also what this script falls back to when
+# the release has no installer for this computer.
+$PackageNote = ""
+
+# The name of the release file matching $Pattern, read from the release's
+# SHA256SUMS, so only files the release vouches for.
+function Find-ReleaseAsset {
+    param([string]$Pattern)
+    Add-NpmReleaseBase
+    foreach ($base in $ReleaseBases) {
+        try {
+            if ($base -notmatch '^https?://') {
+                $sums = [System.IO.File]::ReadAllText((Join-Path $base "SHA256SUMS"))
+            } else {
+                $sumsResponse = Invoke-WebRequest -Uri "$base/SHA256SUMS" -TimeoutSec 60 -UseBasicParsing
+                $sums = [System.Text.Encoding]::UTF8.GetString($sumsResponse.RawContentStream.ToArray())
+            }
+        } catch { continue }
+        foreach ($line in ($sums -split "`n")) {
+            $parts = $line.Trim() -split '\s+', 2
+            if ($parts.Count -eq 2 -and $parts[1].TrimStart("*") -match $Pattern) { return $parts[1].TrimStart("*") }
+        }
+        return ""
+    }
+    return ""
+}
+
+# The installer is large, and npmmirror does not carry it yet. In China mode
+# it is only taken from a mirror unless -Package asks for GitHub.
+function Save-Installer {
+    param([string]$Asset, [string]$Destination)
+    $saved = $script:ReleaseBases
+    try {
+        if ($UseChinaMirror -and -not $ReleaseBaseUrl -and $InstallMode -ne "package") {
+            $script:ReleaseBases = @($saved | Where-Object { -not $_.StartsWith($GithubReleaseBase) })
+            if ($script:ReleaseBases.Count -eq 0) {
+                $script:PackageNote = "No mirror serves the app installer yet, so this installs from source through the mirrors. Set `$env:SUZENT_INSTALL=`"package`" to download the app from GitHub instead."
+                return $false
+            }
+        }
+        Write-Info "Downloading $Asset (several hundred MB)..."
+        return (Save-ReleaseAsset $Asset $Destination 3600)
+    } finally {
+        $script:ReleaseBases = $saved
+    }
+}
+
+# A source install's `suzent` command left behind after its checkout was
+# deleted would shadow the app's own.
+function Remove-StaleSourceShim {
+    $shim = Join-Path $env:USERPROFILE ".local\bin\suzent.cmd"
+    if (-not (Test-Path $shim)) { return }
+    $text = Get-Content -Raw $shim
+    if ($text -match 'cd /d "([^"]+)"' -and $text -match 'uv run suzent' -and -not (Test-Path (Join-Path $Matches[1] ".git"))) {
+        Remove-Item -Force $shim
+        Write-Info "Removed the 'suzent' command of a source install that no longer exists."
+    }
+}
+
+function Install-SuzentApp {
+    if (-not $ReleaseTag) { return $false }
+    if ($env:PROCESSOR_ARCHITECTURE -ne "AMD64" -and $env:PROCESSOR_ARCHITEW6432 -ne "AMD64" -and $env:PROCESSOR_ARCHITECTURE -ne "ARM64") { return $false }
+    $asset = Find-ReleaseAsset '^Suzent-Setup-.*-win-x64\.exe$'
+    if (-not $asset) { return $false }
+    $staging = Join-Path ([System.IO.Path]::GetTempPath()) ("suzent-setup-" + [guid]::NewGuid())
+    New-Item -ItemType Directory -Force -Path $staging | Out-Null
+    try {
+        $setup = Join-Path $staging $asset
+        if (-not (Save-Installer $asset $setup)) { return $false }
+        $arguments = @("--silent")
+        if ($AppDir) { $arguments += @("--dir", "`"$AppDir`"") }
+        Write-Info "Installing Suzent..."
+        $run = Start-Process -FilePath $setup -ArgumentList $arguments -Wait -PassThru
+        if ($run.ExitCode -ne 0) { Write-Fail "The Suzent installer exited with code $($run.ExitCode)." }
+    } finally {
+        Remove-Item -Recurse -Force $staging -ErrorAction SilentlyContinue
+    }
+    Remove-StaleSourceShim
+    # The installer puts the app's resources\bin, which holds suzent.cmd, on the user PATH.
+    Refresh-Path
+    return $true
+}
+
+if ($IsUpdate -and $InstallMode -ne "package") {
+    $InstallMode = "source"
+    Write-Info "Found a source install in $SuzentDir; updating it. Set `$env:SUZENT_INSTALL=`"package`" to install the app instead."
+}
+switch ($InstallMode) {
+    "source" {}
+    { $_ -in @("package", "") } {
+        if ($env:SUZENT_DEV_SETUP -ne "1" -and (Install-SuzentApp)) {
+            Write-Host ""
+            Write-Ok "SUZENT $ReleaseTag installed!"
+            Write-Host ""
+            Write-Host "  Next: open " -NoNewline
+            Write-Host "Suzent" -ForegroundColor Cyan -NoNewline
+            Write-Host " from the Start menu or desktop, or run " -NoNewline
+            Write-Host "suzent start" -ForegroundColor Cyan -NoNewline
+            Write-Host " in a new terminal."
+            Write-Host "  Your data stays in $StateDir."
+            Write-Host ""
+            exit 0
+        }
+        if ($InstallMode -eq "package") {
+            Write-Fail "Release $ReleaseTag has no installer this computer can use. Unset SUZENT_INSTALL to install from source."
+        }
+        if ($PackageNote) { Write-Info $PackageNote } else { Write-Info "No app installer for this computer in $ReleaseTag; installing from source." }
+    }
+    default { Write-Fail "SUZENT_INSTALL must be package or source, not '$InstallMode'." }
+}
+
 
 # -- Check/install: git --------------------------------------------------------
 function Ensure-Git {
