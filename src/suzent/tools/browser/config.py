@@ -13,6 +13,8 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from suzent.config.paths import DATA_DIR, USER_CONFIG_DIR
 
 _PREFERENCES_LOCK = Lock()
+MAX_SCRIPT_CHARS = 20_000
+MAX_BATCH_STEPS = 20
 
 
 def normalize_browser_url(value: str) -> str:
@@ -35,6 +37,26 @@ def normalize_browser_url(value: str) -> str:
         raise ValueError("URLs must not contain credentials")
     _ = parsed.port
     return value
+
+
+def site_origin(value: str) -> str:
+    """The origin a site permission is kept under, as ``location.origin`` spells it."""
+    parsed = urlsplit(value.strip())
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+        raise ValueError("site must be an http(s) origin, e.g. https://example.com")
+    if parsed.username is not None or parsed.password is not None:
+        raise ValueError("site must not contain credentials")
+    try:
+        host = parsed.hostname.encode("idna").decode("ascii")
+    except UnicodeError as exc:
+        raise ValueError("site has an invalid host name") from exc
+    if ":" in host:
+        host = f"[{host}]"
+    port = parsed.port
+    default = 443 if parsed.scheme == "https" else 80
+    return f"{parsed.scheme}://{host}" + (
+        f":{port}" if port and port != default else ""
+    )
 
 
 class BrowserPreferences(BaseModel):
@@ -125,8 +147,11 @@ class BrowserCommand(BaseModel):
         "scroll",
         "tabs",
         "select_tab",
+        "run_js",
+        "batch",
     ]
     arguments: list[str] = Field(default_factory=list)
+    site: str | None = None
 
     @model_validator(mode="after")
     def validate_arguments(self) -> Self:
@@ -171,6 +196,25 @@ class BrowserCommand(BaseModel):
                         raise ValueError("snapshot offset and limit must be integers")
                     if len(args) == 2 and not 1 <= int(args[1]) <= 100:
                         raise ValueError("snapshot limit must be between 1 and 100")
+            case "run_js":
+                if len(args) != 1 or not args[0].strip():
+                    raise ValueError("run_js expects [code]")
+                if len(args[0]) > MAX_SCRIPT_CHARS:
+                    raise ValueError(
+                        f"run_js code must be at most {MAX_SCRIPT_CHARS} characters"
+                    )
+                if self.site is None:
+                    raise ValueError(
+                        "run_js needs site, the origin of the page, e.g. https://example.com"
+                    )
+                origin = site_origin(self.site)
+                if origin != self.site:
+                    raise ValueError(f"site must be the page's origin: {origin}")
+            case "batch":
+                if not 1 <= len(args) <= MAX_BATCH_STEPS:
+                    raise ValueError(
+                        f"batch expects 1 to {MAX_BATCH_STEPS} steps, e.g. ['fill @g1e2 hello', 'click @g1e3']"
+                    )
             case _:
                 if args:
                     raise ValueError(f"{self.command} expects no arguments")

@@ -945,6 +945,22 @@ export const en = {
         'Saved. Restart the Suzent backend for the new network binding to take effect.',
     },
     browser: {
+      sites: {
+        title: 'Sites that can run code',
+        description:
+          'For a job the normal browser actions cannot do, the agent can ask to run its own code on a page, with your sign-in on that site. Choose sites where it may do so without asking, or never.',
+        empty:
+          'No sites yet. When the agent asks, you can also choose “Code on this site · always”.',
+        site: 'Site',
+        choice: 'Choice',
+        allow: 'Allow',
+        block: 'Block',
+        allowed: 'Allowed',
+        blocked: 'Blocked',
+        add: 'Save',
+        remove: 'Remove',
+        error: 'Could not update site permissions. Try again.',
+      },
       extension: 'Use my browser (extension)',
       extensionConnected: 'Connected',
       extensionDisconnected: 'Not connected',
@@ -3070,6 +3086,7 @@ export const en = {
     permissionPolicyAllowed: 'Policy allowed',
     ruleScopeSession: 'this chat',
     ruleScopeGlobal: 'all chats',
+    ruleExplanationSite: '{action} lets code run on {site} for {scope} without asking',
     ruleExplanationCommand: '{action} creates a rule for {scope}: `{command}`',
     ruleExplanationTool: '{action} creates a rule for {scope} covering the {tool} tool.',
     ruleExplanationGeneric: '{action} creates a scoped rule for {scope}.',
@@ -3092,6 +3109,11 @@ export const en = {
   permissionDock: {
     allowOptions: 'Choose permission duration',
     once: 'Just once',
+    runScript: 'run code on {site}',
+    scriptReason:
+      'This code runs on {site} with your sign-in there, so it can read or change anything you could on that site.',
+    siteSession: 'Code on {site} · this chat',
+    siteAlways: 'Code on {site} · always',
     commandSession: 'This command · this chat',
     commandAlways: 'This command · always',
     allow: 'Allow',

@@ -84,6 +84,23 @@ panel shows the page itself.
 Both you and the agent can use the browser at the same time, so avoid clicking
 around in the selected tab while the agent is in the middle of a step.
 
+## Several steps at once, and running code on a page
+
+To save time, the agent can do several known steps in one go, such as filling in
+every field of a form and pressing Send. You see each step in the chat as usual,
+and it stops at the first step that fails.
+
+For jobs the normal clicks and typing can't do well, such as collecting a long
+table from a page, the agent can ask to run its own code on that page. That
+code runs with your sign-in on that site, so it can read or change anything you
+could there. Suzent always asks first and shows you the code and the site. You
+can allow it once, for this chat, or always for that site.
+
+To see or change your choices, open **Settings → Browser → Sites that can run
+code**. You can allow a site, block one so the agent is never allowed to run
+code there, or remove a choice so it asks again. In Full Access mode the agent
+doesn't ask, but blocked sites stay blocked.
+
 ## Advanced: direct connection
 
 If you can't use the extension, Suzent can attach to Chrome or Edge through its

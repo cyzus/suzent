@@ -375,13 +375,17 @@ const BUILDERS: Record<string, Builder> = {
 
   browser_action: (args, t) => {
     const command = str(args.command);
-    const target = firstOf(
-      (args.arguments && typeof args.arguments === 'object' && !Array.isArray(args.arguments)
-        ? args.arguments
-        : {}) as Args,
-      ['url', 'selector', 'text', 'query']
-    );
-    const detail = [command, target && shortUrl(target)].filter(Boolean).join(' · ');
+    const list = Array.isArray(args.arguments) ? args.arguments : [];
+    const target =
+      command === 'run_js'
+        ? str(args.site)
+        : command === 'open'
+          ? str(list[0])
+          : command === 'batch'
+            ? String(list.length)
+            : null;
+    const shown = target && command !== 'batch' ? shortUrl(target) : target;
+    const detail = [command, shown].filter(Boolean).join(' · ');
     return { verb: verb(t, 'browser'), detail: detail || null };
   },
 

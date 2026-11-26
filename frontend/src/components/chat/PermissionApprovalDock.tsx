@@ -137,6 +137,36 @@ interface ActionCommand {
   isPrefix: boolean;
 }
 
+/** The page code a browser_action run_js call asks to run, with its site. */
+function browserScript(
+  toolName: string,
+  args: Record<string, unknown>
+): { site: string; code: string } | null {
+  if (normalizeToolName(toolName) !== 'browser_action' || args.command !== 'run_js') return null;
+  const code = Array.isArray(args.arguments) ? args.arguments[0] : undefined;
+  return {
+    site: typeof args.site === 'string' ? args.site : '',
+    code: typeof code === 'string' ? code : '',
+  };
+}
+
+function siteHost(site: string): string {
+  try {
+    return new URL(site).host;
+  } catch {
+    return site;
+  }
+}
+
+function getActionSite(action: PermissionAction): string | null {
+  for (const update of action.permissionUpdates ?? []) {
+    const value = (update.payload.matcher as { value?: unknown } | undefined)?.value;
+    const site = (value as { site?: unknown } | undefined)?.site;
+    if (update.type === 'add_rule' && typeof site === 'string') return site;
+  }
+  return null;
+}
+
 function getActionCommand(action: PermissionAction): ActionCommand | null {
   for (const update of action.permissionUpdates ?? []) {
     if (update.type !== 'add_rule') continue;
@@ -147,6 +177,7 @@ function getActionCommand(action: PermissionAction): ActionCommand | null {
     if (matcherRecord.type === 'exact_input') {
       const value = matcherRecord.value;
       if (!value || typeof value !== 'object' || Array.isArray(value)) continue;
+      if ('site' in value) continue;
       const command = (value as Record<string, unknown>).command;
       if (typeof command === 'string' && command.trim()) {
         return { command: command.trim(), isPrefix: false };
@@ -174,9 +205,12 @@ const ApprovalCard: React.FC<{
   const displayName = normalizeToolName(approval.toolName).replace(/_/g, ' ');
   const description =
     typeof approval.args.description === 'string' ? approval.args.description.trim() : '';
-  const promptAction = description
-    ? `${description.charAt(0).toLowerCase()}${description.slice(1)}`
-    : t('permissionDock.useTool', { tool: displayName });
+  const script = browserScript(approval.toolName, approval.args);
+  const promptAction = script
+    ? t('permissionDock.runScript', { site: siteHost(script.site) })
+    : description
+      ? `${description.charAt(0).toLowerCase()}${description.slice(1)}`
+      : t('permissionDock.useTool', { tool: displayName });
   const command =
     typeof approval.args.content === 'string'
       ? approval.args.content
@@ -189,7 +223,14 @@ const ApprovalCard: React.FC<{
       : typeof approval.args.path === 'string'
         ? approval.args.path
         : '';
-  const detail = command || filePath || JSON.stringify(approval.args, null, 2);
+  const detail = script
+    ? script.code
+    : command || filePath || JSON.stringify(approval.args, null, 2);
+  // A site's own code can do anything the user can there, which says more
+  // than the engine's generic reason.
+  const reason = script
+    ? t('permissionDock.scriptReason', { site: siteHost(script.site) })
+    : approval.reason;
   const riskTone = riskToneFor(approval.risk);
   const riskText = approval.risk
     ? t('permissionDock.riskLabel', {
@@ -262,6 +303,13 @@ const ApprovalCard: React.FC<{
 
   const actionLabel = (action: PermissionAction): string => {
     if (action.scope === 'once') return t('permissionDock.once');
+    const site = getActionSite(action);
+    if (site) {
+      return t(
+        action.scope === 'session' ? 'permissionDock.siteSession' : 'permissionDock.siteAlways',
+        { site: siteHost(site) }
+      );
+    }
     const commandRule = getActionCommand(action);
     if (commandRule && !commandRule.isPrefix) {
       return t(
@@ -302,7 +350,7 @@ const ApprovalCard: React.FC<{
         </pre>
       )}
 
-      {approval.reason && (
+      {reason && (
         // The reason is why the user is being asked at all, so it reads at body
         // size and wraps in full instead of an ellipsised footnote; the risk
         // level tints it so a high-risk call does not look like a routine one.
@@ -315,7 +363,7 @@ const ApprovalCard: React.FC<{
             )}
           </div>
           <p className="mt-1.5 whitespace-pre-wrap break-words text-[12px] leading-5 text-neutral-800 dark:text-neutral-100">
-            {approval.reason}
+            {reason}
           </p>
         </div>
       )}
