@@ -1841,9 +1841,21 @@ if __name__ == "__main__":
             raise
         return sock
 
+    def _loopback_answers(probe_port: int) -> bool:
+        try:
+            with _socket.create_connection(("127.0.0.1", probe_port), timeout=0.5):
+                return True
+        except OSError:
+            return False
+
     _sock = None
     try:
         try:
+            # On Windows a server listening on 127.0.0.1 alone does not stop a
+            # 0.0.0.0 bind, yet it still takes every loopback connection, so
+            # the window would talk to it instead of us.
+            if desktop_child and port != original_port and _loopback_answers(port):
+                raise OSError(f"another server answers on 127.0.0.1:{port}")
             _sock = _bind(host, port)
         except OSError as e:
             # Another Suzent (an older install, or a service from a checkout)
