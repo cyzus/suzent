@@ -2724,20 +2724,6 @@ def register_commands(app: typer.Typer):
             except OSError:
                 pass  # Will be cleaned up on next update
 
-        # Update Playwright browser (non-fatal)
-        typer.echo("  • Updating Playwright browser...")
-        try:
-            run_command(
-                ["uv", "run", "playwright", "install", "chromium"],
-                cwd=root,
-                shell_on_windows=True,
-                env=network_region.mirror_env(),
-            )
-        except subprocess.CalledProcessError:
-            typer.echo(
-                "  ⚠️  Playwright browser update failed (will retry on first use)."
-            )
-
         if dev:
             typer.echo("  • Updating frontend dependencies from lockfiles...")
             try:

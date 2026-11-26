@@ -1,0 +1,1 @@
+{"products": {"desktop": "minor"}, "summary": "The agent now browses inside the Suzent app: the Browser panel shows the live page, which you can use yourself, and Chromium is only downloaded when no Chrome or Edge is installed."}

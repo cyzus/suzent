@@ -1,4 +1,4 @@
-"""Browser actions over the extension's tab-scoped debugger connection."""
+"""Browser actions over a bridge host's tab-scoped debugger connection."""
 
 import asyncio
 import json
@@ -15,11 +15,15 @@ from suzent.tools.browser.snapshot import (
     CONTROLS_READY_SCRIPT,
     format_snapshot_element,
 )
+from suzent.tools.browser.bridge import BrowserBridge
 from suzent.tools.browser.extension.bridge import bridge
 
 
-class ExtensionSession:
-    def __init__(self) -> None:
+class BridgeSession:
+    """Agent browsing through the extension or the desktop app's browser."""
+
+    def __init__(self, bridge: BrowserBridge) -> None:
+        self.bridge = bridge
         self.lock = asyncio.Lock()
         self.clients: list[WebSocket] = []
         self.generation = 0
@@ -37,7 +41,7 @@ class ExtensionSession:
         self.refs.clear()
 
     async def cdp(self, method: str, **params: Any) -> Any:
-        return await bridge.request("cdp", method=method, params=params)
+        return await self.bridge.request("cdp", method=method, params=params)
 
     async def evaluate(self, expression: str) -> Any:
         result = await self.cdp(
@@ -78,7 +82,7 @@ class ExtensionSession:
             self.streaming = True
 
     async def activate_selected_tab(self, tab_id: str) -> None:
-        self.connection_generation = bridge.generation
+        self.connection_generation = self.bridge.generation
         self.selected = tab_id
         self.world = None
         self.streaming = False
@@ -100,8 +104,8 @@ class ExtensionSession:
 
     async def close(self) -> None:
         async with self.lock:
-            if bridge.socket and self.selected:
-                await bridge.request("detach")
+            if self.bridge.socket and self.selected:
+                await self.bridge.request("detach")
             await self.reset()
 
     async def reset(self) -> None:
@@ -276,15 +280,15 @@ class ExtensionSession:
         self, request: BrowserCommand, interactive_only: bool = False
     ) -> ToolResult:
         async with self.lock:
-            if self.connection_generation != bridge.generation:
-                self.connection_generation = bridge.generation
+            if self.connection_generation != self.bridge.generation:
+                self.connection_generation = self.bridge.generation
                 self.selected = None
                 self.streaming = False
                 self.world = None
                 self.invalidate()
             command, args = request.command, request.arguments
             if command == "tabs":
-                tabs = await bridge.request("tabs")
+                tabs = await self.bridge.request("tabs")
                 return ToolResult.success_result(
                     "\n".join(
                         " ".join(
@@ -304,9 +308,9 @@ class ExtensionSession:
                 )
             if command in {"open", "select_tab"}:
                 result = (
-                    await bridge.request("open", url=args[0])
+                    await self.bridge.request("open", url=args[0])
                     if command == "open"
-                    else await bridge.request("select", id=args[0])
+                    else await self.bridge.request("select", id=args[0])
                 )
                 await self.activate_selected_tab(result["id"])
                 return ToolResult.success_result(
@@ -392,4 +396,4 @@ class ExtensionSession:
             self.invalidate()
 
 
-session = ExtensionSession()
+session = BridgeSession(bridge)

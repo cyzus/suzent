@@ -964,6 +964,9 @@ export const en = {
         'Different browser? Paste this private link there. Expires in 5 minutes.',
 
       connectionMode: 'Connection mode',
+      desktop: 'Built-in browser (recommended)',
+      desktopHelp:
+        'Pages open inside the Suzent app, in the Browser panel, where you can watch and use them. Logins are kept apart from your own browser. When the app is closed (web UI, background service), Suzent launches a managed browser instead.',
       managed: 'Launch a managed browser',
       existing: 'Direct connection (advanced)',
       existingHelp:
@@ -978,7 +981,7 @@ export const en = {
       channelHelp:
         'Chrome or Edge must already be installed on the computer running Suzent’s backend.',
       chromiumHelp:
-        'Downloaded automatically if needed; internet access is required for installation.',
+        'Uses Chrome or Edge if installed; otherwise Chromium is downloaded the first time it is needed.',
       notInstalled: 'Not found in a supported installation location',
       recheck: 'Refresh',
       selectedUnavailable:
@@ -1966,6 +1969,8 @@ export const en = {
     previewOff: 'Preview is off',
     waitingForStream: 'Waiting for preview',
     showTab: 'Show tab',
+    builtIn: 'Built-in browser',
+    desktopEmpty: 'The page the agent opens appears here. You can scroll, click and type in it.',
     showTabError: 'Could not show the browser tab.',
     previewTabError: 'Could not select an active web tab for preview.',
     noSelectedTab: 'No tab selected',

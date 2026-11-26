@@ -26,7 +26,7 @@ Moving from Tauri to Electron (see [Desktop shell](architecture/desktop-shell.md
 - **Next:** an npmmirror route for the installers and update feed in mainland
   China (npmmirror only serves single files of allow-listed packages); smaller
   installers (the runtime is about 1.2 GB unpacked, mostly pyarrow, lancedb,
-  OpenCV and Playwright); an in-app browser pane; then turning on the move for
+  OpenCV and Playwright); then turning on the move for
   Git installs, pointing the setup scripts and user docs at the installers, and
   removing `src-tauri/` and `apps/suzent-installer/`.
 

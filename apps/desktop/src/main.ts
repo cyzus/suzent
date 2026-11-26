@@ -25,6 +25,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
+import { AgentBrowser } from './agentBrowser';
+import { AgentBrowserLink } from './agentBrowserLink';
 import { Backend, StartupFailure, type StartupError } from './backend';
 import {
   decideClose,
@@ -79,6 +81,8 @@ console.log(`Suzent ${appVersion} (${layout.mode}) starting from ${process.execP
 
 let mainWindow: BrowserWindow | null = null;
 let embedded: EmbeddedPages | null = null;
+let agentBrowser: AgentBrowser | null = null;
+let agentLink: AgentBrowserLink | null = null;
 let tray: SuzentTray | null = null;
 let backend: Backend | null = null;
 let startup: Promise<void> | null = null;
@@ -147,6 +151,7 @@ try { sessionStorage.setItem('SUZENT_PORT', '${port}'); } catch (e) {}
 try { localStorage.setItem('SUZENT_PORT', '${port}'); } catch (e) {}`
   );
   emit('backend-ready', port);
+  agentLink?.reconnect();
 }
 
 let startupAbort: AbortController | null = null;
@@ -444,6 +449,9 @@ const commands: Record<string, Handler> = {
   embedded_page_bounds: (args) =>
     embedded?.setBounds(stringArg(args, 'id'), args.bounds as Record<string, number> | undefined),
   embedded_page_close: (args) => embedded?.close(stringArg(args, 'id')),
+  agent_browser_show: (args) =>
+    agentBrowser?.show(args.bounds as Record<string, number> | undefined) ?? false,
+  agent_browser_hide: () => agentBrowser?.hide(),
 };
 
 function isAppFrame(event: IpcMainInvokeEvent): boolean {
@@ -557,6 +565,9 @@ function createWindow(): BrowserWindow {
   window.on('closed', () => {
     mainWindow = null;
     embedded = null;
+    agentLink?.stop();
+    agentLink = null;
+    agentBrowser = null;
   });
   window.webContents.setWindowOpenHandler(({ url }) => {
     if (safeExternal(url)) void shell.openExternal(url);
@@ -596,6 +607,16 @@ if (!app.requestSingleInstanceLock()) {
     serveFrontend();
     mainWindow = createWindow();
     embedded = new EmbeddedPages(mainWindow);
+    agentBrowser = new AgentBrowser(mainWindow, reveal);
+    agentLink = new AgentBrowserLink({
+      dataDir: layout.dataDir,
+      port: () => backend?.port ?? null,
+      host: agentBrowser,
+      log: (message) => console.log(message),
+    });
+    const link = agentLink;
+    agentBrowser.emit = (method, params) => link.emit(method, params);
+    agentLink.start();
     tray = new SuzentTray(
       host,
       { windows: iconPath('32x32.png'), macosTemplate: iconPath('tray-template.png') },

@@ -43,7 +43,9 @@ class BrowserPreferences(BaseModel):
     persistent: bool = False
     headless: bool = True
     channel: Literal["chromium", "chrome", "msedge"] = "chromium"
-    connection_mode: Literal["managed", "existing", "extension"] = "managed"
+    # "desktop" uses the Suzent app's built-in browser while the app is open
+    # and falls back to "managed" when it is not (web UI, headless service).
+    connection_mode: Literal["desktop", "managed", "existing", "extension"] = "desktop"
 
     @classmethod
     def load(cls) -> Self:

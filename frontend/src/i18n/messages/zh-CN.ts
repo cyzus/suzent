@@ -1063,6 +1063,9 @@ export const zhCN = {
       extensionOtherBrowser: '使用其他浏览器？将此私密链接粘贴到该浏览器，5 分钟内有效。',
 
       connectionMode: '连接方式',
+      desktop: '内置浏览器（推荐）',
+      desktopHelp:
+        '网页在 Suzent 应用的「浏览器」面板里打开，你可以实时看到并直接操作。登录状态与你自己的浏览器分开保存。应用未打开时（网页版、后台服务），Suzent 会改用托管浏览器。',
       managed: '启动托管浏览器',
       existing: '直接连接（高级）',
       existingHelp:
@@ -1075,7 +1078,7 @@ export const zhCN = {
       chrome: 'Google Chrome',
       edge: 'Microsoft Edge',
       channelHelp: '运行 Suzent 后端的电脑上必须已安装 Chrome 或 Edge。',
-      chromiumHelp: '需要时自动下载；安装需要连接互联网。',
+      chromiumHelp: '已安装 Chrome 或 Edge 时直接使用；否则在第一次需要时下载 Chromium。',
       notInstalled: '未在支持的安装位置找到',
       recheck: '刷新',
       selectedUnavailable: '未找到所选浏览器。请选择 Chromium，或安装该浏览器后重新检查。',
@@ -3332,6 +3335,8 @@ export const zhCN = {
     previewOff: '预览已关闭',
     waitingForStream: '等待预览画面',
     showTab: '显示标签页',
+    builtIn: '内置浏览器',
+    desktopEmpty: 'Agent 打开的网页会显示在这里，你可以直接滚动、点击和输入。',
     showTabError: '无法显示浏览器标签页。',
     previewTabError: '无法选择当前网页标签页进行预览。',
     noSelectedTab: '未选择标签页',
