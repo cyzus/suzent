@@ -583,40 +583,6 @@ function Ensure-Uv {
 Ensure-Uv
 Write-Ok "uv $(uv --version)"
 
-function Ensure-Rust {
-    if (Get-Command cargo -ErrorAction SilentlyContinue) {
-        Write-Ok "Rust/Cargo $(cargo --version)"
-        return
-    }
-
-    $cargoBin = Join-Path $env:USERPROFILE ".cargo\bin"
-    $cargoExe = Join-Path $cargoBin "cargo.exe"
-    if (Test-Path $cargoExe) {
-        Add-ToUserPath $cargoBin
-        Refresh-Path
-        if (Get-Command cargo -ErrorAction SilentlyContinue) {
-            Write-Ok "Rust/Cargo $(cargo --version)"
-            return
-        }
-    }
-
-    Write-Info "Installing Rustup/Cargo for developer mode..."
-    if (Get-Command winget -ErrorAction SilentlyContinue) {
-        winget install --id Rustlang.Rustup --source winget --accept-package-agreements --accept-source-agreements --silent
-        Add-ToUserPath $cargoBin
-        Refresh-Path
-        if (Get-Command cargo -ErrorAction SilentlyContinue) {
-            Write-Ok "Rust/Cargo $(cargo --version)"
-            return
-        }
-        Write-Warn "Rustup installed, but cargo is not available in this shell yet."
-        Write-Warn "Close and reopen PowerShell, then re-run this script or `suzent start --dev`."
-        exit 1
-    }
-
-    Write-Fail "Rust/Cargo is required for developer mode. Install Rust from https://rustup.rs/ and re-run."
-}
-
 # -- Clone or update repo ------------------------------------------------------
 # China mode clones from the Gitee mirror first and falls back to GitHub.
 $MirrorRepos = if (-not $env:SUZENT_REPO_URL -and $UseChinaMirror) { @("https://gitee.com/cyzus/suzent.git") } else { @() }
@@ -808,8 +774,6 @@ function Get-WebUiBundle {
 if ($env:SUZENT_DEV_SETUP -ne "1") { Get-WebUiBundle }
 
 function Install-DevDependencies {
-    Ensure-Rust
-
     Write-Info "Installing frontend dependencies (npm install)..."
     Push-Location "frontend"
     npm install
@@ -817,12 +781,12 @@ function Install-DevDependencies {
     Pop-Location
     Write-Ok "Frontend dependencies ready"
 
-    Write-Info "Installing src-tauri dependencies (npm install)..."
-    Push-Location "src-tauri"
+    Write-Info "Installing desktop shell dependencies (npm install in apps\desktop)..."
+    Push-Location "apps\desktop"
     npm install
-    if ($LASTEXITCODE -ne 0) { Pop-Location; Write-Fail "npm install failed in src-tauri/." }
+    if ($LASTEXITCODE -ne 0) { Pop-Location; Write-Fail "npm install failed in apps\desktop\." }
     Pop-Location
-    Write-Ok "Tauri JS dependencies ready"
+    Write-Ok "Desktop shell dependencies ready"
 
     # `suzent web` serves the SPA out of src/suzent/webui/, which is a build
     # artifact rather than source. Nothing else in this script produces it, so
@@ -834,12 +798,25 @@ function Install-DevDependencies {
     } else {
         Write-Ok "Web UI bundle staged"
     }
+
+    # `suzent start` runs this shell from the checkout on the built web UI;
+    # `suzent start --dev` runs it on the Vite dev server instead.
+    Write-Info "Building the desktop shell (apps\desktop)..."
+    Push-Location "apps\desktop"
+    npm run build
+    $shellBuilt = $LASTEXITCODE -eq 0
+    Pop-Location
+    if ($shellBuilt) {
+        Write-Ok "Desktop shell built (suzent start)"
+    } else {
+        Write-Warn "Desktop shell build failed -- run 'npm run build' in apps\desktop (non-fatal)."
+    }
 }
 
 if ($env:SUZENT_DEV_SETUP -eq "1") {
     Install-DevDependencies
 } else {
-    Write-Info "Skipping frontend/Tauri npm dependencies for normal user setup."
+    Write-Info "Skipping frontend and desktop shell npm dependencies for normal user setup."
     Write-Info "Set SUZENT_DEV_SETUP=1 before running setup to prepare developer mode."
 }
 

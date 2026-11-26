@@ -27,8 +27,11 @@ Moving from Tauri to Electron (see [Desktop shell](architecture/desktop-shell.md
   China (npmmirror only serves single files of allow-listed packages); smaller
   installers (the runtime is about 1.2 GB unpacked, mostly pyarrow, lancedb,
   OpenCV and Playwright); then turning on the move for
-  Git installs, pointing the setup scripts and user docs at the installers, and
-  removing `src-tauri/` and `apps/suzent-installer/`.
+  Git installs and, one or two releases later, removing `src-tauri/` and
+  `apps/suzent-installer/`. Before that removal, the Electron icons
+  (`apps/desktop/scripts/assets.mjs`) and the desktop version source
+  (`scripts/bump_version.py`, `scripts/release_plan.py`) still read from
+  `src-tauri/`. Developer checkouts already run the Electron shell.
 
 ## ACP integration
 
