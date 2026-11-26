@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Release notes
 - Fix editor connections over ACP on Windows systems using a non-UTF-8 language setting, which failed at sign-in or garbled non-English prompts.
 - The agent now browses inside the Suzent app: the Browser panel shows the live page, which you can use yourself, and Chromium is only downloaded when no Chrome or Edge is installed.
+- The browser tool can do several steps in one call, and can ask to run its own code on a page, with a choice per site in Settings → Browser.
 - The Windows installer writes each file once instead of twice and ships fewer files, and the first start after installing no longer pauses.
 - Quitting from the tray now closes Suzent and its background processes right away, and clicking a notification opens the chat or Mailbox it is about.
 - The new desktop app updates itself, and the updater can move Git-based installs onto it once that is switched on.
