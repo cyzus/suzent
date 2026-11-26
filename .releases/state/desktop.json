@@ -16,6 +16,7 @@
     ".releases/changes/adapter-short-commit.json",
     ".releases/changes/add-provider-redesign.json",
     ".releases/changes/agent-activity-presentation.json",
+    ".releases/changes/agent-built-in-browser.json",
     ".releases/changes/agent-desktop-1-2.json",
     ".releases/changes/agent-inbox-parallel-delivery.json",
     ".releases/changes/agent-inbox-system-reminders.json",
