@@ -355,9 +355,7 @@ class BridgeSession:
                         "Page.navigateToHistoryEntry",
                         entryId=history["entries"][index]["id"],
                     )
-            return ToolResult.success_result(
-                f"{command} completed. Take a snapshot to observe the page."
-            )
+            return ToolResult.success_result(f"{command} completed.")
 
     async def handle_preview(self, message: dict[str, Any]) -> None:
         action = message.get("type")

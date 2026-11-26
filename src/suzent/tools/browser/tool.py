@@ -731,6 +731,25 @@ class BrowserSessionManager:
         logger.info("Browser Session Closed.")
 
 
+# Commands that can replace or rearrange the page. Typing, hovering and
+# scrolling leave the snapshot's refs valid, so they return a short receipt.
+OBSERVED_AFTER = frozenset(
+    {
+        "open",
+        "click",
+        "dblclick",
+        "press",
+        "back",
+        "forward",
+        "reload",
+        "refresh",
+        "click_coords",
+        "select_tab",
+    }
+)
+OBSERVE_DELAY = 0.3
+
+
 class BrowsingTool(Tool):
     name = "BrowsingTool"
     tool_name = "browser_action"
@@ -741,6 +760,30 @@ class BrowsingTool(Tool):
         self.session_mgr = BrowserSessionManager.get_instance()
 
     async def _execute(
+        self, command: str, arguments: list[str] | None = None
+    ) -> ToolResult:
+        """Run *command*; after one that can change the page, observe it too.
+
+        Returning the new page with the action saves the agent a separate
+        snapshot call per step, as Playwright MCP and browser-use do.
+        """
+        result = await self._run(command, arguments)
+        if not result.success or command not in OBSERVED_AFTER:
+            return result
+        # Let a click that starts a navigation commit before observing.
+        await asyncio.sleep(OBSERVE_DELAY)
+        observed = await self._run("snapshot", [])
+        if not observed.success:
+            return ToolResult.success_result(
+                f"{command} completed. Call snapshot to observe the page.",
+                metadata=result.metadata,
+            )
+        return ToolResult.success_result(
+            f"{command} completed. Current page:\n{observed.message}",
+            metadata={**result.metadata, "snapshot": observed.metadata},
+        )
+
+    async def _run(
         self, command: str, arguments: list[str] | None = None
     ) -> ToolResult:
         try:
@@ -825,7 +868,7 @@ class BrowsingTool(Tool):
                 case "scroll":
                     await self.session_mgr.scroll(int(args[0]), int(args[1]))
             return ToolResult.success_result(
-                f"{command} completed. Call snapshot to observe the page.",
+                f"{command} completed.",
                 metadata={"command": command},
             )
         except ValueError as exc:
@@ -874,7 +917,7 @@ class BrowsingTool(Tool):
     ) -> ToolResult:
         """Control a browser session to navigate and interact with web pages.
 
-        Optimal workflow: open <url>, then snapshot to get element refs, then click/fill using refs.
+        open, click, press, back/forward/reload, click_coords and select_tab return the updated page with fresh element refs, so act on those directly; call snapshot only to page through more elements or after fill/type/hover/scroll.
 
         Args:
             command: The command to execute (open, snapshot, click, fill, scroll, back, forward, refresh, click_coords).

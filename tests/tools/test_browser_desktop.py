@@ -158,3 +158,29 @@ async def test_chromium_is_downloaded_only_when_no_browser_is_installed(
     await manager._launch_with_fallback(True)
     install.assert_awaited_once()
     assert attempts == 2
+
+
+async def test_page_changing_actions_return_the_new_page(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    tool = BrowsingTool()
+    calls: list[str] = []
+
+    async def run(command: str, arguments: list[str] | None = None):
+        calls.append(command)
+        if command == "snapshot":
+            return tool_module.ToolResult.success_result(
+                "[Page: Next]\n@g2e0: <button> Buy", metadata={"snapshot_id": 2}
+            )
+        return tool_module.ToolResult.success_result(f"{command} completed.")
+
+    monkeypatch.setattr(tool, "_run", run)
+    monkeypatch.setattr(tool_module, "OBSERVE_DELAY", 0)
+    clicked = await tool._execute("click", ["@g1e0"])
+    assert calls == ["click", "snapshot"]
+    assert "@g2e0: <button> Buy" in clicked.message
+    assert clicked.metadata["snapshot"] == {"snapshot_id": 2}
+    calls.clear()
+    filled = await tool._execute("fill", ["@g2e0", "x"])
+    assert calls == ["fill"]
+    assert filled.message == "fill completed."
