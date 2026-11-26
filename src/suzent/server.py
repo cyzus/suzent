@@ -1895,7 +1895,47 @@ if __name__ == "__main__":
                 pass
         raise
 
+    def watch_event_loop(
+        loop: asyncio.AbstractEventLoop, stall_s: float = 10.0
+    ) -> None:
+        """Log the loop thread's stack when the event loop stops turning.
+
+        A blocking call on the loop leaves the port open but answers nothing,
+        which from outside looks like a backend that never started.
+        """
+        import time
+        import traceback
+
+        loop_thread = threading.get_ident()
+        last_beat = [time.monotonic()]
+
+        def beat() -> None:
+            last_beat[0] = time.monotonic()
+            loop.call_later(1.0, beat)
+
+        loop.call_soon_threadsafe(beat)
+
+        def watch() -> None:
+            reported = 0.0
+            while True:
+                time.sleep(1.0)
+                stalled = time.monotonic() - last_beat[0]
+                if stalled < stall_s:
+                    reported = 0.0
+                    continue
+                if stalled - reported < 30.0 and reported:
+                    continue
+                reported = stalled
+                frame = sys._current_frames().get(loop_thread)
+                stack = "".join(traceback.format_stack(frame)) if frame else "?"
+                logger.warning(
+                    f"Event loop blocked for {stalled:.0f}s; it is at:\n{stack}"
+                )
+
+        threading.Thread(target=watch, name="loop-watchdog", daemon=True).start()
+
     async def main():
+        watch_event_loop(asyncio.get_running_loop())
         if port == 0 or desktop_child:
             # Start process-lifetime monitors only when launched by Tauri (port=0 mode).
             # These threads must be started inside the async loop so os._exit() doesn't

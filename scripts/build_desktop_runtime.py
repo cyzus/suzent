@@ -133,10 +133,22 @@ def strip(runtime: Path) -> None:
 
 def precompile(python: Path, runtime: Path) -> None:
     # The install dir may be read-only (macOS app bundle, Store package), so
-    # every .pyc must exist up front. A few third-party files are Python 2
-    # and fail to compile; that is expected.
+    # every .pyc must exist up front. Unchecked hashes keep them valid after
+    # an installer resets file times, which would otherwise make Python
+    # recompile every module in memory on each start. A few third-party files
+    # are Python 2 and fail to compile; that is expected.
     subprocess.run(
-        [str(python), "-m", "compileall", "-q", "-j", "0", str(runtime)],
+        [
+            str(python),
+            "-m",
+            "compileall",
+            "-q",
+            "-j",
+            "0",
+            "--invalidation-mode",
+            "unchecked-hash",
+            str(runtime),
+        ],
         cwd=ROOT,
         check=False,
         stdout=subprocess.DEVNULL,
