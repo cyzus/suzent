@@ -196,7 +196,12 @@ export class AgentBrowser implements BrowserHost {
   }
 
   private async load(tab: Tab, url: string): Promise<void> {
-    const loading = tab.view.webContents.loadURL(url).catch(() => undefined);
+    // A redirect or a newer navigation aborts this one; that page still loads.
+    const loading = tab.view.webContents.loadURL(url).catch((error: { code?: string }) => {
+      if (error?.code !== 'ERR_ABORTED') {
+        throw new Error(`Could not open the page (${error?.code ?? 'load failed'}).`);
+      }
+    });
     await Promise.race([loading, new Promise((resolve) => setTimeout(resolve, LOAD_TIMEOUT_MS))]);
   }
 

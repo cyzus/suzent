@@ -24,6 +24,13 @@ export function AgentBrowserPane({ visible }: AgentBrowserPaneProps): React.Reac
     let disposed = false;
     const sync = (): void => {
       const rect = container.getBoundingClientRect();
+      // A panel hidden by CSS (e.g. Settings open) has no size: take the page
+      // away rather than shrink it to nothing.
+      if (rect.width < 2 || rect.height < 2) {
+        if (lastBounds !== 'hidden') void invoke('agent_browser_hide').catch(() => undefined);
+        lastBounds = 'hidden';
+        return;
+      }
       const bounds = {
         x: Math.round(rect.left),
         y: Math.round(rect.top),
@@ -41,7 +48,7 @@ export function AgentBrowserPane({ visible }: AgentBrowserPaneProps): React.Reac
     };
     // The agent may open its first page while the panel is open.
     const poll = window.setInterval(() => {
-      lastBounds = '';
+      if (lastBounds !== 'hidden') lastBounds = '';
       sync();
     }, 2000);
     // Layout moves the panel without resizing it (sidebar slides), which a
