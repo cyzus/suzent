@@ -159,6 +159,23 @@ def _source_desktop_command(root: Path) -> list[str] | None:
     return [str(electron), str(app_dir)]
 
 
+def _stop_source_desktop(root: Path) -> None:
+    """Stop every Electron process running from this checkout's apps/desktop."""
+    electron_dir = (root / "apps" / "desktop" / "node_modules" / "electron").resolve()
+    doomed = []
+    for process in psutil.process_iter(["exe"]):
+        exe = process.info.get("exe")
+        if exe and Path(exe).resolve().is_relative_to(electron_dir):
+            doomed.append(process)
+    for process in doomed:
+        typer.echo(f"🛑 Stopping the desktop app (PID {process.pid})...")
+        try:
+            process.kill()
+        except psutil.Error:
+            pass
+    psutil.wait_procs(doomed, timeout=5)
+
+
 def _uses_source_desktop(root: Path) -> bool:
     return _is_development_workspace(root) or _read_update_channel(root) == _DEV_CHANNEL
 
@@ -1593,15 +1610,50 @@ def run_command(
 
 
 def _rebuild_development_ui(root: Path) -> None:
-    """Build the web UI and the Electron shell that `suzent start` runs here."""
-    run_command(["npm", "run", "build"], cwd=root / "frontend", shell_on_windows=True)
-    run_command(
-        ["npm", "run", "build"], cwd=root / "apps" / "desktop", shell_on_windows=True
+    """Build the web UI and the Electron shell that `suzent start` runs here.
+
+    The previous builds are set aside first and put back if either build
+    fails, so a rolled-back update keeps launching the desktop it had.
+    """
+    outputs = [root / "frontend" / "dist", root / "apps" / "desktop" / "dist"]
+    (root / ".suzent").mkdir(exist_ok=True)
+    backup_dir = Path(
+        tempfile.mkdtemp(prefix="suzent-ui-backup-", dir=root / ".suzent")
     )
-    if _source_desktop_command(root) is None:
-        raise OSError(
-            f"Desktop build left no runnable Electron shell in {root / 'apps' / 'desktop'}"
+    saved = []
+    try:
+        for index, output in enumerate(outputs):
+            if output.exists():
+                aside = backup_dir / str(index)
+                output.replace(aside)
+                saved.append((output, aside))
+        run_command(
+            ["npm", "run", "build"], cwd=root / "frontend", shell_on_windows=True
         )
+        run_command(
+            ["npm", "run", "build"],
+            cwd=root / "apps" / "desktop",
+            shell_on_windows=True,
+        )
+        if _source_desktop_command(root) is None:
+            raise OSError(
+                "Desktop build left no runnable Electron shell in "
+                f"{root / 'apps' / 'desktop'}"
+            )
+    except (OSError, subprocess.CalledProcessError) as error:
+        try:
+            for output in outputs:
+                shutil.rmtree(output, ignore_errors=True)
+            for output, aside in saved:
+                aside.replace(output)
+        except OSError as restore_error:
+            raise OSError(
+                f"{error}; desktop rollback failed: {restore_error}. "
+                f"Backup retained at {backup_dir}"
+            ) from error
+        shutil.rmtree(backup_dir, ignore_errors=True)
+        raise
+    shutil.rmtree(backup_dir, ignore_errors=True)
 
 
 def _log_path(name: str) -> Path:
@@ -2443,6 +2495,14 @@ def register_commands(app: typer.Typer):
         try:
             for pid in _windows_app_suzent_pids(exclude_pids=exclude_pids):
                 _stop_windows_process(pid, "suzent process")
+        except Exception:
+            pass
+
+        # npm ci deletes node_modules, which Windows refuses while the source
+        # desktop's electron.exe or the dev Vite server still runs from it.
+        _stop_frontend()
+        try:
+            _stop_source_desktop(root)
         except Exception:
             pass
 
