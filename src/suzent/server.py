@@ -409,6 +409,16 @@ agent_inbox_dispatcher = None
 _social_reload_lock = asyncio.Lock()
 
 
+def _warm_heavy_imports() -> None:
+    import importlib
+
+    for module in ("litellm", "litellm.llms.chatgpt.authenticator", "pydantic_ai"):
+        try:
+            importlib.import_module(module)
+        except Exception as e:
+            logger.debug(f"Warm import of {module} failed: {e}")
+
+
 async def health(_request: Request) -> JSONResponse:
     """Lightweight liveness probe used for process identity and supervision."""
     from suzent.routes.system_routes import get_backend_version
@@ -721,6 +731,12 @@ async def startup():
 
     logger.info("Application startup - initializing services")
     app.state.background_services_ready = False
+    # A cold litellm import takes seconds (minutes under antivirus scanning);
+    # paying it here in a thread keeps the first request that needs it from
+    # holding the event loop.
+    app.state.import_warmer = asyncio.create_task(
+        asyncio.to_thread(_warm_heavy_imports), name="import_warmer"
+    )
     _rebuild_webui_if_stale()
     if os.getenv("SUZENT_RUN_MODE") == "service":
         app.state.service_resource_guard = asyncio.create_task(

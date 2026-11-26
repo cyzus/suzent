@@ -1544,7 +1544,8 @@ async def voice_settings(request: Request) -> JSONResponse:
             {
                 **get_voice_settings().model_dump(),
                 "tts_models": router.get_model_ids("tts"),
-                "realtime_options": list_realtime_options(),
+                # Checking providers can import litellm cold; keep it off the loop.
+                "realtime_options": await asyncio.to_thread(list_realtime_options),
             }
         )
     try:
@@ -1565,7 +1566,8 @@ async def voice_settings(request: Request) -> JSONResponse:
             {
                 **settings,
                 "tts_models": router.get_model_ids("tts"),
-                "realtime_options": list_realtime_options(),
+                # Checking providers can import litellm cold; keep it off the loop.
+                "realtime_options": await asyncio.to_thread(list_realtime_options),
             }
         )
     except ValueError as exc:
