@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v0.28.0] - 2026-11-26
+
+### Release notes
+- Fix editor connections over ACP on Windows systems using a non-UTF-8 language setting, which failed at sign-in or garbled non-English prompts.
+- The agent now browses inside the Suzent app: the Browser panel shows the live page, which you can use yourself, and Chromium is only downloaded when no Chrome or Edge is installed.
+- The browser tool can do several steps in one call, and can ask to run its own code on a page, with a choice per site in Settings → Browser.
+- The Windows installer writes each file once instead of twice and ships fewer files, and the first start after installing no longer pauses.
+- Quitting from the tray now closes Suzent and its background processes right away, and clicking a notification opens the chat or Mailbox it is about.
+- The new desktop app updates itself, and the updater can move Git-based installs onto it once that is switched on.
+- Builds standard Windows, macOS and Linux installers for the new desktop app with everything it needs inside; the current app works as before.
+- Windows has a new Suzent setup that lets you pick where to install and shows its progress, and the macOS disk image has a new look.
+- Lays the groundwork for the Electron desktop app; the current app works as before.
+- Source checkouts now run the Electron desktop app: `suzent start --dev` hot-reloads the frontend and developer setup no longer needs Rust.
+- The Microsoft Store version now runs the same Electron app as the installers, with the suzent command and start at login kept.
+
 ## [v0.27.3] - 2026-11-20
 
 ### Release notes
