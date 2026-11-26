@@ -13,7 +13,12 @@ from suzent.permissions.models import CommandDecision, PermissionMode
 from suzent.permissions.rules import parse_rules
 from suzent.tools.browser import tool as tool_module
 from suzent.tools.browser.config import site_origin
-from suzent.tools.browser.script import script_error, script_expression
+from suzent.tools.browser.script import (
+    MAX_RESULT_CHARS,
+    TIMED_OUT,
+    script_error,
+    script_expression,
+)
 from suzent.tools.browser.tool import BrowsingTool, parse_batch_step
 
 SITE = "https://shop.example"
@@ -131,6 +136,26 @@ setTimeout(() => console.log(JSON.stringify(page.document.title)), 20);
         ["node", "-e", program], capture_output=True, text=True, check=True
     ).stdout
     assert json.loads(title) == ""
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="needs node")
+def test_a_huge_result_is_cut_inside_the_page() -> None:
+    program = f"""
+const vm = require('vm');
+const page = {{location: {{origin: {json.dumps(SITE)}}}, setTimeout, Promise, JSON, String, Error}};
+vm.runInNewContext({json.dumps(script_expression(SITE, "return 'x'.repeat(8000000)"))}, page)
+  .then((text) => console.log(text.length));
+"""
+    length = subprocess.run(
+        ["node", "-e", program], capture_output=True, text=True, check=True
+    ).stdout
+    assert int(length) < MAX_RESULT_CHARS + 100
+
+
+def test_a_timeout_warns_that_the_code_may_still_act() -> None:
+    result = script_error(SITE, f"Error: {TIMED_OUT}")
+    assert result.error_code == tool_module.ToolErrorCode.TIMEOUT
+    assert "may still be running" in result.message
 
 
 def test_a_wrong_site_tells_the_agent_where_the_page_is() -> None:

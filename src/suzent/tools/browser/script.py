@@ -8,6 +8,7 @@ SCRIPT_TIMEOUT_MS = 15_000
 MAX_RESULT_CHARS = 10_000
 MAX_ERROR_CHARS = 1_000
 WRONG_SITE = "suzent-wrong-site:"
+TIMED_OUT = f"timed out after {SCRIPT_TIMEOUT_MS // 1000}s"
 
 
 def script_expression(site: str, code: str) -> str:
@@ -27,15 +28,19 @@ def script_expression(site: str, code: str) -> str:
 {code}
     }})(),
     new Promise((_, reject) =>
-      setTimeout(() => reject(new Error("timed out after {SCRIPT_TIMEOUT_MS // 1000}s")), {SCRIPT_TIMEOUT_MS})
+      setTimeout(() => reject(new Error({json.dumps(TIMED_OUT)})), {SCRIPT_TIMEOUT_MS})
     ),
   ]);
-  if (value === undefined) return "undefined";
+  let text;
   try {{
-    return JSON.stringify(value) ?? String(value);
+    text = value === undefined ? "undefined" : JSON.stringify(value) ?? String(value);
   }} catch {{
-    return String(value);
+    text = String(value);
   }}
+  // Cut here, so a huge result never crosses the bridge whole.
+  return text.length > {MAX_RESULT_CHARS}
+    ? text.slice(0, {MAX_RESULT_CHARS}) + `... [truncated, ${{text.length}} chars]`
+    : text;
 }})()"""
 
 
@@ -54,6 +59,14 @@ def script_error(site: str, message: str) -> ToolResult:
         return ToolResult.error_result(
             ToolErrorCode.INVALID_ARGUMENT,
             f"The page is on {actual}, not {site}. Call run_js again with site {actual}.",
+        )
+    if TIMED_OUT in message:
+        # Page code cannot be cancelled once started, so it may still act.
+        return ToolResult.error_result(
+            ToolErrorCode.TIMEOUT,
+            f"run_js {TIMED_OUT}, but the code may still be running in the page "
+            "and change it later. Call snapshot to see what it did before running "
+            "it, or anything that repeats it, again.",
         )
     return ToolResult.error_result(
         ToolErrorCode.EXECUTION_FAILED,
