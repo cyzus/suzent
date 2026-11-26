@@ -11797,18 +11797,22 @@ INFO:     Starting Suzent server on http://127.0.0.1:25314
 INFO:     Application startup complete.
 ```
 
-**Terminal 2** - Start Tauri:
+**Terminal 2** - Start the desktop app (Electron):
 ```bash
-cd src-tauri
+cd apps/desktop
 npm install
 npm run dev
 ```
 
 This will:
-1. Start Vite dev server (frontend)
-2. Compile the Rust code (first time only, takes a few minutes)
-3. Open a native desktop window
-4. Frontend connects to backend
+1. Compile the shell
+2. Start the Vite dev server (frontend), or reuse one already running on port 18080
+3. Open the desktop window on it, so frontend edits hot-reload
+4. Attach to the backend from Terminal 1, or start one from the checkout if none is running
+
+Closing the window also stops the Vite server it started. `npm start` opens the
+shell on the last `frontend/dist` build instead. The legacy Tauri shell still runs
+with `cd src-tauri && npm run dev`.
 
 ### Local Ports
 
@@ -11892,7 +11896,8 @@ existing frontend event contract.
 |------|---------|
 | Install dependencies | `uv sync --all-extras` |
 | Start backend | `uv run python src/suzent/server.py` |
-| Start Tauri dev | `cd src-tauri && npm run dev` |
+| Start desktop dev (Electron) | `cd apps/desktop && npm run dev` |
+| Start legacy Tauri dev | `cd src-tauri && npm run dev` |
 | Bundle Python backend | `python scripts/bundle_python.py` |
 | Build full app | `cd src-tauri && npm run build:full` |
 | Build Tauri only | `cd src-tauri && npm run build` |
