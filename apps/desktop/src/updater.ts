@@ -89,6 +89,14 @@ export function isNewer(candidate: string, current: string): boolean {
   return false;
 }
 
+/**
+ * Releases published before the installers existed have no latest*.yml, so
+ * there is nothing this app can update to yet; that is not a failure.
+ */
+export function isMissingFeed(message: string): boolean {
+  return /Cannot find latest[\w.-]*\.yml/.test(message);
+}
+
 export class DesktopUpdater {
   private staged: string | null = null;
   private enabled: boolean;
@@ -154,10 +162,15 @@ export class DesktopUpdater {
         update_available: Boolean(latest && isNewer(latest, current)),
       };
     } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (isMissingFeed(message)) {
+        this.log(`Latest release has no installer update feed yet: ${message.split('\n')[0]}`);
+        return { current_version: current, update_available: false };
+      }
       return {
         current_version: current,
         update_available: false,
-        error: error instanceof Error ? error.message : String(error),
+        error: message,
       };
     }
   }

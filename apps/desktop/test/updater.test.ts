@@ -6,6 +6,7 @@ import { test } from 'node:test';
 
 import {
   DesktopUpdater,
+  isMissingFeed,
   isNewer,
   loadAutoUpdate,
   loadMirror,
@@ -20,13 +21,14 @@ class FakeUpdater implements UpdaterLike {
   feeds: string[] = [];
   installed: [boolean?, boolean?] | null = null;
   failures = 0;
+  failure = 'net::ERR_CONNECTION_TIMED_OUT';
   latest = '1.2.0';
   private downloaded: ((info: UpdateInfoLike) => void) | null = null;
 
   async checkForUpdates(): Promise<{ updateInfo: UpdateInfoLike }> {
     if (this.failures > 0) {
       this.failures -= 1;
-      throw new Error('net::ERR_CONNECTION_TIMED_OUT');
+      throw new Error(this.failure);
     }
     return { updateInfo: { version: this.latest } };
   }
@@ -146,4 +148,22 @@ test('install now refuses when already up to date', async () => {
   });
   await assert.rejects(updater.installNow(), /up to date/);
   assert.equal(fake.installed, null);
+});
+
+test('a release without an update feed means up to date, not an error', async () => {
+  const fake = new FakeUpdater();
+  fake.failures = 1;
+  fake.failure =
+    'Cannot find latest-mac.yml in the latest release artifacts (https://github.com/cyzus/suzent/releases/download/v0.27.3/latest-mac.yml): HttpError: 404';
+  const updater = new DesktopUpdater(fake, {
+    currentVersion: '0.28.0',
+    dataDir: dataDir(),
+    env: {},
+    beforeInstall: async () => {},
+  });
+  const status = await updater.check();
+  assert.equal(status.error, undefined);
+  assert.equal(status.update_available, false);
+  assert.ok(isMissingFeed('Cannot find latest.yml in the latest release artifacts'));
+  assert.ok(!isMissingFeed('net::ERR_CONNECTION_TIMED_OUT'));
 });
