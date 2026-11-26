@@ -5,7 +5,7 @@ dispatching to the same handlers as the standalone node host.
 No WebSocket overhead — runs inside the server process.
 """
 
-import importlib
+from suzent.import_caches import refresh_import_caches
 import sys
 import uuid
 from typing import Any
@@ -48,7 +48,7 @@ class LocalNode(NodeBase):
         and disappear once it is removed, without restarting the server.
         Returns the capability names now advertised.
         """
-        importlib.invalidate_caches()  # find_spec caches directory listings
+        refresh_import_caches()  # find_spec caches directory listings
         self._handlers = available_handlers(self._capability_filter)
         self.capabilities = [
             NodeCapability(

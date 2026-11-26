@@ -13,7 +13,7 @@
     "test": "tsc -p tsconfig.test.json && node --test \"build-test/test/**/*.test.js\"",
     "typecheck": "tsc -p tsconfig.test.json --noEmit",
     "e2e": "node e2e/smoke.mjs",
-    "dist": "npm run build && node scripts/stage-frontend.mjs && electron-builder --publish never",
+    "dist": "npm run build && node scripts/stage-frontend.mjs && node scripts/patch-nsis.mjs && electron-builder --publish never",
     "dist:dir": "npm run build && node scripts/stage-frontend.mjs && electron-builder --dir --publish never"
   },
   "devDependencies": {

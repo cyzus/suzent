@@ -142,8 +142,15 @@ jobs:
         run: |
           $setup = Get-ChildItem release -Filter 'Suzent-Setup-*-win-*.exe' | Select-Object -First 1
           $dir = Join-Path $env:LOCALAPPDATA 'Programs\Suzent'
+          $clock = [Diagnostics.Stopwatch]::StartNew()
           $run = Start-Process -FilePath $setup.FullName -ArgumentList '--silent', '--dir', "`"$dir`"" -Wait -PassThru
           if ($run.ExitCode -ne 0) { throw "Setup exited with $($run.ExitCode)" }
+          Write-Host "Fresh install took $([int]$clock.Elapsed.TotalSeconds)s"
+          # Installing again over the top is what an update does.
+          $clock.Restart()
+          $run = Start-Process -FilePath $setup.FullName -ArgumentList '--silent', '--dir', "`"$dir`"" -Wait -PassThru
+          if ($run.ExitCode -ne 0) { throw "Reinstall exited with $($run.ExitCode)" }
+          Write-Host "Install over the top took $([int]$clock.Elapsed.TotalSeconds)s"
           $app = Join-Path $dir 'SUZENT.exe'
           if (-not (Test-Path $app)) { throw "Setup did not create $app" }
           Write-Host "Installed at $app"

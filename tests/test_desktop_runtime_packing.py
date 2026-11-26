@@ -27,19 +27,27 @@ def test_pure_packages_move_into_one_importable_zip(tmp_path: Path) -> None:
     _write(site / "purepkg" / "__init__.py", "VALUE = 1\n")
     # A namespace subpackage: no __init__.py, found only via a directory entry.
     _write(site / "purepkg" / "inner" / "mod.py", "def answer():\n    return 42\n")
+    # A top-level namespace (like ``google``) holding a regular package.
+    _write(site / "nsroot" / "sub" / "__init__.py", "Z = 3\n")
+    _write(site / "purepkg" / "tests" / "test_x.py")
+    _write(site / "purepkg" / "stub.pyi")
     _write(site / "datapkg" / "__init__.py")
     _write(site / "datapkg" / "table.json", "{}")
     _write(site / "suzent" / "__init__.py")
     compileall.compile_dir(site, quiet=1)
 
+    builder.strip_site(site)
+    assert not (site / "purepkg" / "tests").exists()
+    assert not (site / "purepkg" / "stub.pyi").exists()
     builder.pack_pure_packages(site)
 
     assert not (site / "purepkg").exists()
+    assert not (site / "nsroot").exists()
     assert (site / "datapkg" / "table.json").is_file()
     assert (site / "suzent").is_dir()
     probe = (
         "import sys; sys.path.append(sys.argv[1]); "
-        "import purepkg, purepkg.inner.mod as m; "
+        "import purepkg, purepkg.inner.mod as m, nsroot.sub; assert nsroot.sub.Z == 3; "
         "assert 'pure-packages.zip' in purepkg.__file__; print(m.answer())"
     )
     zip_path = site / builder.PACKED_ZIP
