@@ -82,7 +82,7 @@ the bundled runtime into standard installers:
 
 | Platform | Installers | Installs to |
 | --- | --- | --- |
-| Windows | NSIS, one click, per user (no admin prompt) | `%LOCALAPPDATA%\Programs\SUZENT` |
+| Windows | `Suzent-Setup-*.exe` (drawn setup around a one-click, per-user NSIS package; no admin prompt) | `%LOCALAPPDATA%\Programs\Suzent`, or a folder the user picks |
 | macOS (Apple silicon) | `.dmg` and `.zip`, signed with the hardened runtime and notarized | `/Applications/SUZENT.app` |
 | Linux | AppImage and `.deb` | `/opt/SUZENT` (deb) |
 
@@ -100,6 +100,19 @@ environment (the background service, the `suzent` command) still knows it is
 bundled: `bundled_resources_dir()` in `suzent/config/paths.py` looks for it
 beside `sys.prefix`.
 
+Windows users download `Suzent-Setup-<version>-win-x64.exe`. It is a small
+Tauri program (`apps/desktop-setup`) drawn like the app's onboarding wizard
+and startup screen, with the electron-builder NSIS package appended to it
+(`apps/desktop/scripts/build-setup.mjs` writes the trailer that
+`src/payload.rs` reads). It checks the chosen folder (writable, not Program
+Files), runs the package with `/S /D=<folder>`, shows progress from how much
+of the app has landed there, then checks that `suzent --version` runs.
+`--silent [--dir PATH]` does the same without a window. Updates skip it:
+electron-updater runs the NSIS package itself, which keeps the folder from
+the registry. The disk image background is drawn in
+`installer/art/dmg-background.html` and rendered by
+`scripts/render-dmg-background.mjs`.
+
 The `suzent` command comes with the install. `installer/bin/` holds a
 `suzent.cmd` and a `suzent` script that run `python -m suzent.cli` on the
 bundled runtime. The Windows installer adds `resources\bin` to the user's
@@ -110,8 +123,8 @@ mount point changes every run. `suzent update`, `upgrade` and `repair` refuse
 to run in a bundled install, which updates as a whole.
 
 `.github/workflows/desktop-installers.yml` builds the installers on Windows,
-macOS (Apple silicon) and Linux, installs each one as a user would (silent
-NSIS install, the app copied out of the dmg, `apt install` of the deb, the
+macOS (Apple silicon) and Linux, installs each one as a user would (the
+Windows setup with `--silent`, the app copied out of the dmg, `apt install` of the deb, the
 extracted AppImage), checks the `suzent` command, runs the smoke test against
 the installed app and, on Windows, uninstalls it again. Run it by hand with
 `sign` to sign and notarize the macOS builds with the release certificates.

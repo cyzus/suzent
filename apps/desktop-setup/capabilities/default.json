@@ -1,0 +1,12 @@
+{
+  "identifier": "default",
+  "description": "What the setup window may do",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "dialog:allow-open",
+    "core:window:allow-close",
+    "core:window:allow-minimize",
+    "core:window:allow-start-dragging"
+  ]
+}

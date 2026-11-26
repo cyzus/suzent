@@ -204,7 +204,9 @@ bundle (rebuilt from the tag in both asset modes), and `SHA256SUMS`. Do not manu
 publish a partially populated draft.
 
 Every desktop release also builds the Electron app's standard installers
-(`desktop-installers.yml`, called with the tag): `Suzent-<version>-win-x64.exe`,
+(`desktop-installers.yml`, called with the tag): `Suzent-Setup-<version>-win-x64.exe`
+(what Windows users download) and the `Suzent-<version>-win-x64.exe` package it
+carries (what electron-updater installs),
 `-mac-arm64.dmg`/`.zip`, `-linux-x86_64.AppImage` and
 `-linux-amd64.deb`, with their blockmaps and the electron-updater feeds
 `latest.yml`, `latest-mac.yml` (written per Mac architecture and joined by

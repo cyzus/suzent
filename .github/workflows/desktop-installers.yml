@@ -7,6 +7,7 @@ on:
   pull_request:
     paths:
       - 'apps/desktop/**'
+      - 'apps/desktop-setup/**'
       - 'scripts/build_desktop_runtime.py'
       - 'src/suzent/config/paths.py'
       - 'src/suzent/version.py'
@@ -127,16 +128,24 @@ jobs:
         env:
           SIGN: ${{ inputs.sign }}
 
+      # The drawn setup users download: it carries the package above and
+      # runs it silently into the folder they pick.
+      - name: Build setup (Windows)
+        if: runner.os == 'Windows'
+        working-directory: apps/desktop
+        run: node scripts/build-setup.mjs
+
       - name: Install and start (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
         working-directory: apps/desktop
         run: |
-          $setup = Get-ChildItem release -Filter 'Suzent-*-win-*.exe' | Select-Object -First 1
-          Start-Process -FilePath $setup.FullName -ArgumentList '/S' -Wait
-          $found = Get-ChildItem (Join-Path $env:LOCALAPPDATA 'Programs') -Filter 'SUZENT.exe' -Recurse -Depth 1 | Select-Object -First 1
-          if (-not $found) { throw 'Installer did not create SUZENT.exe under %LOCALAPPDATA%\Programs' }
-          $app = $found.FullName
+          $setup = Get-ChildItem release -Filter 'Suzent-Setup-*-win-*.exe' | Select-Object -First 1
+          $dir = Join-Path $env:LOCALAPPDATA 'Programs\Suzent'
+          $run = Start-Process -FilePath $setup.FullName -ArgumentList '--silent', '--dir', "`"$dir`"" -Wait -PassThru
+          if ($run.ExitCode -ne 0) { throw "Setup exited with $($run.ExitCode)" }
+          $app = Join-Path $dir 'SUZENT.exe'
+          if (-not (Test-Path $app)) { throw "Setup did not create $app" }
           Write-Host "Installed at $app"
           $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
           $bin = Join-Path (Split-Path $app) 'resources\bin'

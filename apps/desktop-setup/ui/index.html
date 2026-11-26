@@ -1,0 +1,369 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Suzent Setup</title>
+<style>
+/* Same look as the app's onboarding wizard and startup screen. */
+:root {
+  --paper: #fafafa;
+  --ink: #0a0a0a;
+  --mute: #737373;
+  --faint: #a3a3a3;
+  --hair: #e5e5e5;
+  --line: #d4d4d4;
+  --ui: 'Segoe UI', -apple-system, 'Microsoft YaHei', 'PingFang SC', system-ui, sans-serif;
+  --mono: Consolas, 'JetBrains Mono', Menlo, monospace;
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; overflow: hidden; }
+body { background: var(--paper); color: var(--ink); font-family: var(--ui); user-select: none; -webkit-user-select: none; }
+.win { height: 100%; border: 1px solid #c9c9c9; display: grid; grid-template-rows: auto 1fr; }
+.bar { display: flex; align-items: center; height: 36px; padding-left: 18px; }
+.bar .name { font: 700 12px var(--ui); letter-spacing: .28em; }
+.bar .grow { flex: 1; align-self: stretch; }
+.bar button { width: 46px; height: 36px; border: 0; background: transparent; color: #525252; font: 400 14px var(--ui); cursor: default; }
+.bar button:hover { background: #ececec; }
+.bar button.x:hover { background: #c42b1c; color: #fff; }
+.bar button:disabled { opacity: .35; background: transparent; color: #525252; }
+.body { display: grid; grid-template-columns: 280px 1fr; min-height: 0; }
+.stage { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 26px; border-right: 1px solid var(--hair); padding: 24px;
+  background: radial-gradient(circle at 50% 44%, #efefef 0, rgba(250,250,250,0) 120px), radial-gradient(rgba(10,10,10,.07) .6px, transparent .8px) 0 0 / 6px 6px, var(--paper); }
+.orbits { position: relative; width: 168px; height: 168px; display: grid; place-items: center; }
+.ring { position: absolute; border-radius: 50%; }
+.ring.outer { inset: 0; border: 1px solid #d4d4d4; animation: turn 12s linear infinite; }
+.ring.outer::after { content: ''; position: absolute; right: -4px; top: 50%; width: 8px; height: 8px; margin-top: -4px; border-radius: 50%; background: var(--ink); }
+.ring.inner { inset: 22px; border: 1px dashed rgba(163,163,163,.7); animation: turn 18s linear infinite reverse; }
+@keyframes turn { to { transform: rotate(360deg); } }
+.scene { width: 76px; height: 76px; perspective: 520px; }
+.cube { position: relative; width: 100%; height: 100%; transform-style: preserve-3d; animation: core 7s cubic-bezier(.45,0,.25,1) infinite; transition: transform 1.2s cubic-bezier(.2,.8,.2,1); }
+.face { position: absolute; inset: 0; background: rgba(12,12,12,.96); border: 1px solid rgba(255,255,255,.22); box-shadow: inset 0 0 24px rgba(255,255,255,.035); }
+.f1 { transform: translateZ(38px); }
+.f2 { transform: rotateY(180deg) translateZ(38px); opacity: .72; }
+.f3 { transform: rotateY(90deg) translateZ(38px); opacity: .86; }
+.f4 { transform: rotateY(-90deg) translateZ(38px); opacity: .58; }
+.f5 { transform: rotateX(90deg) translateZ(38px); opacity: .92; }
+.f6 { transform: rotateX(-90deg) translateZ(38px); opacity: .5; }
+.eyes { position: absolute; inset: 0; opacity: 0; transition: opacity .6s .5s; }
+.eyes i { position: absolute; top: 33.3%; width: 20.8%; height: 20.8%; border-radius: 6px; background: #fff; box-shadow: 0 0 8px rgba(255,255,255,.9), 0 0 18px rgba(255,255,255,.35); animation: blink 4.6s infinite; }
+.eyes i:first-child { left: 20.8%; }
+.eyes i:last-child { left: 58.3%; }
+@keyframes core { 0% { transform: rotateX(-20deg) rotateY(32deg); } 50% { transform: rotateX(-12deg) rotateY(212deg); } 100% { transform: rotateX(-20deg) rotateY(392deg); } }
+@keyframes blink { 0%, 92%, 100% { transform: scaleY(1); } 95% { transform: scaleY(.12); } }
+.win[data-mode="installing"] .cube { animation-duration: 2.6s; }
+.win[data-mode="installing"] .ring.outer { animation-duration: 3.5s; }
+.win[data-mode="done"] .cube { animation: none; transform: rotateX(-6deg) rotateY(-14deg); }
+.win[data-mode="done"] .eyes { opacity: 1; }
+.win[data-mode="done"] .ring.outer { animation-duration: 30s; }
+.win[data-mode="failed"] .cube { animation: none; transform: rotateX(-20deg) rotateY(32deg); opacity: .35; }
+.identity { font: 600 10px var(--mono); letter-spacing: .32em; color: var(--mute); text-transform: uppercase; }
+.content { padding: 26px 34px; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.tabs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 30px; }
+.tabs span { border-top: 2px solid var(--hair); padding-top: 9px; font: 600 12px var(--ui); color: var(--faint); transition: color .3s, border-color .3s; }
+.tabs span.on { border-color: var(--ink); color: var(--ink); }
+.tabs span.past { border-color: var(--ink); color: var(--mute); }
+.step[hidden] { display: none !important; }
+.step { display: flex; flex-direction: column; flex: 1; gap: 14px; min-height: 0; animation: rise .4s cubic-bezier(.2,.8,.2,1); }
+@keyframes rise { from { transform: translateY(6px); opacity: 0; } to { transform: none; opacity: 1; } }
+h1 { font: 700 28px/1.2 var(--ui); letter-spacing: -.015em; margin: 0; }
+p { margin: 0; font-size: 14px; line-height: 1.65; color: var(--mute); }
+.facts { display: grid; grid-template-columns: auto 1fr; gap: 6px 16px; font-size: 13px; margin: 4px 0 0; }
+.facts dt { color: var(--mute); }
+.facts dd { margin: 0; font: 13px var(--mono); overflow-wrap: anywhere; user-select: text; -webkit-user-select: text; }
+.spacer { flex: 1; }
+.foot { display: flex; align-items: center; justify-content: space-between; gap: 14px; border-top: 1px solid var(--hair); padding-top: 18px; }
+.btn { font: 600 14px var(--ui); padding: 9px 26px; border: 1px solid var(--ink); background: var(--ink); color: #fff; cursor: default; transition: background-color .15s; }
+.btn:hover { background: #262626; }
+.btn:disabled { opacity: .4; }
+.link { background: none; border: 0; padding: 0; font: 600 13px var(--ui); color: var(--ink); text-decoration: underline; text-underline-offset: 4px; text-decoration-color: var(--line); cursor: default; }
+.link:hover { text-decoration-color: var(--ink); }
+.btn:focus-visible, .link:focus-visible, .check input:focus-visible + span { outline: 2px solid var(--ink); outline-offset: 3px; }
+.path { display: flex; border: 2px solid var(--ink); background: #fff; }
+.path input { flex: 1; min-width: 0; border: 0; padding: 9px 12px; font: 13px var(--mono); background: transparent; color: var(--ink); outline: none; }
+.path button { border: 0; border-left: 1px solid var(--line); background: #fff; font: 600 13px var(--ui); padding: 0 16px; color: var(--ink); }
+.path button:hover { background: #f4f4f4; }
+.hint { border-left: 2px solid var(--line); padding: 2px 0 2px 12px; font-size: 12.5px; line-height: 1.6; color: var(--mute); }
+.error { border-left: 2px solid #b91c1c; padding: 2px 0 2px 12px; font-size: 12.5px; line-height: 1.6; color: #b91c1c; overflow-wrap: anywhere; user-select: text; -webkit-user-select: text; }
+.meter-head { display: flex; justify-content: space-between; font: 600 10px var(--mono); letter-spacing: .16em; text-transform: uppercase; color: var(--mute); margin-top: 10px; }
+.meter { position: relative; height: 1px; background: var(--line); margin-top: 8px; overflow: hidden; }
+.meter i { position: absolute; inset: 0 auto 0 0; width: 0; background: var(--ink); transition: width .6s ease-out; }
+.log { list-style: none; margin: 14px 0 0; padding: 0; display: grid; gap: 7px; font-size: 13px; }
+.log li { display: grid; grid-template-columns: 14px 1fr; gap: 8px; align-items: center; color: var(--faint); transition: color .25s; }
+.log li::before { content: ''; width: 6px; height: 6px; border: 1px solid currentColor; border-radius: 50%; justify-self: center; }
+.log li.now { color: var(--ink); }
+.log li.now::before { background: var(--ink); animation: pulse 1s ease-in-out infinite; }
+.log li.done { color: var(--mute); }
+.log li.done::before { background: var(--mute); border-color: var(--mute); }
+@keyframes pulse { 50% { transform: scale(1.6); opacity: .4; } }
+.check { display: flex; gap: 10px; align-items: center; font-size: 14px; }
+.check input { position: absolute; opacity: 0; }
+.check span { width: 16px; height: 16px; border: 2px solid var(--ink); background: #fff; display: grid; place-items: center; flex: none; }
+.check input:checked + span { background: var(--ink); }
+.check input:checked + span::after { content: ''; width: 7px; height: 4px; border: 2px solid #fff; border-top: 0; border-right: 0; transform: rotate(-45deg) translate(1px,-1px); }
+code { font: 600 12.5px var(--mono); color: var(--ink); background: #f0f0f0; padding: 1px 5px; }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+</style>
+</head>
+<body>
+<div class="win" id="win" data-mode="idle">
+  <div class="bar">
+    <span class="name" data-tauri-drag-region>SUZENT</span>
+    <span class="grow" data-tauri-drag-region></span>
+    <button type="button" id="minimize" data-i18n-label="minimize">&#x2013;</button>
+    <button type="button" class="x" id="close" data-i18n-label="close">&#x2715;</button>
+  </div>
+  <div class="body">
+    <div class="stage" aria-hidden="true" data-tauri-drag-region>
+      <div class="orbits">
+        <div class="ring outer"></div>
+        <div class="ring inner"></div>
+        <div class="scene">
+          <div class="cube">
+            <div class="face f1"><div class="eyes"><i></i><i></i></div></div>
+            <div class="face f2"></div><div class="face f3"></div><div class="face f4"></div><div class="face f5"></div><div class="face f6"></div>
+          </div>
+        </div>
+      </div>
+      <span class="identity" id="identity">Suzent / Setup</span>
+    </div>
+
+    <div class="content">
+      <div class="tabs" aria-hidden="true">
+        <span data-i18n="tab1"></span><span data-i18n="tab2"></span><span data-i18n="tab3"></span>
+      </div>
+
+      <section class="step" data-step="welcome">
+        <h1 data-i18n="welcomeTitle"></h1>
+        <p data-i18n="welcomeBody"></p>
+        <dl class="facts">
+          <dt data-i18n="installTo"></dt><dd id="where"></dd>
+          <dt data-i18n="yourData"></dt><dd id="data"></dd>
+        </dl>
+        <div class="error" id="welcomeError" hidden></div>
+        <div class="spacer"></div>
+        <div class="foot">
+          <button class="link" type="button" id="custom" data-i18n="changeLocation"></button>
+          <button class="btn" type="button" id="go" data-i18n="install"></button>
+        </div>
+      </section>
+
+      <section class="step" data-step="where" hidden>
+        <h1 data-i18n="whereTitle"></h1>
+        <p data-i18n="whereBody"></p>
+        <label class="path" for="dir">
+          <input id="dir" spellcheck="false">
+          <button type="button" id="browse" data-i18n="browse"></button>
+        </label>
+        <div class="error" id="dirError" hidden></div>
+        <div class="hint" data-i18n="whereHint"></div>
+        <div class="spacer"></div>
+        <div class="foot">
+          <button class="link" type="button" id="back" data-i18n="back"></button>
+          <button class="btn" type="button" id="go2" data-i18n="installHere"></button>
+        </div>
+      </section>
+
+      <section class="step" data-step="install" hidden>
+        <h1 id="phase"></h1>
+        <p data-i18n="installingBody"></p>
+        <div>
+          <div class="meter-head"><span>System install</span><span id="pct">00%</span></div>
+          <div class="meter" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="meter"><i id="fill"></i></div>
+        </div>
+        <ul class="log" id="log">
+          <li data-phase="copying" data-i18n="phaseCopying"></li>
+          <li data-phase="finishing" data-i18n="phaseFinishing"></li>
+          <li data-phase="checking" data-i18n="phaseChecking"></li>
+        </ul>
+      </section>
+
+      <section class="step" data-step="done" hidden>
+        <h1 data-i18n="doneTitle"></h1>
+        <p id="doneBody"></p>
+        <label class="check" for="run"><input type="checkbox" id="run" checked><span></span><b style="font-weight:400" data-i18n="openNow"></b></label>
+        <div class="spacer"></div>
+        <div class="foot">
+          <span></span>
+          <button class="btn" type="button" id="finish" data-i18n="finish"></button>
+        </div>
+      </section>
+
+      <section class="step" data-step="failed" hidden>
+        <h1 data-i18n="failedTitle"></h1>
+        <p data-i18n="failedBody"></p>
+        <div class="error" id="failure"></div>
+        <div class="spacer"></div>
+        <div class="foot">
+          <button class="link" type="button" id="retry" data-i18n="retry"></button>
+          <button class="btn" type="button" id="quit" data-i18n="close"></button>
+        </div>
+      </section>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  const STRINGS = {
+    en: {
+      tab1: '1. Prepare', tab2: '2. Install', tab3: '3. Done',
+      welcomeTitle: 'Put your agent on this computer.',
+      welcomeBody: 'Suzent is sovereign: it runs on your own computer, and your chats, memory and keys stay here. Installing needs no administrator rights, and Suzent keeps itself up to date in the background.',
+      installTo: 'Install to', yourData: 'Your data',
+      changeLocation: 'Change location', install: 'Install',
+      whereTitle: 'Where should it go?',
+      whereBody: 'Pick a folder you can write to, such as one on drive D.',
+      whereHint: 'Avoid Program Files: every update there needs an administrator, so Suzent could not update itself quietly. Your data stays in {data} wherever the app goes.',
+      browse: 'Browse…', back: 'Back', installHere: 'Install here',
+      installingBody: 'Putting Suzent and the runtime it needs on your computer.',
+      phaseCopying: 'Copying Suzent', phaseFinishing: 'Adding the suzent command and Start menu entry', phaseChecking: 'Checking that it starts',
+      doneTitle: 'Installed.',
+      doneBody: 'Find Suzent in the Start menu, or type {cmd} in a terminal.',
+      openNow: 'Open Suzent now', finish: 'Finish',
+      failedTitle: 'Setup did not finish.',
+      failedBody: 'Nothing you had is lost. Try again, or pick another folder.',
+      retry: 'Try again', close: 'Close', minimize: 'Minimize',
+      not_absolute: 'Enter a full path, such as D:\\Apps\\Suzent.',
+      needs_admin: 'This folder needs an administrator. Pick one you own, such as D:\\Apps\\Suzent.',
+      not_writable: 'Suzent cannot write to this folder. Pick another one.',
+      no_package: 'This setup file is incomplete. Download it again.',
+    },
+    zh: {
+      tab1: '1. 准备', tab2: '2. 安装', tab3: '3. 完成',
+      welcomeTitle: '把你的智能体装到这台电脑上。',
+      welcomeBody: 'Suzent 是主权的：它在你自己的电脑上运行，对话、记忆和密钥都留在这里。安装不需要管理员权限，之后会在后台自动更新。',
+      installTo: '安装到', yourData: '你的数据',
+      changeLocation: '更改安装位置', install: '安装',
+      whereTitle: '装在哪里？',
+      whereBody: '选一个你有写入权限的文件夹，比如 D 盘。',
+      whereHint: '不建议选 Program Files：那里每次更新都要管理员确认，就没法在后台静默更新了。你的数据始终在 {data}，跟安装位置无关。',
+      browse: '浏览…', back: '返回', installHere: '安装到这里',
+      installingBody: '正在把 Suzent 和它需要的运行环境放到你的电脑上。',
+      phaseCopying: '复制 Suzent', phaseFinishing: '加入 suzent 命令和开始菜单', phaseChecking: '检查能否启动',
+      doneTitle: '装好了。',
+      doneBody: '开始菜单里能找到 Suzent，命令行里输入 {cmd} 也能用。',
+      openNow: '现在打开 Suzent', finish: '完成',
+      failedTitle: '安装没有完成。',
+      failedBody: '你原有的东西都没有丢。可以再试一次，或者换个文件夹。',
+      retry: '再试一次', close: '关闭', minimize: '最小化',
+      not_absolute: '请填写完整路径，比如 D:\\Apps\\Suzent。',
+      needs_admin: '这个文件夹需要管理员权限。请选你自己的文件夹，比如 D:\\Apps\\Suzent。',
+      not_writable: 'Suzent 没法写入这个文件夹，请换一个。',
+      no_package: '这个安装文件不完整，请重新下载。',
+    },
+  };
+  const lang = (navigator.language || 'en').toLowerCase().startsWith('zh') ? 'zh' : 'en';
+  const T = STRINGS[lang];
+  document.documentElement.lang = lang === 'zh' ? 'zh-CN' : 'en';
+
+  const tauri = window.__TAURI__;
+  const invoke = tauri.core.invoke;
+  const $ = (id) => document.getElementById(id);
+  const win = $('win');
+  const steps = [...document.querySelectorAll('.step')];
+  const tabs = [...document.querySelectorAll('.tabs span')];
+  const tabOf = { welcome: 0, where: 0, install: 1, done: 2, failed: 1 };
+  let info = { default_dir: '', data_dir: '~\\.suzent', ready: false };
+  let target = '';
+  let busy = false;
+  let shown = 0;
+
+  function fill() {
+    document.querySelectorAll('[data-i18n]').forEach((el) => {
+      el.textContent = T[el.dataset.i18n].replace('{data}', info.data_dir);
+    });
+    document.querySelectorAll('[data-i18n-label]').forEach((el) => el.setAttribute('aria-label', T[el.dataset.i18nLabel]));
+    const body = $('doneBody');
+    const [before, after] = T.doneBody.split('{cmd}');
+    body.replaceChildren(before, Object.assign(document.createElement('code'), { textContent: 'suzent' }), after);
+  }
+  function show(name) {
+    steps.forEach((s) => { s.hidden = s.dataset.step !== name; });
+    const at = tabOf[name];
+    tabs.forEach((t, i) => { t.className = i === at ? 'on' : i < at ? 'past' : ''; });
+  }
+  function reason(code) { return T[code] || code; }
+  function setError(el, message) { el.textContent = message || ''; el.hidden = !message; }
+
+  const ORDER = ['copying', 'finishing', 'checking'];
+  function progress({ phase, percent }) {
+    shown = Math.max(shown, percent);
+    $('fill').style.width = shown + '%';
+    $('pct').textContent = String(shown).padStart(2, '0') + '%';
+    $('meter').setAttribute('aria-valuenow', shown);
+    const at = ORDER.indexOf(phase);
+    $('log').querySelectorAll('li').forEach((li, i) => { li.className = i < at ? 'done' : i === at ? 'now' : ''; });
+    $('phase').textContent = T['phase' + phase[0].toUpperCase() + phase.slice(1)] + '…';
+  }
+
+  async function install(dir) {
+    if (busy) return;
+    busy = true;
+    target = dir;
+    shown = 0;
+    win.dataset.mode = 'installing';
+    $('identity').textContent = 'Suzent / Installing';
+    $('close').disabled = true;
+    show('install');
+    progress({ phase: 'copying', percent: 0 });
+    try {
+      await invoke('install', { dir });
+      $('log').querySelectorAll('li').forEach((li) => { li.className = 'done'; });
+      win.dataset.mode = 'done';
+      $('identity').textContent = 'Suzent / Ready';
+      show('done');
+    } catch (error) {
+      win.dataset.mode = 'failed';
+      $('identity').textContent = 'Suzent / Stopped';
+      $('failure').textContent = reason(String(error));
+      show('failed');
+    } finally {
+      busy = false;
+      $('close').disabled = false;
+    }
+  }
+
+  async function chooseDir() {
+    const dir = $('dir').value.trim();
+    const problem = await invoke('check_dir', { dir });
+    if (problem) { setError($('dirError'), reason(problem)); return; }
+    install(dir);
+  }
+
+  $('go').onclick = () => install(info.default_dir);
+  $('custom').onclick = () => { $('dir').value = target || info.default_dir; setError($('dirError'), ''); show('where'); $('dir').focus(); };
+  $('back').onclick = () => show('welcome');
+  $('go2').onclick = chooseDir;
+  $('dir').addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.isComposing) chooseDir(); });
+  $('browse').onclick = async () => {
+    const picked = await tauri.dialog.open({ directory: true, defaultPath: $('dir').value || undefined });
+    if (typeof picked === 'string') {
+      $('dir').value = /[\\/]suzent$/i.test(picked) ? picked : picked.replace(/[\\/]+$/, '') + '\\Suzent';
+      setError($('dirError'), '');
+    }
+  };
+  $('retry').onclick = () => { win.dataset.mode = 'idle'; $('identity').textContent = 'Suzent / Setup'; show('welcome'); };
+  $('finish').onclick = () => invoke('finish', { launch: $('run').checked });
+  $('quit').onclick = () => invoke('finish', { launch: false });
+  $('close').onclick = () => { if (!busy) invoke('finish', { launch: false }); };
+  $('minimize').onclick = () => tauri.window.getCurrentWindow().minimize();
+  tauri.event.listen('setup://progress', (event) => progress(event.payload));
+
+  fill();
+  show('welcome');
+  invoke('info').then((result) => {
+    info = result;
+    fill();
+    target = info.default_dir;
+    $('where').textContent = info.default_dir;
+    $('data').textContent = info.data_dir;
+    if (!info.ready) {
+      setError($('welcomeError'), T.no_package);
+      $('go').disabled = true;
+      $('custom').disabled = true;
+    }
+  });
+})();
+</script>
+</body>
+</html>

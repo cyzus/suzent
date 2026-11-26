@@ -366,7 +366,14 @@ def affected_products(paths: list[str]) -> set[str]:
         ):
             affected.add("mobile")
         elif path.startswith(
-            ("src/", "frontend/", "src-tauri/", "apps/suzent-installer/", "apps/desktop/")
+            (
+                "src/",
+                "frontend/",
+                "src-tauri/",
+                "apps/suzent-installer/",
+                "apps/desktop/",
+                "apps/desktop-setup/",
+            )
         ) or path in {"pyproject.toml", "uv.lock"}:
             affected.add("desktop")
         if path.startswith("packages/presentation/") or path in {
