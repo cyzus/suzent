@@ -89,18 +89,19 @@ pub fn dir_size(dir: &Path) -> u64 {
 }
 
 /// The electron-builder package unpacks its 7z into `%TEMP%\nsXXXX.tmp\7z-out`
-/// first (most of the time), then copies that into the install folder.
-/// Unpacking fills 0 to 70%, the copy 70 to 92%; the package's last steps
-/// (PATH, shortcuts) and our check take the rest.
+/// first, then moves that into the install folder (apps/desktop's
+/// patch-nsis.mjs), which is nearly instant on the same drive. Unpacking fills
+/// 0 to 88%, the move 88 to 92%; the package's last steps (PATH, shortcuts)
+/// and our check take the rest.
 pub fn install_percent(unpacked: u64, copied: u64, total: u64) -> u8 {
     if total == 0 {
         return 0;
     }
     let share = |done: u64| done.min(total) as f64 / total as f64;
     if copied > 0 {
-        (70.0 + share(copied) * 22.0) as u8
+        (88.0 + share(copied) * 4.0) as u8
     } else {
-        (share(unpacked) * 70.0) as u8
+        (share(unpacked) * 88.0) as u8
     }
 }
 
@@ -195,7 +196,8 @@ pub fn run(
                     Phase::Copying
                 };
                 report(Progress { phase, percent });
-                thread::sleep(Duration::from_millis(700));
+                // Each sample walks ~20k files; don't compete with the installer.
+                thread::sleep(Duration::from_millis(1500));
             }
         })
     };
@@ -269,9 +271,9 @@ mod tests {
     #[test]
     fn unpacking_then_copying_never_claims_to_be_done() {
         assert_eq!(install_percent(0, 0, 100), 0);
-        assert_eq!(install_percent(50, 0, 100), 35);
-        assert_eq!(install_percent(100, 0, 100), 70);
-        assert_eq!(install_percent(100, 50, 100), 81);
+        assert_eq!(install_percent(50, 0, 100), 44);
+        assert_eq!(install_percent(100, 0, 100), 88);
+        assert_eq!(install_percent(100, 50, 100), 90);
         assert_eq!(install_percent(100, 500, 100), 92);
         assert_eq!(install_percent(5, 5, 0), 0);
     }
@@ -295,10 +297,10 @@ mod tests {
         let out = temp.join("nsA1B2.tmp").join("7z-out");
         std::fs::create_dir_all(&out).unwrap();
         std::fs::write(out.join("a"), vec![0u8; 50]).unwrap();
-        assert_eq!(watch.percent(), 35);
+        assert_eq!(watch.percent(), 44);
 
         std::fs::write(dir.join("a"), vec![0u8; 50]).unwrap();
-        assert_eq!(watch.percent(), 81);
+        assert_eq!(watch.percent(), 90);
     }
 
     #[test]

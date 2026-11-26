@@ -20,6 +20,7 @@ from typing import Any, Callable, Coroutine
 import websockets
 
 from suzent.config import DEFAULT_PORT, DEFAULT_HOST
+from suzent.import_caches import refresh_import_caches
 
 logger = logging.getLogger(__name__)
 
@@ -300,7 +301,7 @@ class NodeHost:
         at once and the new handshake advertises the new set.
         Returns the capability names now advertised.
         """
-        importlib.invalidate_caches()  # find_spec caches directory listings
+        refresh_import_caches()  # find_spec caches directory listings
         handlers = available_handlers(self._capability_filter)
         changed = handlers.keys() != self._handlers.keys()
         self._handlers = handlers

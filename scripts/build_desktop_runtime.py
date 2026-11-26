@@ -173,8 +173,28 @@ def site_packages(python: Path) -> Path:
     return Path(run(python, "-c", code, capture=True))
 
 
+def strip_site(site: Path) -> None:
+    """Drop what no import ever reads: packages' own test suites and type stubs."""
+    removed = 0
+    for tests in [p for p in site.glob("*/**/tests") if p.is_dir()]:
+        if tests.parts[len(site.parts)] in NEVER_PACK or not tests.exists():
+            continue
+        removed += sum(1 for f in tests.rglob("*") if f.is_file())
+        shutil.rmtree(tests)
+    for stub in site.rglob("*.pyi"):
+        stub.unlink()
+        removed += 1
+    print(f"Removed {removed} test and stub files")
+
+
 def packable(package: Path) -> bool:
-    if package.name in NEVER_PACK or not (package / "__init__.py").is_file():
+    if package.name in NEVER_PACK or not package.name.isidentifier():
+        return False
+    if not (package / "__init__.py").is_file() and not any(
+        child.is_dir() and (child / "__init__.py").is_file()
+        for child in package.iterdir()
+    ):
+        # Neither a package nor a namespace holding packages (e.g. ``google``).
         return False
     for path in package.rglob("*"):
         if path.is_symlink():
@@ -296,6 +316,7 @@ def main() -> None:
         run(sys.executable, "scripts/build_webui.py", "--no-build")
     install_suzent(python, extras)
     strip(runtime)
+    strip_site(site_packages(python))
     precompile(python, runtime)
     pack_pure_packages(site_packages(python))
     verify(python)

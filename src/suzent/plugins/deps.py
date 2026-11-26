@@ -17,6 +17,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+from suzent.import_caches import refresh_import_caches
 from suzent.logger import get_logger
 
 logger = get_logger(__name__)
@@ -145,7 +146,7 @@ def sync_extras(project_dir: Path, extras: list[str]) -> None:
             "uv was not found; install it from https://docs.astral.sh/uv/"
         )
     _run(sync_command(uv, extras, inexact=True), cwd=project_dir)
-    importlib.invalidate_caches()
+    refresh_import_caches()
 
 
 def install_requirements(requirements: list[str], target: Path) -> None:
@@ -167,4 +168,4 @@ def install_requirements(requirements: list[str], target: Path) -> None:
     else:
         command = [sys.executable, "-m", "pip", "install", "--target", str(target)]
     _run([*command, *requirements])
-    importlib.invalidate_caches()
+    refresh_import_caches()

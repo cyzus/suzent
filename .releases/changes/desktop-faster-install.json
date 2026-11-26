@@ -1,0 +1,1 @@
+{"products": {"desktop": "patch"}, "summary": "The Windows installer writes each file once instead of twice and ships fewer files, and the first start after installing no longer pauses."}
