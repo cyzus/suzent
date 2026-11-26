@@ -362,7 +362,9 @@ class HeartbeatRunner(BaseBrain):
             return
         chat = db.get_chat(chat_id)
         title = chat.title if chat and chat.title else chat_id[:8]
-        scheduler.add_notification("heartbeat", response_text, title=title)
+        scheduler.add_notification(
+            "heartbeat", response_text, title=title, chat_id=chat_id
+        )
 
     @staticmethod
     def build_heartbeat_reminder(instructions: str) -> str:

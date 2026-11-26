@@ -294,7 +294,9 @@ def notify_goal(chat_id: str, message: str) -> None:
 
         scheduler = get_active_scheduler()
         if scheduler is not None:
-            scheduler.add_notification("goal", f"{chat_id[:8]}: {message}")
+            scheduler.add_notification(
+                "goal", f"{chat_id[:8]}: {message}", chat_id=chat_id
+            )
     except Exception:
         pass
     logger.info(f"[goal] {chat_id}: {message}")

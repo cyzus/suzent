@@ -1752,6 +1752,8 @@ export function webhookUrl(path: string): string {
 
 export interface CronNotification {
   job_id: number | null;
+  /** The chat a click on the notification opens. */
+  chat_id?: string | null;
   job_name: string;
   result: string;
   source?: string;

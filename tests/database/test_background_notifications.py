@@ -69,3 +69,39 @@ def test_scheduler_notification_keeps_its_title(temp_db, monkeypatch):
         ("heartbeat", "Inbox watch"),
         ("goal", "goal"),
     ]
+
+
+def test_notification_remembers_the_chat_it_opens(temp_db, monkeypatch):
+    from suzent.core import scheduler
+
+    monkeypatch.setattr(scheduler, "get_database", lambda: temp_db)
+    brain = scheduler.SchedulerBrain()
+
+    brain.add_notification("cron", "Done", title="Report", job_id=3, chat_id="chat-1")
+    brain.add_notification("heartbeat", "Quiet")
+
+    drained = brain.drain_notifications()
+
+    assert [n["chat_id"] for n in drained] == ["chat-1", None]
+
+
+def test_older_notification_table_gains_chat_id(tmp_path):
+    import sqlite3
+
+    from suzent.database import ChatDatabase
+
+    path = tmp_path / "old.db"
+    with sqlite3.connect(path) as conn:
+        conn.execute(
+            "CREATE TABLE background_notifications ("
+            "id INTEGER PRIMARY KEY, source TEXT NOT NULL, title TEXT NOT NULL, "
+            "result TEXT NOT NULL, job_id INTEGER, created_at DATETIME NOT NULL, "
+            "delivered_at DATETIME)"
+        )
+
+    db = ChatDatabase(str(path))
+    db.create_background_notification(
+        source="focal", title="Regent", result="hi", chat_id="focal-suzent"
+    )
+
+    assert db.drain_background_notifications()[0].chat_id == "focal-suzent"

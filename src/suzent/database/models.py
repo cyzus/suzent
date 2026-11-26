@@ -477,6 +477,8 @@ class BackgroundNotificationModel(SQLModel, table=True):
     title: str
     result: str
     job_id: Optional[int] = Field(default=None, index=True)
+    # The chat a click on the notification opens.
+    chat_id: Optional[str] = Field(default=None)
     created_at: datetime = Field(default_factory=lambda: datetime.now())
     delivered_at: Optional[datetime] = Field(default=None, index=True)
 

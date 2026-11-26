@@ -86,5 +86,11 @@ def test_cron_notifications_keep_their_job(monkeypatch) -> None:
     SchedulerBrain().add_notification("cron", "Done", title="Digest", job_id=7)
 
     assert created == [
-        {"source": "cron", "title": "Digest", "result": "Done", "job_id": 7}
+        {
+            "source": "cron",
+            "title": "Digest",
+            "result": "Done",
+            "job_id": 7,
+            "chat_id": None,
+        }
     ]

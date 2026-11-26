@@ -4,7 +4,7 @@
  * stops on quit).
  */
 
-import { spawn, type ChildProcess } from 'node:child_process';
+import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -100,7 +100,7 @@ export class Backend {
       const deadline = Date.now() + STOP_GRACE_MS;
       while (Date.now() < deadline && !this.exited) await sleep(100);
     }
-    if (!this.exited) child.kill();
+    if (!this.exited) killTree(child);
   }
 
   /**
@@ -177,7 +177,7 @@ export class Backend {
     try {
       return await Promise.race([backendPromise, spawnError]);
     } catch (error) {
-      if (child.exitCode === null) child.kill();
+      if (child.exitCode === null) killTree(child);
       throw error;
     }
   }
@@ -197,6 +197,21 @@ export class Backend {
     console.log(`No backend to attach to on ${configured || SERVICE_PORT}; starting one`);
     return Backend.start(configured, options);
   }
+}
+
+/**
+ * On Windows killing a process leaves its children running, so a backend
+ * killed mid-shutdown would orphan its git, MCP server and browser processes.
+ */
+export function killTree(child: ChildProcess, platform: NodeJS.Platform = process.platform): void {
+  if (platform === 'win32' && child.pid) {
+    const result = spawnSync('taskkill', ['/PID', String(child.pid), '/T', '/F'], {
+      windowsHide: true,
+      stdio: 'ignore',
+    });
+    if (result.status === 0) return;
+  }
+  child.kill();
 }
 
 export function backendCommand(layout: Layout, uv: string): [string, string[], string] {
