@@ -9,7 +9,8 @@
   "license": "Apache-2.0",
   "scripts": {
     "build": "node scripts/assets.mjs && tsc -p tsconfig.json",
-    "dev": "npm run build && electron .",
+    "dev": "npm run build && node scripts/dev.mjs",
+    "start": "npm run build && electron .",
     "test": "tsc -p tsconfig.test.json && node --test \"build-test/test/**/*.test.js\"",
     "typecheck": "tsc -p tsconfig.test.json --noEmit",
     "e2e": "node e2e/smoke.mjs",
