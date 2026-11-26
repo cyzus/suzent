@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Builds standard Windows, macOS and Linux installers for the new desktop app with everything it needs inside; the current app works as before.
 - Windows has a new Suzent setup that lets you pick where to install and shows its progress, and the macOS disk image has a new look.
 - Lays the groundwork for the Electron desktop app; the current app works as before.
+- The Microsoft Store version now runs the same Electron app as the installers, with the suzent command and start at login kept.
 
 ## [v0.27.3] - 2026-11-20
 
