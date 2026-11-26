@@ -5,10 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [v0.27.4] - 2026-11-26
+## [v0.28.0] - 2026-11-26
 
 ### Release notes
 - Fix editor connections over ACP on Windows systems using a non-UTF-8 language setting, which failed at sign-in or garbled non-English prompts.
+- The new desktop app updates itself, and the updater can move Git-based installs onto it once that is switched on.
+- Builds standard Windows, macOS and Linux installers for the new desktop app with everything it needs inside; the current app works as before.
+- Windows has a new Suzent setup that lets you pick where to install and shows its progress, and the macOS disk image has a new look.
+- Lays the groundwork for the Electron desktop app; the current app works as before.
 
 ## [v0.27.3] - 2026-11-20
 
