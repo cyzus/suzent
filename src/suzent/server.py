@@ -417,6 +417,12 @@ def _warm_heavy_imports() -> None:
             importlib.import_module(module)
         except Exception as e:
             logger.debug(f"Warm import of {module} failed: {e}")
+    try:
+        from suzent.config import CONFIG
+
+        CONFIG.ensure_tool_options()
+    except Exception as e:
+        logger.debug(f"Warm tool discovery failed: {e}")
 
 
 async def health(_request: Request) -> JSONResponse:
