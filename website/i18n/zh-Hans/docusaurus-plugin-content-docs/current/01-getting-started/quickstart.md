@@ -45,8 +45,6 @@ Store 版与安装程序版的区别：
 
 ### 使用终端
 
-**前提条件：** [Node.js 20+](https://nodejs.org/) 和 [Git](https://git-scm.com/downloads)。
-
 <Tabs groupId="os">
 <TabItem value="windows" label="Windows" default>
 
@@ -64,11 +62,22 @@ curl -fsSL https://raw.githubusercontent.com/cyzus/suzent/main/scripts/setup.sh 
 </TabItem>
 </Tabs>
 
-安装脚本会自动安装 Suzent 及所有缺失的依赖项（Python/uv、Rust、构建工具等）。
+这条命令会下载和桌面安装程序相同的应用，全程无需操作：
+
+- **Windows：** 装到 `%LOCALAPPDATA%\Programs\Suzent`，并创建开始菜单和桌面快捷方式。想换目录，先设置 `$env:SUZENT_APP_DIR`。
+- **Mac：** 装到“应用程序”（主“应用程序”文件夹不可写时，装到个人目录下的“应用程序”）。
+- **有桌面的 Linux：** Debian 和 Ubuntu 上安装 `.deb` 包（会要求输入密码），其他发行版在 `~/.local/share/suzent/app` 放一份便携版，并加入应用菜单。
+- **没有显示器的 Linux 服务器：** 同样是便携版。运行 `suzent serve` 启动后端，或运行 `suzent web` 在浏览器里使用。再运行一次这条命令即可更新。
+
+之后应用会自己保持更新。无论用哪种方式安装，数据都在 `~/.suzent`。
+
+应用暂不支持的电脑（Intel Mac、ARM Linux），或发行版里没有安装包时，命令会改为从源码安装。这需要 [Git](https://git-scm.com/downloads)，Python、uv 等依赖会自动安装。
+
+**开发者：** 加上 `--source` 可以得到能直接开发的 git 源码目录（`curl … | bash -s -- --source`，PowerShell 则先设置 `$env:SUZENT_INSTALL="source"`）。已有的源码安装会继续按源码方式更新。
 
 ### 在中国大陆安装
 
-安装脚本会根据当前网络自动选择下载源：连不上 Google、但能连上国内镜像时，Suzent 代码（Gitee 镜像）、Python、依赖包、Playwright 浏览器和 uv 都会从国内镜像下载，不需要手动开启。
+安装脚本会根据当前网络自动选择下载源：连不上 Google、但能连上国内镜像时，Suzent 代码（Gitee 镜像）、Python、依赖包、Playwright 浏览器和 uv 都会从国内镜像下载，不需要手动开启。国内镜像暂时还没有应用安装包，所以在这类网络下会通过镜像从源码安装；加上 `--package`（或设置 `SUZENT_INSTALL=package`）可以改为从 GitHub 下载应用。
 
 如果 `raw.githubusercontent.com` 打不开，可以从 jsDelivr 获取同一个脚本：
 

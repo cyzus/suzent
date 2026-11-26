@@ -44,7 +44,7 @@ SUZENT 可运行在 Windows、macOS 和 Linux 上。
 
 <a href="https://apps.microsoft.com/detail/9MZQ1HHXHVZT?mode=full"><img src="https://get.microsoft.com/images/zh-cn%20dark.svg" alt="从 Microsoft 获取" width="200" /></a>
 
-也可以改用下面的终端命令或[桌面安装程序](https://suzent.com/zh-Hans/#download)。Git 是唯一的前置条件，其他一切都会自动安装。
+也可以改用下面的终端命令或[桌面安装程序](https://suzent.com/zh-Hans/#download)。终端命令会下载和桌面安装程序相同的独立应用并静默安装，不需要事先准备任何东西。应用暂不支持的电脑（Intel Mac、ARM Linux）会改为从源码安装，这时需要 Git。
 
 **macOS / Linux**
 ```bash
@@ -55,6 +55,10 @@ curl -fsSL https://raw.githubusercontent.com/cyzus/suzent/main/scripts/setup.sh 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/cyzus/suzent/main/scripts/setup.ps1 | iex"
 ```
+
+在没有显示器的 Linux 服务器上，装好的是不带窗口的应用：运行 `suzent serve` 启动后端，或运行 `suzent web` 在浏览器里使用。
+
+想要 git 源码目录来开发的开发者，加上 `--source`（`… | bash -s -- --source`，PowerShell 则先设置 `$env:SUZENT_INSTALL="source"`）。
 
 然后启动它，并在 **设置 → 模型提供商** 中添加模型：
 
@@ -67,7 +71,7 @@ suzent start
 <details>
 <summary><b>在中国大陆安装</b></summary>
 
-不需要额外设置。安装程序会先测一下网络：连不上 Google、但能连上国内镜像时，就自动改用国内源下载 Suzent 代码（Gitee 镜像）、Python、依赖包、浏览器内核和 uv。Windows 桌面安装器里也有“使用国内镜像加速”开关，可以手动打开或关闭，之后的更新会沿用这个选择。
+不需要额外设置。安装程序会先测一下网络：连不上 Google、但能连上国内镜像时，就自动改用国内源下载 Suzent 代码（Gitee 镜像）、Python、依赖包、浏览器内核和 uv。国内镜像暂时还没有应用安装包，所以在这类网络下会通过镜像从源码安装；加上 `--package`（或设置 `SUZENT_INSTALL=package`）可以改为从 GitHub 下载应用。Windows 桌面安装器里也有“使用国内镜像加速”开关，可以手动打开或关闭，之后的更新会沿用这个选择。
 
 如果 `raw.githubusercontent.com` 打不开，可以从 jsDelivr 获取同一个脚本：
 
