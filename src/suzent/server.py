@@ -624,9 +624,13 @@ async def deny_pairing(request: Request) -> JSONResponse:
     return JSONResponse({"success": True})
 
 
-async def _refresh_provider_models() -> None:
+async def _refresh_provider_models(import_warmer: asyncio.Task | None = None) -> None:
     """Background task: discover available models for all configured providers."""
     await asyncio.sleep(3)  # let server finish starting up
+    if import_warmer is not None:
+        # Providers import litellm on the loop; while the warmer thread holds the
+        # import lock that would stall every request.
+        await asyncio.wait({import_warmer})
 
     try:
         from suzent.core.providers import ProviderFactory, PROVIDER_REGISTRY
@@ -1036,7 +1040,9 @@ async def startup():
     asyncio.create_task(init_background_services(channel_manager, social_brain))
 
     # Silently refresh model lists for all configured providers in the background.
-    asyncio.create_task(_refresh_provider_models())
+    asyncio.create_task(
+        _refresh_provider_models(getattr(app.state, "import_warmer", None))
+    )
 
 
 def ensure_app_data():
