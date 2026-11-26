@@ -27,6 +27,7 @@ import os
 import shutil
 import subprocess
 import sys
+import zipfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -62,6 +63,18 @@ STRIP = (
     f"lib/python{PYTHON_VERSION}/lib-dynload/_tkinter.cpython-312-x86_64-linux-gnu.so",
     f"lib/python{PYTHON_VERSION}/lib-dynload/_tkinter.cpython-312-aarch64-linux-gnu.so",
 )
+
+
+# Every installed file costs a Windows Defender scan at install and first start,
+# so pure-Python packages (tens of thousands of files) ship as one zip that
+# zipimport reads. Only packages whose files are all code qualify: anything
+# reading a data file next to its __file__ would break inside a zip.
+PACKED_ZIP = "pure-packages.zip"
+CODE_SUFFIXES = {".py", ".pyc", ".pyi"}
+# Pure packages whose only non-code files are docs nobody opens at runtime.
+PACK_DESPITE_DOCS = {"anthropic", "openai"}
+# Our own package ships data files and stays unpacked for readable tracebacks.
+NEVER_PACK = {"suzent", "pip", "setuptools", "_distutils_hack"}
 
 
 def run(*args: str | Path, capture: bool = False) -> str:
@@ -155,10 +168,65 @@ def precompile(python: Path, runtime: Path) -> None:
     )
 
 
+def site_packages(python: Path) -> Path:
+    code = "import sysconfig; print(sysconfig.get_paths()['purelib'])"
+    return Path(run(python, "-c", code, capture=True))
+
+
+def packable(package: Path) -> bool:
+    if package.name in NEVER_PACK or not (package / "__init__.py").is_file():
+        return False
+    for path in package.rglob("*"):
+        if path.is_symlink():
+            return False
+        if not path.is_file() or path.name == "py.typed":
+            continue
+        if path.suffix not in CODE_SUFFIXES and package.name not in PACK_DESPITE_DOCS:
+            return False
+        if path.suffix in {".so", ".pyd", ".dll", ".dylib"}:
+            return False
+    return True
+
+
+def pack_pure_packages(site: Path) -> None:
+    """Move pure-Python packages into one zip on sys.path (via a .pth file).
+
+    zipimport only looks for bytecode beside the source (``mod.pyc``), not in
+    ``__pycache__``, so each precompiled file is stored next to its ``.py``,
+    and finds namespace subpackages only by an explicit directory entry.
+    """
+    packages = sorted(p for p in site.iterdir() if p.is_dir() and packable(p))
+    tag = "cpython-" + PYTHON_VERSION.replace(".", "")
+    files = 0
+    with zipfile.ZipFile(site / PACKED_ZIP, "w", zipfile.ZIP_STORED) as archive:
+        for package in packages:
+            archive.writestr(package.name + "/", b"")
+            for path in sorted(package.rglob("*")):
+                if "__pycache__" in path.parts:
+                    continue
+                relative = path.relative_to(site).as_posix()
+                if path.is_dir():
+                    # zipimport finds namespace subpackages by their directory entry.
+                    archive.writestr(relative + "/", b"")
+                    continue
+                archive.write(path, relative)
+                files += 1
+                if path.suffix == ".py":
+                    compiled = path.parent / "__pycache__" / f"{path.stem}.{tag}.pyc"
+                    if compiled.is_file():
+                        archive.write(compiled, relative[:-3] + ".pyc")
+            shutil.rmtree(package)
+    (site / "pure-packages.pth").write_text(PACKED_ZIP + "\n", encoding="utf-8")
+    print(
+        f"Packed {len(packages)} pure-Python packages ({files} files) into {PACKED_ZIP}"
+    )
+
+
 def verify(python: Path) -> None:
     env = {**os.environ, "PYTHONNOUSERSITE": "1", "PYTHONDONTWRITEBYTECODE": "1"}
     code = (
-        "import suzent.server, lancedb, litellm, pydantic_ai, playwright; "
+        "import suzent.server, lancedb, litellm, pydantic_ai, playwright, anthropic, openai; "
+        f"assert {PACKED_ZIP!r} in anthropic.__file__, 'pure packages must load from the zip'; "
         "from suzent.version import get_backend_version, get_backend_source_root; "
         "assert get_backend_source_root() is None, 'runtime must not point at a checkout'; "
         "print('suzent', get_backend_version())"
@@ -229,6 +297,7 @@ def main() -> None:
     install_suzent(python, extras)
     strip(runtime)
     precompile(python, runtime)
+    pack_pure_packages(site_packages(python))
     verify(python)
     print(f"Runtime: {size_of(runtime) / 1_048_576:.0f} MB at {runtime}")
 
