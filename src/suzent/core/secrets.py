@@ -73,12 +73,25 @@ class KeyringBackend:
             ) from exc
 
         self._meta_key = "__suzent_keys__"
+        # macOS asks before each read of an item another program stored (an
+        # older install's Python, say) unless the user picks Always Allow, and
+        # settings pages read every key on each refresh: read each item once.
+        self._cache: dict[str, Optional[str]] = {}
 
     def get(self, key: str) -> Optional[str]:
-        return self._kr.get_password(_SERVICE_NAME, key)
+        if key in self._cache:
+            return self._cache[key]
+        try:
+            value = self._kr.get_password(_SERVICE_NAME, key)
+        except self._kr.errors.KeyringError as exc:
+            logger.warning("Could not read '{}' from the OS keyring: {}", key, exc)
+            value = None
+        self._cache[key] = value
+        return value
 
     def set(self, key: str, value: str) -> None:
         self._kr.set_password(_SERVICE_NAME, key, value)
+        self._cache[key] = value
         self._track_key(key)
 
     def delete(self, key: str) -> None:
@@ -86,10 +99,11 @@ class KeyringBackend:
             self._kr.delete_password(_SERVICE_NAME, key)
         except self._kr.errors.PasswordDeleteError:
             pass
+        self._cache[key] = None
         self._untrack_key(key)
 
     def list_keys(self) -> list[str]:
-        raw = self._kr.get_password(_SERVICE_NAME, self._meta_key)
+        raw = self.get(self._meta_key)
         if not raw:
             return []
         return [key for key in raw.split("\x00") if key]
@@ -106,15 +120,16 @@ class KeyringBackend:
 
     def _write_keys(self, keys: set[str]) -> None:
         if keys:
-            self._kr.set_password(
-                _SERVICE_NAME, self._meta_key, "\x00".join(sorted(keys))
-            )
+            joined = "\x00".join(sorted(keys))
+            self._kr.set_password(_SERVICE_NAME, self._meta_key, joined)
+            self._cache[self._meta_key] = joined
             return
 
         try:
             self._kr.delete_password(_SERVICE_NAME, self._meta_key)
         except Exception:
             pass
+        self._cache[self._meta_key] = None
 
 
 class EncryptedSQLiteBackend:
