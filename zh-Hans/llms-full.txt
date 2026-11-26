@@ -3060,21 +3060,38 @@ The agent can open web pages, click, type, and read what's on screen. It can do
 this in a browser of its own, or in your everyday Chrome or Edge, where you're
 already signed in. Choose in **Settings → Browser**.
 
-## Option 1: The agent's own browser (default)
+## Option 1: The built-in browser (default)
 
-By default the agent uses a separate, invisible Chromium browser that has
-nothing to do with your personal browsing. In **Settings → Browser** you can:
+In the Suzent desktop app the agent browses inside the app. Open the
+**Browser** panel in the right sidebar to see the page it is working on. The
+page is live: you can scroll, click, type, or sign in yourself, and the agent
+carries on from there. With the panel closed the agent keeps working out of
+sight.
+
+The built-in browser keeps its own logins, separate from the app and from your
+everyday browser. It can only open web pages, never files on your computer,
+and it never gets your camera, microphone, location or downloads.
+
+When the app is closed, for example while Suzent runs as a background service
+or you use the web UI, the agent uses its own browser (Option 2) instead.
+
+## Option 2: The agent's own browser
+
+Select **Launch a managed browser** in **Settings → Browser** to always use a
+separate, invisible browser. It uses Chrome or Edge if one is installed, and
+otherwise downloads Chromium the first time the agent needs it. You can:
 
 - choose **Chromium**, **Chrome**, or **Edge** (browsers that aren't installed
-  are greyed out; click **Check installed browsers** after installing one);
+  are greyed out; click **Refresh** after installing one);
 - turn on **Remember browser logins** so sites stay signed in between sessions;
 - turn on **Show browser window** to watch it work, or to sign in or solve a
   verification step yourself.
 
+These options also apply when the built-in browser falls back to this one.
 Changes apply on the agent's next browser action. Its saved logins are kept in
 `~/.suzent/browser_profile` and never mixed with your own browser profile.
 
-## Option 2: Your own browser, with the Suzent extension
+## Option 3: Your own browser, with the Suzent extension
 
 Use this when the agent needs your tabs and logins, such as your email or an
 internal site.
@@ -3111,7 +3128,8 @@ from your browser's Extensions page with Developer mode on (**Load unpacked**).
 When the agent uses your own browser, Suzent shows the connection status and the
 selected tab's title. Click **Show tab** to bring that tab forward, or turn on
 **Live preview** to watch inside Suzent. For the agent's own browser, the
-preview is on by default.
+preview is on by default. The built-in browser needs no preview: the Browser
+panel shows the page itself.
 
 Both you and the agent can use the browser at the same time, so avoid clicking
 around in the selected tab while the agent is in the middle of a step.
@@ -3141,7 +3159,7 @@ before starting Suzent:
 | `SUZENT_BROWSER_CHANNEL` | `chromium` (default), `chrome`, or `msedge` |
 | `SUZENT_BROWSER_PERSISTENT` | `true` to remember logins |
 | `SUZENT_BROWSER_HEADLESS` | `false` to show the window |
-| `SUZENT_BROWSER_CONNECTION_MODE` | `existing` for the direct connection above |
+| `SUZENT_BROWSER_CONNECTION_MODE` | `desktop` (default), `managed`, `extension`, or `existing` for the direct connection above |
 
 Environment variables override the desktop settings.
 
@@ -4279,7 +4297,7 @@ keep looking like DuckDuckGo's, check step 1.
 Give the agent a link, or let it pick one from search results, and it reads
 the page as plain text with headings, lists, and links kept. This works for
 public pages only: it doesn't use your logins, so for your email or an
-internal site use [your own browser](https://suzent.com/zh-Hans/docs/features/tools/browser#option-2-your-own-browser-with-the-suzent-extension).
+internal site use [your own browser](https://suzent.com/zh-Hans/docs/features/tools/browser#option-3-your-own-browser-with-the-suzent-extension).
 
 The page is fetched directly, without running its scripts, and addresses on
 your own computer or local network (such as `localhost`) aren't fetched. If a
@@ -7749,6 +7767,36 @@ so closing quits. Quit, Dock Quit, Cmd+Q and restarts all pass through
 turned into a hide. The tray polls `/focal/chats` every four seconds and
 shows chats waiting on the user and chats running; on Windows the icon gets a
 red dot when something waits.
+
+## The agent's browser
+
+The Electron shell hosts the browser tool's pages (`connection_mode`
+`desktop`, the default). `apps/desktop/src/agentBrowser.ts` keeps one
+`WebContentsView` per agent tab in the `persist:suzent-agent-browser`
+partition: sandboxed, no preload, every permission request and download
+refused, navigation limited to http(s) and `about:blank`. Each tab's
+`webContents.debugger` carries DevTools commands, so no remote-debugging port
+is opened and the app's own page is never reachable.
+
+`agentBrowserLink.ts` dials the backend's `/ws/browser-desktop` on loopback
+and authenticates with the token the backend writes at start to
+`runtime/desktop-browser-<port>.token` (mode 0600; Windows relies on the
+profile folder's ACL). The backend refuses connections that carry an `Origin`
+header, so web pages cannot use the socket. The protocol is the browser
+extension's (`tabs`, `select`, `open`, `cdp`, `status`, `focus`, `detach`), and
+`src/suzent/tools/browser/extension/session.py`'s `BridgeSession` serves both;
+only an allow-list of `Page`, `Runtime.evaluate` and `Input` methods is
+relayed.
+
+While the Browser panel is closed, the controlled page stays shown in a 1×1
+pixel view with `Emulation.setDeviceMetricsOverride` at 1280×800: Chromium
+drops input to hidden pages and stops painting them. The panel
+(`AgentBrowserPane.tsx`) calls `agent_browser_show` with its bounds, which
+clears the override and lays the page over the panel.
+
+Without the app (web UI, headless service) `effective_mode` reports `managed`
+and the Playwright session runs instead; it prefers an installed Chrome or
+Edge and downloads Chromium only when neither exists.
 
 ## Installers
 
@@ -14667,7 +14715,7 @@ Moving from Tauri to Electron (see [Desktop shell](https://suzent.com/zh-Hans/do
 - **Next:** an npmmirror route for the installers and update feed in mainland
   China (npmmirror only serves single files of allow-listed packages); smaller
   installers (the runtime is about 1.2 GB unpacked, mostly pyarrow, lancedb,
-  OpenCV and Playwright); an in-app browser pane; then turning on the move for
+  OpenCV and Playwright); then turning on the move for
   Git installs, pointing the setup scripts and user docs at the installers, and
   removing `src-tauri/` and `apps/suzent-installer/`.
 
