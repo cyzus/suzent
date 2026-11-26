@@ -9,3 +9,4 @@ icons/
 
 # The installed `suzent` command, shipped by the desktop installers
 !/installer/bin/
+store-cli/target/

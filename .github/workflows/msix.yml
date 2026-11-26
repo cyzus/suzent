@@ -12,10 +12,16 @@ on:
         description: 'Submit the built package to the Microsoft Store (needs the microsoft-store environment)'
         type: boolean
         default: false
+      flight_id:
+        description: 'Partner Center package flight to submit to instead of everyone (overrides the MSIX_FLIGHT_ID variable)'
+        type: string
+        default: ''
+
   pull_request:
     paths:
       - 'packaging/msix/**'
-      - 'src-tauri/**'
+      - 'apps/desktop/**'
+      - 'scripts/build_desktop_runtime.py'
       - 'pyproject.toml'
       - 'uv.lock'
       - '.github/workflows/msix.yml'
@@ -29,7 +35,8 @@ on:
       - 'v*'
     paths:
       - 'packaging/msix/**'
-      - 'src-tauri/**'
+      - 'apps/desktop/**'
+      - 'scripts/build_desktop_runtime.py'
       - 'pyproject.toml'
       - 'uv.lock'
       - '.github/workflows/msix.yml'
@@ -56,7 +63,7 @@ jobs:
       # Outside the checkout: the backend reports `source_root` by walking up
       # from its installed files to a pyproject.toml, which must not find the repo.
       PKG: C:\msix-pkg
-      PY: C:\msix-pkg\runtime\python\python.exe
+      PY: C:\msix-pkg\resources\runtime\python\python.exe
       # Partner Center values; test values keep the job usable before the
       # Store reservation exists.
       MSIX_IDENTITY_NAME: ${{ vars.MSIX_IDENTITY_NAME || 'Suzent.CITest' }}
@@ -77,7 +84,7 @@ jobs:
           REF_NAME: ${{ github.ref_name }}
           INPUT_PUBLISH: ${{ inputs.publish }}
         run: |
-          $version = (Get-Content src-tauri/tauri.conf.json -Raw | ConvertFrom-Json).version
+          $version = (Get-Content apps/desktop/package.json -Raw | ConvertFrom-Json).version
           if ($version -notmatch '^\d+\.\d+\.\d+$') { throw "Unexpected app version $version" }
           $publish = $false
           if ($env:EVENT_NAME -eq 'push' -and $env:REF_TYPE -eq 'tag') { $publish = $true }
@@ -87,7 +94,7 @@ jobs:
               "::error::$env:REF_NAME is not a desktop release tag (vX.Y.Z)"; exit 1
             }
             if ($env:REF_NAME -ne "v$version") {
-              "::error::Tag $env:REF_NAME does not match app version $version (src-tauri/tauri.conf.json). Store submissions use the app version, so they must agree."; exit 1
+              "::error::Tag $env:REF_NAME does not match app version $version (apps/desktop/package.json). Store submissions use the app version (apps/desktop/package.json), so they must agree."; exit 1
             }
           } elseif ($publish -and $env:REF -ne 'refs/heads/main') {
             "::error::Publishing is only allowed from a vX.Y.Z tag or main, not $env:REF"; exit 1
@@ -98,16 +105,8 @@ jobs:
           "publish=$($publish.ToString().ToLower())" | Out-File -Append -Encoding utf8 $env:GITHUB_OUTPUT
           "app version $version, publish=$publish"
 
-      - name: Set up Python
-        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
-        with:
-          python-version: '3.12'
-
-      - name: Install uv
-        shell: pwsh
-        run: |
-          irm https://astral.sh/uv/install.ps1 | iex
-          "$env:USERPROFILE\.local\bin" | Out-File -Append -Encoding utf8 $env:GITHUB_PATH
+      - name: Set up uv
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
@@ -115,7 +114,7 @@ jobs:
           cache: npm
           cache-dependency-path: |
             frontend/package-lock.json
-            src-tauri/package-lock.json
+            apps/desktop/package-lock.json
 
       - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
         with:
@@ -123,112 +122,67 @@ jobs:
 
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         with:
-          workspaces: src-tauri
+          workspaces: apps/desktop/store-cli
           cache-on-failure: true
 
-      # python-build-standalone is what uv installs, so this is the same
-      # relocatable CPython the PoC validated.
-      - name: Fetch relocatable CPython 3.12
-        shell: pwsh
+      - name: Build frontend
+        working-directory: frontend
         run: |
-          uv python install 3.12
-          $src = Split-Path -Parent (uv python find 3.12 --managed-python)
-          New-Item -ItemType Directory -Force "$env:PKG\runtime" | Out-Null
-          Copy-Item -Recurse $src "$env:PKG\runtime\python"
-          & $env:PY -c "import sys; print(sys.version)"
-
-      - name: Install frontend dependencies and stage the web UI
-        run: |
-          cd frontend
           npm ci
-          cd ../src-tauri
+          npm run build
+
+      # The same runtime and resources the installers ship: python-build-standalone
+      # CPython with the locked dependencies, precompiled, plus config/ skills/
+      # plugins/ extensions/browser.
+      - name: Build the bundled runtime
+        run: uv run --no-project python scripts/build_desktop_runtime.py
+
+      - name: Build the Electron app (unpacked)
+        working-directory: apps/desktop
+        run: |
           npm ci
-          cd ..
-          # `suzent web` and the backend's SPA routes serve src/suzent/webui/,
-          # a gitignored build artifact the wheel ships only when it exists.
-          python scripts/build_webui.py
+          npm run dist:dir
 
-      - name: Install locked dependencies and Suzent (non-editable)
+      # The `suzent` execution alias and the start-at-login switch (see
+      # apps/desktop/store-cli/src/main.ts).
+      - name: Build the store command helper
+        working-directory: apps/desktop/store-cli
+        run: |
+          cargo test --locked
+          cargo build --release --locked
+
+      - name: Assemble package folder
         shell: pwsh
         run: |
-          # Built-in plugin extras are bundled: the package cannot install them later.
-          uv export --frozen --no-dev --extra social --extra camera --no-editable --no-hashes --no-emit-project -o requirements-msix.txt
-          uv pip install --python $env:PY --break-system-packages -r requirements-msix.txt
-          uv pip install --python $env:PY --break-system-packages --no-deps .
-          & $env:PY -c "import suzent.server, lancedb, litellm, pydantic_ai; print('imports ok')"
-
-      - name: Strip files that break signing, and test suites
-        shell: pwsh
-        run: |
-          $rt = "$env:PKG\runtime\python"
+          Copy-Item -Recurse apps/desktop/release/win-unpacked $env:PKG
+          Copy-Item apps/desktop/store-cli/target/release/suzent.exe "$env:PKG\resources\bin\suzent.exe"
+          # The NSIS install's PATH command; the package uses the alias instead.
+          Remove-Item "$env:PKG\resources\bin\suzent.cmd", "$env:PKG\resources\bin\suzent" -ErrorAction SilentlyContinue
           # signtool fails with 0x800700C1 on these PEs (PoC bisect). vcruntime
           # comes from the VCLibs framework dependency instead.
-          $paths = @(
-            'DLLs\tcl86t.dll', 'DLLs\tk86t.dll', 'DLLs\_tkinter.pyd',
-            'vcruntime140.dll', 'vcruntime140_1.dll',
-            'tcl', 'Lib\tkinter', 'Lib\idlelib', 'Lib\turtledemo',
-            'Lib\test', 'Lib\unittest\test', 'Lib\lib2to3\tests'
-          )
-          foreach ($p in $paths) {
-            if (Test-Path "$rt\$p") { Remove-Item -Recurse -Force "$rt\$p"; "removed $p" }
+          foreach ($p in 'vcruntime140.dll', 'vcruntime140_1.dll') {
+            $f = Join-Path (Split-Path -Parent $env:PY) $p
+            if (Test-Path $f) { Remove-Item -Force $f; "removed $p" }
           }
-          # pip stays: without uv on the user's machine, plugins/deps.py installs
-          # third-party plugin dependencies with `python -m pip install --target`.
-          & $env:PY -m pip --version
-          # _test*.pyd extension modules are CPython's own test helpers.
-          Get-ChildItem "$rt\DLLs" -Filter '_test*.pyd' | Remove-Item -Force
-          & $env:PY -c "import suzent.server, lancedb, litellm, pydantic_ai; print('imports ok after strip')"
-
-      - name: Precompile bytecode
-        shell: pwsh
-        run: |
-          # The install dir is read-only, so every .pyc must exist up front.
-          # One known Python 2 file (olefile2.py) fails to compile; ignore it.
-          & $env:PY -m compileall -q -j 0 "$env:PKG\runtime\python" | Select-Object -Last 20
-          exit 0
+          & $env:PY -c "import suzent.server, lancedb, litellm, pydantic_ai; print('imports ok')"
+          (Get-ChildItem -Recurse -File $env:PKG).Count
 
       - name: PE signability scan
         shell: pwsh
-        run: python packaging/msix/pescan.py "$env:PKG\runtime\python"
-
-      - name: Copy bundled resources
-        shell: pwsh
-        run: |
-          # extensions/browser is served by Settings > Browser (PROJECT_DIR/extensions).
-          foreach ($f in git ls-files config skills plugins extensions/browser) {
-            $dest = Join-Path "$env:PKG\app" $f
-            New-Item -ItemType Directory -Force (Split-Path -Parent $dest) | Out-Null
-            Copy-Item $f $dest
-          }
-          (Get-ChildItem -Recurse -File "$env:PKG\app").Count
-
-      - name: Build frontend dependencies
-        run: |
-          cd frontend
-          npm ci
-          cd ../src-tauri
-          npm ci
-
-      - name: Build Tauri exe (store config)
-        working-directory: src-tauri
-        run: npx tauri build --no-bundle --config tauri.conf.store.json
+        run: python packaging/msix/pescan.py (Split-Path -Parent $env:PY)
 
       - name: Render manifest and assets
         id: manifest
         shell: pwsh
         run: |
-          $version = (Get-Content src-tauri/tauri.conf.json -Raw | ConvertFrom-Json).version
+          $version = (Get-Content apps/desktop/package.json -Raw | ConvertFrom-Json).version
           if ($version -notmatch '^\d+\.\d+\.\d+$') { throw "Unexpected app version $version" }
           $v4 = "$version.0"
           $t = Get-Content packaging/msix/AppxManifest.template.xml -Raw
           $t = $t.Replace('{{IDENTITY_NAME}}', $env:MSIX_IDENTITY_NAME).Replace('{{PUBLISHER}}', $env:MSIX_PUBLISHER).Replace('{{PUBLISHER_DISPLAY_NAME}}', $env:MSIX_PUBLISHER_DISPLAY_NAME).Replace('{{VERSION}}', $v4)
           if ($t -match '\{\{') { throw 'Unrendered placeholder in manifest' }
           [IO.File]::WriteAllText("$env:PKG\AppxManifest.xml", $t)
-          Copy-Item src-tauri/target/release/suzent.exe "$env:PKG\suzent.exe"
           New-Item -ItemType Directory -Force "$env:PKG\Assets" | Out-Null
-          foreach ($a in 'StoreLogo.png', 'Square44x44Logo.png', 'Square150x150Logo.png') {
-            Copy-Item "src-tauri/icons/$a" "$env:PKG\Assets\$a"
-          }
           Copy-Item packaging/msix/assets/*.png "$env:PKG\Assets\"
           "version=$v4" | Out-File -Append -Encoding utf8 $env:GITHUB_OUTPUT
           "Identity: $env:MSIX_IDENTITY_NAME / $env:MSIX_PUBLISHER / $v4"
@@ -277,13 +231,13 @@ jobs:
         run: |
           $files = Get-ChildItem -Recurse -File $env:PKG
           $msix = Get-ChildItem out\*.msix | Select-Object -First 1
-          $top = Get-ChildItem "$env:PKG\runtime\python\Lib\site-packages" -Directory | ForEach-Object {
+          $top = Get-ChildItem "$env:PKG\resources\runtime\python\Lib\site-packages" -Directory | ForEach-Object {
             [pscustomobject]@{ Name = $_.Name; MB = [math]::Round((Get-ChildItem -Recurse -File $_.FullName | Measure-Object Length -Sum).Sum / 1MB, 1) }
           } | Sort-Object MB -Descending | Select-Object -First 15
           $report = @(
             "msix: $($msix.Name) $([math]::Round($msix.Length / 1MB, 1)) MB"
             "unpacked: $($files.Count) files, $([math]::Round(($files | Measure-Object Length -Sum).Sum / 1MB, 1)) MB"
-            "suzent.exe: $([math]::Round((Get-Item "$env:PKG\suzent.exe").Length / 1MB, 1)) MB"
+            "SUZENT.exe: $([math]::Round((Get-Item "$env:PKG\SUZENT.exe").Length / 1MB, 1)) MB"
             ''
             'largest site-packages (MB):'
             ($top | ForEach-Object { "  $($_.MB)`t$($_.Name)" })
@@ -302,6 +256,21 @@ jobs:
           if (-not $p) { throw 'Package not registered' }
           $p | Select-Object Name, Version, PackageFamilyName, InstallLocation | Format-List
 
+      # Through the alias, as a user's terminal runs it: inside the package.
+      - name: Smoke test the suzent command
+        shell: pwsh
+        run: |
+          $alias = Join-Path $env:LOCALAPPDATA 'Microsoft\WindowsApps\suzent.exe'
+          if (-not (Test-Path $alias)) { throw "Execution alias $alias was not created" }
+          & $alias --version
+          if ($LASTEXITCODE -ne 0) { throw "suzent --version failed ($LASTEXITCODE)" }
+          & $alias update 2>&1 | Out-Host
+          if ($LASTEXITCODE -eq 0) { throw 'suzent update should be refused in the Store package' }
+          # Runners have no interactive session, so the task may be unavailable here.
+          & $alias --startup-task status
+          if ($LASTEXITCODE -ne 0) { Write-Warning 'Start-at-login state unavailable on this runner' }
+          exit 0
+
       - name: Smoke test bundled backend
         shell: pwsh
         run: |
@@ -311,7 +280,7 @@ jobs:
           $psi.UseShellExecute = $false
           $psi.RedirectStandardInput = $true   # backend exits when stdin closes
           $psi.WorkingDirectory = $data
-          $psi.Environment['SUZENT_PROJECT_DIR'] = "$env:PKG\app"
+          $psi.Environment['SUZENT_PROJECT_DIR'] = "$env:PKG\resources\suzent"
           $psi.Environment['SUZENT_DATA_DIR'] = $data
           $psi.Environment['SUZENT_HOST'] = '127.0.0.1'
           $psi.Environment['SUZENT_PORT'] = '0'
@@ -432,7 +401,16 @@ jobs:
         shell: pwsh
         env:
           MSIX_PATH: ${{ steps.pkg.outputs.path }}
+          # Set the MSIX_FLIGHT_ID repo variable to send every release to a
+          # package flight (testers) only; clear it to ship to everyone.
+          FLIGHT_ID: ${{ inputs.flight_id || vars.MSIX_FLIGHT_ID }}
         run: |
-          msstore publish $env:MSIX_PATH -id $env:STORE_APP_ID
+          if ($env:FLIGHT_ID) {
+            msstore publish $env:MSIX_PATH -id $env:STORE_APP_ID --flightId $env:FLIGHT_ID
+            $target = "package flight $env:FLIGHT_ID"
+          } else {
+            msstore publish $env:MSIX_PATH -id $env:STORE_APP_ID
+            $target = 'everyone'
+          }
           if ($LASTEXITCODE -ne 0) { throw "msstore publish failed ($LASTEXITCODE)" }
-          "Submitted $(Split-Path -Leaf $env:MSIX_PATH) to Store app $env:STORE_APP_ID; Partner Center certification follows." | Out-File -Append -Encoding utf8 $env:GITHUB_STEP_SUMMARY
+          "Submitted $(Split-Path -Leaf $env:MSIX_PATH) to Store app $env:STORE_APP_ID for $target; Partner Center certification follows." | Out-File -Append -Encoding utf8 $env:GITHUB_STEP_SUMMARY
