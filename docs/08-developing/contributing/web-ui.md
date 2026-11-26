@@ -184,11 +184,12 @@ During frontend development you do not need any of this -- see below.
 
 ## Developing against it
 
-`npm run dev` in `frontend/` (or `npm run dev` in `src-tauri/`, which starts the
-same Vite server before opening the Tauri window) serves the UI on
+`npm run dev` in `frontend/` (or `npm run dev` in `apps/desktop/`, which starts
+the same Vite server before opening the Electron window) serves the UI on
 `http://127.0.0.1:18080`. One server, both shells:
 
-- the **Tauri window** gets the desktop shell, because `window.__TAURI__` is set
+- the **Electron window** gets the desktop shell, because its preload exposes the
+  desktop bridge
 - a **browser tab** at `http://127.0.0.1:18080` gets the console
 
 You can keep both open against the same Vite process and watch a change land in

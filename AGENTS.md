@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-Suzent is a personal AI agent — Python backend (FastAPI + pydantic-ai) with a React/TypeScript + Tauri desktop frontend.
+Suzent is a personal AI agent — Python backend (FastAPI + pydantic-ai) with a React/TypeScript frontend and an Electron desktop shell (`apps/desktop`).
 
 ## Documentation
 
@@ -28,7 +28,7 @@ Full documentation lives in `docs/`. Each numbered folder is a sidebar section o
 ## Package Management
 
 - Use `uv` for all Python dependency management (`uv sync`, `uv add`, `uv run`)
-- Frontend: use `npm` inside `frontend/` or `src-tauri/`
+- Frontend: use `npm` inside `frontend/` or `apps/desktop/`
 
 ## Python Backend (`src/suzent/`)
 
