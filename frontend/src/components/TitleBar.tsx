@@ -17,7 +17,7 @@ export const TitleBar: React.FC<{ startup?: boolean }> = ({ startup = false }) =
   if (!desktop || (platform === 'windows' && !startup) || platform === 'macos') return null;
 
   const windowsStartup = startup && platform === 'windows';
-  const controlWidth = windowsStartup ? 'w-9' : 'w-11';
+  const controlWidth = 'w-11';
 
   const handleMaximize = async () => {
     await desktopWindow.toggleMaximize();
@@ -31,25 +31,27 @@ export const TitleBar: React.FC<{ startup?: boolean }> = ({ startup = false }) =
 
   const maximizeButtonClass = `h-full ${controlWidth} flex items-center justify-center hover:bg-brutal-black dark:hover:bg-zinc-600 hover:text-brutal-white transition-colors`;
 
+  // The startup screen has its own wordmark, so on Windows it only keeps
+  // the window controls floating over a drag strip.
   return (
     <div
-      className={`${windowsStartup ? 'h-12 px-4 md:px-6' : 'h-8'} bg-brutal-white dark:bg-zinc-800 flex items-center justify-between select-none fixed top-0 left-0 right-0 z-[9999] border-b-3 border-brutal-black`}
+      className={`${windowsStartup ? 'h-10 bg-transparent' : 'h-8 bg-brutal-white dark:bg-zinc-800 border-b-3 border-brutal-black'} flex items-center justify-between select-none fixed top-0 left-0 right-0 z-[9999]`}
     >
-      {/* Drag Region & Title */}
       <div
         className={`flex-1 h-full flex items-center ${windowsStartup ? '' : 'pl-4'}`}
         data-tauri-drag-region
       >
-        <span
-          className={`font-brutal ${windowsStartup ? 'text-2xl md:text-3xl' : 'text-sm mt-0.5'} uppercase tracking-tight text-brutal-black dark:text-white pointer-events-none leading-none`}
-        >
-          {t('app.title').toUpperCase()}
-        </span>
+        {!windowsStartup && (
+          <span className="font-brutal text-sm mt-0.5 uppercase tracking-tight text-brutal-black dark:text-white pointer-events-none leading-none">
+            {t('app.title').toUpperCase()}
+          </span>
+        )}
       </div>
 
       {/* Window controls */}
       <div
-        className={`flex h-full text-brutal-black dark:text-white ${windowsStartup ? 'absolute right-0 top-0 bottom-0' : ''}`}
+        className={`flex h-full text-brutal-black dark:text-white ${windowsStartup ? 'absolute right-0 top-0 bottom-0 text-neutral-500' : ''}`}
+        data-no-drag
       >
         {/* Minimize */}
         <button

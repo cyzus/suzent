@@ -3429,6 +3429,12 @@ html[data-motion='reduced'] .reasoning-thinking-label::after {
   }
 }
 
+/* Electron unions every drag region regardless of stacking, so controls that
+   float over one (the startup title bar) must opt out themselves. */
+html.electron-shell [data-no-drag] {
+  app-region: no-drag;
+}
+
 /* Electron moves the window through CSS instead of a startDragging() call.
    Tauri's drag attribute and the header/sidebar drag areas become drag
    regions; anything interactive inside them must stay clickable. */
