@@ -1,6 +1,6 @@
 [package]
 name = "suzent-installer"
-version = "0.28.3"
+version = "0.29.0"
 edition = "2021"
 description = "Suzent Desktop Installer"
 build = "build.rs"

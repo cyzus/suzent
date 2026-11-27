@@ -5,9 +5,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [v0.28.3] - 2026-11-27
+## [v0.29.0] - 2026-11-27
 
 ### Release notes
+- The built-in browser has tabs and an address bar, the agent follows the tab you pick and can open and close tabs, and you can choose whether it keeps sign-ins or clear its data in Settings → Browser.
 - Moving a Git install to the standard app now also removes the old desktop shortcut when the desktop folder has a non-English name, such as OneDrive\桌面.
 
 ## [v0.28.2] - 2026-11-27
