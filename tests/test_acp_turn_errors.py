@@ -480,3 +480,70 @@ async def test_acp_tool_args_update_replaces_snapshot():
     ]
     tool_part = next(p for p in assistant_calls[0]["parts"] if p["type"] == "tool")
     assert json.loads(tool_part["args"]) == {"file_path": "/workspace/a.txt"}
+
+
+@pytest.mark.asyncio
+async def test_acp_tool_retains_in_progress_output_and_emits_failure_outcome():
+    """Tool output streamed during in_progress is retained on status-only completion, and failed tools emit tool_call_outcome."""
+    updates = [
+        {
+            "sessionId": "s-1",
+            "update": {
+                "sessionUpdate": "tool_call",
+                "toolCallId": "tc-out",
+                "kind": "execute",
+                "rawInput": {"command": "echo hello"},
+                "rawOutput": {"stdout": "hello\n"},
+                "status": "in_progress",
+            },
+        },
+        {
+            "sessionId": "s-1",
+            "update": {
+                "sessionUpdate": "tool_call_update",
+                "toolCallId": "tc-out",
+                "status": "completed",
+            },
+        },
+        {
+            "sessionId": "s-1",
+            "update": {
+                "sessionUpdate": "tool_call",
+                "toolCallId": "tc-fail",
+                "kind": "execute",
+                "rawInput": {"command": "false"},
+                "rawOutput": {"exit_code": 1},
+                "status": "failed",
+            },
+        },
+        _text_chunk("Done."),
+    ]
+    events, _, db = await _run(
+        [_managed()],
+        [(updates, {"stopReason": "end_turn"})],
+    )
+    tc_out_results = [
+        e
+        for e in events
+        if e["type"] == "TOOL_CALL_RESULT" and e["toolCallId"] == "tc-out"
+    ]
+    assert len(tc_out_results) == 1
+    assert "hello" in tc_out_results[0]["content"]
+
+    outcomes = [
+        e
+        for e in events
+        if e["type"] == "CUSTOM" and e.get("name") == "tool_call_outcome"
+    ]
+    assert len(outcomes) == 1
+    assert outcomes[0]["value"] == {"toolCallId": "tc-fail", "outcome": "failed"}
+
+    assistant_calls = [
+        call.args[1]
+        for call in db.append_chat_message.call_args_list
+        if call.args[1].get("role") == "assistant"
+    ]
+    tc_out_part = next(
+        p for p in assistant_calls[0]["parts"] if p.get("toolCallId") == "tc-out"
+    )
+    assert "hello" in tc_out_part["output"]

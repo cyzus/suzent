@@ -363,6 +363,7 @@ async def _stream_prompt(
             display_parts = state.setdefault("display_parts", [])
             started_tools = state.setdefault("started_tools", set())
             last_tool_args = state.setdefault("last_tool_args", {})
+            last_tool_output = state.setdefault("last_tool_output", {})
 
             delta = _text_from_update(update)
             if delta:
@@ -453,20 +454,24 @@ async def _stream_prompt(
                     is_failed = status in ("failed", "error", "cancelled", "rejected")
                     tool_state = "completed" if (is_done or is_failed) else "running"
                     outcome = "failed" if is_failed else None
+                    prev_out = last_tool_output.get(tool_call_id)
+                    if out_str is not None:
+                        last_tool_output[tool_call_id] = out_str
+                    effective_out = out_str if out_str is not None else prev_out
                     _upsert_display_tool(
                         display_parts,
                         tool_call_id,
                         tool_name=tool_name,
                         args=args_str or None,
-                        output=out_str if (is_done or is_failed) else None,
+                        output=effective_out,
                         state=tool_state,
                         outcome=outcome,
                     )
 
                     if is_done or is_failed:
                         result_payload = (
-                            out_str
-                            if out_str is not None
+                            effective_out
+                            if effective_out is not None
                             else ("Failed" if is_failed else "Completed")
                         )
                         if is_failed and not result_payload.lstrip().startswith("{"):
@@ -485,14 +490,30 @@ async def _stream_prompt(
                                 "content": result_payload,
                             }
                         )
-                    elif out_str:
+                        if is_failed:
+                            yield _sse(
+                                {
+                                    "type": "CUSTOM",
+                                    "name": "tool_call_outcome",
+                                    "value": {
+                                        "toolCallId": tool_call_id,
+                                        "outcome": "failed",
+                                    },
+                                }
+                            )
+                    elif out_str and out_str != prev_out:
+                        delta_out = (
+                            out_str[len(prev_out) :]
+                            if (prev_out and out_str.startswith(prev_out))
+                            else out_str
+                        )
                         yield _sse(
                             {
                                 "type": "CUSTOM",
                                 "name": "shell_output_delta",
                                 "value": {
                                     "toolCallId": tool_call_id,
-                                    "delta": out_str,
+                                    "delta": delta_out,
                                 },
                             }
                         )
