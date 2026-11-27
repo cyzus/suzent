@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import secrets
+import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -44,6 +45,7 @@ def read_process_state() -> ServiceProcessState | None:
             port=int(raw["port"]),
             version=str(raw["version"]),
             source_root=raw.get("source_root"),
+            runtime_prefix=raw.get("runtime_prefix"),
         )
         process = psutil.Process(state.pid)
         if abs(process.create_time() - state.process_created_at) > 1.0:
@@ -108,6 +110,7 @@ class ServiceInstanceLock:
                 port=self.port,
                 version=get_backend_version(),
                 source_root=str(root) if (root := get_backend_source_root()) else None,
+                runtime_prefix=str(Path(sys.prefix).resolve()),
             )
             try:
                 os.write(fd, self.instance_id.encode("ascii"))
