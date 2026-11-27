@@ -13,6 +13,13 @@ const KEYS = [
   'acp.permission.untitled',
   'acp.sessionReset.header',
   'chatWindow.acpAgentLocked',
+  'settings.acp.searchPlaceholder',
+  'settings.acp.installedSection',
+  'settings.acp.catalogSection',
+  'settings.acp.installAdapter',
+  'settings.acp.installingAdapter',
+  'settings.acp.adapterAutoHint',
+  'settings.acp.noMatchingAgents',
 ];
 
 // Guards against adding a string under the wrong namespace: tForLocale falls

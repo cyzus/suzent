@@ -215,3 +215,281 @@ def test_a_custom_agent_can_carry_its_own_docs_url(tmp_path):
     registry = ACPAgentRegistry(path=path)
 
     assert registry.get("mine").docs_url == "https://mine.test/install"
+
+
+def test_expanded_builtin_registry_and_aliases(tmp_path, monkeypatch):
+    monkeypatch.setenv("SUZENT_DATA_DIR", str(tmp_path))
+    registry = ACPAgentRegistry(path=tmp_path / "acp_agents.json")
+    ids = {a.id for a in registry.list_agents()}
+    assert "claude-code-api" not in ids
+    for expected in (
+        "claude-code",
+        "codex",
+        "gemini",
+        "github-copilot-cli",
+        "qwen-code",
+        "kimi-code",
+        "grok",
+        "opencode",
+        "cursor",
+        "cline",
+        "goose",
+        "auggie",
+        "kilo",
+    ):
+        assert expected in ids, f"Missing built-in agent: {expected}"
+
+    assert registry.get("claude-acp").id == "claude-code"
+    assert registry.get("claude-code-api").id == "claude-code"
+    assert registry.get("grok-build").id == "grok"
+
+
+def test_dialect_auth_and_quota_error_detection():
+    from suzent.acp.client import ACPError
+
+    err_code = ACPError("Sign in", code=-32000)
+    assert err_code.auth_required is True
+
+    err_text = ACPError(
+        "Error: User is not logged in. Please run `codex login`", code=-32603
+    )
+    assert err_text.auth_required is True
+
+    err_quota = ACPError("HTTP 429: usage limit or quota exceeded", code=-32603)
+    assert err_quota.quota_exceeded is True
+
+
+def test_on_disk_local_agent_state_inspection(tmp_path, monkeypatch):
+    from suzent.acp import dialects
+
+    monkeypatch.setattr(dialects.Path, "home", lambda: tmp_path)
+    claude_dir = tmp_path / ".claude"
+    claude_dir.mkdir()
+    (claude_dir / ".credentials.json").write_text(
+        json.dumps({"claudeAiOauth": {"subscriptionType": "max"}}),
+        encoding="utf-8",
+    )
+
+    state = dialects.inspect_local_agent_state("claude-code")
+    assert state["auth_hint"] == "ok"
+    assert state["usage_summary"] == "Plan: max"
+
+
+@pytest.mark.asyncio
+async def test_seamless_adapter_auto_install(tmp_path, monkeypatch):
+    monkeypatch.setenv("SUZENT_DATA_DIR", str(tmp_path))
+    monkeypatch.setattr(registry_mod.shutil, "which", lambda name: f"/usr/bin/{name}")
+
+    class DummyProc:
+        returncode = 0
+
+        async def communicate(self):
+            # Simulate npm installing the package into ~/.suzent/acp_adapters/node_modules
+            pkg_dir = (
+                tmp_path
+                / "acp_adapters"
+                / "node_modules"
+                / "@agentclientprotocol"
+                / "codex-acp"
+            )
+            pkg_dir.mkdir(parents=True, exist_ok=True)
+            return b"installed", b""
+
+    import asyncio
+
+    async def fake_exec(*args, **kwargs):
+        return DummyProc()
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_exec)
+    monkeypatch.setattr(
+        registry_mod,
+        "_npm_global_roots",
+        lambda: [tmp_path / "acp_adapters" / "node_modules"],
+    )
+    monkeypatch.setattr(registry_mod, "_npx_cache_roots", lambda: [])
+
+    manager = ACPManager(ACPAgentRegistry(path=tmp_path / "acp_agents.json"))
+    agent = manager.registry.get("codex")
+    assert agent.available is False
+
+    res = await manager.install_adapter("codex")
+    assert res["status"] == "installed"
+    assert manager.registry.get("codex").available is True
+
+
+def test_resolve_managed_npx_command_uses_installed_bin(tmp_path, monkeypatch):
+    from suzent.acp.registry import resolve_managed_npx_command
+
+    monkeypatch.setenv("SUZENT_DATA_DIR", str(tmp_path))
+    monkeypatch.setattr(
+        registry_mod.shutil,
+        "which",
+        lambda name: "/usr/bin/node" if name == "node" else None,
+    )
+
+    pkg_dir = tmp_path / "acp_adapters" / "node_modules" / "@google" / "gemini-cli"
+    pkg_dir.mkdir(parents=True)
+    script = pkg_dir / "dist" / "index.js"
+    script.parent.mkdir()
+    script.write_text("// gemini", encoding="utf-8")
+    (pkg_dir / "package.json").write_text(
+        json.dumps({"name": "@google/gemini-cli", "bin": {"gemini": "dist/index.js"}}),
+        encoding="utf-8",
+    )
+
+    resolved = resolve_managed_npx_command(["npx", "-y", "@google/gemini-cli", "--acp"])
+    assert resolved == ["/usr/bin/node", str(script.resolve()), "--acp"]
+
+    # Pinned version mismatch preserves the original npx command
+    (pkg_dir / "package.json").write_text(
+        json.dumps(
+            {
+                "name": "@google/gemini-cli",
+                "version": "2.0.0",
+                "bin": {"gemini": "dist/index.js"},
+            }
+        ),
+        encoding="utf-8",
+    )
+    assert resolve_managed_npx_command(
+        ["npx", "-y", "@google/gemini-cli@1.0.0", "--acp"]
+    ) == ["npx", "-y", "@google/gemini-cli@1.0.0", "--acp"]
+    assert resolve_managed_npx_command(
+        ["npx", "-y", "@google/gemini-cli@2.0.0", "--acp"]
+    ) == ["/usr/bin/node", str(script.resolve()), "--acp"]
+
+    # Non-JS native binary in bin executes directly without prepending node
+    native_bin = pkg_dir / "bin" / "gemini-native"
+    native_bin.parent.mkdir()
+    native_bin.write_bytes(b"\x7fELF-native-binary")
+    (pkg_dir / "package.json").write_text(
+        json.dumps(
+            {
+                "name": "@google/gemini-cli",
+                "version": "2.0.0",
+                "bin": "bin/gemini-native",
+            }
+        ),
+        encoding="utf-8",
+    )
+    assert resolve_managed_npx_command(
+        ["npx", "-y", "@google/gemini-cli", "--acp"]
+    ) == [str(native_bin.resolve()), "--acp"]
+
+
+@pytest.mark.asyncio
+async def test_cancelled_adapter_install_terminates_process(tmp_path, monkeypatch):
+    import asyncio
+
+    monkeypatch.setenv("SUZENT_DATA_DIR", str(tmp_path))
+    monkeypatch.setattr(registry_mod.shutil, "which", lambda name: f"/usr/bin/{name}")
+
+    killed = False
+
+    class HangingProc:
+        returncode = None
+        pid = 99999
+
+        async def communicate(self):
+            await asyncio.sleep(60)
+            return b"", b""
+
+        def kill(self):
+            nonlocal killed
+            killed = True
+            self.returncode = -9
+
+        async def wait(self):
+            return self.returncode
+
+    async def fake_exec(*args, **kwargs):
+        if args and args[0] == "taskkill":
+
+            class DummyKill:
+                async def wait(self):
+                    return 0
+
+            return DummyKill()
+        return HangingProc()
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_exec)
+    monkeypatch.setattr(
+        registry_mod,
+        "_npm_global_roots",
+        lambda: [tmp_path / "acp_adapters" / "node_modules"],
+    )
+    monkeypatch.setattr(registry_mod, "_npx_cache_roots", lambda: [])
+    registry_mod._npm_cache.clear()
+
+    manager = ACPManager(ACPAgentRegistry(path=tmp_path / "acp_agents.json"))
+    task = asyncio.create_task(manager.install_adapter("codex"))
+    await asyncio.sleep(0.05)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert killed is True
+
+
+@pytest.mark.asyncio
+async def test_install_adapter_preserves_pinned_version(tmp_path, monkeypatch):
+    import asyncio
+
+    monkeypatch.setenv("SUZENT_DATA_DIR", str(tmp_path))
+    monkeypatch.setattr(registry_mod.shutil, "which", lambda name: f"/usr/bin/{name}")
+    monkeypatch.setattr(
+        registry_mod,
+        "_npm_global_roots",
+        lambda: [tmp_path / "acp_adapters" / "node_modules"],
+    )
+    monkeypatch.setattr(registry_mod, "_npx_cache_roots", lambda: [])
+    registry_mod._npm_cache.clear()
+
+    # Pre-install an incompatible version 2.0.0
+    pkg_dir = tmp_path / "acp_adapters" / "node_modules" / "@scope" / "adapter"
+    pkg_dir.mkdir(parents=True)
+    (pkg_dir / "package.json").write_text(
+        json.dumps({"name": "@scope/adapter", "version": "2.0.0"}),
+        encoding="utf-8",
+    )
+
+    installed_args: list[str] = []
+
+    class DummyProc:
+        returncode = 0
+
+        async def communicate(self):
+            (pkg_dir / "package.json").write_text(
+                json.dumps({"name": "@scope/adapter", "version": "1.0.0"}),
+                encoding="utf-8",
+            )
+            return b"installed", b""
+
+    async def fake_exec(*args, **kwargs):
+        installed_args.extend(str(a) for a in args)
+        return DummyProc()
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_exec)
+
+    agents_json = tmp_path / "acp_agents.json"
+    agents_json.write_text(
+        json.dumps(
+            {
+                "agents": [
+                    {
+                        "id": "pinned-agent",
+                        "name": "Pinned Agent",
+                        "command": ["npx", "-y", "@scope/adapter@1.0.0"],
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    reg = ACPAgentRegistry(path=agents_json)
+    manager = ACPManager(reg)
+    assert manager.registry.get("pinned-agent").available is False
+
+    res = await manager.install_adapter("pinned-agent")
+    assert res["status"] == "installed"
+    assert "@scope/adapter@1.0.0" in installed_args
+    assert manager.registry.get("pinned-agent").available is True

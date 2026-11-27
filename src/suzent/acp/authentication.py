@@ -48,7 +48,9 @@ class ACPLogins:
         self, agent_id: str, cwd: str, method_id: str | None = None
     ) -> LoginState:
         agent = self.manager.registry.get(agent_id)
-        if not agent.available:
+        if not agent.available and not (
+            agent.adapter_package and shutil.which(agent.command[0])
+        ):
             raise ValueError("Agent is not installed")
         if agent_id in self.tasks and not self.tasks[agent_id].done():
             return self.state(agent_id)
@@ -73,12 +75,22 @@ class ACPLogins:
         try:
             async with asyncio.timeout(300):
                 agent = self.manager.registry.get(agent_id)
+                if not agent.available and agent.adapter_package:
+                    await self.manager.install_adapter(agent_id)
+                    agent = self.manager.registry.get(agent_id)
+                from .dialects import get_dialect
+
+                dialect = get_dialect(agent_id)
                 command: list[str] | None = None
                 env = {**os.environ, **agent.env}
-                if agent_id == "claude-code":
-                    for key in ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN"):
-                        env.pop(key, None)
-                client = ACPClient(agent.command, cwd=agent.cwd or cwd, env=agent.env)
+                for key in dialect.env_to_strip:
+                    env.pop(key, None)
+                client = ACPClient(
+                    agent.command,
+                    cwd=agent.cwd or cwd,
+                    env=agent.env,
+                    env_to_strip=dialect.env_to_strip,
+                )
                 client.terminal_auth = terminal_available()
                 try:
                     await client.start()
@@ -132,7 +144,9 @@ class ACPLogins:
                             )
                         ):
                             raise ValueError("Invalid terminal method")
-                        command = [*agent.command, *args]
+                        from .registry import resolve_managed_npx_command
+
+                        command = [*resolve_managed_npx_command(agent.command), *args]
                         env.update(overrides)
                     elif selected is None and agent.login_command:
                         command = agent.login_command

@@ -35,6 +35,23 @@ describe('fetchAcpAgents', () => {
     expect(agent.adapter_package).toBe('@agentclientprotocol/codex-acp');
   });
 
+  it('carries usage_summary through to the descriptor', async () => {
+    respond([
+      {
+        id: 'claude-code',
+        name: 'Claude Code (CLI)',
+        status: 'ready',
+        auth_status: 'ok',
+        usage_summary: 'Plan: max',
+      },
+    ]);
+
+    const [agent] = await fetchAcpAgents();
+
+    expect(agent.auth_status).toBe('ok');
+    expect(agent.usage_summary).toBe('Plan: max');
+  });
+
   it('leaves the setup fields undefined for an agent that has none', async () => {
     respond([{ id: 'bare', name: 'Bare', status: 'ready' }]);
 

@@ -43,7 +43,17 @@ class ACPError(RuntimeError):
 
     @property
     def auth_required(self) -> bool:
-        return self.code == -32000
+        if self.code == -32000:
+            return True
+        from .dialects import GENERIC_DIALECT
+
+        return GENERIC_DIALECT.is_auth_error(self.code, self.message, self.data)
+
+    @property
+    def quota_exceeded(self) -> bool:
+        from .dialects import GENERIC_DIALECT
+
+        return GENERIC_DIALECT.is_quota_error(self.code, self.message, self.data)
 
 
 class ACPClient:
@@ -53,12 +63,14 @@ class ACPClient:
         *,
         cwd: str | None = None,
         env: dict[str, str] | None = None,
+        env_to_strip: tuple[str, ...] = (),
         notification_handler: NotificationHandler | None = None,
         permission_handler: PermissionHandler | None = None,
     ):
         self.command = command
         self.cwd = cwd
         self.env = env or {}
+        self.env_to_strip = env_to_strip
         self.notification_handler = notification_handler
         self.permission_handler = permission_handler
         self.process: asyncio.subprocess.Process | None = None
@@ -89,7 +101,31 @@ class ACPClient:
             raise ACPError("ACP command is empty")
         self._read_error = None
         process_env = os.environ.copy()
+        for key in self.env_to_strip:
+            process_env.pop(key, None)
         process_env.update(self.env)
+
+        # Ensure Suzent-managed ACP adapters (`~/.suzent/acp_adapters`) are on
+        # PATH and NODE_PATH so `npx` finds them without re-downloading.
+        from pathlib import Path
+
+        adapter_root = (
+            Path(os.environ.get("SUZENT_DATA_DIR", "~/.suzent")).expanduser()
+            / "acp_adapters"
+        )
+        adapter_bin = adapter_root / "node_modules" / ".bin"
+        if adapter_bin.is_dir():
+            process_env["PATH"] = (
+                f"{adapter_bin}{os.pathsep}{process_env.get('PATH', '')}"
+            )
+        adapter_modules = adapter_root / "node_modules"
+        if adapter_modules.is_dir():
+            existing_node_path = process_env.get("NODE_PATH", "")
+            process_env["NODE_PATH"] = (
+                f"{adapter_modules}{os.pathsep}{existing_node_path}"
+                if existing_node_path
+                else str(adapter_modules)
+            )
 
         # Resolve the executable to its full path.  On Windows,
         # ``create_subprocess_exec`` calls ``CreateProcessW`` which does NOT
@@ -99,8 +135,10 @@ class ACPClient:
         # ``[WinError 2] The system cannot find the specified file``.
         # ``shutil.which`` honours PATHEXT on Windows and returns the full
         # path including the extension, which ``CreateProcessW`` can execute.
-        cmd = list(self.command)
-        resolved = shutil.which(cmd[0])
+        from .registry import resolve_managed_npx_command
+
+        cmd = resolve_managed_npx_command(list(self.command))
+        resolved = shutil.which(cmd[0], path=process_env.get("PATH"))
         if resolved:
             cmd[0] = resolved
 

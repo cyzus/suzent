@@ -7,10 +7,13 @@ export type BashRendererProps = ToolRendererProps;
 export const BashCommandRenderer: React.FC<BashRendererProps> = ({ parsedArgs }) => {
   const [copied, setCopied] = useState(false);
 
-  const command = useMemo(
-    () => (typeof parsedArgs?.content === 'string' ? parsedArgs.content : ''),
-    [parsedArgs]
-  );
+  const command = useMemo(() => {
+    for (const key of ['content', 'command', 'cmd', 'script'] as const) {
+      const value = parsedArgs?.[key];
+      if (typeof value === 'string' && value.trim()) return value;
+    }
+    return '';
+  }, [parsedArgs]);
 
   const handleCopy = useCallback(() => {
     navigator.clipboard.writeText(command).then(() => {

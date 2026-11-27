@@ -338,3 +338,386 @@ async def test_binary_uploads_emit_unsupported_warning():
     warnings = [e for e in events if e.get("name") == "acp.files_unsupported"]
     assert len(warnings) == 1
     assert warnings[0]["value"]["count"] == 1
+
+
+@pytest.mark.asyncio
+async def test_acp_thoughts_and_tool_calls_translate_to_agui_and_persist():
+    """ACP agent_thought_chunk and tool_call updates must stream as AG-UI events and persist in parts."""
+    updates = [
+        {
+            "sessionId": "s-1",
+            "update": {
+                "sessionUpdate": "agent_thought_chunk",
+                "content": {"type": "text", "text": "Checking skills directory..."},
+            },
+        },
+        {
+            "sessionId": "s-1",
+            "update": {
+                "sessionUpdate": "tool_call",
+                "toolCallId": "tc-1",
+                "kind": "read",
+                "title": "Read skills/README.md",
+                "status": "in_progress",
+                "rawInput": {"file_path": "/workspace/skills/README.md"},
+            },
+        },
+        {
+            "sessionId": "s-1",
+            "update": {
+                "sessionUpdate": "tool_call_update",
+                "toolCallId": "tc-1",
+                "status": "completed",
+                "content": [
+                    {
+                        "type": "content",
+                        "content": {"type": "text", "text": "# Skills\n1. notebook"},
+                    }
+                ],
+            },
+        },
+        _text_chunk("Here are the skills I found."),
+    ]
+    events, _, db = await _run(
+        [_managed()],
+        [(updates, {"stopReason": "end_turn"})],
+    )
+
+    types = [e["type"] for e in events]
+    assert "REASONING_MESSAGE_CHUNK" in types
+    assert "TOOL_CALL_START" in types
+    assert "TOOL_CALL_ARGS" in types
+    assert "TOOL_CALL_RESULT" in types
+    assert "TEXT_MESSAGE_CONTENT" in types
+
+    tc_start = next(e for e in events if e["type"] == "TOOL_CALL_START")
+    assert tc_start["toolCallId"] == "tc-1"
+    assert tc_start["toolCallName"] == "read_file"
+
+    tc_res = next(e for e in events if e["type"] == "TOOL_CALL_RESULT")
+    assert tc_res["toolCallId"] == "tc-1"
+    assert "# Skills" in tc_res["content"]
+
+    # Check persisted assistant message row includes parts (reasoning, tool, text)
+    assistant_calls = [
+        call.args[1]
+        for call in db.append_chat_message.call_args_list
+        if call.args[1].get("role") == "assistant"
+    ]
+    assert len(assistant_calls) == 1
+    persisted = assistant_calls[0]
+    assert persisted["model"] == "acp/claude-code"
+    assert persisted["content"] == "Here are the skills I found."
+    parts = persisted["parts"]
+    assert [p["type"] for p in parts] == ["reasoning", "tool", "text"]
+    assert parts[0]["text"] == "Checking skills directory..."
+    assert parts[1]["toolName"] == "read_file"
+    assert parts[1]["state"] == "completed"
+    assert "# Skills" in parts[1]["output"]
+
+
+@pytest.mark.asyncio
+async def test_acp_failed_turn_after_thought_still_emits_run_error():
+    """A turn that emits thoughts and then fails with stopReason=error must report RUN_ERROR."""
+    updates = [
+        {
+            "sessionId": "s-1",
+            "update": {
+                "sessionUpdate": "agent_thought_chunk",
+                "content": {"type": "text", "text": "Thinking before quota failure..."},
+            },
+        },
+        _turn_error("quota exhausted"),
+    ]
+    events, _, _ = await _run(
+        [_managed()],
+        [(updates, {"stopReason": "error"})],
+    )
+    errors = [e for e in events if e["type"] == "RUN_ERROR"]
+    assert len(errors) == 1
+    assert "quota exhausted" in errors[0]["message"]
+
+
+@pytest.mark.asyncio
+async def test_acp_tool_args_update_replaces_snapshot():
+    """When tool args are refined across updates, TOOL_CALL_START is re-sent so the client replaces args."""
+    updates = [
+        {
+            "sessionId": "s-1",
+            "update": {
+                "sessionUpdate": "tool_call",
+                "toolCallId": "tc-1",
+                "title": "Read file",
+                "status": "pending",
+            },
+        },
+        {
+            "sessionId": "s-1",
+            "update": {
+                "sessionUpdate": "tool_call_update",
+                "toolCallId": "tc-1",
+                "kind": "read",
+                "rawInput": {"file_path": "/workspace/a.txt"},
+                "status": "completed",
+            },
+        },
+        _text_chunk("Done."),
+    ]
+    events, _, db = await _run(
+        [_managed()],
+        [(updates, {"stopReason": "end_turn"})],
+    )
+    starts = [
+        e
+        for e in events
+        if e["type"] == "TOOL_CALL_START" and e["toolCallId"] == "tc-1"
+    ]
+    assert len(starts) == 2
+    assistant_calls = [
+        call.args[1]
+        for call in db.append_chat_message.call_args_list
+        if call.args[1].get("role") == "assistant"
+    ]
+    tool_part = next(p for p in assistant_calls[0]["parts"] if p["type"] == "tool")
+    assert json.loads(tool_part["args"]) == {"file_path": "/workspace/a.txt"}
+
+
+@pytest.mark.asyncio
+async def test_acp_tool_retains_in_progress_output_and_emits_failure_outcome():
+    """Tool output streamed during in_progress is retained on status-only completion, and failed tools emit tool_call_outcome."""
+    updates = [
+        {
+            "sessionId": "s-1",
+            "update": {
+                "sessionUpdate": "tool_call",
+                "toolCallId": "tc-out",
+                "kind": "execute",
+                "rawInput": {"command": "echo hello"},
+                "rawOutput": {"stdout": "hello\n"},
+                "status": "in_progress",
+            },
+        },
+        {
+            "sessionId": "s-1",
+            "update": {
+                "sessionUpdate": "tool_call_update",
+                "toolCallId": "tc-out",
+                "status": "completed",
+            },
+        },
+        {
+            "sessionId": "s-1",
+            "update": {
+                "sessionUpdate": "tool_call",
+                "toolCallId": "tc-fail",
+                "kind": "execute",
+                "rawInput": {"command": "false"},
+                "rawOutput": {"exit_code": 1},
+                "status": "failed",
+            },
+        },
+        _text_chunk("Done."),
+    ]
+    events, _, db = await _run(
+        [_managed()],
+        [(updates, {"stopReason": "end_turn"})],
+    )
+    tc_out_results = [
+        e
+        for e in events
+        if e["type"] == "TOOL_CALL_RESULT" and e["toolCallId"] == "tc-out"
+    ]
+    assert len(tc_out_results) == 1
+    assert "hello" in tc_out_results[0]["content"]
+
+    outcomes = [
+        e
+        for e in events
+        if e["type"] == "CUSTOM" and e.get("name") == "tool_call_outcome"
+    ]
+    assert len(outcomes) == 1
+    assert outcomes[0]["value"] == {"toolCallId": "tc-fail", "outcome": "failed"}
+
+    assistant_calls = [
+        call.args[1]
+        for call in db.append_chat_message.call_args_list
+        if call.args[1].get("role") == "assistant"
+    ]
+    tc_out_part = next(
+        p for p in assistant_calls[0]["parts"] if p.get("toolCallId") == "tc-out"
+    )
+    assert "hello" in tc_out_part["output"]
+    assert json.loads(tc_out_part["args"])["content"] == "echo hello"
+
+
+@pytest.mark.asyncio
+async def test_acp_tool_completion_metadata_does_not_overwrite_raw_input():
+    """A completion update with only locations/title/path-only diff must not overwrite earlier rawInput args."""
+    updates = [
+        {
+            "sessionId": "s-1",
+            "update": {
+                "sessionUpdate": "tool_call",
+                "toolCallId": "tc-edit",
+                "kind": "edit",
+                "rawInput": {
+                    "file_path": "a.txt",
+                    "old_string": "foo",
+                    "new_string": "bar",
+                },
+                "status": "in_progress",
+            },
+        },
+        {
+            "sessionId": "s-1",
+            "update": {
+                "sessionUpdate": "tool_call_update",
+                "toolCallId": "tc-edit",
+                "title": "Edit a.txt",
+                "locations": [{"path": "a.txt"}],
+                "content": [{"type": "diff", "path": "a.txt"}],
+                "status": "completed",
+            },
+        },
+        _text_chunk("Edited."),
+    ]
+    events, _, db = await _run(
+        [_managed()],
+        [(updates, {"stopReason": "end_turn"})],
+    )
+    arg_events = [
+        e
+        for e in events
+        if e["type"] == "TOOL_CALL_ARGS" and e["toolCallId"] == "tc-edit"
+    ]
+    assert len(arg_events) == 1
+    assert json.loads(arg_events[0]["delta"]) == {
+        "file_path": "a.txt",
+        "old_string": "foo",
+        "new_string": "bar",
+    }
+    assistant_calls = [
+        call.args[1]
+        for call in db.append_chat_message.call_args_list
+        if call.args[1].get("role") == "assistant"
+    ]
+    tc_edit_part = next(
+        p for p in assistant_calls[0]["parts"] if p.get("toolCallId") == "tc-edit"
+    )
+    assert tc_edit_part["toolName"] == "edit_file"
+    assert json.loads(tc_edit_part["args"]) == {
+        "file_path": "a.txt",
+        "old_string": "foo",
+        "new_string": "bar",
+    }
+
+
+@pytest.mark.asyncio
+async def test_acp_tool_name_update_emitted_even_when_args_unchanged():
+    """When a later update refines tool kind/name without changing args, TOOL_CALL_START is emitted with the new name."""
+    updates = [
+        {
+            "sessionId": "s-1",
+            "update": {
+                "sessionUpdate": "tool_call",
+                "toolCallId": "tc-name",
+                "title": "Inspecting",
+                "rawInput": {"file_path": "a.txt"},
+                "status": "pending",
+            },
+        },
+        {
+            "sessionId": "s-1",
+            "update": {
+                "sessionUpdate": "tool_call_update",
+                "toolCallId": "tc-name",
+                "kind": "read",
+                "status": "completed",
+            },
+        },
+        _text_chunk("Read complete."),
+    ]
+    events, _, _ = await _run(
+        [_managed()],
+        [(updates, {"stopReason": "end_turn"})],
+    )
+    starts = [
+        e
+        for e in events
+        if e["type"] == "TOOL_CALL_START" and e["toolCallId"] == "tc-name"
+    ]
+    assert [s["toolCallName"] for s in starts] == ["Inspecting", "read_file"]
+
+
+@pytest.mark.asyncio
+async def test_acp_new_file_diff_supplies_empty_old_string():
+    """New-file diff blocks with oldText=None must populate old_string='' so FileDiffViewer can preview."""
+    updates = [
+        {
+            "sessionId": "s-1",
+            "update": {
+                "sessionUpdate": "tool_call",
+                "toolCallId": "tc-new",
+                "kind": "edit",
+                "content": [
+                    {
+                        "type": "diff",
+                        "path": "new.py",
+                        "oldText": None,
+                        "newText": "print('hi')\n",
+                    }
+                ],
+                "status": "completed",
+            },
+        },
+        _text_chunk("Created new.py."),
+    ]
+    _, _, db = await _run(
+        [_managed()],
+        [(updates, {"stopReason": "end_turn"})],
+    )
+    assistant_calls = [
+        call.args[1]
+        for call in db.append_chat_message.call_args_list
+        if call.args[1].get("role") == "assistant"
+    ]
+    part = next(
+        p for p in assistant_calls[0]["parts"] if p.get("toolCallId") == "tc-new"
+    )
+    assert json.loads(part["args"]) == {
+        "file_path": "new.py",
+        "old_string": "",
+        "new_string": "print('hi')\n",
+    }
+
+
+@pytest.mark.asyncio
+async def test_acp_cancelled_turn_persists_streamed_display_parts():
+    """Stopping a turn after tool calls streamed but before prose arrives must still persist the assistant activity row."""
+    updates = [
+        {
+            "sessionId": "s-1",
+            "update": {
+                "sessionUpdate": "tool_call",
+                "toolCallId": "tc-cancel",
+                "kind": "execute",
+                "rawInput": {"command": "echo hi"},
+                "rawOutput": {"stdout": "hi\n"},
+                "status": "completed",
+            },
+        },
+    ]
+    events, _, db = await _run(
+        [_managed()],
+        [(updates, {"stopReason": "cancelled"})],
+    )
+    errors = [e for e in events if e["type"] == "RUN_ERROR"]
+    assert len(errors) == 1
+    assert errors[0].get("code") == "stream_stopped"
+    assistant_calls = [
+        call.args[1]
+        for call in db.append_chat_message.call_args_list
+        if call.args[1].get("role") == "assistant"
+    ]
+    assert len(assistant_calls) == 1
+    assert assistant_calls[0]["parts"][0]["toolCallId"] == "tc-cancel"

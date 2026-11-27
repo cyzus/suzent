@@ -287,8 +287,10 @@ export interface AcpAgentDescriptor {
   executable_path?: string | null;
   /** True for agents shipped in the built-in registry. */
   builtin?: boolean;
-  /** Auth status reported by the registry (e.g. 'unknown', 'ok', 'missing'). */
+  /** Auth status reported by the registry or on-disk probe (e.g. 'unknown', 'ok', 'missing'). */
   auth_status?: string;
+  /** Non-secret on-disk usage/plan summary (e.g. subscription tier or local session count). */
+  usage_summary?: string | null;
 }
 
 export interface ChatGPTStatusResponse {
