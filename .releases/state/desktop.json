@@ -1,5 +1,5 @@
 {
-  "version": "0.28.1",
+  "version": "0.28.2",
   "consumed": [
     ".releases/changes/3d-loading-redesign.json",
     ".releases/changes/about-install-identity.json",
@@ -119,6 +119,7 @@
     ".releases/changes/dream-regent-send.json",
     ".releases/changes/drop-markitdown.json",
     ".releases/changes/electron-desktop-shell.json",
+    ".releases/changes/electron-theme-boot-script.json",
     ".releases/changes/email-oauth2.json",
     ".releases/changes/email-plugin.json",
     ".releases/changes/ember-theme.json",
@@ -158,6 +159,7 @@
     ".releases/changes/input-suggestion-persist.json",
     ".releases/changes/input-suggestion.json",
     ".releases/changes/install-dir-verbatim-path.json",
+    ".releases/changes/installed-service-ownership.json",
     ".releases/changes/interrupted-install-repair.json",
     ".releases/changes/kept-chat-subagents.json",
     ".releases/changes/lighter-background-polling.json",
