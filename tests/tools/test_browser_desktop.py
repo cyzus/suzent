@@ -13,7 +13,7 @@ from starlette.websockets import WebSocketDisconnect
 from suzent.tools.browser import config as browser_config
 from suzent.tools.browser import desktop
 from suzent.tools.browser import tool as tool_module
-from suzent.tools.browser.config import BrowserSettings
+from suzent.tools.browser.config import BrowserCommand, BrowserSettings
 from suzent.tools.browser.tool import BrowserSessionManager, BrowsingTool
 
 
@@ -65,7 +65,7 @@ def test_the_app_connects_with_the_token_and_websites_cannot(tmp_path: Path) -> 
         assert desktop.effective_mode("desktop") == "managed"
         with client.websocket_connect("/ws/browser-desktop") as socket:
             socket.send_json({"token": token})
-            assert socket.receive_json() == {"type": "ready"}
+            assert socket.receive_json() == {"type": "ready", "persistent": True}
             assert desktop.effective_mode("desktop") == "desktop"
             assert desktop.effective_mode("managed") == "managed"
         assert desktop.effective_mode("desktop") == "managed"
@@ -184,3 +184,49 @@ async def test_page_changing_actions_return_the_new_page(
     filled = await tool._execute("fill", ["@g2e0", "x"])
     assert calls == ["fill"]
     assert filled.message == "fill completed."
+
+
+async def test_agent_tabs_open_and_close_in_the_app(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    connection = desktop.desktop_bridge
+    session = desktop.BridgeSession(connection)
+    connection.socket = AsyncMock()
+    replies = {"new": {"id": "tab-2", "url": "https://a.example/"}}
+    replies["close"] = {"selected": "tab-1"}
+    calls: list[tuple] = []
+
+    async def request(action: str, **params):
+        calls.append((action, params))
+        return replies.get(action, {})
+
+    monkeypatch.setattr(connection, "request", request)
+    monkeypatch.setattr(session, "start_streaming", AsyncMock())
+    opened = await session.execute(
+        BrowserCommand(command="new_tab", arguments=["a.example"])
+    )
+    assert opened.success
+    assert calls[0] == ("new", {"url": "https://a.example"})
+    assert session.selected == "tab-2"
+    await session.execute(BrowserCommand(command="close_tab", arguments=["tab-2"]))
+    assert calls[1] == ("close", {"id": "tab-2"})
+    assert session.selected == "tab-1"
+
+
+async def test_the_agent_follows_the_tab_the_user_picks() -> None:
+    session = desktop.BridgeSession(desktop.desktop_bridge)
+    session.selected = "tab-1"
+    session.refs = {"@g1e0": ("node", {})}
+    await session.on_event("selected", {"id": "tab-3"})
+    assert session.selected == "tab-3"
+    assert session.refs == {}
+
+
+async def test_your_own_browser_cannot_open_tabs_for_the_agent() -> None:
+    from suzent.tools.browser.extension.bridge import ExtensionBridge
+
+    connection = ExtensionBridge()
+    connection.socket = AsyncMock()
+    session = desktop.BridgeSession(connection)
+    with pytest.raises(ValueError, match="not available in your own browser"):
+        await session.execute(BrowserCommand(command="new_tab", arguments=[]))

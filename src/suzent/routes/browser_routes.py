@@ -100,6 +100,21 @@ async def browser_preview_tab_endpoint(request: Request) -> JSONResponse:
         return JSONResponse({"error": "Browser tab unavailable"}, status_code=409)
 
 
+async def configure_desktop_browser() -> None:
+    """Tell the app's browser whether to keep sign-ins; it closes its tabs."""
+    if desktop_bridge.socket is None:
+        return
+    settings = await asyncio.to_thread(BrowserSettings.load)
+    async with desktop_session.lock:
+        try:
+            await desktop_bridge.request(
+                "configure", persistent=settings.desktop_persistent
+            )
+        except (ValueError, RuntimeError):
+            logger.warning("Could not update the built-in browser's sign-in setting")
+        await desktop_session.reset()
+
+
 async def browser_settings_endpoint(request: Request) -> JSONResponse:
     try:
         if request.method == "POST":
@@ -145,6 +160,8 @@ async def browser_settings_endpoint(request: Request) -> JSONResponse:
                                 pass
             else:
                 await asyncio.to_thread(preferences.save_changes)
+            if "desktop_persistent" in preferences.model_fields_set:
+                await configure_desktop_browser()
         settings = await asyncio.to_thread(BrowserSettings.load)
         return JSONResponse(
             {

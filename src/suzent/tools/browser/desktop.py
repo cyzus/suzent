@@ -18,6 +18,7 @@ from suzent.auth_boundary import is_loopback
 from suzent.config.paths import RUNTIME_DIR
 from suzent.logger import get_logger
 from suzent.tools.browser.bridge import BridgeHello, BrowserBridge
+from suzent.tools.browser.config import BrowserSettings
 from suzent.tools.browser.extension.session import BridgeSession
 
 logger = get_logger(__name__)
@@ -37,6 +38,7 @@ class DesktopBridge(BrowserBridge):
     timeout_message = (
         "The Suzent app's browser timed out. Take a fresh snapshot before retrying."
     )
+    manages_tabs = True
 
     def __init__(self) -> None:
         super().__init__()
@@ -93,7 +95,10 @@ async def desktop_browser_websocket(websocket: WebSocket) -> None:
                 await websocket.close(code=1008)
                 return
             await desktop_bridge.adopt(websocket)
-            await websocket.send_json({"type": "ready"})
+            settings = await asyncio.to_thread(BrowserSettings.load)
+            await websocket.send_json(
+                {"type": "ready", "persistent": settings.desktop_persistent}
+            )
         logger.info("Desktop app browser connected")
         await desktop_bridge.serve(websocket)
     except (WebSocketDisconnect, TimeoutError, ValidationError, ValueError, OSError):

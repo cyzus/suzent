@@ -290,7 +290,9 @@ See [Social Messaging](../../05-chat-apps/README.md) for platform setup.
 
 Control your existing Chrome/Edge tabs and logins through the Suzent browser extension, or use a managed Playwright browser with optional persistent profiles. Direct CDP attachment remains an advanced option. All modes use the native tool; MCP is optional. See [Browser](../../03-features/tools/browser.md) for extension installation, pairing, tab selection, and snapshot pagination.
 
-**Commands:** `tabs`, `select_tab`, `open`, `snapshot`, `click`, `dblclick`, `hover`, `fill`, `type`, `scroll`, `back`, `forward`, `reload`, `refresh`, `press`, `click_coords`, `batch`, `run_js`
+**Commands:** `tabs`, `select_tab`, `open`, `snapshot`, `click`, `dblclick`, `hover`, `fill`, `type`, `scroll`, `back`, `forward`, `reload`, `refresh`, `press`, `click_coords`, `new_tab`, `close_tab`, `batch`, `run_js`
+
+`new_tab` and `close_tab` work in the built-in and managed browsers; the extension refuses them (`BrowserBridge.manages_tabs`). In the built-in browser the user's tab bar is authoritative: picking, opening or closing a tab there emits a `selected` bridge event, and `BridgeSession` moves the agent to that tab and drops its refs.
 
 Page-changing commands return a fresh snapshot with their result. `batch` runs up to 20 steps written as `"<command> <arguments>"` (for example `"fill @g1e2 Ada Lovelace"`), stops at the first failure, and returns one snapshot at the end. It cannot contain `snapshot`, `batch` or `run_js`.
 

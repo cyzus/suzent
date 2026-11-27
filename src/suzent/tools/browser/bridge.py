@@ -34,6 +34,8 @@ class BrowserBridge:
     not_connected = "Connect the browser first."
     disconnected_message = "Browser disconnected."
     timeout_message = "Browser timed out. Take a fresh snapshot before retrying."
+    # Whether the host can open and close tabs for the agent.
+    manages_tabs = False
 
     def __init__(self) -> None:
         self.socket: WebSocket | None = None

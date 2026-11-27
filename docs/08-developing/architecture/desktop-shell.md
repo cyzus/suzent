@@ -83,7 +83,10 @@ red dot when something waits.
 The Electron shell hosts the browser tool's pages (`connection_mode`
 `desktop`, the default). `apps/desktop/src/agentBrowser.ts` keeps one
 `WebContentsView` per agent tab in the `persist:suzent-agent-browser`
-partition: sandboxed, no preload, every permission request and download
+partition, or the in-memory `suzent-agent-browser` partition when the
+`desktop_persistent` browser setting is off (the backend sends it in its
+`ready` message and as a `configure` request on change; switching closes every
+tab). The tabs are sandboxed, no preload, every permission request and download
 refused, navigation limited to http(s) and `about:blank`. Each tab's
 `webContents.debugger` carries DevTools commands, so no remote-debugging port
 is opened and the app's own page is never reachable.
@@ -103,6 +106,16 @@ pixel view with `Emulation.setDeviceMetricsOverride` at 1280×800: Chromium
 drops input to hidden pages and stops painting them. The panel
 (`AgentBrowserPane.tsx`) calls `agent_browser_show` with its bounds, which
 clears the override and lays the page over the panel.
+
+The panel also draws a tab bar and an address bar. `agent_browser_state` and
+the `agent-browser:state` event give it the tabs (title, URL, loading,
+back/forward), and `agent_browser_command` carries the user's
+`select`/`new`/`close`/`navigate`/`back`/`forward`/`reload`/`stop`. Typed text
+goes through `addressUrl()`: a web address as is, a bare host over https (http
+for localhost), anything else to a Bing search. A tab the user picks, opens or
+closes there becomes the agent's tab too, sent to the backend as a `selected`
+event. `agent_browser_clear_data` closes the tabs and clears both partitions'
+storage and cache.
 
 Without the app (web UI, headless service) `effective_mode` reports `managed`
 and the Playwright session runs instead; it prefers an installed Chrome or

@@ -259,17 +259,19 @@ class BrowserSessionManager:
                 viewport={"width": 1280, "height": 800}
             )
 
+    def _register_tabs(self) -> None:
+        """Give every open page a stable id, and forget closed ones."""
+        pages = self._context.pages
+        self._tabs = {key: page for key, page in self._tabs.items() if page in pages}
+        for page in pages:
+            if page not in self._tabs.values():
+                self._next_tab_id += 1
+                self._tabs[f"tab-{self._next_tab_id}"] = page
+
     async def tabs(self) -> ToolResult:
         async def _list() -> ToolResult:
             async with self._action_lock:
-                pages = self._context.pages
-                self._tabs = {
-                    key: page for key, page in self._tabs.items() if page in pages
-                }
-                for page in pages:
-                    if page not in self._tabs.values():
-                        self._next_tab_id += 1
-                        self._tabs[f"tab-{self._next_tab_id}"] = page
+                self._register_tabs()
                 items = [
                     {
                         "id": key,
@@ -318,6 +320,62 @@ class BrowserSessionManager:
                 )
 
         return await self._run_on_main_loop(_select())
+
+    async def new_tab(self, url: str) -> ToolResult:
+        async def _open() -> str:
+            async with self._action_lock:
+                self._register_tabs()
+                page = await self._context.new_page()
+                self._register_tabs()
+                tab_id = next(key for key, other in self._tabs.items() if other == page)
+                if url != "about:blank":
+                    await page.goto(url, wait_until="domcontentloaded", timeout=15000)
+                return tab_id
+
+        tab_id = await self._run_on_main_loop(_open())
+        selected = await self.select_tab(tab_id)
+        if not selected.success:
+            return selected
+        return ToolResult.success_result(f"new_tab opened {tab_id}.")
+
+    async def close_tab(self, tab_id: str) -> ToolResult:
+        async def _next() -> str | ToolResult:
+            async with self._action_lock:
+                page = self._tabs.get(tab_id)
+                if page is None or page.is_closed():
+                    return ToolResult.error_result(
+                        ToolErrorCode.INVALID_ARGUMENT,
+                        "Tab expired or unknown. Call tabs again.",
+                    )
+                others = [
+                    key
+                    for key, other in self._tabs.items()
+                    if key != tab_id and not other.is_closed()
+                ]
+                if not others:
+                    return ToolResult.error_result(
+                        ToolErrorCode.INVALID_ARGUMENT,
+                        "This is the only tab. Open another page in it instead.",
+                    )
+                return others[-1] if page == self._page else ""
+
+        next_tab = await self._run_on_main_loop(_next())
+        if isinstance(next_tab, ToolResult):
+            return next_tab
+        # Move off the tab first, so nothing is left attached to a closed page.
+        if next_tab:
+            selected = await self.select_tab(next_tab)
+            if not selected.success:
+                return selected
+
+        async def _close() -> None:
+            async with self._action_lock:
+                page = self._tabs.pop(tab_id, None)
+                if page is not None and not page.is_closed():
+                    await page.close()
+
+        await self._run_on_main_loop(_close())
+        return ToolResult.success_result("close_tab completed.")
 
     def _on_navigation(self, frame: Any) -> None:
         if self._page and frame == self._page.main_frame:
@@ -786,6 +844,8 @@ OBSERVED_AFTER = frozenset(
         "refresh",
         "click_coords",
         "select_tab",
+        "new_tab",
+        "close_tab",
         "run_js",
     }
 )
@@ -871,7 +931,7 @@ class BrowsingTool(Tool):
         observed = await self._run("snapshot", [])
         head = (
             result.message
-            if command in {"run_js", "batch"}
+            if command in {"run_js", "batch", "new_tab"}
             else f"{command} completed."
         )
         if not observed.success:
@@ -972,6 +1032,7 @@ class BrowsingTool(Tool):
                 "snapshot",
                 "tabs",
                 "select_tab",
+                "new_tab",
             }:
                 return ToolResult.error_result(
                     ToolErrorCode.INVALID_ARGUMENT,
@@ -982,6 +1043,10 @@ class BrowsingTool(Tool):
                     return await self.session_mgr.tabs()
                 case "select_tab":
                     return await self.session_mgr.select_tab(args[0])
+                case "new_tab":
+                    return await self.session_mgr.new_tab(args[0])
+                case "close_tab":
+                    return await self.session_mgr.close_tab(args[0])
                 case "run_js":
                     return await self.session_mgr.run_script(str(request.site), args[0])
                 case "snapshot":
@@ -1044,6 +1109,8 @@ class BrowsingTool(Tool):
                 "scroll",
                 "tabs",
                 "select_tab",
+                "new_tab",
+                "close_tab",
                 "batch",
                 "run_js",
             ],
@@ -1052,7 +1119,7 @@ class BrowsingTool(Tool):
         arguments: Annotated[
             list[str] | None,
             Field(
-                description="tabs: [] lists stable tab IDs ([controlled] marks the tab this tool acts on, [user-viewing] marks the tab the user is currently looking at); select_tab: [tab-id] switches tabs; open: [url] or []; snapshot: [] or [offset, limit<=100] or [-i]; click/dblclick/hover: [ref]; fill/type/press: [ref, value]; click_coords: [x, y]; scroll: [dx, dy] or []; back/forward/reload/refresh: []; batch: up to 20 steps written as '<command> <arguments>', e.g. ['fill @g1e2 Ada Lovelace', 'fill @g1e3 ada@example.com', 'click @g1e4']; run_js: [code], the body of an async function run in the page, which may await and returns a JSON value. Use exact @gNeN refs from the latest snapshot; selectors are not accepted.",
+                description="tabs: [] lists stable tab IDs ([controlled] marks the tab this tool acts on, [user-viewing] marks the tab the user is currently looking at); select_tab: [tab-id] switches tabs; new_tab: [url] or [] opens a page in a new tab; close_tab: [tab-id]; open: [url] or [] opens it in the current tab; snapshot: [] or [offset, limit<=100] or [-i]; click/dblclick/hover: [ref]; fill/type/press: [ref, value]; click_coords: [x, y]; scroll: [dx, dy] or []; back/forward/reload/refresh: []; batch: up to 20 steps written as '<command> <arguments>', e.g. ['fill @g1e2 Ada Lovelace', 'fill @g1e3 ada@example.com', 'click @g1e4']; run_js: [code], the body of an async function run in the page, which may await and returns a JSON value. Use exact @gNeN refs from the latest snapshot; selectors are not accepted.",
             ),
         ] = None,
         site: Annotated[
@@ -1064,7 +1131,7 @@ class BrowsingTool(Tool):
     ) -> ToolResult:
         """Control a browser session to navigate and interact with web pages.
 
-        open, click, press, back/forward/reload, click_coords, select_tab, batch and run_js return the updated page with fresh element refs, so act on those directly; call snapshot only to page through more elements or after fill/type/hover/scroll.
+        open, new_tab, close_tab, click, press, back/forward/reload, click_coords, select_tab, batch and run_js return the updated page with fresh element refs, so act on those directly; call snapshot only to page through more elements or after fill/type/hover/scroll.
 
         Use batch for several known steps, such as filling a form. Use run_js only when the snapshot and actions cannot do the job, such as reading data from many elements at once: the user is asked before code runs on a site.
 

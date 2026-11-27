@@ -40,6 +40,7 @@ async def test_settings_roundtrip_and_manager_startup(settings_path: Path) -> No
         initial = await client.get("/browser/settings")
         assert initial.json()["settings"] == {
             "connection_mode": "desktop",
+            "desktop_persistent": True,
             "persistent": False,
             "headless": True,
             "channel": "chromium",
@@ -49,6 +50,7 @@ async def test_settings_roundtrip_and_manager_startup(settings_path: Path) -> No
             "headless": False,
             "channel": "msedge",
             "connection_mode": "managed",
+            "desktop_persistent": False,
         }
         saved = await client.post("/browser/settings", json=values)
         assert saved.status_code == 200
@@ -138,6 +140,7 @@ async def test_partial_update_preserves_preferences_hidden_by_overrides(
         assert result.json()["settings"] == {
             "channel": "chrome",
             "connection_mode": "desktop",
+            "desktop_persistent": True,
             "headless": True,
             "persistent": True,
         }
@@ -219,3 +222,19 @@ async def test_hot_reload_waits_for_action_and_restarts_only_browser(
         assert manager._browser is current_browser
     finally:
         await manager.close_session()
+
+
+async def test_turning_off_kept_sign_ins_reaches_the_app(
+    settings_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from unittest.mock import AsyncMock
+
+    bridge = browser_routes.desktop_bridge
+    monkeypatch.setattr(bridge, "socket", AsyncMock())
+    request = AsyncMock(return_value={})
+    monkeypatch.setattr(bridge, "request", request)
+    async with make_client() as client:
+        await client.post("/browser/settings", json={"headless": False})
+        request.assert_not_awaited()
+        await client.post("/browser/settings", json={"desktop_persistent": False})
+    request.assert_awaited_once_with("configure", persistent=False)

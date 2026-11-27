@@ -90,6 +90,12 @@ class BridgeSession:
             self.world = None
         elif method == "detached":
             await self.reset()
+        elif method == "selected" and params.get("id") != self.selected:
+            # The user switched tabs in the app: the agent follows the page
+            # they are looking at.
+            self.selected = params.get("id")
+            self.world = None
+            self.invalidate()
         elif method == "Page.screencastFrame":
             metadata = params.get("metadata", {})
             self.frames.offer(
@@ -344,6 +350,22 @@ class BridgeSession:
                 return ToolResult.success_result(
                     "Page selected. Take a snapshot before interacting."
                 )
+            if command in {"new_tab", "close_tab"}:
+                if not self.bridge.manages_tabs:
+                    raise ValueError(
+                        f"{command} is not available in your own browser. Use open and select_tab."
+                    )
+                if command == "new_tab":
+                    result = await self.bridge.request("new", url=args[0])
+                    await self.activate_selected_tab(result["id"])
+                    return ToolResult.success_result(f"new_tab opened {result['id']}.")
+                result = await self.bridge.request("close", id=args[0])
+                if result.get("selected") != self.selected:
+                    if result.get("selected"):
+                        await self.activate_selected_tab(result["selected"])
+                    else:
+                        await self.reset()
+                return ToolResult.success_result("close_tab completed.")
             if not self.selected:
                 raise ValueError(
                     "List tabs and select one, or open a page, before interacting."
