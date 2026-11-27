@@ -83,20 +83,6 @@ class PingMessage(BaseModel):
     type: str = "ping"
 
 
-class PongMessage(BaseModel):
-    """Node → Server: heartbeat response."""
-
-    type: str = "pong"
-
-
-class EventMessage(BaseModel):
-    """Node → Server: unsolicited event from the node."""
-
-    type: str = "event"
-    event: str
-    data: dict[str, Any] = Field(default_factory=dict)
-
-
 class ErrorResponse(BaseModel):
     """Server → Node: protocol error."""
 
@@ -144,44 +130,3 @@ class InvokeResponse(BaseModel):
 
 
 # ─── Pending / device-token API models ───────────────────────────────
-
-
-class PendingNodeInfo(BaseModel):
-    """A node awaiting operator approval (approve mode)."""
-
-    pairing_code: str
-    display_name: str
-    platform: str
-    capabilities: list[CapabilitySchema] = Field(default_factory=list)
-    requested_at: str
-
-
-class PendingListResponse(BaseModel):
-    """GET /nodes/pending response."""
-
-    pending: list[PendingNodeInfo]
-    count: int
-
-
-class ApprovedDeviceInfo(BaseModel):
-    """A durably-approved device (has a per-device token)."""
-
-    device_id: str
-    display_name: str
-    platform: str
-    approved_at: str
-    connected: bool = False
-
-
-class ApprovedDeviceListResponse(BaseModel):
-    """GET /nodes/devices response."""
-
-    devices: list[ApprovedDeviceInfo]
-    count: int
-
-
-class PairingActionResponse(BaseModel):
-    """Response for approve/deny/revoke actions."""
-
-    success: bool
-    message: str = ""

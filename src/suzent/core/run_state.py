@@ -28,16 +28,6 @@ class ChatRunState:
 _chat_states: Dict[str, ChatRunState] = {}
 
 
-def get_run_state(chat_id: str) -> ChatRunState:
-    """Get or create the run state for a chat."""
-    if chat_id not in _chat_states:
-        _chat_states[chat_id] = ChatRunState()
-    else:
-        # Update last activity timestamp
-        _chat_states[chat_id].last_activity = time.time()
-    return _chat_states[chat_id]
-
-
 def is_running(chat_id: str) -> bool:
     """Check if there's an active run for a chat."""
     state = _chat_states.get(chat_id)

@@ -32,9 +32,3 @@ class SyncPlan(BaseModel):
     destructive: bool = False
     requires_confirmation: bool = False
     warnings: list[str] = Field(default_factory=list)
-
-
-class GitHubIdentity(BaseModel):
-    username: str
-    email: str | None = None
-    source: Literal["git"] = "git"

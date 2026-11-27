@@ -171,12 +171,6 @@ export async function fetchSyncStatus(): Promise<SyncStatus> {
   return res.json();
 }
 
-export function saveSyncProfile(
-  profile: Partial<SyncProfile> & { repo_path: string }
-): Promise<SyncProfile> {
-  return postJson<SyncProfile>('/sync/profiles', profile);
-}
-
 export function githubSyncPlan(
   operation: SyncOperation,
   profileId?: string,

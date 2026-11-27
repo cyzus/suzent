@@ -72,13 +72,6 @@ class UserConfigStore:
         blobs[key] = value
         self._save(data)
 
-    def delete_config_blob(self, key: str) -> None:
-        data = self._load()
-        blobs = data.get("config_blobs")
-        if isinstance(blobs, dict) and key in blobs:
-            blobs.pop(key)
-            self._save(data)
-
     def _get_section(self, section: str) -> dict[str, Any] | None:
         value = self._load().get(section)
         return value if isinstance(value, dict) else None

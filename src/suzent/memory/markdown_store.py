@@ -710,37 +710,6 @@ class MarkdownMemoryStore:
                 break
         return facts[:limit]
 
-    async def get_recent_logs(self, days: int = 2) -> str:
-        """
-        Read recent daily logs (today and yesterday by default).
-
-        Args:
-            days: Number of days to look back
-
-        Returns:
-            Combined content of recent logs
-        """
-        content_parts = []
-        today = datetime.now(timezone.utc).date()
-
-        for i in range(days):
-            date = (today - timedelta(days=i)).strftime("%Y-%m-%d")
-            log = await self.read_daily_log(date)
-            if log:
-                content_parts.append(log)
-
-        return "\n\n---\n\n".join(content_parts) if content_parts else ""
-
-    async def list_daily_logs(self) -> List[str]:
-        """List available daily log dates, newest first.
-
-        Returns:
-            List of date strings (YYYY-MM-DD)
-        """
-        logs = [p.stem for p in self.archive_dir.glob("????-??-??.md") if p.is_file()]
-        logs.sort(reverse=True)
-        return logs
-
     # --- Long-term Memory (MEMORY.md) ---
 
     @property

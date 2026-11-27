@@ -309,45 +309,6 @@ class EmbeddingGenerator:
             logger.error(f"Failed to generate embedding: {e}")
             raise
 
-    async def generate_batch(
-        self, texts: List[str], batch_size: int = 32
-    ) -> List[List[float]]:
-        """Generate embeddings for multiple texts in batches."""
-        if not self.model:
-            raise ValueError(
-                "No embedding model configured. Set it in Settings → Model Roles → Embedding."
-            )
-        if not texts:
-            return []
-
-        all_embeddings = []
-
-        for i in range(0, len(texts), batch_size):
-            batch = texts[i : i + batch_size]
-
-            try:
-                model, auth_kwargs = _litellm_model_and_kwargs(self.model)
-                response = await asyncio.wait_for(
-                    _litellm().aembedding(
-                        model=model,
-                        input=batch,
-                        timeout=self.timeout,
-                        **auth_kwargs,
-                    ),
-                    timeout=self.timeout,
-                )
-
-                batch_embeddings = [item["embedding"] for item in response.data]
-                all_embeddings.extend(batch_embeddings)
-
-            except Exception as e:
-                # Don't fabricate zero vectors on failure — that poisons the index.
-                # Fail loudly so the caller can skip/retry.
-                logger.error(f"Failed to generate batch embeddings: {e}")
-                raise
-
-        return all_embeddings
-
 
 class ImageGenerator:
     """Image generation and editing through the configured specialist models."""
@@ -718,50 +679,3 @@ class LLMClient:
         if not (content or "").strip():
             raise EmptyCompletionError(self.model)
         return response_model.model_validate(_parse_json_response(content))
-
-    async def extract_structured(
-        self,
-        prompt: str,
-        system: Optional[str] = None,
-        temperature: float = 0.3,
-        response_model: Optional[Type[BaseModel]] = None,
-    ) -> Dict[str, Any]:
-        """Extract structured JSON data from prompt.
-
-        Args:
-            prompt: User prompt
-            system: Optional system message
-            temperature: Sampling temperature (lower for more deterministic)
-            response_model: Optional Pydantic model for schema enforcement
-
-        Returns:
-            Parsed JSON object (or dict from validated Pydantic model)
-
-        Raises:
-            ValueError: If response is not valid JSON
-        """
-        # If a Pydantic model is provided, use schema-based extraction
-        if response_model is not None:
-            result = await self.extract_with_schema(
-                prompt=prompt,
-                response_model=response_model,
-                system=system,
-                temperature=temperature,
-            )
-            return result.model_dump()
-
-        # Fallback to basic JSON mode
-        response = await self.complete(
-            prompt=prompt,
-            system=system,
-            temperature=temperature,
-            max_tokens=2000,
-            response_format={"type": "json_object"},
-        )
-
-        try:
-            return _parse_json_response(response)
-        except json.JSONDecodeError as e:
-            logger.error(f"Failed to parse JSON response: {e}")
-            logger.debug(f"Raw response: {response}")
-            raise ValueError(f"LLM returned invalid JSON: {e}")

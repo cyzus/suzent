@@ -313,36 +313,6 @@ def _ui_launch_env(extra: dict[str, str] | None = None) -> dict[str, str]:
     return env
 
 
-def _has_unreleased_ui_changes(root: Path) -> bool:
-    """Return True when local backend/Tauri changes are not represented by releases."""
-    if not (root / ".git").exists():
-        return False
-
-    watched_paths = [
-        "src-tauri",
-    ]
-
-    commands = [
-        ["git", "diff", "--name-only", "--", *watched_paths],
-        ["git", "diff", "--name-only", "main...HEAD", "--", *watched_paths],
-    ]
-    for command in commands:
-        try:
-            result = subprocess.run(
-                command,
-                cwd=root,
-                capture_output=True,
-                text=True,
-                check=False,
-            )
-        except OSError:
-            continue
-        if result.returncode == 0 and result.stdout.strip():
-            return True
-
-    return False
-
-
 def _is_suzent_server_running(
     host: str, port: int, timeout: float = 1.0, attempts: int = 1
 ) -> bool:

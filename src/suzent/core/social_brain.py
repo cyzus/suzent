@@ -231,10 +231,6 @@ class SocialBrain(BaseBrain):
         # Canonical pairing registry for admin approval; exposed via REST + CLI.
         self._pending_tokens: Dict[str, dict] = {}
 
-    def update_model(self, model: str):
-        """Update the model used for social interactions."""
-        self.model = model
-
     async def start(self):
         """Start the processing loop and cleanup task."""
         await super().start()

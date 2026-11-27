@@ -62,7 +62,6 @@ dependencies = [
     "sqlmodel>=0.0.22",
     "typer>=0.9.0",
     "playwright>=1.41.0",
-    "nest-asyncio>=1.6.0",
     "psutil>=5.9.0",
     "zeroconf>=0.131.0",
     "fastapi>=0.128.5",

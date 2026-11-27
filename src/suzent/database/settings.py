@@ -274,15 +274,3 @@ class SettingsOperationsMixin:
 
             get_secret_manager().set_backend_only(key, value)
         return True
-
-    def delete_api_key(self, key: str) -> bool:
-        """Delete a config blob or secret outside the runtime database."""
-        if key.startswith("_"):
-            from suzent.core.user_config import UserConfigStore
-
-            UserConfigStore().delete_config_blob(key)
-        else:
-            from suzent.core.secrets import get_secret_manager
-
-            get_secret_manager().delete(key)
-        return True

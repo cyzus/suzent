@@ -566,32 +566,6 @@ class DockerSession:
                 logger.debug(f"Remove {self.container_name}: {e}")
                 return False
 
-    def verify_running(self) -> bool:
-        """Check actual container state from Docker daemon."""
-        with self._lock:
-            import docker
-            import docker.errors
-
-            try:
-                container = self._client.containers.get(self.container_name)
-                actually_running = container.status == "running"
-                if self._is_running != actually_running:
-                    logger.warning(
-                        f"Container {self.container_name} state desync: "
-                        f"cached={self._is_running}, actual={container.status}"
-                    )
-                    self._is_running = actually_running
-                    if actually_running:
-                        self._container = container
-                return actually_running
-            except docker.errors.NotFound:
-                if self._is_running:
-                    logger.warning(
-                        f"Container {self.container_name} missing, was marked running"
-                    )
-                self._is_running = False
-                return False
-
     # -------------------------------------------------------------------------
     # Execution
     # -------------------------------------------------------------------------
@@ -1018,10 +992,6 @@ class SandboxManager:
         """Kill a background process."""
         return self.get_session(session_id).kill_process(proc_id)
 
-    def start_session(self, session_id: str) -> bool:
-        """Explicitly pre-start a session container."""
-        return self.get_session(session_id).start()
-
     def stop_session(self, session_id: str) -> bool:
         """Stop a session's container (data persists, can resume later)."""
         if session_id in self._sessions:
@@ -1070,14 +1040,6 @@ class SandboxManager:
             self._client.close()
         except Exception:
             pass
-
-    def is_available(self) -> bool:
-        """Check if Docker daemon is reachable."""
-        try:
-            self._client.ping()
-            return True
-        except Exception:
-            return False
 
     @property
     def active_sessions(self) -> List[str]:

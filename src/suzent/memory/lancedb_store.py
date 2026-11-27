@@ -905,24 +905,6 @@ class LanceDBMemoryStore:
             logger.error(f"list_source_rows failed for {source_date}: {e}")
             return []
 
-    async def delete_all_memory_blocks(
-        self, user_id: str, chat_id: Optional[str] = None
-    ) -> bool:
-        """Delete all memory blocks for a user/chat."""
-        try:
-            conditions = [f"(user_id = '{_escape_sql(user_id)}' OR user_id IS NULL)"]
-            if chat_id:
-                conditions.append(
-                    f"(chat_id = '{_escape_sql(chat_id)}' OR chat_id IS NULL)"
-                )
-
-            clause = " AND ".join(conditions)
-            await self.blocks_table.delete(clause)
-            return True
-        except Exception as e:
-            logger.error(f"Delete all memory blocks failed: {e}")
-            return False
-
     # --- Query Operations ---
 
     # Columns the list view needs. Never the embedding `vector`: reading thousands of
