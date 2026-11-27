@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import asyncio
+import os
+import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -94,6 +96,73 @@ class ACPManager:
             for item in self._sessions.values()
         ]
 
+    async def _install_agent_adapter(self, agent: Any) -> dict[str, Any]:
+        from . import registry as registry_mod
+
+        if not shutil.which(agent.command[0]) and not (
+            agent.requires_executable and shutil.which(agent.requires_executable)
+        ):
+            raise ValueError(f"Executable {agent.display_command!r} was not found")
+
+        package = agent.adapter_package
+        if not package:
+            return {"status": "ready", "package": None}
+        if registry_mod._npm_package_installed(package):
+            return {"status": "ready", "package": package}
+
+        npm = shutil.which("npm")
+        if not npm:
+            raise ValueError("npm is not installed on this host")
+
+        suzent_dir = Path(os.environ.get("SUZENT_DATA_DIR", "~/.suzent")).expanduser()
+        adapter_dir = suzent_dir / "acp_adapters"
+        adapter_dir.mkdir(parents=True, exist_ok=True)
+        pkg_json = adapter_dir / "package.json"
+        if not pkg_json.exists():
+            pkg_json.write_text(
+                '{"name":"suzent-acp-adapters","private":true}\n',
+                encoding="utf-8",
+            )
+
+        extra: dict[str, Any] = {}
+        if os.name == "nt":
+            extra["creationflags"] = 0x08000000  # CREATE_NO_WINDOW
+
+        proc = await asyncio.create_subprocess_exec(
+            npm,
+            "install",
+            "--no-audit",
+            "--no-fund",
+            "--prefer-online",
+            package,
+            cwd=str(adapter_dir),
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            **extra,
+        )
+        try:
+            _, stderr = await asyncio.wait_for(proc.communicate(), timeout=180.0)
+        except asyncio.TimeoutError:
+            proc.kill()
+            await proc.wait()
+            raise TimeoutError(f"Timed out installing {package}")
+        if proc.returncode != 0:
+            err_text = stderr.decode("utf-8", errors="replace").strip()
+            tail = (
+                err_text.splitlines()[-1]
+                if err_text
+                else f"exit code {proc.returncode}"
+            )
+            raise RuntimeError(f"Failed to install {package}: {tail}")
+
+        registry_mod._npm_cache.clear()
+        return {"status": "installed", "package": package}
+
+    async def install_adapter(self, agent_id: str) -> dict[str, Any]:
+        """Install the npm adapter package for an npx-launched ACP agent into ~/.suzent/acp_adapters."""
+        agent = self.registry.get(agent_id)
+        return await self._install_agent_adapter(agent)
+
     async def probe(
         self, agent_id: str, cwd: str, method_id: str | None = None
     ) -> dict[str, Any]:
@@ -101,6 +170,9 @@ class ACPManager:
         agent = self.registry.get(agent_id)
         if not agent.available:
             raise ValueError("Agent binary not found or unavailable")
+        from .dialects import get_dialect
+
+        dialect = get_dialect(agent_id)
         cached = self._authenticated.pop(agent_id, None) if method_id is None else None
         if cached and not cached[0].is_running:
             await cached[0].close()
@@ -108,7 +180,12 @@ class ACPManager:
         client = (
             cached[0]
             if cached
-            else ACPClient(agent.command, cwd=agent.cwd or cwd, env=agent.env)
+            else ACPClient(
+                agent.command,
+                cwd=agent.cwd or cwd,
+                env=agent.env,
+                env_to_strip=dialect.env_to_strip,
+            )
         )
         retained = False
         try:
@@ -271,9 +348,12 @@ class ACPManager:
     ) -> ManagedSession:
         agent = self.registry.get(agent_id)
         if not agent.available:
-            raise RuntimeError(
-                f"{agent.name} is not available: {agent.display_command} was not found"
-            )
+            if agent.adapter_package and shutil.which(agent.command[0]):
+                await self._install_agent_adapter(agent)
+            if not agent.available:
+                raise RuntimeError(
+                    f"{agent.name} is not available: {agent.display_command} was not found"
+                )
         queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue(maxsize=4096)
 
         async def on_notification(method: str, params: dict[str, Any]) -> None:
@@ -310,10 +390,13 @@ class ACPManager:
             client.notification_handler = on_notification
             client.permission_handler = on_permission
         else:
+            from .dialects import get_dialect
+
             client = ACPClient(
                 agent.command,
                 cwd=agent.cwd or cwd,
                 env=agent.env,
+                env_to_strip=get_dialect(agent_id).env_to_strip,
                 notification_handler=on_notification,
                 permission_handler=on_permission,
             )

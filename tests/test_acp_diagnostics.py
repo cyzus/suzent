@@ -215,3 +215,103 @@ def test_a_custom_agent_can_carry_its_own_docs_url(tmp_path):
     registry = ACPAgentRegistry(path=path)
 
     assert registry.get("mine").docs_url == "https://mine.test/install"
+
+
+def test_expanded_builtin_registry_and_aliases(tmp_path, monkeypatch):
+    monkeypatch.setenv("SUZENT_DATA_DIR", str(tmp_path))
+    registry = ACPAgentRegistry(path=tmp_path / "acp_agents.json")
+    ids = {a.id for a in registry.list_agents()}
+    assert "claude-code-api" not in ids
+    for expected in (
+        "claude-code",
+        "codex",
+        "gemini",
+        "github-copilot-cli",
+        "qwen-code",
+        "kimi-code",
+        "grok",
+        "opencode",
+        "cursor",
+        "cline",
+        "goose",
+        "auggie",
+        "kilo",
+    ):
+        assert expected in ids, f"Missing built-in agent: {expected}"
+
+    assert registry.get("claude-acp").id == "claude-code"
+    assert registry.get("claude-code-api").id == "claude-code"
+    assert registry.get("grok-build").id == "grok"
+
+
+def test_dialect_auth_and_quota_error_detection():
+    from suzent.acp.client import ACPError
+
+    err_code = ACPError("Sign in", code=-32000)
+    assert err_code.auth_required is True
+
+    err_text = ACPError(
+        "Error: User is not logged in. Please run `codex login`", code=-32603
+    )
+    assert err_text.auth_required is True
+
+    err_quota = ACPError("HTTP 429: usage limit or quota exceeded", code=-32603)
+    assert err_quota.quota_exceeded is True
+
+
+def test_on_disk_local_agent_state_inspection(tmp_path, monkeypatch):
+    from suzent.acp import dialects
+
+    monkeypatch.setattr(dialects.Path, "home", lambda: tmp_path)
+    claude_dir = tmp_path / ".claude"
+    claude_dir.mkdir()
+    (claude_dir / ".credentials.json").write_text(
+        json.dumps({"claudeAiOauth": {"subscriptionType": "max"}}),
+        encoding="utf-8",
+    )
+
+    state = dialects.inspect_local_agent_state("claude-code")
+    assert state["auth_hint"] == "ok"
+    assert state["usage_summary"] == "Plan: max"
+
+
+@pytest.mark.asyncio
+async def test_seamless_adapter_auto_install(tmp_path, monkeypatch):
+    monkeypatch.setenv("SUZENT_DATA_DIR", str(tmp_path))
+    monkeypatch.setattr(registry_mod.shutil, "which", lambda name: f"/usr/bin/{name}")
+
+    class DummyProc:
+        returncode = 0
+
+        async def communicate(self):
+            # Simulate npm installing the package into ~/.suzent/acp_adapters/node_modules
+            pkg_dir = (
+                tmp_path
+                / "acp_adapters"
+                / "node_modules"
+                / "@agentclientprotocol"
+                / "codex-acp"
+            )
+            pkg_dir.mkdir(parents=True, exist_ok=True)
+            return b"installed", b""
+
+    import asyncio
+
+    async def fake_exec(*args, **kwargs):
+        return DummyProc()
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_exec)
+    monkeypatch.setattr(
+        registry_mod,
+        "_npm_global_roots",
+        lambda: [tmp_path / "acp_adapters" / "node_modules"],
+    )
+    monkeypatch.setattr(registry_mod, "_npx_cache_roots", lambda: [])
+
+    manager = ACPManager(ACPAgentRegistry(path=tmp_path / "acp_agents.json"))
+    agent = manager.registry.get("codex")
+    assert agent.available is False
+
+    res = await manager.install_adapter("codex")
+    assert res["status"] == "installed"
+    assert manager.registry.get("codex").available is True
