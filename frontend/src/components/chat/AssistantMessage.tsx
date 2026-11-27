@@ -846,11 +846,7 @@ const ModelSignature: React.FC<{ model?: string }> = ({ model }) => {
   return (
     <div
       className="inline-flex min-w-0 flex-1 basis-24 items-center gap-1.5 text-neutral-500 dark:text-neutral-400 select-none"
-      title={
-        acpId
-          ? t('chatMessage.runtime.external', { agent: formatAcpAgentName(acpId) })
-          : t('chatMessage.modelSignature', { model: modelId })
-      }
+      title={t('chatMessage.modelSignature', { model: modelId })}
     >
       {acpId ? (
         <span
@@ -863,11 +859,7 @@ const ModelSignature: React.FC<{ model?: string }> = ({ model }) => {
         <ProviderFavicon model={modelId} />
       )}
       <span className="truncate font-mono text-[10px] font-medium normal-case tracking-normal text-neutral-500 dark:text-neutral-400">
-        {acpId
-          ? formatAcpAgentName(acpId)
-          : modelId.includes('/')
-            ? modelId.slice(modelId.indexOf('/') + 1)
-            : modelId}
+        {modelId.includes('/') ? modelId.slice(modelId.indexOf('/') + 1) : modelId}
       </span>
     </div>
   );

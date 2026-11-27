@@ -414,3 +414,69 @@ async def test_acp_thoughts_and_tool_calls_translate_to_agui_and_persist():
     assert parts[1]["toolName"] == "read_file"
     assert parts[1]["state"] == "completed"
     assert "# Skills" in parts[1]["output"]
+
+
+@pytest.mark.asyncio
+async def test_acp_failed_turn_after_thought_still_emits_run_error():
+    """A turn that emits thoughts and then fails with stopReason=error must report RUN_ERROR."""
+    updates = [
+        {
+            "sessionId": "s-1",
+            "update": {
+                "sessionUpdate": "agent_thought_chunk",
+                "content": {"type": "text", "text": "Thinking before quota failure..."},
+            },
+        },
+        _turn_error("quota exhausted"),
+    ]
+    events, _, _ = await _run(
+        [_managed()],
+        [(updates, {"stopReason": "error"})],
+    )
+    errors = [e for e in events if e["type"] == "RUN_ERROR"]
+    assert len(errors) == 1
+    assert "quota exhausted" in errors[0]["message"]
+
+
+@pytest.mark.asyncio
+async def test_acp_tool_args_update_replaces_snapshot():
+    """When tool args are refined across updates, TOOL_CALL_START is re-sent so the client replaces args."""
+    updates = [
+        {
+            "sessionId": "s-1",
+            "update": {
+                "sessionUpdate": "tool_call",
+                "toolCallId": "tc-1",
+                "title": "Read file",
+                "status": "pending",
+            },
+        },
+        {
+            "sessionId": "s-1",
+            "update": {
+                "sessionUpdate": "tool_call_update",
+                "toolCallId": "tc-1",
+                "kind": "read",
+                "rawInput": {"file_path": "/workspace/a.txt"},
+                "status": "completed",
+            },
+        },
+        _text_chunk("Done."),
+    ]
+    events, _, db = await _run(
+        [_managed()],
+        [(updates, {"stopReason": "end_turn"})],
+    )
+    starts = [
+        e
+        for e in events
+        if e["type"] == "TOOL_CALL_START" and e["toolCallId"] == "tc-1"
+    ]
+    assert len(starts) == 2
+    assistant_calls = [
+        call.args[1]
+        for call in db.append_chat_message.call_args_list
+        if call.args[1].get("role") == "assistant"
+    ]
+    tool_part = next(p for p in assistant_calls[0]["parts"] if p["type"] == "tool")
+    assert json.loads(tool_part["args"]) == {"file_path": "/workspace/a.txt"}

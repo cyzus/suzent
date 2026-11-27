@@ -417,7 +417,8 @@ async def _stream_prompt(
                     out_str = _extract_acp_tool_output(inner)
                     status = str(inner.get("status") or "").strip().lower()
 
-                    if tool_call_id not in started_tools:
+                    is_new_tool = tool_call_id not in started_tools
+                    if is_new_tool:
                         started_tools.add(tool_call_id)
                         yield _sse(
                             {
@@ -427,7 +428,19 @@ async def _stream_prompt(
                             }
                         )
                     if args_str and last_tool_args.get(tool_call_id) != args_str:
+                        had_prev_args = bool(last_tool_args.get(tool_call_id))
                         last_tool_args[tool_call_id] = args_str
+                        if not is_new_tool and (had_prev_args or tool_name):
+                            # Re-emit TOOL_CALL_START so the frontend sets
+                            # argsReplayPending = true and replaces the earlier
+                            # snapshot instead of concatenating two JSON objects.
+                            yield _sse(
+                                {
+                                    "type": "TOOL_CALL_START",
+                                    "toolCallId": tool_call_id,
+                                    "toolCallName": tool_name or "",
+                                }
+                            )
                         yield _sse(
                             {
                                 "type": "TOOL_CALL_ARGS",
@@ -1220,13 +1233,13 @@ async def _run_acp_turn(
 
         text = "".join(state["parts"])
         display_parts = state.get("display_parts") or []
-        has_display_activity = any(
-            part.get("type") in ("tool", "reasoning") for part in display_parts
-        )
+        has_tool_activity = any(part.get("type") == "tool" for part in display_parts)
+        stop_reason = state.get("stop_reason") or ""
+        turn_failed = bool(state.get("error")) or (stop_reason not in ("", "end_turn"))
         yield _sse({"type": "TEXT_MESSAGE_END", "messageId": message_id})
         message_open = False
-        if not text.strip() and not has_display_activity:
-            if state.get("stop_reason") == "cancelled":
+        if not text.strip() and (turn_failed or not has_tool_activity):
+            if stop_reason == "cancelled":
                 # A stop is not a failure here either. The native path tags its
                 # own cancellation frame the same way, and the client reads the
                 # tag to keep listening for the stream's real ending instead of
