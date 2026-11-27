@@ -3918,7 +3918,7 @@ wheels = [
 
 [[package]]
 name = "suzent"
-version = "0.28.1"
+version = "0.28.2"
 source = { editable = "." }
 dependencies = [
     { name = "audioop-lts", marker = "python_full_version >= '3.13'" },

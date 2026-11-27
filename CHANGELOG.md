@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v0.28.2] - 2026-11-27
+
+### Release notes
+- The installed app opens in your saved theme and fonts straight away instead of flashing the defaults first.
+- The suzent command in the installed app can again check, stop and remove a background service moved over from a Git install.
+
 ## [v0.28.1] - 2026-11-27
 
 ### Release notes
