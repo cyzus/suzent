@@ -173,6 +173,9 @@ fn remove_old_launchers(paths: &UpdatePaths) -> Result<(), String> {
             push_status_warning(paths, format!("Old shortcuts not removed: {error}"))?;
         }
     }
+    if let Err(error) = remove_windows_shortcuts(&paths.root) {
+        push_status_warning(paths, format!("Old shortcuts not removed: {error}"))?;
+    }
     let home = home_dir().ok_or("could not find the home directory")?;
     let bin = home.join(".local").join("bin");
     for name in ["suzent", "suzent.cmd"] {
@@ -181,6 +184,39 @@ fn remove_old_launchers(paths: &UpdatePaths) -> Result<(), String> {
             fs::remove_file(&shim).map_err(display_io("remove the old suzent command"))?;
         }
     }
+    Ok(())
+}
+
+/// Older CLIs decoded PowerShell's output in the ANSI code page, so on a
+/// Chinese Windows a redirected desktop such as `OneDrive\桌面` was recorded
+/// as mojibake and `shortcuts --remove` could not find it. Ask Windows for
+/// the folders again and drop any shortcut that still opens the old UI.
+#[cfg(windows)]
+fn remove_windows_shortcuts(root: &Path) -> Result<(), String> {
+    const SCRIPT: &str = "$ErrorActionPreference = 'Stop'; \
+        $shell = New-Object -ComObject WScript.Shell; \
+        foreach ($folder in 'Programs', 'DesktopDirectory') { \
+          $dir = [Environment]::GetFolderPath($folder); \
+          if ([string]::IsNullOrWhiteSpace($dir)) { continue }; \
+          Get-ChildItem -LiteralPath $dir -Filter '*.lnk' -File -ErrorAction SilentlyContinue | \
+            Where-Object { $shell.CreateShortcut($_.FullName).TargetPath -eq $env:SUZENT_OLD_UI } | \
+            Remove-Item -Force }";
+    run_checked(
+        background_command("powershell")
+            .args([
+                "-NoProfile",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-Command",
+                SCRIPT,
+            ])
+            .env("SUZENT_OLD_UI", root.join("bin").join("suzent-ui.exe")),
+        "remove old shortcuts",
+    )
+}
+
+#[cfg(not(windows))]
+fn remove_windows_shortcuts(_root: &Path) -> Result<(), String> {
     Ok(())
 }
 

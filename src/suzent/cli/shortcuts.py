@@ -135,7 +135,10 @@ def _run(command: list[str]) -> subprocess.CompletedProcess | None:
         result = subprocess.run(
             command,
             capture_output=True,
-            text=True,
+            # The PowerShell scripts switch their output to UTF-8: the ANSI
+            # code page mangled redirected folders such as OneDrive\桌面.
+            encoding="utf-8",
+            errors="replace",
             timeout=_COMMAND_TIMEOUT,
             check=False,
         )
@@ -289,6 +292,7 @@ def _entry_owned(path: Path, binary: Path) -> bool:
         return _legacy_owned(path, binary)
     script = (
         "$ErrorActionPreference = 'Stop'; "
+        "[Console]::OutputEncoding = [Text.Encoding]::UTF8; "
         "$shell = New-Object -ComObject WScript.Shell; "
         f"$link = $shell.CreateShortcut('{_ps_quote(path)}'); "
         f"if ($link.TargetPath -eq '{_ps_quote(binary)}') "
@@ -371,6 +375,7 @@ def _apply_windows(
     )
     script = (
         "$ErrorActionPreference = 'Stop'; "
+        "[Console]::OutputEncoding = [Text.Encoding]::UTF8; "
         f"$ui = '{_ps_quote(binary)}'; "
         f"$workspace = '{_ps_quote(root)}'; "
         f"$requests = @({requests}); "

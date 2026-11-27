@@ -1,0 +1,1 @@
+{"products": {"desktop": "patch"}, "summary": "Moving a Git install to the standard app now also removes the old desktop shortcut when the desktop folder has a non-English name, such as OneDrive\\桌面."}
