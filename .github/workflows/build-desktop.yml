@@ -416,7 +416,9 @@ jobs:
         run: |
           mkdir -p release-assets
           gh release download "$RELEASE_TAG" --pattern 'suzent-*' --pattern SHA256SUMS --dir release-assets
-          (cd release-assets && sha256sum --check SHA256SUMS)
+          # SHA256SUMS also lists the Electron installers, which the npm
+          # packages do not carry, so only the downloaded files are checked.
+          (cd release-assets && sha256sum --check --ignore-missing SHA256SUMS)
           python3 scripts/pack_npm_release.py release-assets "$RELEASE_TAG" npm-packages
         env:
           GH_TOKEN: ${{ github.token }}
