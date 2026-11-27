@@ -37,6 +37,7 @@ class BridgeSession:
         self.connection_generation = -1
         self.selected: str | None = None
         self.refs: dict[str, tuple[int, dict[str, Any]]] = {}
+        self._restream: asyncio.Task[None] | None = None
         self.world: int | None = None
         self.streaming = False
         self.frames = PreviewFrames(self.clients)
@@ -93,9 +94,15 @@ class BridgeSession:
         elif method == "selected" and params.get("id") != self.selected:
             # The user switched tabs in the app: the agent follows the page
             # they are looking at.
+            self.connection_generation = self.bridge.generation
             self.selected = params.get("id")
             self.world = None
+            self.streaming = False
             self.invalidate()
+            if self.clients:
+                # Not awaited: this runs in the bridge's receive loop, which
+                # must stay free to deliver the screencast command's reply.
+                self._restream = asyncio.create_task(self._restart_streaming())
         elif method == "Page.screencastFrame":
             metadata = params.get("metadata", {})
             self.frames.offer(
@@ -106,6 +113,13 @@ class BridgeSession:
                     "height": metadata.get("deviceHeight"),
                 }
             )
+
+    async def _restart_streaming(self) -> None:
+        async with self.lock:
+            try:
+                await self.start_streaming()
+            except (ValueError, RuntimeError):
+                pass
 
     async def start_streaming(self) -> None:
         if self.clients and self.selected and not self.streaming:

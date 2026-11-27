@@ -213,13 +213,28 @@ async def test_agent_tabs_open_and_close_in_the_app(
     assert session.selected == "tab-1"
 
 
-async def test_the_agent_follows_the_tab_the_user_picks() -> None:
-    session = desktop.BridgeSession(desktop.desktop_bridge)
+async def test_the_agent_follows_the_tab_the_user_picks(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    connection = desktop.desktop_bridge
+    connection.socket = AsyncMock()
+    connection.generation = 4
+    session = desktop.BridgeSession(connection)
     session.selected = "tab-1"
     session.refs = {"@g1e0": ("node", {})}
+    session.clients = [AsyncMock()]
+    session.streaming = True
+    cdp = AsyncMock(return_value={})
+    monkeypatch.setattr(session, "cdp", cdp)
+    # The user picks a tab before the agent's first command on this connection.
     await session.on_event("selected", {"id": "tab-3"})
     assert session.selected == "tab-3"
     assert session.refs == {}
+    await session._restream
+    cdp.assert_awaited_once()
+    assert cdp.await_args.args == ("Page.startScreencast",)
+    monkeypatch.setattr(session, "snapshot", AsyncMock(return_value="page"))
+    assert await session.execute(BrowserCommand(command="snapshot")) == "page"
 
 
 async def test_your_own_browser_cannot_open_tabs_for_the_agent() -> None:
