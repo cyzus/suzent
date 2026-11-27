@@ -1,0 +1,1 @@
+{"products": {"desktop": "patch"}, "summary": "Fixed a crash on Windows when the updater moves a Git install to the standard installer."}
