@@ -315,3 +315,80 @@ async def test_seamless_adapter_auto_install(tmp_path, monkeypatch):
     res = await manager.install_adapter("codex")
     assert res["status"] == "installed"
     assert manager.registry.get("codex").available is True
+
+
+def test_resolve_managed_npx_command_uses_installed_bin(tmp_path, monkeypatch):
+    from suzent.acp.registry import resolve_managed_npx_command
+
+    monkeypatch.setenv("SUZENT_DATA_DIR", str(tmp_path))
+    monkeypatch.setattr(
+        registry_mod.shutil,
+        "which",
+        lambda name: "/usr/bin/node" if name == "node" else None,
+    )
+
+    pkg_dir = tmp_path / "acp_adapters" / "node_modules" / "@google" / "gemini-cli"
+    pkg_dir.mkdir(parents=True)
+    script = pkg_dir / "dist" / "index.js"
+    script.parent.mkdir()
+    script.write_text("// gemini", encoding="utf-8")
+    (pkg_dir / "package.json").write_text(
+        json.dumps({"name": "@google/gemini-cli", "bin": {"gemini": "dist/index.js"}}),
+        encoding="utf-8",
+    )
+
+    resolved = resolve_managed_npx_command(["npx", "-y", "@google/gemini-cli", "--acp"])
+    assert resolved == ["/usr/bin/node", str(script.resolve()), "--acp"]
+
+
+@pytest.mark.asyncio
+async def test_cancelled_adapter_install_terminates_process(tmp_path, monkeypatch):
+    import asyncio
+
+    monkeypatch.setenv("SUZENT_DATA_DIR", str(tmp_path))
+    monkeypatch.setattr(registry_mod.shutil, "which", lambda name: f"/usr/bin/{name}")
+
+    killed = False
+
+    class HangingProc:
+        returncode = None
+        pid = 99999
+
+        async def communicate(self):
+            await asyncio.sleep(60)
+            return b"", b""
+
+        def kill(self):
+            nonlocal killed
+            killed = True
+            self.returncode = -9
+
+        async def wait(self):
+            return self.returncode
+
+    async def fake_exec(*args, **kwargs):
+        if args and args[0] == "taskkill":
+
+            class DummyKill:
+                async def wait(self):
+                    return 0
+
+            return DummyKill()
+        return HangingProc()
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_exec)
+    monkeypatch.setattr(
+        registry_mod,
+        "_npm_global_roots",
+        lambda: [tmp_path / "acp_adapters" / "node_modules"],
+    )
+    monkeypatch.setattr(registry_mod, "_npx_cache_roots", lambda: [])
+    registry_mod._npm_cache.clear()
+
+    manager = ACPManager(ACPAgentRegistry(path=tmp_path / "acp_agents.json"))
+    task = asyncio.create_task(manager.install_adapter("codex"))
+    await asyncio.sleep(0.05)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert killed is True

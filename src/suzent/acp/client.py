@@ -135,8 +135,10 @@ class ACPClient:
         # ``[WinError 2] The system cannot find the specified file``.
         # ``shutil.which`` honours PATHEXT on Windows and returns the full
         # path including the extension, which ``CreateProcessW`` can execute.
-        cmd = list(self.command)
-        resolved = shutil.which(cmd[0])
+        from .registry import resolve_managed_npx_command
+
+        cmd = resolve_managed_npx_command(list(self.command))
+        resolved = shutil.which(cmd[0], path=process_env.get("PATH"))
         if resolved:
             cmd[0] = resolved
 

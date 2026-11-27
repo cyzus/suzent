@@ -144,7 +144,9 @@ class ACPLogins:
                             )
                         ):
                             raise ValueError("Invalid terminal method")
-                        command = [*agent.command, *args]
+                        from .registry import resolve_managed_npx_command
+
+                        command = [*resolve_managed_npx_command(agent.command), *args]
                         env.update(overrides)
                     elif selected is None and agent.login_command:
                         command = agent.login_command

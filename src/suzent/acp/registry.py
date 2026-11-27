@@ -101,6 +101,77 @@ def _npx_package(command: list[str]) -> str | None:
     return None
 
 
+def resolve_managed_npx_command(command: list[str]) -> list[str]:
+    """Rewrite ``npx [-y] <pkg> [args...]`` to the installed binary in ``~/.suzent/acp_adapters``.
+
+    Adding ``~/.suzent/acp_adapters/node_modules/.bin`` to ``PATH`` does not
+    prevent ``npx -y @scope/pkg`` from re-downloading when invoked inside a
+    project workspace: ``npm exec`` checks the workspace dependency tree rather
+    than ``NODE_PATH``. When the package is installed in Suzent's managed
+    adapter directory, resolve its bin entry directly so the workspace ``cwd``
+    is preserved without triggering an npm fetch.
+    """
+    package = _npx_package(command)
+    if not package:
+        return list(command)
+
+    pkg_index = -1
+    for i, part in enumerate(command[1:], start=1):
+        if not part.startswith("-"):
+            pkg_index = i
+            break
+    if pkg_index < 0:
+        return list(command)
+    trailing_args = command[pkg_index + 1 :]
+
+    adapter_root = (
+        Path(os.environ.get("SUZENT_DATA_DIR", "~/.suzent")).expanduser()
+        / "acp_adapters"
+        / "node_modules"
+    )
+    pkg_dir = adapter_root / package
+    if not pkg_dir.is_dir():
+        return list(command)
+
+    unscoped = package.split("/")[-1]
+    bin_name = unscoped
+    pkg_json_path = pkg_dir / "package.json"
+    if pkg_json_path.is_file():
+        try:
+            data = json.loads(pkg_json_path.read_text(encoding="utf-8"))
+            bin_field = data.get("bin")
+            if isinstance(bin_field, str) and bin_field.strip():
+                script_path = (pkg_dir / bin_field).resolve()
+                node_exe = shutil.which("node")
+                if script_path.is_file() and node_exe:
+                    return [node_exe, str(script_path), *trailing_args]
+            elif isinstance(bin_field, dict) and bin_field:
+                chosen_key = (
+                    unscoped if unscoped in bin_field else next(iter(bin_field.keys()))
+                )
+                bin_name = str(chosen_key)
+                rel_target = bin_field.get(chosen_key)
+                if isinstance(rel_target, str) and rel_target.strip():
+                    script_path = (pkg_dir / rel_target).resolve()
+                    node_exe = shutil.which("node")
+                    if script_path.is_file() and node_exe:
+                        return [node_exe, str(script_path), *trailing_args]
+        except Exception:
+            pass
+
+    bin_dir = adapter_root / ".bin"
+    candidates = (
+        [bin_dir / f"{bin_name}.cmd", bin_dir / f"{bin_name}.exe", bin_dir / bin_name]
+        if os.name == "nt"
+        else [bin_dir / bin_name]
+    )
+    for candidate in candidates:
+        if candidate.is_file():
+            return [str(candidate), *trailing_args]
+
+    return list(command)
+
+
 @dataclass(frozen=True)
 class ACPAgent:
     id: str

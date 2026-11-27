@@ -210,14 +210,8 @@ export function AcpAgentsTab(): React.ReactElement {
     );
   }, [agents, searchQuery]);
 
-  const installedAgents = useMemo(
-    () => filteredAgents.filter((a) => isReady(a)),
-    [filteredAgents]
-  );
-  const catalogAgents = useMemo(
-    () => filteredAgents.filter((a) => !isReady(a)),
-    [filteredAgents]
-  );
+  const installedAgents = useMemo(() => filteredAgents.filter((a) => isReady(a)), [filteredAgents]);
+  const catalogAgents = useMemo(() => filteredAgents.filter((a) => !isReady(a)), [filteredAgents]);
 
   const renderAgentCard = (agent: AcpAgentDescriptor) => {
     const probe = probes[agent.id];
@@ -260,9 +254,7 @@ export function AcpAgentsTab(): React.ReactElement {
                   <span className="text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 border border-brutal-black/20 dark:border-white/20 text-neutral-500 dark:text-neutral-400">
                     {agent.builtin ? t('settings.acp.builtIn') : t('settings.acp.custom')}
                   </span>
-                  {agent.usage_summary && (
-                    <Badge tone="blue">{agent.usage_summary}</Badge>
-                  )}
+                  {agent.usage_summary && <Badge tone="blue">{agent.usage_summary}</Badge>}
                 </div>
                 <div className="flex items-center gap-1.5 flex-wrap">
                   {ready && !signedIn && agent.auth_status && !probe && (

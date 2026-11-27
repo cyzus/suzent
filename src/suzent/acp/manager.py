@@ -127,6 +127,8 @@ class ACPManager:
         extra: dict[str, Any] = {}
         if os.name == "nt":
             extra["creationflags"] = 0x08000000  # CREATE_NO_WINDOW
+        else:
+            extra["start_new_session"] = True
 
         proc = await asyncio.create_subprocess_exec(
             npm,
@@ -140,12 +142,49 @@ class ACPManager:
             stderr=asyncio.subprocess.PIPE,
             **extra,
         )
+
+        async def _terminate_installer() -> None:
+            if proc.returncode is not None:
+                return
+            import signal
+
+            if os.name != "nt":
+                try:
+                    os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+                except (ProcessLookupError, OSError):
+                    try:
+                        proc.kill()
+                    except ProcessLookupError:
+                        pass
+            else:
+                try:
+                    kill_proc = await asyncio.create_subprocess_exec(
+                        "taskkill",
+                        "/F",
+                        "/T",
+                        "/PID",
+                        str(proc.pid),
+                        stdout=asyncio.subprocess.DEVNULL,
+                        stderr=asyncio.subprocess.DEVNULL,
+                        creationflags=0x08000000,
+                    )
+                    await kill_proc.wait()
+                except Exception:
+                    pass
+                try:
+                    proc.kill()
+                except ProcessLookupError:
+                    pass
+            await proc.wait()
+
         try:
             _, stderr = await asyncio.wait_for(proc.communicate(), timeout=180.0)
         except asyncio.TimeoutError:
-            proc.kill()
-            await proc.wait()
+            await _terminate_installer()
             raise TimeoutError(f"Timed out installing {package}")
+        except BaseException:
+            await _terminate_installer()
+            raise
         if proc.returncode != 0:
             err_text = stderr.decode("utf-8", errors="replace").strip()
             tail = (
