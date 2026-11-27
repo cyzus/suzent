@@ -37,6 +37,7 @@ class BridgeSession:
         self.connection_generation = -1
         self.selected: str | None = None
         self.refs: dict[str, tuple[int, dict[str, Any]]] = {}
+        self._restream: asyncio.Task[None] | None = None
         self.world: int | None = None
         self.streaming = False
         self.frames = PreviewFrames(self.clients)
@@ -90,6 +91,18 @@ class BridgeSession:
             self.world = None
         elif method == "detached":
             await self.reset()
+        elif method == "selected" and params.get("id") != self.selected:
+            # The user switched tabs in the app: the agent follows the page
+            # they are looking at.
+            self.connection_generation = self.bridge.generation
+            self.selected = params.get("id")
+            self.world = None
+            self.streaming = False
+            self.invalidate()
+            if self.clients:
+                # Not awaited: this runs in the bridge's receive loop, which
+                # must stay free to deliver the screencast command's reply.
+                self._restream = asyncio.create_task(self._restart_streaming())
         elif method == "Page.screencastFrame":
             metadata = params.get("metadata", {})
             self.frames.offer(
@@ -100,6 +113,13 @@ class BridgeSession:
                     "height": metadata.get("deviceHeight"),
                 }
             )
+
+    async def _restart_streaming(self) -> None:
+        async with self.lock:
+            try:
+                await self.start_streaming()
+            except (ValueError, RuntimeError):
+                pass
 
     async def start_streaming(self) -> None:
         if self.clients and self.selected and not self.streaming:
@@ -344,6 +364,22 @@ class BridgeSession:
                 return ToolResult.success_result(
                     "Page selected. Take a snapshot before interacting."
                 )
+            if command in {"new_tab", "close_tab"}:
+                if not self.bridge.manages_tabs:
+                    raise ValueError(
+                        f"{command} is not available in your own browser. Use open and select_tab."
+                    )
+                if command == "new_tab":
+                    result = await self.bridge.request("new", url=args[0])
+                    await self.activate_selected_tab(result["id"])
+                    return ToolResult.success_result(f"new_tab opened {result['id']}.")
+                result = await self.bridge.request("close", id=args[0])
+                if result.get("selected") != self.selected:
+                    if result.get("selected"):
+                        await self.activate_selected_tab(result["selected"])
+                    else:
+                        await self.reset()
+                return ToolResult.success_result("close_tab completed.")
             if not self.selected:
                 raise ValueError(
                     "List tabs and select one, or open a page, before interacting."

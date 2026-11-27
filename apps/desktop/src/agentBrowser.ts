@@ -6,21 +6,32 @@
  * The pages run in their own session, apart from the app and from the
  * sidebar's web pages, with no preload and no permissions. While the browser
  * panel is closed they keep working out of sight; the panel shows the
- * controlled page, where the user can watch and use it.
+ * selected page with its tabs and address bar, where the user can watch and
+ * use it. The agent always acts on the tab the panel shows.
  */
 
 import { WebContentsView, session, type BrowserWindow, type Rectangle } from 'electron';
 
-import { CDP_METHODS, agentUrl, isAgentUrl, type BrowserHost } from './agentBrowserLink';
+import {
+  CDP_METHODS,
+  addressUrl,
+  agentUrl,
+  isAgentUrl,
+  type BrowserHost,
+} from './agentBrowserLink';
 import { sanitizeBounds } from './embeddedPages';
 
+/** Sign-ins kept across restarts. */
 export const AGENT_PARTITION = 'persist:suzent-agent-browser';
+/** Sign-ins forgotten when the app quits. */
+export const TEMPORARY_PARTITION = 'suzent-agent-browser';
 
 const OUT_OF_VIEW: Rectangle = { x: 0, y: 0, width: 1, height: 1 };
 const DESKTOP_METRICS = { width: 1280, height: 800, deviceScaleFactor: 1, mobile: false };
 const MAX_TABS = 20;
 const LOAD_TIMEOUT_MS = 15_000;
 const FRAME_INTERVAL_MS = 100;
+const STATE_DELAY_MS = 50;
 
 type Emit = (method: string, params: unknown) => void;
 
@@ -30,12 +41,32 @@ interface Tab {
   shown: boolean | null;
 }
 
-function lockDown(): void {
-  const agentSession = session.fromPartition(AGENT_PARTITION);
+export interface TabState {
+  id: string;
+  title: string;
+  url: string;
+  loading: boolean;
+  canGoBack: boolean;
+  canGoForward: boolean;
+}
+
+export interface BrowserState {
+  tabs: TabState[];
+  selected: string | null;
+}
+
+const lockedDown = new Set<string>();
+
+function lockDown(partition: string): void {
+  if (lockedDown.has(partition)) return;
+  lockedDown.add(partition);
+  const agentSession = session.fromPartition(partition);
   agentSession.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
   agentSession.setPermissionCheckHandler(() => false);
   agentSession.on('will-download', (event) => event.preventDefault());
 }
+
+const tabId = (tab: Tab): string => `tab-${tab.id}`;
 
 export class AgentBrowser implements BrowserHost {
   private readonly tabs = new Map<number, Tab>();
@@ -44,17 +75,22 @@ export class AgentBrowser implements BrowserHost {
   private shown: Rectangle | null = null;
   private pendingFrame: unknown = null;
   private frameTimer: ReturnType<typeof setTimeout> | null = null;
+  private stateTimer: ReturnType<typeof setTimeout> | null = null;
+  private partition = AGENT_PARTITION;
+  /** DevTools events for the backend. */
   emit: Emit = () => undefined;
+  /** Tab and address bar state for the browser panel. */
+  onState: (state: BrowserState) => void = () => undefined;
 
   constructor(
     private readonly window: BrowserWindow,
     private readonly focus: () => void
   ) {
-    lockDown();
+    lockDown(this.partition);
     window.on('closed', () => this.tabs.clear());
   }
 
-  /** Lays the controlled page over the browser panel. */
+  /** Lays the selected page over the browser panel. */
   show(bounds: Partial<Rectangle> | undefined): boolean {
     this.shown = sanitizeBounds(bounds);
     this.layout();
@@ -67,9 +103,92 @@ export class AgentBrowser implements BrowserHost {
   }
 
   reset(): void {
-    this.selected = undefined;
     this.pendingFrame = null;
     this.layout();
+  }
+
+  state(): BrowserState {
+    return {
+      tabs: [...this.tabs.values()].map((tab) => {
+        const contents = tab.view.webContents;
+        return {
+          id: tabId(tab),
+          title: contents.getTitle().slice(0, 200),
+          url: contents.getURL(),
+          loading: contents.isLoading(),
+          canGoBack: contents.navigationHistory.canGoBack(),
+          canGoForward: contents.navigationHistory.canGoForward(),
+        };
+      }),
+      selected: this.selected === undefined ? null : `tab-${this.selected}`,
+    };
+  }
+
+  /**
+   * Keeps sign-ins across restarts or not. Switching closes every tab, since
+   * an open page keeps the session it was made in.
+   */
+  configure(persistent: boolean): void {
+    const partition = persistent ? AGENT_PARTITION : TEMPORARY_PARTITION;
+    if (partition === this.partition) return;
+    this.closeAll();
+    this.partition = partition;
+    lockDown(partition);
+  }
+
+  /** Signs out of every site and forgets the browser's data. */
+  async clearData(): Promise<void> {
+    this.closeAll();
+    await Promise.all(
+      [AGENT_PARTITION, TEMPORARY_PARTITION].map(async (partition) => {
+        const data = session.fromPartition(partition);
+        await data.clearStorageData();
+        await data.clearCache();
+      })
+    );
+  }
+
+  /** What the user does in the panel's tab bar and address bar. */
+  async command(action: string, params: Record<string, unknown>): Promise<void> {
+    const tab = typeof params.id === 'string' ? this.find(params.id) : this.current();
+    switch (action) {
+      case 'new': {
+        const created = this.create();
+        await this.load(
+          created,
+          typeof params.url === 'string' ? addressUrl(params.url) : 'about:blank'
+        );
+        await this.choose(created);
+        return;
+      }
+      case 'select':
+        if (tab) await this.choose(tab);
+        return;
+      case 'close':
+        if (tab) await this.close(tab);
+        return;
+      case 'navigate': {
+        const url = addressUrl(String(params.url ?? ''));
+        const target = tab ?? this.create();
+        await this.load(target, url);
+        if (!tab) await this.choose(target);
+        return;
+      }
+      case 'back':
+        tab?.view.webContents.navigationHistory.goBack();
+        return;
+      case 'forward':
+        tab?.view.webContents.navigationHistory.goForward();
+        return;
+      case 'reload':
+        tab?.view.webContents.reload();
+        return;
+      case 'stop':
+        tab?.view.webContents.stop();
+        return;
+      default:
+        throw new Error('Unsupported browser command.');
+    }
   }
 
   async dispatch(action: string, params: Record<string, unknown>): Promise<unknown> {
@@ -86,29 +205,45 @@ export class AgentBrowser implements BrowserHost {
         if (!this.current()) throw new Error('Open a page first.');
         this.focus();
         return {};
+      case 'configure':
+        this.configure(params.persistent !== false);
+        return {};
       case 'tabs':
-        return [...this.tabs.values()].map(({ id, view }) => ({
-          id: `tab-${id}`,
-          title: view.webContents.getTitle().slice(0, 200),
-          url: view.webContents.getURL(),
-          selected: id === this.selected,
-          active: id === this.selected,
-          focused: id === this.selected && this.shown !== null,
+        return [...this.tabs.values()].map((tab) => ({
+          id: tabId(tab),
+          title: tab.view.webContents.getTitle().slice(0, 200),
+          url: tab.view.webContents.getURL(),
+          selected: tab.id === this.selected,
+          active: tab.id === this.selected,
+          focused: tab.id === this.selected && this.shown !== null,
         }));
       case 'select': {
-        const id = typeof params.id === 'string' ? /^tab-(\d+)$/.exec(params.id) : null;
-        const tab = id ? this.tabs.get(Number(id[1])) : undefined;
+        const tab = typeof params.id === 'string' ? this.find(params.id) : undefined;
         if (!tab) throw new Error('List tabs and select a valid tab.');
         await this.select(tab);
-        return { id: `tab-${tab.id}`, url: tab.view.webContents.getURL() };
+        return { id: tabId(tab), url: tab.view.webContents.getURL() };
       }
       case 'open': {
         const url = agentUrl(params.url);
         const tab = this.current() ?? this.create();
-        // DevTools commands to a page that never loaded wait for its first load.
         await this.load(tab, url);
         await this.select(tab);
-        return { id: `tab-${tab.id}`, url };
+        return { id: tabId(tab), url };
+      }
+      case 'new': {
+        const url = params.url === undefined ? 'about:blank' : agentUrl(params.url);
+        const tab = this.create();
+        await this.load(tab, url);
+        await this.select(tab);
+        return { id: tabId(tab), url };
+      }
+      case 'close': {
+        const tab = typeof params.id === 'string' ? this.find(params.id) : undefined;
+        if (!tab) throw new Error('List tabs and close a valid tab.');
+        const next = this.neighbor(tab);
+        this.closeTab(tab);
+        if (next && this.selected === undefined) await this.select(next);
+        return { selected: this.selected === undefined ? null : `tab-${this.selected}` };
       }
       case 'cdp': {
         const tab = this.current();
@@ -134,18 +269,30 @@ export class AgentBrowser implements BrowserHost {
   }
 
   destroy(): void {
-    for (const tab of [...this.tabs.values()]) this.closeTab(tab);
+    this.closeAll();
   }
 
   private current(): Tab | undefined {
     return this.selected === undefined ? undefined : this.tabs.get(this.selected);
   }
 
-  private create(url?: string): Tab {
+  private find(id: string): Tab | undefined {
+    const match = /^tab-(\d+)$/.exec(id);
+    return match ? this.tabs.get(Number(match[1])) : undefined;
+  }
+
+  /** The tab to show once *tab* closes: the one after it, else before it. */
+  private neighbor(tab: Tab): Tab | undefined {
+    const order = [...this.tabs.values()];
+    const index = order.indexOf(tab);
+    return order[index + 1] ?? order[index - 1];
+  }
+
+  private create(): Tab {
     if (this.tabs.size >= MAX_TABS) throw new Error('Too many browser tabs are open.');
     const view = new WebContentsView({
       webPreferences: {
-        partition: AGENT_PARTITION,
+        partition: this.partition,
         sandbox: true,
         contextIsolation: true,
         nodeIntegration: false,
@@ -168,6 +315,15 @@ export class AgentBrowser implements BrowserHost {
       }
       return { action: 'deny' };
     });
+    for (const event of [
+      'did-start-loading',
+      'did-stop-loading',
+      'did-navigate',
+      'did-navigate-in-page',
+      'page-title-updated',
+    ] as const) {
+      contents.on(event as 'did-start-loading', () => this.changed());
+    }
     contents.on('destroyed', () => this.forget(tab));
     contents.debugger.attach('1.3');
     contents.debugger.on('message', (_event, method, params) =>
@@ -182,7 +338,7 @@ export class AgentBrowser implements BrowserHost {
     this.tabs.set(tab.id, tab);
     this.window.contentView.addChildView(view);
     this.layout();
-    if (url) void contents.loadURL(url).catch(() => undefined);
+    this.changed();
     return tab;
   }
 
@@ -191,8 +347,25 @@ export class AgentBrowser implements BrowserHost {
       this.selected = tab.id;
       this.pendingFrame = null;
       this.layout();
+      this.changed();
     }
+    // DevTools commands to a page that never loaded wait for its first load.
+    if (!tab.view.webContents.getURL()) await this.load(tab, 'about:blank');
     await tab.view.webContents.debugger.sendCommand('Page.enable');
+  }
+
+  /** Selects a tab for the user and moves the agent there too. */
+  private async choose(tab: Tab): Promise<void> {
+    const moved = this.selected !== tab.id;
+    await this.select(tab);
+    if (moved) this.emit('selected', { id: tabId(tab) });
+  }
+
+  private async close(tab: Tab): Promise<void> {
+    const wasSelected = this.selected === tab.id;
+    const next = this.neighbor(tab);
+    this.closeTab(tab);
+    if (wasSelected && next) await this.choose(next);
   }
 
   private async load(tab: Tab, url: string): Promise<void> {
@@ -211,6 +384,14 @@ export class AgentBrowser implements BrowserHost {
       if (Date.now() > deadline) throw new Error('Page is still loading.');
       await new Promise((resolve) => setTimeout(resolve, 100));
     }
+  }
+
+  private changed(): void {
+    if (this.stateTimer) return;
+    this.stateTimer = setTimeout(() => {
+      this.stateTimer = null;
+      if (!this.window.isDestroyed()) this.onState(this.state());
+    }, STATE_DELAY_MS);
   }
 
   private onDevTools(tab: Tab, method: string, params: unknown): void {
@@ -254,6 +435,10 @@ export class AgentBrowser implements BrowserHost {
     }
   }
 
+  private closeAll(): void {
+    for (const tab of [...this.tabs.values()]) this.closeTab(tab);
+  }
+
   private closeTab(tab: Tab): void {
     this.forget(tab);
     if (!this.window.isDestroyed()) this.window.contentView.removeChildView(tab.view);
@@ -266,5 +451,6 @@ export class AgentBrowser implements BrowserHost {
       this.selected = undefined;
       this.emit('detached', {});
     }
+    this.changed();
   }
 }

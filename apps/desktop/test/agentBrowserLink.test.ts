@@ -4,7 +4,13 @@ import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
 
-import { AgentBrowserLink, agentUrl, tokenFile, type BrowserHost } from '../src/agentBrowserLink';
+import {
+  AgentBrowserLink,
+  addressUrl,
+  agentUrl,
+  tokenFile,
+  type BrowserHost,
+} from '../src/agentBrowserLink';
 
 class FakeSocket {
   readyState = 1;
@@ -65,6 +71,34 @@ test('agent pages are limited to the web and a blank page', () => {
   ]) {
     assert.throws(() => agentUrl(bad), bad);
   }
+});
+
+test('the address bar opens addresses and searches for anything else', () => {
+  assert.equal(addressUrl('example.com/a b'), 'https://www.bing.com/search?q=example.com%2Fa%20b');
+  assert.equal(addressUrl('  example.com/docs '), 'https://example.com/docs');
+  assert.equal(addressUrl('https://example.com'), 'https://example.com/');
+  assert.equal(addressUrl('localhost:3000'), 'http://localhost:3000/');
+  assert.equal(addressUrl('suzent agent'), 'https://www.bing.com/search?q=suzent%20agent');
+  assert.equal(addressUrl('v1.2'), 'https://www.bing.com/search?q=v1.2');
+  for (const bad of ['file:///etc/passwd', 'javascript:alert(1)', '']) {
+    assert.throws(() => addressUrl(bad), bad);
+  }
+});
+
+test('the link passes the backend settings to the browser', () => {
+  let kept: boolean | undefined;
+  const { link, sockets } = setup({
+    dispatch: async () => ({}),
+    reset: () => undefined,
+    configure: (persistent) => {
+      kept = persistent;
+    },
+  });
+  link.start();
+  sockets[0].onopen?.({});
+  sockets[0].receive({ type: 'ready', persistent: false });
+  assert.equal(kept, false);
+  link.stop();
 });
 
 test('the link authenticates with the token and answers requests in order', async () => {

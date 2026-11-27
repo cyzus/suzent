@@ -18,9 +18,20 @@ page is live: you can scroll, click, type, or sign in yourself, and the agent
 carries on from there. With the panel closed the agent keeps working out of
 sight.
 
+The panel has tabs and an address bar like any browser. Type an address or a
+search, go back and forward, or open and close tabs. The agent always works
+in the tab you are looking at: switch tabs and it follows. It can also open
+pages in new tabs and close them itself.
+
 The built-in browser keeps its own logins, separate from the app and from your
-everyday browser. It can only open web pages, never files on your computer,
-and it never gets your camera, microphone, location or downloads.
+everyday browser, so it doesn't use your Chrome or Edge profile. To keep the
+sites you sign in to after Suzent restarts, leave **Settings → Browser → Keep
+sign-ins** on (it is on by default). Turn it off for a clean browser each time,
+or use **Clear browser data** to sign out of everything now. To use the logins
+you already have in Chrome or Edge, use Option 3 instead.
+
+It can only open web pages, never files on your computer, and it never gets
+your camera, microphone, location or downloads.
 
 When the app is closed, for example while Suzent runs as a background service
 or you use the web UI, the agent uses its own browser (Option 2) instead.
