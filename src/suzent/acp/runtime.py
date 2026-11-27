@@ -1338,7 +1338,18 @@ async def _run_acp_turn(
                 # into "Stream persistence failed"; where it did not, the
                 # reload this promise sends the client to would come back
                 # without the prompt they just sent.
-                _resolve_persistence(persistence, stored_prompt)
+                stored_activity = True
+                if display_parts:
+                    stored_activity = db.append_chat_message(
+                        chat_id,
+                        {
+                            "role": "assistant",
+                            "content": text,
+                            "model": f"acp/{managed.agent_id}",
+                            "parts": display_parts,
+                        },
+                    )
+                _resolve_persistence(persistence, stored_prompt and stored_activity)
                 yield _sse(
                     {
                         "type": "RUN_ERROR",

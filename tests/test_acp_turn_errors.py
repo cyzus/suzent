@@ -689,3 +689,35 @@ async def test_acp_new_file_diff_supplies_empty_old_string():
         "old_string": "",
         "new_string": "print('hi')\n",
     }
+
+
+@pytest.mark.asyncio
+async def test_acp_cancelled_turn_persists_streamed_display_parts():
+    """Stopping a turn after tool calls streamed but before prose arrives must still persist the assistant activity row."""
+    updates = [
+        {
+            "sessionId": "s-1",
+            "update": {
+                "sessionUpdate": "tool_call",
+                "toolCallId": "tc-cancel",
+                "kind": "execute",
+                "rawInput": {"command": "echo hi"},
+                "rawOutput": {"stdout": "hi\n"},
+                "status": "completed",
+            },
+        },
+    ]
+    events, _, db = await _run(
+        [_managed()],
+        [(updates, {"stopReason": "cancelled"})],
+    )
+    errors = [e for e in events if e["type"] == "RUN_ERROR"]
+    assert len(errors) == 1
+    assert errors[0].get("code") == "stream_stopped"
+    assistant_calls = [
+        call.args[1]
+        for call in db.append_chat_message.call_args_list
+        if call.args[1].get("role") == "assistant"
+    ]
+    assert len(assistant_calls) == 1
+    assert assistant_calls[0]["parts"][0]["toolCallId"] == "tc-cancel"
