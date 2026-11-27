@@ -138,6 +138,7 @@ def resolve_managed_npx_command(command: list[str]) -> list[str]:
 
     unscoped = package.split("/")[-1]
     bin_name = unscoped
+    rel_target: str | None = None
     pkg_json_path = pkg_dir / "package.json"
     if pkg_json_path.is_file():
         try:
@@ -151,27 +152,23 @@ def resolve_managed_npx_command(command: list[str]) -> list[str]:
                 return list(command)
             bin_field = data.get("bin")
             if isinstance(bin_field, str) and bin_field.strip():
-                script_path = (pkg_dir / bin_field).resolve()
-                node_exe = shutil.which("node")
-                if script_path.is_file() and node_exe:
-                    return [node_exe, str(script_path), *trailing_args]
+                rel_target = bin_field.strip()
             elif isinstance(bin_field, dict) and bin_field:
                 chosen_key = (
                     unscoped if unscoped in bin_field else next(iter(bin_field.keys()))
                 )
                 bin_name = str(chosen_key)
-                rel_target = bin_field.get(chosen_key)
-                if isinstance(rel_target, str) and rel_target.strip():
-                    script_path = (pkg_dir / rel_target).resolve()
-                    node_exe = shutil.which("node")
-                    if script_path.is_file() and node_exe:
-                        return [node_exe, str(script_path), *trailing_args]
+                target = bin_field.get(chosen_key)
+                if isinstance(target, str) and target.strip():
+                    rel_target = target.strip()
         except Exception:
             if requested_version and requested_version != "latest":
                 return list(command)
     elif requested_version and requested_version != "latest":
         return list(command)
 
+    # 1. Prefer the npm-generated shim in node_modules/.bin so native binaries
+    # and non-Node shebang scripts run under their own interpreter.
     bin_dir = adapter_root / ".bin"
     candidates = (
         [bin_dir / f"{bin_name}.cmd", bin_dir / f"{bin_name}.exe", bin_dir / bin_name]
@@ -181,6 +178,25 @@ def resolve_managed_npx_command(command: list[str]) -> list[str]:
     for candidate in candidates:
         if candidate.is_file():
             return [str(candidate), *trailing_args]
+
+    # 2. Fallback to the package.json bin target if no .bin shim exists.
+    if rel_target:
+        script_path = (pkg_dir / rel_target).resolve()
+        if script_path.is_file():
+            is_js = script_path.suffix.lower() in (".js", ".mjs", ".cjs")
+            if not is_js:
+                try:
+                    head = script_path.read_bytes()[:128]
+                    first_line = head.splitlines()[0] if head else b""
+                    if first_line.startswith(b"#!") and b"node" in first_line.lower():
+                        is_js = True
+                except OSError:
+                    pass
+            if is_js:
+                node_exe = shutil.which("node")
+                if node_exe:
+                    return [node_exe, str(script_path), *trailing_args]
+            return [str(script_path), *trailing_args]
 
     return list(command)
 

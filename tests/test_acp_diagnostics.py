@@ -358,6 +358,24 @@ def test_resolve_managed_npx_command_uses_installed_bin(tmp_path, monkeypatch):
         ["npx", "-y", "@google/gemini-cli@2.0.0", "--acp"]
     ) == ["/usr/bin/node", str(script.resolve()), "--acp"]
 
+    # Non-JS native binary in bin executes directly without prepending node
+    native_bin = pkg_dir / "bin" / "gemini-native"
+    native_bin.parent.mkdir()
+    native_bin.write_bytes(b"\x7fELF-native-binary")
+    (pkg_dir / "package.json").write_text(
+        json.dumps(
+            {
+                "name": "@google/gemini-cli",
+                "version": "2.0.0",
+                "bin": "bin/gemini-native",
+            }
+        ),
+        encoding="utf-8",
+    )
+    assert resolve_managed_npx_command(
+        ["npx", "-y", "@google/gemini-cli", "--acp"]
+    ) == [str(native_bin.resolve()), "--acp"]
+
 
 @pytest.mark.asyncio
 async def test_cancelled_adapter_install_terminates_process(tmp_path, monkeypatch):
