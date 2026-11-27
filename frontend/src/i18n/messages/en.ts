@@ -945,6 +945,14 @@ export const en = {
         'Saved. Restart the Suzent backend for the new network binding to take effect.',
     },
     browser: {
+      desktopPersistent: 'Keep sign-ins',
+      desktopPersistentHelp:
+        'Keep the sites you sign in to in the built-in browser after Suzent restarts. Turning this off closes its tabs.',
+      clearData: 'Clear browser data',
+      clearDataHelp:
+        'Sign out of every site in the built-in browser and delete its cookies, storage and cache.',
+      cleared: 'Browser data cleared.',
+      clearError: 'Could not clear browser data.',
       sites: {
         title: 'Sites that can run code',
         description:
@@ -1979,6 +1987,14 @@ export const en = {
     },
   },
   browser: {
+    newTab: 'New tab',
+    closeTab: 'Close tab',
+    back: 'Back',
+    forward: 'Forward',
+    reload: 'Reload',
+    stop: 'Stop',
+    address: 'Address',
+    addressPlaceholder: 'Search or type an address',
     exitControl: 'Exit control (Esc)',
     livePreview: 'Live preview',
     stopPreview: 'Stop preview',

@@ -3,6 +3,7 @@ import { getApiBase } from './api';
 export interface BrowserPreferences {
   connection_mode: 'desktop' | 'managed' | 'existing' | 'extension';
   persistent: boolean;
+  desktop_persistent: boolean;
   headless: boolean;
   channel: 'chromium' | 'chrome' | 'msedge';
 }

@@ -42,7 +42,12 @@ import { installShim } from './cliShim';
 import { resolveLayout, type Layout } from './layout';
 import { extractJsonPayload, runServiceCli } from './service';
 import { keepShellLog } from './shellLog';
-import { runStartupTask, storeHelperPath, storeServiceStatus, type StartupTaskAction } from './storeStartup';
+import {
+  runStartupTask,
+  storeHelperPath,
+  storeServiceStatus,
+  type StartupTaskAction,
+} from './storeStartup';
 import { SuzentTray } from './tray';
 import { DesktopUpdater } from './updater';
 
@@ -496,6 +501,13 @@ const commands: Record<string, Handler> = {
   agent_browser_show: (args) =>
     agentBrowser?.show(args.bounds as Record<string, number> | undefined) ?? false,
   agent_browser_hide: () => agentBrowser?.hide(),
+  agent_browser_state: () => agentBrowser?.state() ?? { tabs: [], selected: null },
+  agent_browser_command: (args) =>
+    agentBrowser?.command(stringArg(args, 'action'), {
+      id: typeof args.id === 'string' ? args.id : undefined,
+      url: typeof args.url === 'string' ? args.url : undefined,
+    }),
+  agent_browser_clear_data: () => agentBrowser?.clearData(),
 };
 
 function isAppFrame(event: IpcMainInvokeEvent): boolean {
@@ -660,6 +672,7 @@ if (!app.requestSingleInstanceLock()) {
     });
     const link = agentLink;
     agentBrowser.emit = (method, params) => link.emit(method, params);
+    agentBrowser.onState = (state) => emit('agent-browser:state', state);
     agentLink.start();
     tray = new SuzentTray(
       host,

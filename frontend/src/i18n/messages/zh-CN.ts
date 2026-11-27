@@ -1046,6 +1046,13 @@ export const zhCN = {
       restartRequiredManually: '已保存。请重启 Suzent 后端以使新的网络绑定生效。',
     },
     browser: {
+      desktopPersistent: '保留登录状态',
+      desktopPersistentHelp:
+        'Suzent 重启后，内置浏览器里登录过的网站仍保持登录。关闭后会关掉所有标签页。',
+      clearData: '清除浏览器数据',
+      clearDataHelp: '退出内置浏览器里所有网站的登录，并删除它的 Cookie、存储和缓存。',
+      cleared: '浏览器数据已清除。',
+      clearError: '浏览器数据清除失败。',
       sites: {
         title: '可以运行代码的网站',
         description:
@@ -3350,6 +3357,14 @@ export const zhCN = {
     emptyDesc: '长期记忆文件会在智能体处理对话并抽取关键事实后自动生成。',
   },
   browser: {
+    newTab: '新标签页',
+    closeTab: '关闭标签页',
+    back: '后退',
+    forward: '前进',
+    reload: '刷新',
+    stop: '停止',
+    address: '地址',
+    addressPlaceholder: '搜索或输入网址',
     exitControl: '退出控制 (Esc)',
     livePreview: '实时预览',
     stopPreview: '停止预览',

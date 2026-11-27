@@ -63,6 +63,9 @@ class BrowserPreferences(BaseModel):
     model_config = ConfigDict(strict=True, extra="forbid")
 
     persistent: bool = False
+    # The built-in browser keeps its own sign-ins by default, apart from the
+    # managed browser's profile above.
+    desktop_persistent: bool = True
     headless: bool = True
     channel: Literal["chromium", "chrome", "msedge"] = "chromium"
     # "desktop" uses the Suzent app's built-in browser while the app is open
@@ -147,6 +150,8 @@ class BrowserCommand(BaseModel):
         "scroll",
         "tabs",
         "select_tab",
+        "new_tab",
+        "close_tab",
         "run_js",
         "batch",
     ]
@@ -157,9 +162,15 @@ class BrowserCommand(BaseModel):
     def validate_arguments(self) -> Self:
         args = self.arguments
         match self.command:
-            case "select_tab":
+            case "select_tab" | "close_tab":
                 if len(args) != 1 or not re.fullmatch(r"tab-\d+", args[0]):
-                    raise ValueError("select_tab expects [tab-id] from tabs")
+                    raise ValueError(f"{self.command} expects [tab-id] from tabs")
+            case "new_tab":
+                if len(args) > 1:
+                    raise ValueError("new_tab expects [url] or [] for a blank tab")
+                self.arguments = [
+                    normalize_browser_url(args[0] if args else "about:blank")
+                ]
             case "open":
                 if len(args) > 1:
                     raise ValueError("open expects [url] or [] for about:blank")

@@ -16,6 +16,7 @@ import { RefreshButton } from '../RefreshButton';
 import { SettingsCard, SettingsPage } from './SettingsCard';
 import { BrowserExtensionSetup } from './BrowserExtensionSetup';
 import { BrowserSitePermissions } from './BrowserSitePermissions';
+import { DesktopBrowserData } from './DesktopBrowserData';
 import { SettingsHeader } from './SettingsHeader';
 
 export function BrowserTab(): React.ReactElement {
@@ -145,7 +146,14 @@ export function BrowserTab(): React.ReactElement {
                     </p>
                   )}
                 </div>
-                {['managed', 'desktop'].includes(data.settings.connection_mode) && (
+                {data.settings.connection_mode === 'desktop' && (
+                  <DesktopBrowserData
+                    keep={data.settings.desktop_persistent}
+                    disabled={busy || data.environment_overrides.includes('desktop_persistent')}
+                    onKeepChange={(desktop_persistent) => void update({ desktop_persistent })}
+                  />
+                )}
+                {data.settings.connection_mode === 'managed' && (
                   <div className="grid gap-4 sm:grid-cols-2">
                     <div>
                       <label className="flex items-center gap-3 font-bold">

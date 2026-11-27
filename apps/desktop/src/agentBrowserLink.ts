@@ -36,6 +36,30 @@ export function agentUrl(value: unknown): string {
   return url.href;
 }
 
+const SEARCH_URL = 'https://www.bing.com/search?q=';
+
+/**
+ * What the user typed into the address bar, as a page to open: a web address
+ * as is, a bare host name over https (http for this computer), and anything
+ * else as a web search.
+ */
+export function addressUrl(input: string): string {
+  const value = input.trim();
+  if (!value) throw new Error('Type an address or a search.');
+  if (/^[a-z][a-z0-9+.-]*:/i.test(value) && !/^[^\s/:]+:\d+(\/|$)/.test(value)) {
+    return agentUrl(value);
+  }
+  const local = /^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?(\/|$)/i.test(value);
+  if (!/\s/.test(value) && (local || /^[^/]+\.[^/.]+(:\d+)?(\/|$)/.test(value))) {
+    try {
+      return agentUrl(`${local ? 'http' : 'https'}://${value}`);
+    } catch {
+      // Not a valid address after all: search for it.
+    }
+  }
+  return `${SEARCH_URL}${encodeURIComponent(value)}`;
+}
+
 export function isAgentUrl(value: string): boolean {
   try {
     agentUrl(value);
@@ -53,6 +77,8 @@ export interface BrowserHost {
   dispatch(action: string, params: Record<string, unknown>): Promise<unknown>;
   /** Called when the backend goes away: stop work the backend asked for. */
   reset(): void;
+  /** The backend's settings, sent when it accepts the connection. */
+  configure?(persistent: boolean): void;
 }
 
 interface SocketLike {
@@ -158,6 +184,8 @@ export class AgentBrowserLink {
       if (!this.ready) {
         if (message.type === 'ready') {
           this.ready = true;
+          const persistent = (message as { persistent?: unknown }).persistent;
+          if (typeof persistent === 'boolean') this.options.host.configure?.(persistent);
           this.options.log?.('Built-in browser connected to the backend');
           this.heartbeat = setInterval(() => {
             if (socket.readyState === OPEN) socket.send(JSON.stringify({ type: 'ping' }));
