@@ -1,0 +1,1 @@
+{"products": {"desktop": "none"}, "reason": "Only changes the window and Dock icon of the desktop shell run from a source checkout; installed apps already use their own icon."}
