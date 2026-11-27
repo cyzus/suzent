@@ -260,8 +260,14 @@ class ACPAgent:
         if self.requires_executable and not shutil.which(self.requires_executable):
             return False
         package, requested_version = _npx_specifier(self.command)
-        if package and not _npm_package_installed(package, requested_version):
-            return False
+        if package:
+            installed = (
+                _npm_package_installed(package, requested_version)
+                if requested_version
+                else _npm_package_installed(package)
+            )
+            if not installed:
+                return False
         return True
 
     @property

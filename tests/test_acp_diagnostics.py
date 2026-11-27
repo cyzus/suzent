@@ -433,7 +433,6 @@ async def test_cancelled_adapter_install_terminates_process(tmp_path, monkeypatc
 @pytest.mark.asyncio
 async def test_install_adapter_preserves_pinned_version(tmp_path, monkeypatch):
     import asyncio
-    from suzent.acp.registry import ACPAgent
 
     monkeypatch.setenv("SUZENT_DATA_DIR", str(tmp_path))
     monkeypatch.setattr(registry_mod.shutil, "which", lambda name: f"/usr/bin/{name}")
@@ -471,14 +470,22 @@ async def test_install_adapter_preserves_pinned_version(tmp_path, monkeypatch):
 
     monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_exec)
 
-    reg = ACPAgentRegistry(path=tmp_path / "acp_agents.json")
-    reg.save(
-        ACPAgent(
-            id="pinned-agent",
-            name="Pinned Agent",
-            command=["npx", "-y", "@scope/adapter@1.0.0"],
-        )
+    agents_json = tmp_path / "acp_agents.json"
+    agents_json.write_text(
+        json.dumps(
+            {
+                "agents": [
+                    {
+                        "id": "pinned-agent",
+                        "name": "Pinned Agent",
+                        "command": ["npx", "-y", "@scope/adapter@1.0.0"],
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
     )
+    reg = ACPAgentRegistry(path=agents_json)
     manager = ACPManager(reg)
     assert manager.registry.get("pinned-agent").available is False
 

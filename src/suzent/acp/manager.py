@@ -109,7 +109,12 @@ class ACPManager:
             return {"status": "ready", "package": None}
         specifier = getattr(agent, "adapter_specifier", None) or package
         _, requested_version = registry_mod._npx_specifier(agent.command)
-        if registry_mod._npm_package_installed(package, requested_version):
+        already_installed = (
+            registry_mod._npm_package_installed(package, requested_version)
+            if requested_version
+            else registry_mod._npm_package_installed(package)
+        )
+        if already_installed:
             return {"status": "ready", "package": package}
 
         npm = shutil.which("npm")
