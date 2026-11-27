@@ -147,7 +147,8 @@ pub(super) fn run(paths: &UpdatePaths, tag: &str) -> Result<PathBuf, String> {
 fn file_sha256(path: &Path) -> Result<String, String> {
     let mut file = fs::File::open(path).map_err(display_io("read downloaded installer"))?;
     let mut hasher = Sha256::new();
-    let mut buffer = [0_u8; 1024 * 1024];
+    // On the heap: Windows gives the main thread a 1 MiB stack.
+    let mut buffer = vec![0_u8; 1024 * 1024];
     loop {
         let count = file
             .read(&mut buffer)
@@ -332,6 +333,21 @@ fn install_service(app: &Path) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn hashing_an_installer_fits_a_small_thread_stack() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("installer");
+        fs::write(&file, b"suzent").unwrap();
+        let hash = std::thread::Builder::new()
+            .stack_size(256 * 1024)
+            .spawn(move || file_sha256(&file))
+            .unwrap()
+            .join()
+            .unwrap()
+            .unwrap();
+        assert_eq!(hash, network::sha256_hex(b"suzent"));
+    }
 
     #[test]
     fn installer_names_match_electron_builder() {

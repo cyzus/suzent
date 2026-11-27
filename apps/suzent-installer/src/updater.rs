@@ -1758,7 +1758,7 @@ fn download_file(
     let temporary = destination.with_extension("download");
     let result = (|| {
         let mut file = fs::File::create(&temporary).map_err(display_io("create download"))?;
-        let mut buffer = [0_u8; 256 * 1024];
+        let mut buffer = vec![0_u8; 256 * 1024];
         let mut downloaded = 0_u64;
         let mut last_report = Instant::now() - Duration::from_secs(1);
         loop {
