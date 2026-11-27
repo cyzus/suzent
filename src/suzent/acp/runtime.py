@@ -389,6 +389,7 @@ async def _stream_prompt(
                 state["error"] = failure
             display_parts = state.setdefault("display_parts", [])
             started_tools = state.setdefault("started_tools", set())
+            last_tool_names = state.setdefault("last_tool_names", {})
             last_tool_args = state.setdefault("last_tool_args", {})
             authoritative_tool_args = state.setdefault("authoritative_tool_args", set())
             last_tool_output = state.setdefault("last_tool_output", {})
@@ -458,6 +459,18 @@ async def _stream_prompt(
                     status = str(inner.get("status") or "").strip().lower()
 
                     is_new_tool = tool_call_id not in started_tools
+                    name_changed = bool(
+                        tool_name and last_tool_names.get(tool_call_id) != tool_name
+                    )
+                    if tool_name:
+                        last_tool_names[tool_call_id] = tool_name
+                    args_changed = bool(
+                        args_str and last_tool_args.get(tool_call_id) != args_str
+                    )
+                    had_prev_args = bool(last_tool_args.get(tool_call_id))
+                    if args_changed:
+                        last_tool_args[tool_call_id] = args_str
+
                     if is_new_tool:
                         started_tools.add(tool_call_id)
                         yield _sse(
@@ -467,20 +480,17 @@ async def _stream_prompt(
                                 "toolCallName": tool_name or "tool",
                             }
                         )
-                    if args_str and last_tool_args.get(tool_call_id) != args_str:
-                        had_prev_args = bool(last_tool_args.get(tool_call_id))
-                        last_tool_args[tool_call_id] = args_str
-                        if not is_new_tool and (had_prev_args or tool_name):
-                            # Re-emit TOOL_CALL_START so the frontend sets
-                            # argsReplayPending = true and replaces the earlier
-                            # snapshot instead of concatenating two JSON objects.
-                            yield _sse(
-                                {
-                                    "type": "TOOL_CALL_START",
-                                    "toolCallId": tool_call_id,
-                                    "toolCallName": tool_name or "",
-                                }
-                            )
+                    elif name_changed or (args_changed and had_prev_args):
+                        # Re-emit TOOL_CALL_START when the tool name was refined
+                        # or when a new argument snapshot replaces an earlier one.
+                        yield _sse(
+                            {
+                                "type": "TOOL_CALL_START",
+                                "toolCallId": tool_call_id,
+                                "toolCallName": last_tool_names.get(tool_call_id) or "",
+                            }
+                        )
+                    if args_changed:
                         yield _sse(
                             {
                                 "type": "TOOL_CALL_ARGS",

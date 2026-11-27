@@ -609,3 +609,40 @@ async def test_acp_tool_completion_metadata_does_not_overwrite_raw_input():
         "old_string": "foo",
         "new_string": "bar",
     }
+
+
+@pytest.mark.asyncio
+async def test_acp_tool_name_update_emitted_even_when_args_unchanged():
+    """When a later update refines tool kind/name without changing args, TOOL_CALL_START is emitted with the new name."""
+    updates = [
+        {
+            "sessionId": "s-1",
+            "update": {
+                "sessionUpdate": "tool_call",
+                "toolCallId": "tc-name",
+                "title": "Inspecting",
+                "rawInput": {"file_path": "a.txt"},
+                "status": "pending",
+            },
+        },
+        {
+            "sessionId": "s-1",
+            "update": {
+                "sessionUpdate": "tool_call_update",
+                "toolCallId": "tc-name",
+                "kind": "read",
+                "status": "completed",
+            },
+        },
+        _text_chunk("Read complete."),
+    ]
+    events, _, _ = await _run(
+        [_managed()],
+        [(updates, {"stopReason": "end_turn"})],
+    )
+    starts = [
+        e
+        for e in events
+        if e["type"] == "TOOL_CALL_START" and e["toolCallId"] == "tc-name"
+    ]
+    assert [s["toolCallName"] for s in starts] == ["Inspecting", "read_file"]
