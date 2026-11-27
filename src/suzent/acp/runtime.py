@@ -435,7 +435,7 @@ async def _stream_prompt(
                 if tool_call_id:
                     has_explicit_name = any(
                         isinstance(inner.get(k), str) and inner.get(k).strip()
-                        for k in ("name", "toolName", "tool_name", "kind", "title")
+                        for k in ("name", "toolName", "tool_name", "kind")
                     )
                     tool_name = (
                         _infer_acp_tool_name(inner)

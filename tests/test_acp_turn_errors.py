@@ -603,6 +603,7 @@ async def test_acp_tool_completion_metadata_does_not_overwrite_raw_input():
     tc_edit_part = next(
         p for p in assistant_calls[0]["parts"] if p.get("toolCallId") == "tc-edit"
     )
+    assert tc_edit_part["toolName"] == "edit_file"
     assert json.loads(tc_edit_part["args"]) == {
         "file_path": "a.txt",
         "old_string": "foo",
