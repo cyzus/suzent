@@ -338,3 +338,79 @@ async def test_binary_uploads_emit_unsupported_warning():
     warnings = [e for e in events if e.get("name") == "acp.files_unsupported"]
     assert len(warnings) == 1
     assert warnings[0]["value"]["count"] == 1
+
+
+@pytest.mark.asyncio
+async def test_acp_thoughts_and_tool_calls_translate_to_agui_and_persist():
+    """ACP agent_thought_chunk and tool_call updates must stream as AG-UI events and persist in parts."""
+    updates = [
+        {
+            "sessionId": "s-1",
+            "update": {
+                "sessionUpdate": "agent_thought_chunk",
+                "content": {"type": "text", "text": "Checking skills directory..."},
+            },
+        },
+        {
+            "sessionId": "s-1",
+            "update": {
+                "sessionUpdate": "tool_call",
+                "toolCallId": "tc-1",
+                "kind": "read",
+                "title": "Read skills/README.md",
+                "status": "in_progress",
+                "rawInput": {"file_path": "/workspace/skills/README.md"},
+            },
+        },
+        {
+            "sessionId": "s-1",
+            "update": {
+                "sessionUpdate": "tool_call_update",
+                "toolCallId": "tc-1",
+                "status": "completed",
+                "content": [
+                    {
+                        "type": "content",
+                        "content": {"type": "text", "text": "# Skills\n1. notebook"},
+                    }
+                ],
+            },
+        },
+        _text_chunk("Here are the skills I found."),
+    ]
+    events, _, db = await _run(
+        [_managed()],
+        [(updates, {"stopReason": "end_turn"})],
+    )
+
+    types = [e["type"] for e in events]
+    assert "REASONING_MESSAGE_CHUNK" in types
+    assert "TOOL_CALL_START" in types
+    assert "TOOL_CALL_ARGS" in types
+    assert "TOOL_CALL_RESULT" in types
+    assert "TEXT_MESSAGE_CONTENT" in types
+
+    tc_start = next(e for e in events if e["type"] == "TOOL_CALL_START")
+    assert tc_start["toolCallId"] == "tc-1"
+    assert tc_start["toolCallName"] == "read_file"
+
+    tc_res = next(e for e in events if e["type"] == "TOOL_CALL_RESULT")
+    assert tc_res["toolCallId"] == "tc-1"
+    assert "# Skills" in tc_res["content"]
+
+    # Check persisted assistant message row includes parts (reasoning, tool, text)
+    assistant_calls = [
+        call.args[1]
+        for call in db.append_chat_message.call_args_list
+        if call.args[1].get("role") == "assistant"
+    ]
+    assert len(assistant_calls) == 1
+    persisted = assistant_calls[0]
+    assert persisted["model"] == "acp/claude-code"
+    assert persisted["content"] == "Here are the skills I found."
+    parts = persisted["parts"]
+    assert [p["type"] for p in parts] == ["reasoning", "tool", "text"]
+    assert parts[0]["text"] == "Checking skills directory..."
+    assert parts[1]["toolName"] == "read_file"
+    assert parts[1]["state"] == "completed"
+    assert "# Skills" in parts[1]["output"]

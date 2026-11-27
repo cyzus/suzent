@@ -211,12 +211,29 @@ export function processEvent(
     case 'TEXT_MESSAGE_CONTENT': {
       const msgId = data.messageId as string;
       const delta = (data.delta as string) || '';
-      // Find last text part with matching messageId
-      for (let i = next.length - 1; i >= 0; i--) {
-        if (next[i].type === 'text' && next[i].messageId === msgId) {
-          next[i] = { ...next[i], text: (next[i].text || '') + delta };
-          break;
+      const last = next[next.length - 1];
+      if (last && last.type === 'text' && (!last.messageId || last.messageId === msgId)) {
+        next[next.length - 1] = { ...last, messageId: msgId, text: (last.text || '') + delta };
+      } else {
+        // When an ACP or multi-step turn emits tool calls or reasoning after
+        // the initial empty TEXT_MESSAGE_START shell, reuse the empty leading
+        // shell if nothing was ever written to it, or start a new trailing text
+        // part so prose spoken after tools appears below the ActivityRail!
+        let emptyIdx = -1;
+        for (let i = next.length - 1; i >= 0; i--) {
+          if (next[i].type === 'text' && next[i].messageId === msgId && !next[i].text) {
+            emptyIdx = i;
+            break;
+          }
         }
+        if (emptyIdx >= 0) {
+          next.splice(emptyIdx, 1);
+        }
+        next.push({
+          type: 'text',
+          text: delta,
+          messageId: msgId,
+        });
       }
       break;
     }

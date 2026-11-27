@@ -804,19 +804,70 @@ const ProviderFavicon: React.FC<{ model: string }> = ({ model }) => {
   );
 };
 
+const ACP_AGENT_LABELS: Record<string, string> = {
+  'claude-code': 'Claude Code',
+  'claude-code-api': 'Claude Code',
+  'claude-acp': 'Claude Code',
+  codex: 'Codex',
+  'codex-acp': 'Codex',
+  gemini: 'Gemini CLI',
+  'github-copilot-cli': 'GitHub Copilot',
+  'qwen-code': 'Qwen Code',
+  'kimi-code': 'Kimi Code',
+  grok: 'Grok',
+  'grok-build': 'Grok',
+  opencode: 'OpenCode',
+  cursor: 'Cursor',
+  cline: 'Cline',
+  goose: 'Goose',
+  auggie: 'Auggie',
+  kilo: 'Kilo Code',
+  hermes: 'Hermes',
+  openclaw: 'OpenClaw',
+};
+
+export function formatAcpAgentName(agentId: string): string {
+  return (
+    ACP_AGENT_LABELS[agentId] ||
+    agentId
+      .split(/[-_]+/)
+      .filter(Boolean)
+      .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+      .join(' ')
+  );
+}
+
 const ModelSignature: React.FC<{ model?: string }> = ({ model }) => {
   const { t } = useI18n();
   const modelId = model?.trim();
   if (!modelId) return null;
+  const acpId = modelId.startsWith('acp/') ? modelId.slice(4) : undefined;
 
   return (
     <div
       className="inline-flex min-w-0 flex-1 basis-24 items-center gap-1.5 text-neutral-500 dark:text-neutral-400 select-none"
-      title={t('chatMessage.modelSignature', { model: modelId })}
+      title={
+        acpId
+          ? t('chatMessage.runtime.external', { agent: formatAcpAgentName(acpId) })
+          : t('chatMessage.modelSignature', { model: modelId })
+      }
     >
-      <ProviderFavicon model={modelId} />
+      {acpId ? (
+        <span
+          className="inline-flex h-4 w-4 shrink-0 items-center justify-center text-brutal-black dark:text-neutral-200"
+          aria-hidden="true"
+        >
+          <AcpAgentIcon id={acpId} className="w-3.5 h-3.5 shrink-0" />
+        </span>
+      ) : (
+        <ProviderFavicon model={modelId} />
+      )}
       <span className="truncate font-mono text-[10px] font-medium normal-case tracking-normal text-neutral-500 dark:text-neutral-400">
-        {modelId.includes('/') ? modelId.slice(modelId.indexOf('/') + 1) : modelId}
+        {acpId
+          ? formatAcpAgentName(acpId)
+          : modelId.includes('/')
+            ? modelId.slice(modelId.indexOf('/') + 1)
+            : modelId}
       </span>
     </div>
   );
@@ -1094,32 +1145,34 @@ const AssistantMessageComponent: React.FC<AssistantMessageProps> = ({
         </span>
       )}
     </div>
-  ) : isHistory ? null : isAcp ? (
+  ) : isHistory ? null : isAcp && (isThinking || isStreamingThis || isPendingApproval) ? (
     <div
-      className={`
-      sticky top-2 z-20 isolate transform-gpu ml-0 mr-auto mb-3 overflow-hidden
-      transition-[width,height] duration-500 ease-[cubic-bezier(0.4,0,0.2,1)] max-w-full
-      bg-white dark:bg-zinc-800 border-3 border-brutal-black shadow-brutal-lg
-      ${isThinking ? 'w-[320px] max-w-full h-[108px]' : 'w-[90px] h-[40px]'}
-    `}
+      className="sticky top-2 z-20 isolate transform-gpu ml-0 mr-auto mb-2.5 inline-flex items-center gap-2.5 px-3 py-1.5 bg-white dark:bg-zinc-800 border-2 border-brutal-black shadow-brutal-sm max-w-full"
+      title={t('chatMessage.runtime.external', { agent: formatAcpAgentName(acpAgent!) })}
     >
-      <div className="absolute inset-0 opacity-100 scale-100">
-        <ThinkingAnimation isThinking={isThinking} />
-        <AgentBadge
-          isThinking={isThinking}
-          isStreaming={isStreamingThis}
-          currentToolName={currentToolName}
-          errorCount={errorCount}
-          isPendingApproval={isPendingApproval}
-          icon={<AcpAgentIcon id={acpAgent} className="w-6 h-6 shrink-0" />}
-        />
-        <div
-          className="absolute top-1 left-1 bg-white border border-brutal-black px-1 text-[8px] font-bold uppercase"
-          title={t('chatMessage.runtime.external', { agent: acpAgent })}
-        >
-          ACP
-        </div>
-      </div>
+      <span className="relative flex h-6 w-6 shrink-0 items-center justify-center bg-brutal-black text-white dark:bg-emerald-400/15 dark:text-emerald-300 border border-brutal-black dark:border-emerald-400/30">
+        <AcpAgentIcon id={acpAgent} className="w-3.5 h-3.5 shrink-0" />
+      </span>
+      <span className="font-black text-xs uppercase tracking-wide text-brutal-black dark:text-white truncate">
+        {formatAcpAgentName(acpAgent!)}
+      </span>
+      <span className="inline-flex items-center gap-1.5 pl-1 border-l border-brutal-black/15 dark:border-white/15">
+        {isPendingApproval ? (
+          <span className="px-1.5 py-0.5 text-[9px] font-black uppercase bg-brutal-yellow text-brutal-black border border-brutal-black">
+            {t('activityRail.pending')}
+          </span>
+        ) : (
+          <span
+            role="status"
+            aria-label={t('chatMessage.regentThinking')}
+            className="regent-typing"
+          >
+            <span />
+            <span />
+            <span />
+          </span>
+        )}
+      </span>
     </div>
   ) : isThinking ? (
     <div className="sticky top-2 z-20 isolate transform-gpu ml-0 mr-auto mb-3 w-[320px] max-w-full h-[108px] overflow-hidden bg-white dark:bg-zinc-800 border-3 border-brutal-black shadow-brutal-lg">
