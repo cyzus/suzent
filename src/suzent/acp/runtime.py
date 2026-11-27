@@ -142,30 +142,57 @@ def _infer_acp_tool_name(update: dict[str, Any]) -> str:
     return kind or "tool"
 
 
-def _extract_acp_tool_args(update: dict[str, Any]) -> str:
+def _extract_acp_tool_args(update: dict[str, Any]) -> tuple[str, bool]:
+    """Return ``(args_json, is_authoritative)`` for an ACP tool update.
+
+    Authoritative inputs come from ``rawInput`` / ``input`` or from ``diff``
+    content blocks carrying actual ``newText`` / ``oldText`` edits. Metadata
+    fallbacks (``locations``, path-only diffs, or ``title``) are used only when
+    no authoritative arguments have been seen yet for a tool call.
+    """
     raw_input = update.get("rawInput")
     if raw_input is None:
         raw_input = update.get("input")
     if isinstance(raw_input, dict) and raw_input:
-        return json.dumps(raw_input, ensure_ascii=False)
+        return json.dumps(raw_input, ensure_ascii=False), True
     if isinstance(raw_input, str) and raw_input.strip():
-        return raw_input.strip()
-    locations = update.get("locations")
-    if isinstance(locations, list) and locations:
-        first = locations[0]
-        if isinstance(first, dict) and isinstance(first.get("path"), str):
-            return json.dumps({"path": first["path"]}, ensure_ascii=False)
+        return raw_input.strip(), True
     content = update.get("content")
     if isinstance(content, list):
         for block in content:
             if isinstance(block, dict) and block.get("type") == "diff":
                 path = block.get("path")
+                old_text = block.get("oldText")
+                new_text = block.get("newText")
+                if (
+                    isinstance(path, str)
+                    and path
+                    and (
+                        (isinstance(old_text, str) and old_text)
+                        or (isinstance(new_text, str) and new_text)
+                    )
+                ):
+                    diff_args: dict[str, Any] = {"file_path": path}
+                    if isinstance(old_text, str):
+                        diff_args["old_string"] = old_text
+                    if isinstance(new_text, str):
+                        diff_args["new_string"] = new_text
+                    return json.dumps(diff_args, ensure_ascii=False), True
+    locations = update.get("locations")
+    if isinstance(locations, list) and locations:
+        first = locations[0]
+        if isinstance(first, dict) and isinstance(first.get("path"), str):
+            return json.dumps({"path": first["path"]}, ensure_ascii=False), False
+    if isinstance(content, list):
+        for block in content:
+            if isinstance(block, dict) and block.get("type") == "diff":
+                path = block.get("path")
                 if isinstance(path, str) and path:
-                    return json.dumps({"path": path}, ensure_ascii=False)
+                    return json.dumps({"path": path}, ensure_ascii=False), False
     title = str(update.get("title") or "").strip()
     if title:
-        return json.dumps({"description": title}, ensure_ascii=False)
-    return ""
+        return json.dumps({"description": title}, ensure_ascii=False), False
+    return "", False
 
 
 def _extract_acp_tool_output(update: dict[str, Any]) -> str | None:
@@ -363,6 +390,7 @@ async def _stream_prompt(
             display_parts = state.setdefault("display_parts", [])
             started_tools = state.setdefault("started_tools", set())
             last_tool_args = state.setdefault("last_tool_args", {})
+            authoritative_tool_args = state.setdefault("authoritative_tool_args", set())
             last_tool_output = state.setdefault("last_tool_output", {})
 
             delta = _text_from_update(update)
@@ -414,7 +442,18 @@ async def _stream_prompt(
                         if (tool_call_id not in started_tools or has_explicit_name)
                         else None
                     )
-                    args_str = _extract_acp_tool_args(inner)
+                    args_str, is_authoritative_args = _extract_acp_tool_args(inner)
+                    if (
+                        args_str
+                        and not is_authoritative_args
+                        and tool_call_id in authoritative_tool_args
+                    ):
+                        # Do not overwrite previously received rawInput/diff
+                        # arguments with a metadata-only fallback (e.g. path or
+                        # title on a completion update).
+                        args_str = ""
+                    if args_str and is_authoritative_args:
+                        authoritative_tool_args.add(tool_call_id)
                     out_str = _extract_acp_tool_output(inner)
                     status = str(inner.get("status") or "").strip().lower()
 

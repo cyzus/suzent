@@ -547,3 +547,64 @@ async def test_acp_tool_retains_in_progress_output_and_emits_failure_outcome():
         p for p in assistant_calls[0]["parts"] if p.get("toolCallId") == "tc-out"
     )
     assert "hello" in tc_out_part["output"]
+
+
+@pytest.mark.asyncio
+async def test_acp_tool_completion_metadata_does_not_overwrite_raw_input():
+    """A completion update with only locations/title/path-only diff must not overwrite earlier rawInput args."""
+    updates = [
+        {
+            "sessionId": "s-1",
+            "update": {
+                "sessionUpdate": "tool_call",
+                "toolCallId": "tc-edit",
+                "kind": "edit",
+                "rawInput": {
+                    "file_path": "a.txt",
+                    "old_string": "foo",
+                    "new_string": "bar",
+                },
+                "status": "in_progress",
+            },
+        },
+        {
+            "sessionId": "s-1",
+            "update": {
+                "sessionUpdate": "tool_call_update",
+                "toolCallId": "tc-edit",
+                "title": "Edit a.txt",
+                "locations": [{"path": "a.txt"}],
+                "content": [{"type": "diff", "path": "a.txt"}],
+                "status": "completed",
+            },
+        },
+        _text_chunk("Edited."),
+    ]
+    events, _, db = await _run(
+        [_managed()],
+        [(updates, {"stopReason": "end_turn"})],
+    )
+    arg_events = [
+        e
+        for e in events
+        if e["type"] == "TOOL_CALL_ARGS" and e["toolCallId"] == "tc-edit"
+    ]
+    assert len(arg_events) == 1
+    assert json.loads(arg_events[0]["delta"]) == {
+        "file_path": "a.txt",
+        "old_string": "foo",
+        "new_string": "bar",
+    }
+    assistant_calls = [
+        call.args[1]
+        for call in db.append_chat_message.call_args_list
+        if call.args[1].get("role") == "assistant"
+    ]
+    tc_edit_part = next(
+        p for p in assistant_calls[0]["parts"] if p.get("toolCallId") == "tc-edit"
+    )
+    assert json.loads(tc_edit_part["args"]) == {
+        "file_path": "a.txt",
+        "old_string": "foo",
+        "new_string": "bar",
+    }
