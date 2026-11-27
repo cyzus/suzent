@@ -584,6 +584,14 @@ function onClose(event: Electron.Event): void {
   }, CLOSE_PROMPT_ACK_MS);
 }
 
+// A packaged app takes its window and taskbar icon from its own executable;
+// a source run is electron.exe, which carries Electron's icon.
+function windowIcon(): string | undefined {
+  if (process.platform === 'linux') return iconPath('icon.png');
+  if (process.platform === 'win32' && !app.isPackaged) return iconPath('icon.ico');
+  return undefined;
+}
+
 function createWindow(): BrowserWindow {
   const mac = process.platform === 'darwin';
   const window = new BrowserWindow({
@@ -594,7 +602,7 @@ function createWindow(): BrowserWindow {
     minHeight: 560,
     show: false,
     backgroundColor: '#fafafa',
-    icon: process.platform === 'linux' ? iconPath('icon.png') : undefined,
+    icon: windowIcon(),
     // Windows and Linux draw their own title bar in the page. macOS keeps its
     // native traffic lights floating over the page header.
     frame: mac,
@@ -660,6 +668,7 @@ if (!app.requestSingleInstanceLock()) {
   app.setAppUserModelId(APP_ID);
 
   app.whenReady().then(() => {
+    if (!app.isPackaged) app.dock?.setIcon(iconPath('icon.png'));
     serveFrontend();
     mainWindow = createWindow();
     embedded = new EmbeddedPages(mainWindow);
