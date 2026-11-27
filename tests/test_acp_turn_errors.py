@@ -547,6 +547,7 @@ async def test_acp_tool_retains_in_progress_output_and_emits_failure_outcome():
         p for p in assistant_calls[0]["parts"] if p.get("toolCallId") == "tc-out"
     )
     assert "hello" in tc_out_part["output"]
+    assert json.loads(tc_out_part["args"])["content"] == "echo hello"
 
 
 @pytest.mark.asyncio

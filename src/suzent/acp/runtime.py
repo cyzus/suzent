@@ -142,6 +142,21 @@ def _infer_acp_tool_name(update: dict[str, Any]) -> str:
     return kind or "tool"
 
 
+def _normalize_acp_raw_input(raw_input: dict[str, Any]) -> dict[str, Any]:
+    """Ensure ACP rawInput dictionaries also expose Suzent's native arg keys."""
+    out = dict(raw_input)
+    if "content" not in out:
+        for cmd_key in ("command", "cmd", "script"):
+            val = out.get(cmd_key)
+            if isinstance(val, str) and val.strip():
+                out["content"] = val
+                break
+            if isinstance(val, list) and val and all(isinstance(x, str) for x in val):
+                out["content"] = " ".join(val)
+                break
+    return out
+
+
 def _extract_acp_tool_args(update: dict[str, Any]) -> tuple[str, bool]:
     """Return ``(args_json, is_authoritative)`` for an ACP tool update.
 
@@ -154,7 +169,7 @@ def _extract_acp_tool_args(update: dict[str, Any]) -> tuple[str, bool]:
     if raw_input is None:
         raw_input = update.get("input")
     if isinstance(raw_input, dict) and raw_input:
-        return json.dumps(raw_input, ensure_ascii=False), True
+        return json.dumps(_normalize_acp_raw_input(raw_input), ensure_ascii=False), True
     if isinstance(raw_input, str) and raw_input.strip():
         return raw_input.strip(), True
     content = update.get("content")
