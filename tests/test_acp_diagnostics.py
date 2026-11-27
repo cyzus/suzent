@@ -428,3 +428,61 @@ async def test_cancelled_adapter_install_terminates_process(tmp_path, monkeypatc
     with pytest.raises(asyncio.CancelledError):
         await task
     assert killed is True
+
+
+@pytest.mark.asyncio
+async def test_install_adapter_preserves_pinned_version(tmp_path, monkeypatch):
+    import asyncio
+    from suzent.acp.registry import ACPAgent
+
+    monkeypatch.setenv("SUZENT_DATA_DIR", str(tmp_path))
+    monkeypatch.setattr(registry_mod.shutil, "which", lambda name: f"/usr/bin/{name}")
+    monkeypatch.setattr(
+        registry_mod,
+        "_npm_global_roots",
+        lambda: [tmp_path / "acp_adapters" / "node_modules"],
+    )
+    monkeypatch.setattr(registry_mod, "_npx_cache_roots", lambda: [])
+    registry_mod._npm_cache.clear()
+
+    # Pre-install an incompatible version 2.0.0
+    pkg_dir = tmp_path / "acp_adapters" / "node_modules" / "@scope" / "adapter"
+    pkg_dir.mkdir(parents=True)
+    (pkg_dir / "package.json").write_text(
+        json.dumps({"name": "@scope/adapter", "version": "2.0.0"}),
+        encoding="utf-8",
+    )
+
+    installed_args: list[str] = []
+
+    class DummyProc:
+        returncode = 0
+
+        async def communicate(self):
+            (pkg_dir / "package.json").write_text(
+                json.dumps({"name": "@scope/adapter", "version": "1.0.0"}),
+                encoding="utf-8",
+            )
+            return b"installed", b""
+
+    async def fake_exec(*args, **kwargs):
+        installed_args.extend(str(a) for a in args)
+        return DummyProc()
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_exec)
+
+    reg = ACPAgentRegistry(path=tmp_path / "acp_agents.json")
+    reg.save(
+        ACPAgent(
+            id="pinned-agent",
+            name="Pinned Agent",
+            command=["npx", "-y", "@scope/adapter@1.0.0"],
+        )
+    )
+    manager = ACPManager(reg)
+    assert manager.registry.get("pinned-agent").available is False
+
+    res = await manager.install_adapter("pinned-agent")
+    assert res["status"] == "installed"
+    assert "@scope/adapter@1.0.0" in installed_args
+    assert manager.registry.get("pinned-agent").available is True

@@ -107,7 +107,9 @@ class ACPManager:
         package = agent.adapter_package
         if not package:
             return {"status": "ready", "package": None}
-        if registry_mod._npm_package_installed(package):
+        specifier = getattr(agent, "adapter_specifier", None) or package
+        _, requested_version = registry_mod._npx_specifier(agent.command)
+        if registry_mod._npm_package_installed(package, requested_version):
             return {"status": "ready", "package": package}
 
         npm = shutil.which("npm")
@@ -136,7 +138,7 @@ class ACPManager:
             "--no-audit",
             "--no-fund",
             "--prefer-online",
-            package,
+            specifier,
             cwd=str(adapter_dir),
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,

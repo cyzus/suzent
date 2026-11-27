@@ -64,41 +64,73 @@ def _npx_cache_roots() -> list[Path]:
     return [Path.home() / ".npm" / "_npx"]
 
 
-def _npm_package_installed(package: str) -> bool:
-    """True when ``package`` is present globally or already in the npx cache."""
-    now = time.monotonic()
-    hit = _npm_cache.get(package)
-    if hit and now - hit[0] < _NPM_CACHE_TTL:
-        return hit[1]
-
-    found = any((root / package).is_dir() for root in _npm_global_roots())
-    if not found:
-        for cache_root in _npx_cache_roots():
-            try:
-                entries = list(cache_root.iterdir())
-            except OSError:
-                continue
-            if any((entry / "node_modules" / package).is_dir() for entry in entries):
-                found = True
-                break
-
-    _npm_cache[package] = (now, found)
-    return found
-
-
-def _npx_package(command: list[str]) -> str | None:
-    """The package an ``npx`` command would run, or None if not an npx call."""
+def _npx_specifier(command: list[str]) -> tuple[str | None, str]:
+    """Return ``(package_name, requested_version)`` for an ``npx`` command."""
     executable = Path(command[0].replace("\\", "/")).stem.lower() if command else ""
     if executable != "npx":
-        return None
+        return None, ""
     for part in command[1:]:
         if part.startswith("-"):
             continue
         # `npx pkg@1.2.3` — the version suffix isn't part of the directory name
         # (`@scope/name@ver` keeps the leading @, so only split past index 0).
         at = part.rfind("@")
-        return part[:at] if at > 0 else part
-    return None
+        if at > 0:
+            return part[:at], part[at + 1 :].strip()
+        return part, ""
+    return None, ""
+
+
+def _npx_package(command: list[str]) -> str | None:
+    """The package an ``npx`` command would run, or None if not an npx call."""
+    package, _ = _npx_specifier(command)
+    return package
+
+
+def _package_dir_matches_version(pkg_dir: Path, requested_version: str) -> bool:
+    if not pkg_dir.is_dir():
+        return False
+    if not requested_version or requested_version == "latest":
+        return True
+    pkg_json_path = pkg_dir / "package.json"
+    if not pkg_json_path.is_file():
+        return False
+    try:
+        data = json.loads(pkg_json_path.read_text(encoding="utf-8"))
+        return str(data.get("version") or "").strip() == requested_version
+    except Exception:
+        return False
+
+
+def _npm_package_installed(package: str, requested_version: str = "") -> bool:
+    """True when ``package`` (and ``requested_version`` if pinned) is present globally or in the npx cache."""
+    cache_key = f"{package}@{requested_version}" if requested_version else package
+    now = time.monotonic()
+    hit = _npm_cache.get(cache_key)
+    if hit and now - hit[0] < _NPM_CACHE_TTL:
+        return hit[1]
+
+    found = any(
+        _package_dir_matches_version(root / package, requested_version)
+        for root in _npm_global_roots()
+    )
+    if not found:
+        for cache_root in _npx_cache_roots():
+            try:
+                entries = list(cache_root.iterdir())
+            except OSError:
+                continue
+            if any(
+                _package_dir_matches_version(
+                    entry / "node_modules" / package, requested_version
+                )
+                for entry in entries
+            ):
+                found = True
+                break
+
+    _npm_cache[cache_key] = (now, found)
+    return found
 
 
 def resolve_managed_npx_command(command: list[str]) -> list[str]:
@@ -227,8 +259,8 @@ class ACPAgent:
             return False
         if self.requires_executable and not shutil.which(self.requires_executable):
             return False
-        package = _npx_package(self.command)
-        if package and not _npm_package_installed(package):
+        package, requested_version = _npx_specifier(self.command)
+        if package and not _npm_package_installed(package, requested_version):
             return False
         return True
 
@@ -256,6 +288,14 @@ class ACPAgent:
         a hung agent.
         """
         return _npx_package(self.command)
+
+    @property
+    def adapter_specifier(self) -> str | None:
+        """The full npm package specifier (including ``@version`` if pinned)."""
+        package, requested_version = _npx_specifier(self.command)
+        if not package:
+            return None
+        return f"{package}@{requested_version}" if requested_version else package
 
     def diagnostics(self) -> dict[str, Any]:
         from .dialects import inspect_local_agent_state
