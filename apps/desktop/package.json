@@ -1,7 +1,7 @@
 {
   "name": "suzent-desktop",
   "productName": "SUZENT",
-  "version": "0.28.0",
+  "version": "0.28.1",
   "description": "SUZENT - Your Personal Agent",
   "private": true,
   "main": "dist/main.js",
