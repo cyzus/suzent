@@ -340,6 +340,24 @@ def test_resolve_managed_npx_command_uses_installed_bin(tmp_path, monkeypatch):
     resolved = resolve_managed_npx_command(["npx", "-y", "@google/gemini-cli", "--acp"])
     assert resolved == ["/usr/bin/node", str(script.resolve()), "--acp"]
 
+    # Pinned version mismatch preserves the original npx command
+    (pkg_dir / "package.json").write_text(
+        json.dumps(
+            {
+                "name": "@google/gemini-cli",
+                "version": "2.0.0",
+                "bin": {"gemini": "dist/index.js"},
+            }
+        ),
+        encoding="utf-8",
+    )
+    assert resolve_managed_npx_command(
+        ["npx", "-y", "@google/gemini-cli@1.0.0", "--acp"]
+    ) == ["npx", "-y", "@google/gemini-cli@1.0.0", "--acp"]
+    assert resolve_managed_npx_command(
+        ["npx", "-y", "@google/gemini-cli@2.0.0", "--acp"]
+    ) == ["/usr/bin/node", str(script.resolve()), "--acp"]
+
 
 @pytest.mark.asyncio
 async def test_cancelled_adapter_install_terminates_process(tmp_path, monkeypatch):

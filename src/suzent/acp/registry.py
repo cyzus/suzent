@@ -122,6 +122,9 @@ def resolve_managed_npx_command(command: list[str]) -> list[str]:
             break
     if pkg_index < 0:
         return list(command)
+    specifier = command[pkg_index]
+    at = specifier.rfind("@")
+    requested_version = specifier[at + 1 :].strip() if at > 0 else ""
     trailing_args = command[pkg_index + 1 :]
 
     adapter_root = (
@@ -139,6 +142,13 @@ def resolve_managed_npx_command(command: list[str]) -> list[str]:
     if pkg_json_path.is_file():
         try:
             data = json.loads(pkg_json_path.read_text(encoding="utf-8"))
+            installed_version = str(data.get("version") or "").strip()
+            if (
+                requested_version
+                and requested_version != "latest"
+                and installed_version != requested_version
+            ):
+                return list(command)
             bin_field = data.get("bin")
             if isinstance(bin_field, str) and bin_field.strip():
                 script_path = (pkg_dir / bin_field).resolve()
@@ -157,7 +167,10 @@ def resolve_managed_npx_command(command: list[str]) -> list[str]:
                     if script_path.is_file() and node_exe:
                         return [node_exe, str(script_path), *trailing_args]
         except Exception:
-            pass
+            if requested_version and requested_version != "latest":
+                return list(command)
+    elif requested_version and requested_version != "latest":
+        return list(command)
 
     bin_dir = adapter_root / ".bin"
     candidates = (
