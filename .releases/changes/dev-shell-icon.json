@@ -1,0 +1,1 @@
+{"products": {"desktop": "none"}, "summary": "Show the Suzent icon when the desktop shell runs from a source checkout.", "reason": "Only changes the window and Dock icon of the shell run from source; installed apps already use their own icon."}
