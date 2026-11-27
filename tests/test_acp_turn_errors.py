@@ -647,3 +647,45 @@ async def test_acp_tool_name_update_emitted_even_when_args_unchanged():
         if e["type"] == "TOOL_CALL_START" and e["toolCallId"] == "tc-name"
     ]
     assert [s["toolCallName"] for s in starts] == ["Inspecting", "read_file"]
+
+
+@pytest.mark.asyncio
+async def test_acp_new_file_diff_supplies_empty_old_string():
+    """New-file diff blocks with oldText=None must populate old_string='' so FileDiffViewer can preview."""
+    updates = [
+        {
+            "sessionId": "s-1",
+            "update": {
+                "sessionUpdate": "tool_call",
+                "toolCallId": "tc-new",
+                "kind": "edit",
+                "content": [
+                    {
+                        "type": "diff",
+                        "path": "new.py",
+                        "oldText": None,
+                        "newText": "print('hi')\n",
+                    }
+                ],
+                "status": "completed",
+            },
+        },
+        _text_chunk("Created new.py."),
+    ]
+    _, _, db = await _run(
+        [_managed()],
+        [(updates, {"stopReason": "end_turn"})],
+    )
+    assistant_calls = [
+        call.args[1]
+        for call in db.append_chat_message.call_args_list
+        if call.args[1].get("role") == "assistant"
+    ]
+    part = next(
+        p for p in assistant_calls[0]["parts"] if p.get("toolCallId") == "tc-new"
+    )
+    assert json.loads(part["args"]) == {
+        "file_path": "new.py",
+        "old_string": "",
+        "new_string": "print('hi')\n",
+    }

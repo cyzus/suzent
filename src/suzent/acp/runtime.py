@@ -187,11 +187,11 @@ def _extract_acp_tool_args(update: dict[str, Any]) -> tuple[str, bool]:
                         or (isinstance(new_text, str) and new_text)
                     )
                 ):
-                    diff_args: dict[str, Any] = {"file_path": path}
-                    if isinstance(old_text, str):
-                        diff_args["old_string"] = old_text
-                    if isinstance(new_text, str):
-                        diff_args["new_string"] = new_text
+                    diff_args: dict[str, Any] = {
+                        "file_path": path,
+                        "old_string": old_text if isinstance(old_text, str) else "",
+                        "new_string": new_text if isinstance(new_text, str) else "",
+                    }
                     return json.dumps(diff_args, ensure_ascii=False), True
     locations = update.get("locations")
     if isinstance(locations, list) and locations:
