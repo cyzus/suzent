@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 import os
 import shutil
-import sys
 import time
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
@@ -30,8 +29,10 @@ _npm_cache: dict[str, tuple[float, bool]] = {}
 
 
 def _npm_global_roots() -> list[Path]:
-    """Candidate global ``node_modules`` directories, without invoking npm."""
+    """Candidate global and Suzent-managed ``node_modules`` directories."""
     roots: list[Path] = []
+    suzent_dir = Path(os.environ.get("SUZENT_DATA_DIR", "~/.suzent")).expanduser()
+    roots.append(suzent_dir / "acp_adapters" / "node_modules")
     if os.name == "nt":
         appdata = os.environ.get("APPDATA")
         if appdata:
@@ -63,41 +64,173 @@ def _npx_cache_roots() -> list[Path]:
     return [Path.home() / ".npm" / "_npx"]
 
 
-def _npm_package_installed(package: str) -> bool:
-    """True when ``package`` is present globally or already in the npx cache."""
-    now = time.monotonic()
-    hit = _npm_cache.get(package)
-    if hit and now - hit[0] < _NPM_CACHE_TTL:
-        return hit[1]
-
-    found = any((root / package).is_dir() for root in _npm_global_roots())
-    if not found:
-        for cache_root in _npx_cache_roots():
-            try:
-                entries = list(cache_root.iterdir())
-            except OSError:
-                continue
-            if any((entry / "node_modules" / package).is_dir() for entry in entries):
-                found = True
-                break
-
-    _npm_cache[package] = (now, found)
-    return found
-
-
-def _npx_package(command: list[str]) -> str | None:
-    """The package an ``npx`` command would run, or None if not an npx call."""
+def _npx_specifier(command: list[str]) -> tuple[str | None, str]:
+    """Return ``(package_name, requested_version)`` for an ``npx`` command."""
     executable = Path(command[0].replace("\\", "/")).stem.lower() if command else ""
     if executable != "npx":
-        return None
+        return None, ""
     for part in command[1:]:
         if part.startswith("-"):
             continue
         # `npx pkg@1.2.3` — the version suffix isn't part of the directory name
         # (`@scope/name@ver` keeps the leading @, so only split past index 0).
         at = part.rfind("@")
-        return part[:at] if at > 0 else part
-    return None
+        if at > 0:
+            return part[:at], part[at + 1 :].strip()
+        return part, ""
+    return None, ""
+
+
+def _npx_package(command: list[str]) -> str | None:
+    """The package an ``npx`` command would run, or None if not an npx call."""
+    package, _ = _npx_specifier(command)
+    return package
+
+
+def _package_dir_matches_version(pkg_dir: Path, requested_version: str) -> bool:
+    if not pkg_dir.is_dir():
+        return False
+    if not requested_version or requested_version == "latest":
+        return True
+    pkg_json_path = pkg_dir / "package.json"
+    if not pkg_json_path.is_file():
+        return False
+    try:
+        data = json.loads(pkg_json_path.read_text(encoding="utf-8"))
+        return str(data.get("version") or "").strip() == requested_version
+    except Exception:
+        return False
+
+
+def _npm_package_installed(package: str, requested_version: str = "") -> bool:
+    """True when ``package`` (and ``requested_version`` if pinned) is present globally or in the npx cache."""
+    cache_key = f"{package}@{requested_version}" if requested_version else package
+    now = time.monotonic()
+    hit = _npm_cache.get(cache_key)
+    if hit and now - hit[0] < _NPM_CACHE_TTL:
+        return hit[1]
+
+    found = any(
+        _package_dir_matches_version(root / package, requested_version)
+        for root in _npm_global_roots()
+    )
+    if not found:
+        for cache_root in _npx_cache_roots():
+            try:
+                entries = list(cache_root.iterdir())
+            except OSError:
+                continue
+            if any(
+                _package_dir_matches_version(
+                    entry / "node_modules" / package, requested_version
+                )
+                for entry in entries
+            ):
+                found = True
+                break
+
+    _npm_cache[cache_key] = (now, found)
+    return found
+
+
+def resolve_managed_npx_command(command: list[str]) -> list[str]:
+    """Rewrite ``npx [-y] <pkg> [args...]`` to the installed binary in ``~/.suzent/acp_adapters``.
+
+    Adding ``~/.suzent/acp_adapters/node_modules/.bin`` to ``PATH`` does not
+    prevent ``npx -y @scope/pkg`` from re-downloading when invoked inside a
+    project workspace: ``npm exec`` checks the workspace dependency tree rather
+    than ``NODE_PATH``. When the package is installed in Suzent's managed
+    adapter directory, resolve its bin entry directly so the workspace ``cwd``
+    is preserved without triggering an npm fetch.
+    """
+    package = _npx_package(command)
+    if not package:
+        return list(command)
+
+    pkg_index = -1
+    for i, part in enumerate(command[1:], start=1):
+        if not part.startswith("-"):
+            pkg_index = i
+            break
+    if pkg_index < 0:
+        return list(command)
+    specifier = command[pkg_index]
+    at = specifier.rfind("@")
+    requested_version = specifier[at + 1 :].strip() if at > 0 else ""
+    trailing_args = command[pkg_index + 1 :]
+
+    adapter_root = (
+        Path(os.environ.get("SUZENT_DATA_DIR", "~/.suzent")).expanduser()
+        / "acp_adapters"
+        / "node_modules"
+    )
+    pkg_dir = adapter_root / package
+    if not pkg_dir.is_dir():
+        return list(command)
+
+    unscoped = package.split("/")[-1]
+    bin_name = unscoped
+    rel_target: str | None = None
+    pkg_json_path = pkg_dir / "package.json"
+    if pkg_json_path.is_file():
+        try:
+            data = json.loads(pkg_json_path.read_text(encoding="utf-8"))
+            installed_version = str(data.get("version") or "").strip()
+            if (
+                requested_version
+                and requested_version != "latest"
+                and installed_version != requested_version
+            ):
+                return list(command)
+            bin_field = data.get("bin")
+            if isinstance(bin_field, str) and bin_field.strip():
+                rel_target = bin_field.strip()
+            elif isinstance(bin_field, dict) and bin_field:
+                chosen_key = (
+                    unscoped if unscoped in bin_field else next(iter(bin_field.keys()))
+                )
+                bin_name = str(chosen_key)
+                target = bin_field.get(chosen_key)
+                if isinstance(target, str) and target.strip():
+                    rel_target = target.strip()
+        except Exception:
+            if requested_version and requested_version != "latest":
+                return list(command)
+    elif requested_version and requested_version != "latest":
+        return list(command)
+
+    # 1. Prefer the npm-generated shim in node_modules/.bin so native binaries
+    # and non-Node shebang scripts run under their own interpreter.
+    bin_dir = adapter_root / ".bin"
+    candidates = (
+        [bin_dir / f"{bin_name}.cmd", bin_dir / f"{bin_name}.exe", bin_dir / bin_name]
+        if os.name == "nt"
+        else [bin_dir / bin_name]
+    )
+    for candidate in candidates:
+        if candidate.is_file():
+            return [str(candidate), *trailing_args]
+
+    # 2. Fallback to the package.json bin target if no .bin shim exists.
+    if rel_target:
+        script_path = (pkg_dir / rel_target).resolve()
+        if script_path.is_file():
+            is_js = script_path.suffix.lower() in (".js", ".mjs", ".cjs")
+            if not is_js:
+                try:
+                    head = script_path.read_bytes()[:128]
+                    first_line = head.splitlines()[0] if head else b""
+                    if first_line.startswith(b"#!") and b"node" in first_line.lower():
+                        is_js = True
+                except OSError:
+                    pass
+            if is_js:
+                node_exe = shutil.which("node")
+                if node_exe:
+                    return [node_exe, str(script_path), *trailing_args]
+            return [str(script_path), *trailing_args]
+
+    return list(command)
 
 
 @dataclass(frozen=True)
@@ -126,9 +259,15 @@ class ACPAgent:
             return False
         if self.requires_executable and not shutil.which(self.requires_executable):
             return False
-        package = _npx_package(self.command)
-        if package and not _npm_package_installed(package):
-            return False
+        package, requested_version = _npx_specifier(self.command)
+        if package:
+            installed = (
+                _npm_package_installed(package, requested_version)
+                if requested_version
+                else _npm_package_installed(package)
+            )
+            if not installed:
+                return False
         return True
 
     @property
@@ -156,7 +295,17 @@ class ACPAgent:
         """
         return _npx_package(self.command)
 
+    @property
+    def adapter_specifier(self) -> str | None:
+        """The full npm package specifier (including ``@version`` if pinned)."""
+        package, requested_version = _npx_specifier(self.command)
+        if not package:
+            return None
+        return f"{package}@{requested_version}" if requested_version else package
+
     def diagnostics(self) -> dict[str, Any]:
+        from .dialects import inspect_local_agent_state
+
         # Show the user-facing executable, not an intermediate launcher.
         if self.requires_executable:
             exe = shutil.which(self.requires_executable)
@@ -167,15 +316,28 @@ class ACPAgent:
             exe = shutil.which(self.command[0])
         else:
             exe = None
+
+        ready = self.available
+        local_state = (
+            inspect_local_agent_state(self.id, self.env)
+            if ready
+            else {"auth_hint": None, "usage_summary": None}
+        )
+        effective_auth = (
+            self.auth_status
+            if self.auth_status not in (None, "unknown")
+            else (local_state.get("auth_hint") or self.auth_status)
+        )
         return {
             "id": self.id,
             "name": self.name,
             "description": self.description,
             "executable_path": exe,
-            "status": "ready" if self.available else "not_installed",
+            "status": "ready" if ready else "not_installed",
             "builtin": self.builtin,
             "version_bounds": self.version_bounds,
-            "auth_status": self.auth_status,
+            "auth_status": effective_auth,
+            "usage_summary": local_state.get("usage_summary"),
             "install_command": self.install_command,
             "login_command": self.login_command,
             "docs_url": self.docs_url,
@@ -193,30 +355,18 @@ class ACPAgent:
 # ---------------------------------------------------------------------------
 
 _BUILTINS = (
-    # ── Claude Code (CLI Bridge) ─────────────────────────────────────
-    # Wraps ``claude -p`` — works with Pro / Max subscriptions, no API key.
+    # ── Claude Code ──────────────────────────────────────────────────
+    # Official @agentclientprotocol adapter using the Claude Agent SDK.
+    # Supports both Claude Subscription (`claude auth login --claudeai`) and
+    # Anthropic Console / API key (`claude auth login --console` or ANTHROPIC_API_KEY).
     ACPAgent(
         id="claude-code",
-        name="Claude Code (CLI)",
-        command=[sys.executable, "-m", "suzent.acp.claude_bridge"],
-        builtin=True,
-        description="Wraps the Claude CLI for Pro/Max subscribers — no API key needed.",
-        requires_executable="claude",
-        docs_url="https://docs.claude.com/en/docs/claude-code/setup",
-        login_command=["claude", "auth", "login"],
-        auth_status="unknown",
-    ),
-    # ── Claude Code (API Adapter) ────────────────────────────────────
-    # Official @agentclientprotocol adapter using the Agent SDK (2.4k ⭐).
-    # npx downloads on first use and caches; ``adapter_package`` lets the UI
-    # offer a permanent global install so the first turn isn't a download.
-    ACPAgent(
-        id="claude-code-api",
-        name="Claude Code (API)",
+        name="Claude Code",
         command=["npx", "-y", "@agentclientprotocol/claude-agent-acp"],
         builtin=True,
-        description="Official ACP adapter via Agent SDK — requires an Anthropic API key.",
-        docs_url="https://github.com/agentclientprotocol/claude-agent-acp",
+        description="Anthropic's Claude coding agent — supports Claude Subscription (Pro/Max) and API keys.",
+        docs_url="https://docs.claude.com/en/docs/claude-code/setup",
+        login_command=["claude", "auth", "login"],
     ),
     # ── Codex ────────────────────────────────────────────────────────
     # Official @agentclientprotocol adapter for the OpenAI Codex CLI.
@@ -259,12 +409,126 @@ _BUILTINS = (
         docs_url="https://docs.openclaw.ai/start/getting-started",
         login_command=["openclaw", "onboard"],
     ),
+    # ── Gemini CLI ───────────────────────────────────────────────────
+    ACPAgent(
+        id="gemini",
+        name="Gemini CLI",
+        command=["npx", "-y", "@google/gemini-cli", "--acp"],
+        builtin=True,
+        description="Google's official CLI for Gemini with native ACP support.",
+        docs_url="https://github.com/google-gemini/gemini-cli",
+        login_command=["gemini"],
+    ),
+    # ── GitHub Copilot CLI ───────────────────────────────────────────
+    ACPAgent(
+        id="github-copilot-cli",
+        name="GitHub Copilot",
+        command=["npx", "-y", "@github/copilot", "--acp"],
+        builtin=True,
+        description="GitHub's AI pair programmer CLI speaking ACP.",
+        docs_url="https://github.com/features/copilot/cli/",
+        login_command=["copilot", "auth", "login"],
+    ),
+    # ── Qwen Code ────────────────────────────────────────────────────
+    ACPAgent(
+        id="qwen-code",
+        name="Qwen Code",
+        command=["npx", "-y", "@qwen-code/qwen-code", "--acp"],
+        builtin=True,
+        description="Alibaba's Qwen coding assistant with ACP support.",
+        docs_url="https://github.com/QwenLM/qwen-code",
+        login_command=["qwen"],
+    ),
+    # ── Kimi Code ────────────────────────────────────────────────────
+    ACPAgent(
+        id="kimi-code",
+        name="Kimi Code",
+        command=["npx", "-y", "@moonshot-ai/kimi-code", "acp"],
+        builtin=True,
+        description="Moonshot AI's next-generation coding agent.",
+        docs_url="https://github.com/MoonshotAI/kimi-code",
+        login_command=["kimi", "login"],
+    ),
+    # ── Grok Build ───────────────────────────────────────────────────
+    ACPAgent(
+        id="grok",
+        name="Grok",
+        command=["npx", "-y", "@xai-official/grok", "agent", "stdio"],
+        builtin=True,
+        description="xAI's coding agent and CLI over ACP stdio.",
+        docs_url="https://x.ai/cli",
+        login_command=["grok", "login"],
+    ),
+    # ── OpenCode ─────────────────────────────────────────────────────
+    ACPAgent(
+        id="opencode",
+        name="OpenCode",
+        command=["opencode", "acp"],
+        builtin=True,
+        description="Open-source coding agent with native ACP support.",
+        docs_url="https://opencode.ai/docs/cli/",
+        login_command=["opencode", "auth", "login"],
+    ),
+    # ── Cursor CLI ───────────────────────────────────────────────────
+    ACPAgent(
+        id="cursor",
+        name="Cursor",
+        command=["cursor-agent", "acp"],
+        builtin=True,
+        description="Cursor's CLI coding agent speaking ACP.",
+        docs_url="https://cursor.com/docs/cli/acp",
+        login_command=["cursor-agent", "login"],
+    ),
+    # ── Cline ────────────────────────────────────────────────────────
+    ACPAgent(
+        id="cline",
+        name="Cline",
+        command=["npx", "-y", "cline", "--acp"],
+        builtin=True,
+        description="Autonomous coding agent CLI for files, shell, and browser.",
+        docs_url="https://docs.cline.bot/cline-cli/overview",
+        login_command=["cline", "auth"],
+    ),
+    # ── Goose ────────────────────────────────────────────────────────
+    ACPAgent(
+        id="goose",
+        name="Goose",
+        command=["goose", "acp"],
+        builtin=True,
+        description="Block's local, extensible open-source engineering agent.",
+        docs_url="https://block.github.io/goose/",
+        login_command=["goose", "configure"],
+    ),
+    # ── Auggie CLI ───────────────────────────────────────────────────
+    ACPAgent(
+        id="auggie",
+        name="Auggie",
+        command=["npx", "-y", "@augmentcode/auggie", "--acp"],
+        builtin=True,
+        description="Augment Code's software agent with context engine.",
+        docs_url="https://docs.augmentcode.com/cli/overview",
+        login_command=["auggie", "login"],
+    ),
+    # ── Kilo Code ────────────────────────────────────────────────────
+    ACPAgent(
+        id="kilo",
+        name="Kilo Code",
+        command=["npx", "-y", "@kilocode/cli", "acp"],
+        builtin=True,
+        description="Open-source coding agent CLI speaking ACP.",
+        docs_url="https://kilo.ai/docs/cli",
+    ),
 )
 
 
 # Built-in ids that have been renamed. Chats created before the rename still
 # carry the old id in their config, and every send would fail without this.
-_RENAMED_IDS = {"codex-acp": "codex"}
+_RENAMED_IDS = {
+    "codex-acp": "codex",
+    "claude-acp": "claude-code",
+    "claude-code-api": "claude-code",
+    "grok-build": "grok",
+}
 
 
 class ACPAgentRegistry:

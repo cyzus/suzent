@@ -78,6 +78,238 @@ def _text_from_update(params: dict[str, Any]) -> str:
     return str(update.get("text") or content or "")
 
 
+def _thought_from_update(params: dict[str, Any]) -> str:
+    update = params.get("update") if isinstance(params.get("update"), dict) else params
+    kind = str(update.get("sessionUpdate") or update.get("type") or "")
+    if kind not in {"agent_thought_chunk", "agentThoughtChunk", "thought_chunk"}:
+        return ""
+    content = update.get("content")
+    if isinstance(content, dict):
+        return (
+            str(content.get("text") or "")
+            if content.get("type") in (None, "text")
+            else ""
+        )
+    return str(update.get("text") or content or "")
+
+
+def _infer_acp_tool_name(update: dict[str, Any]) -> str:
+    for key in ("name", "toolName", "tool_name"):
+        val = update.get(key)
+        if isinstance(val, str) and val.strip():
+            return val.strip()
+    kind = str(update.get("kind") or "").strip().lower()
+    raw_input = update.get("rawInput") or update.get("input")
+    if kind == "read":
+        return "read_file"
+    if kind in ("edit", "write"):
+        if isinstance(raw_input, dict) and (
+            "old_string" in raw_input or "oldText" in raw_input
+        ):
+            return "edit_file"
+        content = update.get("content")
+        if isinstance(content, list) and any(
+            isinstance(c, dict) and c.get("type") == "diff" for c in content
+        ):
+            return "edit_file"
+        return "edit_file" if kind == "edit" else "write_file"
+    if kind in ("execute", "bash", "command", "terminal"):
+        return "run_command"
+    if kind == "search":
+        if isinstance(raw_input, dict) and ("query" in raw_input or "url" in raw_input):
+            return "web_search"
+        return "grep_search"
+    if kind == "fetch":
+        return "webpage_fetch"
+    if kind == "think":
+        return "think"
+    title = str(update.get("title") or "").strip()
+    if title:
+        first_word = title.split()[0].lower().rstrip(":")
+        if first_word in (
+            "read",
+            "write",
+            "edit",
+            "bash",
+            "glob",
+            "grep",
+            "websearch",
+            "webfetch",
+            "task",
+        ):
+            return first_word
+        return title[:48]
+    return kind or "tool"
+
+
+def _normalize_acp_raw_input(raw_input: dict[str, Any]) -> dict[str, Any]:
+    """Ensure ACP rawInput dictionaries also expose Suzent's native arg keys."""
+    out = dict(raw_input)
+    if "content" not in out:
+        for cmd_key in ("command", "cmd", "script"):
+            val = out.get(cmd_key)
+            if isinstance(val, str) and val.strip():
+                out["content"] = val
+                break
+            if isinstance(val, list) and val and all(isinstance(x, str) for x in val):
+                out["content"] = " ".join(val)
+                break
+    return out
+
+
+def _extract_acp_tool_args(update: dict[str, Any]) -> tuple[str, bool]:
+    """Return ``(args_json, is_authoritative)`` for an ACP tool update.
+
+    Authoritative inputs come from ``rawInput`` / ``input`` or from ``diff``
+    content blocks carrying actual ``newText`` / ``oldText`` edits. Metadata
+    fallbacks (``locations``, path-only diffs, or ``title``) are used only when
+    no authoritative arguments have been seen yet for a tool call.
+    """
+    raw_input = update.get("rawInput")
+    if raw_input is None:
+        raw_input = update.get("input")
+    if isinstance(raw_input, dict) and raw_input:
+        return json.dumps(_normalize_acp_raw_input(raw_input), ensure_ascii=False), True
+    if isinstance(raw_input, str) and raw_input.strip():
+        return raw_input.strip(), True
+    content = update.get("content")
+    if isinstance(content, list):
+        for block in content:
+            if isinstance(block, dict) and block.get("type") == "diff":
+                path = block.get("path")
+                old_text = block.get("oldText")
+                new_text = block.get("newText")
+                if (
+                    isinstance(path, str)
+                    and path
+                    and (
+                        (isinstance(old_text, str) and old_text)
+                        or (isinstance(new_text, str) and new_text)
+                    )
+                ):
+                    diff_args: dict[str, Any] = {
+                        "file_path": path,
+                        "old_string": old_text if isinstance(old_text, str) else "",
+                        "new_string": new_text if isinstance(new_text, str) else "",
+                    }
+                    return json.dumps(diff_args, ensure_ascii=False), True
+    locations = update.get("locations")
+    if isinstance(locations, list) and locations:
+        first = locations[0]
+        if isinstance(first, dict) and isinstance(first.get("path"), str):
+            return json.dumps({"path": first["path"]}, ensure_ascii=False), False
+    if isinstance(content, list):
+        for block in content:
+            if isinstance(block, dict) and block.get("type") == "diff":
+                path = block.get("path")
+                if isinstance(path, str) and path:
+                    return json.dumps({"path": path}, ensure_ascii=False), False
+    title = str(update.get("title") or "").strip()
+    if title:
+        return json.dumps({"description": title}, ensure_ascii=False), False
+    return "", False
+
+
+def _extract_acp_tool_output(update: dict[str, Any]) -> str | None:
+    chunks: list[str] = []
+    content = update.get("content")
+    if isinstance(content, list):
+        for block in content:
+            if not isinstance(block, dict):
+                continue
+            btype = block.get("type")
+            if btype == "content" and isinstance(block.get("content"), dict):
+                inner = block["content"]
+                if inner.get("type") in (None, "text") and isinstance(
+                    inner.get("text"), str
+                ):
+                    chunks.append(inner["text"])
+            elif btype == "text" and isinstance(block.get("text"), str):
+                chunks.append(block["text"])
+            elif btype == "diff":
+                path = block.get("path") or ""
+                new_text = block.get("newText")
+                old_text = block.get("oldText")
+                if isinstance(new_text, str):
+                    header = f"--- {path}\n+++ {path}\n" if path else ""
+                    if isinstance(old_text, str) and old_text:
+                        chunks.append(f"{header}Updated {path or 'file'}")
+                    else:
+                        chunks.append(f"{header}{new_text[:2000]}")
+    if chunks:
+        return "\n".join(chunks)
+    raw_out = update.get("rawOutput")
+    if raw_out is None:
+        raw_out = update.get("output")
+    if isinstance(raw_out, str):
+        return raw_out
+    if isinstance(raw_out, dict):
+        stdout = raw_out.get("stdout")
+        stderr = raw_out.get("stderr")
+        if isinstance(stdout, str) or isinstance(stderr, str):
+            parts = [s for s in (stdout, stderr) if isinstance(s, str) and s]
+            return "\n".join(parts)
+        return json.dumps(raw_out, ensure_ascii=False)
+    if raw_out is not None:
+        return json.dumps(raw_out, ensure_ascii=False)
+    return None
+
+
+def _record_display_text(display_parts: list[dict[str, Any]], delta: str) -> None:
+    if not delta:
+        return
+    if display_parts and display_parts[-1].get("type") == "text":
+        display_parts[-1]["text"] = (display_parts[-1].get("text") or "") + delta
+    else:
+        display_parts.append({"type": "text", "text": delta})
+
+
+def _record_display_reasoning(display_parts: list[dict[str, Any]], delta: str) -> None:
+    if not delta:
+        return
+    if display_parts and display_parts[-1].get("type") == "reasoning":
+        display_parts[-1]["text"] = (display_parts[-1].get("text") or "") + delta
+    else:
+        display_parts.append({"type": "reasoning", "text": delta})
+
+
+def _upsert_display_tool(
+    display_parts: list[dict[str, Any]],
+    tool_call_id: str,
+    *,
+    tool_name: str | None = None,
+    args: str | None = None,
+    output: str | None = None,
+    state: str | None = None,
+    outcome: str | None = None,
+) -> None:
+    for part in reversed(display_parts):
+        if part.get("type") == "tool" and part.get("toolCallId") == tool_call_id:
+            if tool_name:
+                part["toolName"] = tool_name
+            if args:
+                part["args"] = args
+            if output is not None:
+                part["output"] = output
+            if state:
+                part["state"] = state
+            if outcome:
+                part["outcome"] = outcome
+            return
+    entry: dict[str, Any] = {
+        "type": "tool",
+        "toolCallId": tool_call_id,
+        "toolName": tool_name or "tool",
+        "args": args or "",
+        "state": state or "running",
+    }
+    if output is not None:
+        entry["output"] = output
+    if outcome:
+        entry["outcome"] = outcome
+    display_parts.append(entry)
+
+
 def _turn_error_from_update(params: dict[str, Any]) -> str:
     """Return the agent's error text when an update reports a failed turn."""
     if not isinstance(params, dict):
@@ -170,9 +402,17 @@ async def _stream_prompt(
             failure = _turn_error_from_update(update)
             if failure:
                 state["error"] = failure
+            display_parts = state.setdefault("display_parts", [])
+            started_tools = state.setdefault("started_tools", set())
+            last_tool_names = state.setdefault("last_tool_names", {})
+            last_tool_args = state.setdefault("last_tool_args", {})
+            authoritative_tool_args = state.setdefault("authoritative_tool_args", set())
+            last_tool_output = state.setdefault("last_tool_output", {})
+
             delta = _text_from_update(update)
             if delta:
                 state["parts"].append(delta)
+                _record_display_text(display_parts, delta)
                 yield _sse(
                     {
                         "type": "TEXT_MESSAGE_CONTENT",
@@ -180,10 +420,197 @@ async def _stream_prompt(
                         "delta": delta,
                     }
                 )
-            else:
+                continue
+
+            thought_delta = _thought_from_update(update)
+            if thought_delta:
+                _record_display_reasoning(display_parts, thought_delta)
                 yield _sse(
-                    {"type": "CUSTOM", "name": "acp.session_update", "value": update}
+                    {
+                        "type": "REASONING_MESSAGE_CHUNK",
+                        "messageId": message_id,
+                        "delta": thought_delta,
+                    }
                 )
+                continue
+
+            inner = (
+                update.get("update")
+                if isinstance(update.get("update"), dict)
+                else update
+            )
+            kind = str(inner.get("sessionUpdate") or inner.get("type") or "")
+
+            if kind in {"tool_call", "toolCall", "tool_call_update", "toolCallUpdate"}:
+                tool_call_id = str(
+                    inner.get("toolCallId")
+                    or inner.get("tool_call_id")
+                    or inner.get("id")
+                    or ""
+                ).strip()
+                if tool_call_id:
+                    has_explicit_name = any(
+                        isinstance(inner.get(k), str) and inner.get(k).strip()
+                        for k in ("name", "toolName", "tool_name", "kind")
+                    )
+                    tool_name = (
+                        _infer_acp_tool_name(inner)
+                        if (tool_call_id not in started_tools or has_explicit_name)
+                        else None
+                    )
+                    args_str, is_authoritative_args = _extract_acp_tool_args(inner)
+                    if (
+                        args_str
+                        and not is_authoritative_args
+                        and tool_call_id in authoritative_tool_args
+                    ):
+                        # Do not overwrite previously received rawInput/diff
+                        # arguments with a metadata-only fallback (e.g. path or
+                        # title on a completion update).
+                        args_str = ""
+                    if args_str and is_authoritative_args:
+                        authoritative_tool_args.add(tool_call_id)
+                    out_str = _extract_acp_tool_output(inner)
+                    status = str(inner.get("status") or "").strip().lower()
+
+                    is_new_tool = tool_call_id not in started_tools
+                    name_changed = bool(
+                        tool_name and last_tool_names.get(tool_call_id) != tool_name
+                    )
+                    if tool_name:
+                        last_tool_names[tool_call_id] = tool_name
+                    args_changed = bool(
+                        args_str and last_tool_args.get(tool_call_id) != args_str
+                    )
+                    had_prev_args = bool(last_tool_args.get(tool_call_id))
+                    if args_changed:
+                        last_tool_args[tool_call_id] = args_str
+
+                    if is_new_tool:
+                        started_tools.add(tool_call_id)
+                        yield _sse(
+                            {
+                                "type": "TOOL_CALL_START",
+                                "toolCallId": tool_call_id,
+                                "toolCallName": tool_name or "tool",
+                            }
+                        )
+                    elif name_changed or (args_changed and had_prev_args):
+                        # Re-emit TOOL_CALL_START when the tool name was refined
+                        # or when a new argument snapshot replaces an earlier one.
+                        yield _sse(
+                            {
+                                "type": "TOOL_CALL_START",
+                                "toolCallId": tool_call_id,
+                                "toolCallName": last_tool_names.get(tool_call_id) or "",
+                            }
+                        )
+                    if args_changed:
+                        yield _sse(
+                            {
+                                "type": "TOOL_CALL_ARGS",
+                                "toolCallId": tool_call_id,
+                                "delta": args_str,
+                            }
+                        )
+
+                    is_done = status in ("completed", "done", "succeeded", "success")
+                    is_failed = status in ("failed", "error", "cancelled", "rejected")
+                    tool_state = "completed" if (is_done or is_failed) else "running"
+                    outcome = "failed" if is_failed else None
+                    prev_out = last_tool_output.get(tool_call_id)
+                    if out_str is not None:
+                        last_tool_output[tool_call_id] = out_str
+                    effective_out = out_str if out_str is not None else prev_out
+                    _upsert_display_tool(
+                        display_parts,
+                        tool_call_id,
+                        tool_name=tool_name,
+                        args=args_str or None,
+                        output=effective_out,
+                        state=tool_state,
+                        outcome=outcome,
+                    )
+
+                    if is_done or is_failed:
+                        result_payload = (
+                            effective_out
+                            if effective_out is not None
+                            else ("Failed" if is_failed else "Completed")
+                        )
+                        if is_failed and not result_payload.lstrip().startswith("{"):
+                            result_payload = json.dumps(
+                                {
+                                    "success": False,
+                                    "error_code": "tool_failed",
+                                    "message": result_payload,
+                                },
+                                ensure_ascii=False,
+                            )
+                        yield _sse(
+                            {
+                                "type": "TOOL_CALL_RESULT",
+                                "toolCallId": tool_call_id,
+                                "content": result_payload,
+                            }
+                        )
+                        if is_failed:
+                            yield _sse(
+                                {
+                                    "type": "CUSTOM",
+                                    "name": "tool_call_outcome",
+                                    "value": {
+                                        "toolCallId": tool_call_id,
+                                        "outcome": "failed",
+                                    },
+                                }
+                            )
+                    elif out_str and out_str != prev_out:
+                        delta_out = (
+                            out_str[len(prev_out) :]
+                            if (prev_out and out_str.startswith(prev_out))
+                            else out_str
+                        )
+                        yield _sse(
+                            {
+                                "type": "CUSTOM",
+                                "name": "shell_output_delta",
+                                "value": {
+                                    "toolCallId": tool_call_id,
+                                    "delta": delta_out,
+                                },
+                            }
+                        )
+                    continue
+
+            if kind == "plan" and isinstance(inner.get("entries"), list):
+                plan_lines = []
+                for entry in inner["entries"]:
+                    if isinstance(entry, dict) and entry.get("content"):
+                        st = str(entry.get("status") or "")
+                        mark = (
+                            "x"
+                            if st == "completed"
+                            else "~"
+                            if st == "in_progress"
+                            else " "
+                        )
+                        plan_lines.append(f"- [{mark}] {entry['content']}")
+                if plan_lines:
+                    plan_text = "\n" + "\n".join(plan_lines) + "\n"
+                    _record_display_reasoning(display_parts, plan_text)
+                    yield _sse(
+                        {
+                            "type": "REASONING_MESSAGE_CHUNK",
+                            "messageId": message_id,
+                            "delta": plan_text,
+                        }
+                    )
+                    continue
+
+            yield _sse(
+                {"type": "CUSTOM", "name": "acp.session_update", "value": update}
+            )
         result = await prompt_task
     finally:
         # Never leave the prompt in flight when this generator stops early
@@ -192,10 +619,15 @@ async def _stream_prompt(
             prompt_task.cancel()
 
     state["stop_reason"] = str(result.get("stopReason") or "")
+    display_parts = state.setdefault("display_parts", [])
+    for part in display_parts:
+        if part.get("type") == "tool" and part.get("state") == "running":
+            part["state"] = "completed"
     if not state["parts"]:
         fallback = result.get("text") or result.get("message")
         if isinstance(fallback, str) and fallback:
             state["parts"].append(fallback)
+            _record_display_text(display_parts, fallback)
             yield _sse(
                 {
                     "type": "TEXT_MESSAGE_CONTENT",
@@ -885,10 +1317,14 @@ async def _run_acp_turn(
                 _go_idle()
 
         text = "".join(state["parts"])
+        display_parts = state.get("display_parts") or []
+        has_tool_activity = any(part.get("type") == "tool" for part in display_parts)
+        stop_reason = state.get("stop_reason") or ""
+        turn_failed = bool(state.get("error")) or (stop_reason not in ("", "end_turn"))
         yield _sse({"type": "TEXT_MESSAGE_END", "messageId": message_id})
         message_open = False
-        if not text.strip():
-            if state.get("stop_reason") == "cancelled":
+        if not text.strip() and (turn_failed or not has_tool_activity):
+            if stop_reason == "cancelled":
                 # A stop is not a failure here either. The native path tags its
                 # own cancellation frame the same way, and the client reads the
                 # tag to keep listening for the stream's real ending instead of
@@ -902,7 +1338,18 @@ async def _run_acp_turn(
                 # into "Stream persistence failed"; where it did not, the
                 # reload this promise sends the client to would come back
                 # without the prompt they just sent.
-                _resolve_persistence(persistence, stored_prompt)
+                stored_activity = True
+                if display_parts:
+                    stored_activity = db.append_chat_message(
+                        chat_id,
+                        {
+                            "role": "assistant",
+                            "content": text,
+                            "model": f"acp/{managed.agent_id}",
+                            "parts": display_parts,
+                        },
+                    )
+                _resolve_persistence(persistence, stored_prompt and stored_activity)
                 yield _sse(
                     {
                         "type": "RUN_ERROR",
@@ -921,13 +1368,16 @@ async def _run_acp_turn(
         # answer with the chat's unused native model.
         # False, not an exception, when the chat was deleted mid-turn: the row
         # does not exist, so the turn is not persisted and must not claim to be.
+        row: dict[str, Any] = {
+            "role": "assistant",
+            "content": text,
+            "model": f"acp/{managed.agent_id}",
+        }
+        if display_parts:
+            row["parts"] = display_parts
         stored = db.append_chat_message(
             chat_id,
-            {
-                "role": "assistant",
-                "content": text,
-                "model": f"acp/{managed.agent_id}",
-            },
+            row,
         )
         # Both rows or neither, as far as the client is concerned: an answer
         # stored without the prompt that asked for it is a transcript the reload

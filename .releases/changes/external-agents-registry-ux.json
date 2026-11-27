@@ -1,0 +1,4 @@
+{
+  "products": {"desktop": "minor"},
+  "summary": "Expand built-in external ACP agents with official registry catalog and SVG icons, unify Claude Code under the official adapter, add zero-wakeup on-disk state/auth inspection and seamless npm adapter installation, and streamline the External Agents settings tab."
+}

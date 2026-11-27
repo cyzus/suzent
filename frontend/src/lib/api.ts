@@ -815,7 +815,19 @@ export async function fetchAcpAgents(): Promise<AcpAgentDescriptor[]> {
     executable_path: a.executable_path,
     builtin: a.builtin,
     auth_status: a.auth_status,
+    usage_summary: a.usage_summary,
   }));
+}
+
+export async function installAcpAgentAdapter(
+  id: string
+): Promise<{ status: string; package?: string | null; agent?: AcpAgentDescriptor }> {
+  const res = await fetch(`${getApiBase()}/acp/agents/${encodeURIComponent(id)}/install`, {
+    method: 'POST',
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || `Failed to install adapter: ${res.status}`);
+  return data;
 }
 
 export type ACPAgent = AcpAgentDescriptor & { available?: boolean };

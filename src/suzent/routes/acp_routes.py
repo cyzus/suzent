@@ -122,6 +122,31 @@ async def create_acp_session(request: Request) -> JSONResponse:
         return JSONResponse({"error": str(exc)}, status_code=500)
 
 
+async def install_acp_agent_adapter(request: Request) -> JSONResponse:
+    from suzent.routes.acp_pairing_routes import require_local_operator
+
+    require_local_operator(request)
+    try:
+        agent_id = request.path_params.get("agent_id")
+        if not agent_id:
+            return JSONResponse({"error": "agent_id is required"}, status_code=400)
+        manager = get_acp_manager()
+        try:
+            agent = manager.registry.get(agent_id)
+        except KeyError:
+            return JSONResponse({"error": "Agent not found"}, status_code=404)
+        result = await manager.install_adapter(agent_id)
+        return JSONResponse({**result, "agent": agent.diagnostics()})
+    except TimeoutError:
+        return JSONResponse(
+            {"error": "Adapter installation timed out; try again"}, status_code=504
+        )
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
+    except Exception as exc:
+        return JSONResponse({"error": str(exc)}, status_code=500)
+
+
 async def probe_acp_agent(request: Request) -> JSONResponse:
     return await _check_acp_agent(request)
 
