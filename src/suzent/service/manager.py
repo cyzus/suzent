@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import sys
 import time
 import urllib.error
 import urllib.request
@@ -79,11 +80,31 @@ class ServiceController:
             and ServiceController._owns_legacy_process(state, expected)
         ):
             return
+        if (
+            actual is None
+            and expected is None
+            and ServiceController._shares_runtime(state)
+        ):
+            return
         raise RuntimeError(
             f"Running service belongs to {actual or 'an unknown installation'} "
             f"(PID {state.pid}), not {expected or 'this installation'}. "
             "Inspect the other installation and stop it explicitly; no process was stopped."
         )
+
+    @staticmethod
+    def _shares_runtime(state: ServiceProcessState) -> bool:
+        """An installed app's CLI and service run on the same bundled Python."""
+        runtime = Path(sys.prefix).resolve()
+        if state.runtime_prefix is not None:
+            return Path(state.runtime_prefix).resolve() == runtime
+        try:
+            process = psutil.Process(state.pid)
+            if abs(process.create_time() - state.process_created_at) > 1.0:
+                return False
+            return Path(process.exe()).resolve().is_relative_to(runtime)
+        except (psutil.Error, OSError):
+            return False
 
     @staticmethod
     def _owns_legacy_process(state: ServiceProcessState, root: Path) -> bool:

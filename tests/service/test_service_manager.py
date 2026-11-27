@@ -158,3 +158,82 @@ def test_foreign_service_is_never_stopped_or_replaced(monkeypatch):
             raise AssertionError("foreign service must not be modified")
     assert platform.actions == []
     assert controller.status().error is not None
+
+
+def _installed_state(runtime_prefix: str | None) -> ServiceProcessState:
+    state = _process_state()
+    return ServiceProcessState(
+        instance_id=state.instance_id,
+        control_token=state.control_token,
+        pid=state.pid,
+        process_created_at=state.process_created_at,
+        started_at=state.started_at,
+        port=state.port,
+        version=state.version,
+        source_root=None,
+        runtime_prefix=runtime_prefix,
+    )
+
+
+def test_installed_app_controls_the_service_on_its_own_runtime(monkeypatch, tmp_path):
+    runtime = tmp_path / "Suzent" / "resources" / "python"
+    runtime.mkdir(parents=True)
+    monkeypatch.setattr(service_manager, "get_backend_source_root", lambda: None)
+    monkeypatch.setattr(service_manager.sys, "prefix", str(runtime))
+    state = _installed_state(str(runtime))
+    monkeypatch.setattr(service_manager, "read_process_state", lambda: state)
+
+    ServiceController._assert_service_owned(state)
+
+
+def test_installed_app_refuses_a_service_on_another_runtime(monkeypatch, tmp_path):
+    monkeypatch.setattr(service_manager, "get_backend_source_root", lambda: None)
+    monkeypatch.setattr(service_manager.sys, "prefix", str(tmp_path / "mine"))
+    state = _installed_state(str(tmp_path / "other"))
+
+    try:
+        ServiceController._assert_service_owned(state)
+    except RuntimeError as exc:
+        assert "no process was stopped" in str(exc)
+    else:
+        raise AssertionError("a service on another runtime must not be controlled")
+
+
+def test_installed_app_recognizes_a_service_started_before_runtime_was_recorded(
+    monkeypatch, tmp_path
+):
+    runtime = tmp_path / "python"
+    executable = runtime / "pythonw.exe"
+    executable.parent.mkdir(parents=True)
+    executable.touch()
+
+    class FakeProcess:
+        def __init__(self, _pid: int):
+            pass
+
+        def create_time(self) -> float:
+            return 1.0
+
+        def exe(self) -> str:
+            return str(executable)
+
+    monkeypatch.setattr(service_manager, "get_backend_source_root", lambda: None)
+    monkeypatch.setattr(service_manager.sys, "prefix", str(runtime))
+    monkeypatch.setattr(service_manager.psutil, "Process", FakeProcess)
+
+    ServiceController._assert_service_owned(_installed_state(None))
+
+
+def test_source_checkout_refuses_an_installed_apps_service(monkeypatch, tmp_path):
+    monkeypatch.setattr(service_manager, "get_backend_source_root", lambda: tmp_path)
+    monkeypatch.setattr(
+        ServiceController, "_owns_legacy_process", staticmethod(lambda *_: False)
+    )
+    state = _installed_state(str(tmp_path / "python"))
+
+    try:
+        ServiceController._assert_service_owned(state)
+    except RuntimeError:
+        pass
+    else:
+        raise AssertionError("a checkout must not control the installed app's service")
