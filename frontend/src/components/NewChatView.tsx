@@ -321,7 +321,13 @@ const ExternalSessionDiscoveryTray: React.FC<{
   }, [agentId, cwd, currentChatId, currentProjectId]);
 
   const handleAdopt = useCallback(
-    async (sessionId: string, title?: string, updatedAt?: string, mtime?: number) => {
+    async (
+      sessionId: string,
+      title?: string,
+      updatedAt?: string,
+      mtime?: number,
+      sessionCwd?: string
+    ) => {
       const trimmed = sessionId.trim();
       if (!trimmed || adoptingId) return;
       setAdoptingId(trimmed);
@@ -332,7 +338,7 @@ const ExternalSessionDiscoveryTray: React.FC<{
           sessionId: trimmed,
           chatId: currentChatId,
           projectId: currentProjectId,
-          cwd,
+          cwd: sessionCwd || cwd,
           title,
           updatedAt,
           mtime,
@@ -429,7 +435,13 @@ const ExternalSessionDiscoveryTray: React.FC<{
                   type="button"
                   disabled={Boolean(adoptingId)}
                   onClick={() =>
-                    void handleAdopt(item.session_id, item.title, item.updated_at, item.mtime)
+                    void handleAdopt(
+                      item.session_id,
+                      item.title,
+                      item.updated_at,
+                      item.mtime,
+                      item.cwd
+                    )
                   }
                   className="shrink-0 px-2.5 py-1 text-[11px] font-extrabold uppercase tracking-wider border border-brutal-black dark:border-zinc-500 bg-white dark:bg-zinc-800 text-brutal-black dark:text-neutral-100 hover:bg-brutal-yellow dark:hover:bg-zinc-700 disabled:opacity-50 transition-colors"
                 >

@@ -311,7 +311,7 @@ export const GlobalSearchModal: React.FC<GlobalSearchModalProps> = ({
       onSelect: () => {
         setCurrentProjectId(p.id);
         onClose();
-        onOpenView('chat');
+        onNewChat();
       },
     });
 

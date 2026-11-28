@@ -198,6 +198,7 @@ export const ChatList: React.FC<ChatListProps> = ({
 
   const {
     projects,
+    currentProjectId,
     setCurrentProjectId,
     createProject,
     renameProject,
@@ -454,6 +455,19 @@ export const ChatList: React.FC<ChatListProps> = ({
     }
     initialProjectSelectedRef.current = true;
   }, [chats, currentChatId, projects]);
+
+  // When a new-chat draft is explicitly switched to a specific project (e.g. via
+  // GlobalSearchModal), keep the sidebar's project filter aligned with that project.
+  useEffect(() => {
+    if (
+      !currentChatId &&
+      organization === 'projects' &&
+      currentProjectId &&
+      projects.some((project) => project.id === currentProjectId)
+    ) {
+      setFilterId(currentProjectId);
+    }
+  }, [currentChatId, currentProjectId, organization, projects]);
 
   // Whenever the chat list changes (create / delete / move), the server-side
   // project chat counts may be stale. Refresh them so the dropdown shows
