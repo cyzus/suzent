@@ -73,6 +73,10 @@ class ForkChatRequest(BaseModel):
 
     title: str | None = None
     message_index: Annotated[StrictInt, Field(ge=1)] | None = None
+    target_runtime: str | None = None
+    target_model: str | None = None
+    target_acp_agent_id: str | None = None
+    target_acp_agent_name: str | None = None
 
 
 async def get_chat_git_status_route(request: Request) -> JSONResponse:
@@ -637,10 +641,20 @@ async def fork_chat_route(request: Request) -> JSONResponse:
             status_code=422,
         )
     try:
+        extra_kwargs: dict[str, Any] = {}
+        if payload.target_runtime is not None:
+            extra_kwargs["target_runtime"] = payload.target_runtime
+        if payload.target_model is not None:
+            extra_kwargs["target_model"] = payload.target_model
+        if payload.target_acp_agent_id is not None:
+            extra_kwargs["target_acp_agent_id"] = payload.target_acp_agent_id
+        if payload.target_acp_agent_name is not None:
+            extra_kwargs["target_acp_agent_name"] = payload.target_acp_agent_name
         new_chat_id, restored = fork_chat(
             request.path_params["chat_id"],
             title=payload.title,
             message_index=payload.message_index,
+            **extra_kwargs,
         )
     except ValueError as exc:
         return JSONResponse({"error": str(exc)}, status_code=409)

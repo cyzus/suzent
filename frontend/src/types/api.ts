@@ -53,6 +53,22 @@ export interface Message {
   run_active_seconds?: number;
   run_timings?: RunTiming[];
 }
+export interface AcpConfigOptionChoice {
+  value: string;
+  name: string;
+  description?: string;
+}
+
+export interface AcpSessionConfigOption {
+  id: string;
+  name: string;
+  category?: string;
+  description?: string;
+  type?: string;
+  currentValue: string;
+  options: AcpConfigOptionChoice[];
+}
+
 export interface ChatConfig {
   model: string;
   agent: string;
@@ -80,6 +96,7 @@ export interface ChatConfig {
   acp_agent_name?: string;
   acp_session_id?: string;
   acp_cwd?: string;
+  acp_config_options?: AcpSessionConfigOption[];
   runtime?: 'native' | 'acp';
 }
 
