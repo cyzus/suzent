@@ -1381,11 +1381,42 @@ async def _run_acp_turn(
         message_open = True
 
         state: dict[str, Any] = {"parts": [], "stop_reason": "", "error": ""}
+        # When an existing conversation is forked into a brand-new ACP session,
+        # the external agent process has no record of the earlier turns stored in
+        # Suzent's DB. Prepend a bounded transcript summary on the first turn of
+        # that fresh session so the new agent can continue seamlessly.
+        fork_context = ""
+        if not requested_session and existing:
+            from suzent.core.fork import _display_message_text
+
+            prior_lines: list[str] = []
+            for row in existing[-24:]:
+                if not isinstance(row, dict):
+                    continue
+                role = row.get("role")
+                if role not in ("user", "assistant"):
+                    continue
+                txt = _display_message_text(row).strip()
+                if not txt:
+                    continue
+                label = "User" if role == "user" else "Assistant"
+                prior_lines.append(f"{label}: {txt[:1500]}")
+            if prior_lines:
+                fork_context = (
+                    "<prior_conversation_history>\n"
+                    "This conversation was branched from an earlier session. "
+                    "Here is the prior conversation context:\n\n"
+                    + "\n\n".join(prior_lines)
+                    + "\n</prior_conversation_history>\n\n"
+                )
         # Model-only. The transcript rows were derived from `message` above, so
         # anything added here reaches the agent without being recorded as
         # something the user said — internal policy text in a persisted user row
         # misrepresents the conversation to anyone auditing it later.
-        _prompt = f"{system_preamble}\n{message}" if system_preamble else message
+        _prompt_body = f"{fork_context}{message}" if fork_context else message
+        _prompt = (
+            f"{system_preamble}\n{_prompt_body}" if system_preamble else _prompt_body
+        )
 
         def _go_live() -> str | None:
             """The run's prompt is now the one the chat's session is running.

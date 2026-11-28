@@ -1,0 +1,4 @@
+{
+  "desktop": "minor",
+  "reason": "Cross-engine conversation branching and handoff between external ACP agents and native models"
+}

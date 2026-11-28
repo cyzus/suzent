@@ -2006,6 +2006,9 @@ export const zhCN = {
     button: '从这里分叉',
     title: '分叉此对话？',
     message: '将从此消息创建一个独立新对话。原对话和当前工作区文件都不会改变。',
+    switchEngineTitle: '创建分支并切换至 {target}？',
+    switchEngineMessage:
+      '为保持原会话不被修改，将基于当前完整对话历史创建一个新分支，并交由 {target} 继续接力。',
     cancel: '取消',
     confirm: '创建分支',
     creating: '创建中…',

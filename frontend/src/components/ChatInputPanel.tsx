@@ -79,6 +79,14 @@ interface ChatInputPanelProps {
   modelSelectDropUp?: boolean;
   modelValue?: string;
   onModelChange?: (model: string) => void;
+  /** Called when switching to or from an external ACP agent on an existing chat, requiring a branch. */
+  onRequestForkToEngine?: (selection: {
+    targetRuntime: 'native' | 'acp';
+    targetModel?: string;
+    targetAcpAgentId?: string;
+    targetAcpAgentName?: string;
+    targetLabel: string;
+  }) => void;
   onPaste?: (files: File[]) => void;
   onImageClick?: (src: string) => void;
   currentChatId?: string | null;
@@ -163,6 +171,7 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
   modelSelectDropUp = true,
   modelValue,
   onModelChange,
+  onRequestForkToEngine,
   onPaste,
   onImageClick,
   currentChatId,
@@ -244,10 +253,11 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
   const isAcpRuntime = config.runtime === 'acp' || Boolean(config.acp_agent_id);
   const acpAgents = useAcpAgents();
 
-  // The runtime is only choosable while the chat is still new: an ACP chat is
-  // bound to a session owned by one agent, and a native chat's history means
-  // nothing to an external agent, so neither can be swapped mid-conversation.
-  const canChooseRuntime = !currentChatId;
+  // On a new draft (!currentChatId), switching between native models and external
+  // ACP agents mutates the draft config directly. On an existing chat, switching
+  // to or from an ACP agent is also offered when `onRequestForkToEngine` is wired,
+  // branching the conversation cleanly without mutating the original ACP session.
+  const canChooseRuntime = !currentChatId || Boolean(onRequestForkToEngine);
 
   const [discoveredModels, setDiscoveredModels] = React.useState<string[] | null>(null);
   const [starredModelsOverride, setStarredModelsOverride] = React.useState<string[] | null>(null);
@@ -362,17 +372,38 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
     (next: string) => {
       const selection = parseEngineValue(next);
       if (selection.kind === 'acp') {
+        if (isAcpRuntime && config.acp_agent_id === selection.agentId) {
+          return;
+        }
         const agent = acpAgents.find((item) => item.id === selection.agentId);
+        const agentName = agent?.name || selection.agentId;
+        if (currentChatId && onRequestForkToEngine) {
+          onRequestForkToEngine({
+            targetRuntime: 'acp',
+            targetAcpAgentId: selection.agentId,
+            targetAcpAgentName: agentName,
+            targetLabel: agentName,
+          });
+          return;
+        }
         setConfig((prev) => ({
           ...prev,
           runtime: 'acp',
           acp_agent_id: selection.agentId,
-          acp_agent_name: agent?.name || selection.agentId,
+          acp_agent_name: agentName,
           acp_session_id: undefined,
         }));
         return;
       }
       if (isAcpRuntime) {
+        if (currentChatId && onRequestForkToEngine) {
+          onRequestForkToEngine({
+            targetRuntime: 'native',
+            targetModel: selection.model,
+            targetLabel: selection.model,
+          });
+          return;
+        }
         setConfig((prev) => ({
           ...prev,
           runtime: 'native',
@@ -386,7 +417,15 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
       if (onModelChange) onModelChange(selection.model);
       else setConfig((prev) => ({ ...prev, model: selection.model }));
     },
-    [acpAgents, isAcpRuntime, onModelChange, setConfig]
+    [
+      acpAgents,
+      config.acp_agent_id,
+      currentChatId,
+      isAcpRuntime,
+      onModelChange,
+      onRequestForkToEngine,
+      setConfig,
+    ]
   );
   React.useEffect(() => {
     setSelectedSuggestion(0);

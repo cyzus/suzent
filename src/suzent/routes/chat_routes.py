@@ -640,6 +640,10 @@ async def fork_chat_route(request: Request) -> JSONResponse:
             request.path_params["chat_id"],
             title=payload.title,
             message_index=payload.message_index,
+            target_runtime=payload.target_runtime,
+            target_model=payload.target_model,
+            target_acp_agent_id=payload.target_acp_agent_id,
+            target_acp_agent_name=payload.target_acp_agent_name,
         )
     except ValueError as exc:
         return JSONResponse({"error": str(exc)}, status_code=409)

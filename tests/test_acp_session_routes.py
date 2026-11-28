@@ -399,3 +399,63 @@ async def test_adopt_acp_session_replays_history_via_session_load(temp_db):
     parts = chat.messages[1]["parts"]
     assert [p["type"] for p in parts] == ["reasoning", "tool", "text"]
     assert parts[1]["toolName"] == "read_file"
+
+
+def test_fork_chat_from_acp_to_native_synthesizes_agent_state(temp_db):
+    from suzent.core.agent_serializer import deserialize_state
+    from suzent.core.fork import fork_chat
+
+    source_id = temp_db.create_chat(
+        title="Claude Code Session",
+        config={
+            "runtime": "acp",
+            "acp_agent_id": "claude-code",
+            "acp_agent_name": "Claude Code",
+            "acp_session_id": "ext-999",
+            "acp_cwd": "D:\\workspace\\suzent",
+        },
+        messages=[
+            {"role": "user", "content": "What is in pyproject.toml?"},
+            {
+                "role": "assistant",
+                "content": "The project name is suzent.",
+                "parts": [
+                    {
+                        "type": "tool",
+                        "toolCallId": "tc-1",
+                        "toolName": "read_file",
+                        "args": "pyproject.toml",
+                        "output": "[project]\nname = 'suzent'",
+                        "state": "completed",
+                    },
+                    {"type": "text", "text": "The project name is suzent."},
+                ],
+            },
+        ],
+    )
+
+    with patch("suzent.database.get_database", return_value=temp_db):
+        new_chat_id, _ = fork_chat(
+            source_id,
+            target_runtime="native",
+            target_model="gemini/gemini-4-argon",
+        )
+
+    # Original ACP chat remains untouched
+    source_chat = temp_db.get_chat(source_id)
+    assert source_chat.config["runtime"] == "acp"
+    assert source_chat.config["acp_session_id"] == "ext-999"
+
+    # Forked chat is native, bound to target_model, with synthesized agent_state
+    forked_chat = temp_db.get_chat(new_chat_id)
+    assert forked_chat is not None
+    assert forked_chat.config["runtime"] == "native"
+    assert forked_chat.config["model"] == "gemini/gemini-4-argon"
+    assert "acp_session_id" not in forked_chat.config
+    assert "acp_agent_id" not in forked_chat.config
+    assert forked_chat.config["forked_from_chat_id"] == source_id
+    assert len(forked_chat.messages) == 2
+    assert forked_chat.agent_state is not None
+    state = deserialize_state(forked_chat.agent_state)
+    assert state is not None
+    assert len(state["message_history"]) == 2
