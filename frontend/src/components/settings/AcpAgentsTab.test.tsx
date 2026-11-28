@@ -15,7 +15,7 @@ describe('ACP settings guidance', () => {
       </I18nProvider>
     );
     expect(html).toContain(locale === 'en' ? 'Editor connections' : '编辑器连接');
-    expect(html).toContain(locale === 'en' ? 'External agents' : '外部代理');
+    expect(html).toContain(locale === 'en' ? 'External agents' : '外部智能体');
     expect(html).not.toContain('<details');
     expect(html).toContain('<code>suzent</code>');
     expect(html).toContain('<code>acp</code>');

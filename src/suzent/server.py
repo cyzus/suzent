@@ -315,7 +315,10 @@ from suzent.routes.heartbeat_routes import (
 )
 from suzent.routes.a2ui_routes import a2ui_action, a2ui_answer, a2ui_save
 from suzent.routes.acp_routes import (
+    adopt_acp_session,
     create_acp_session,
+    discover_acp_sessions,
+    install_acp_agent_adapter,
     list_acp_agents,
     list_acp_permissions,
     list_acp_sessions,
@@ -1305,6 +1308,11 @@ app = Starlette(
         Route("/service/status", service_runtime_status, methods=["GET"]),
         Route("/service/stop", stop_service, methods=["POST"]),
         Route("/acp/agents", list_acp_agents, methods=["GET"]),
+        Route(
+            "/acp/agents/{agent_id}/install",
+            install_acp_agent_adapter,
+            methods=["POST"],
+        ),
         Route("/acp/agents/{agent_id}/probe", probe_acp_agent, methods=["POST"]),
         Route(
             "/acp/agents/{agent_id}/authenticate",
@@ -1313,6 +1321,8 @@ app = Starlette(
         ),
         Route("/acp/sessions", list_acp_sessions, methods=["GET"]),
         Route("/acp/sessions", create_acp_session, methods=["POST"]),
+        Route("/acp/sessions/discover", discover_acp_sessions, methods=["GET"]),
+        Route("/acp/sessions/adopt", adopt_acp_session, methods=["POST"]),
         Route("/acp/sessions/resume", resume_acp_session, methods=["POST"]),
         Route("/acp/permissions", list_acp_permissions, methods=["GET"]),
         Route(

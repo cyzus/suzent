@@ -47,6 +47,7 @@ export type SettingsCategory =
   | 'security'
   | 'data'
   | 'usage'
+  | 'ops'
   | 'about';
 
 /** Every category id, for tests that check the console's list against it. */
@@ -69,6 +70,7 @@ export const SETTINGS_CATEGORY_IDS: readonly SettingsCategory[] = [
   'security',
   'data',
   'usage',
+  'ops',
   'about',
 ];
 
@@ -78,6 +80,8 @@ type CategoryDefinition = {
   icon: React.ComponentType<React.SVGProps<SVGSVGElement>>;
   /** Driven by Tauri commands, so it has nothing to show in a browser. */
   desktopOnly?: boolean;
+  /** The browser's answer to a desktop-only category, read over HTTP instead. */
+  webOnly?: boolean;
 };
 
 type CategoryGroup = {
@@ -131,6 +135,9 @@ const ALL_CATEGORY_GROUPS: CategoryGroup[] = [
         icon: CpuChipIcon,
         desktopOnly: true,
       },
+      // The background service tab drives Tauri commands; a browser asks the
+      // same questions of the host over /ops/*.
+      { id: 'ops', labelKey: 'console.nav.ops', icon: CpuChipIcon, webOnly: true },
       { id: 'security', labelKey: 'settings.categories.security', icon: ShieldCheckIcon },
       { id: 'data', labelKey: 'settings.categories.data', icon: CloudArrowUpIcon },
       { id: 'usage', labelKey: 'settings.categories.usage', icon: ChartBarIcon },
@@ -139,16 +146,32 @@ const ALL_CATEGORY_GROUPS: CategoryGroup[] = [
   },
 ];
 
-// Desktop settings use the global sidebar; the web console has its own navigation.
-// The browser filter is left in as a guard rather than a feature: a desktop-only
-// category rendered there could only report failure.
-//
+function isAvailable(category: CategoryDefinition, web: boolean): boolean {
+  return web ? !category.desktopOnly : !category.webOnly;
+}
+
+/** Whether this shell has a page for the category. */
+export function isCategoryAvailable(id: SettingsCategory): boolean {
+  const category = ALL_CATEGORY_GROUPS.flatMap((group) => group.categories).find(
+    (candidate) => candidate.id === id
+  );
+  return category !== undefined && isAvailable(category, isWeb());
+}
+
+/** The label and icon a category is listed with. */
+export function categoryDefinition(id: SettingsCategory): CategoryDefinition | undefined {
+  return ALL_CATEGORY_GROUPS.flatMap((group) => group.categories).find(
+    (candidate) => candidate.id === id
+  );
+}
+
 // Computed per render rather than at module load: `isWeb()` reads `window`,
 // which does not exist when a test or a build tool merely imports this file.
-function visibleCategoryGroups(): CategoryGroup[] {
+export function visibleCategoryGroups(): CategoryGroup[] {
+  const web = isWeb();
   return ALL_CATEGORY_GROUPS.map((group) => ({
     ...group,
-    categories: group.categories.filter((category) => !isWeb() || !category.desktopOnly),
+    categories: group.categories.filter((category) => isAvailable(category, web)),
   })).filter((group) => group.categories.length > 0);
 }
 

@@ -39,6 +39,7 @@ import { SocialTab } from './SocialTab';
 import { DevicesTab } from './DevicesTab';
 import { MeshTab } from './MeshTab';
 import { UsageTab } from './UsageTab';
+import { OpsTab } from '../../shells/OpsTab';
 import { SecurityTab } from './SecurityTab';
 import { BackgroundServiceTab } from './BackgroundServiceTab';
 import { BrowserTab } from './BrowserTab';
@@ -77,10 +78,10 @@ interface SettingsModalProps {
   navigationHost?: HTMLElement | null;
   showInlineNavigation?: boolean;
   /**
-   * Show this category, and nothing else -- no dialog, no category list.
+   * Show this category, chosen from outside.
    *
-   * The web console gives every category a route and owns the frame and
-   * navigation. Desktop settings render navigation into the global sidebar.
+   * A browser gives every category an address, so the route decides what is
+   * shown and a category change navigates. The desktop keeps it in state here.
    */
   category?: CategoryType;
   /** Where a panel's own cross-links go, in controlled mode. */
@@ -665,6 +666,8 @@ export function SettingsModal({
 
       {activeCategory === 'usage' && <UsageTab />}
 
+      {activeCategory === 'ops' && <OpsTab />}
+
       {activeCategory === 'appearance' && <AppearanceTab />}
 
       {activeCategory === 'notifications' && <NotificationsTab />}
@@ -672,10 +675,6 @@ export function SettingsModal({
       {activeCategory === 'about' && <AboutTab />}
     </>
   );
-
-  // The console supplies the page frame and the navigation, so the panel is
-  // the whole contribution.
-  if (controlled) return panel;
 
   const body = (
     <>

@@ -58,6 +58,20 @@ export function getApiBase(): string {
   return import.meta.env.VITE_SUZENT_BACKEND || 'http://127.0.0.1:8000';
 }
 
+/**
+ * A `ws:`/`wss:` URL for a backend socket path. Built from the origin, not the
+ * page address: the console routes with `#/...`, and a WebSocket URL that keeps
+ * the fragment makes the constructor throw.
+ */
+export function getWebSocketUrl(path: string): URL {
+  const url = new URL(getApiBase() || window.location.origin);
+  url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
+  url.pathname = path;
+  url.search = '';
+  url.hash = '';
+  return url;
+}
+
 export interface ServiceRuntimeStatus {
   ready: boolean;
   schedulerRunning: boolean;
@@ -782,7 +796,19 @@ export async function fetchAcpAgents(): Promise<AcpAgentDescriptor[]> {
     executable_path: a.executable_path,
     builtin: a.builtin,
     auth_status: a.auth_status,
+    usage_summary: a.usage_summary,
   }));
+}
+
+export async function installAcpAgentAdapter(
+  id: string
+): Promise<{ status: string; package?: string | null; agent?: AcpAgentDescriptor }> {
+  const res = await fetch(`${getApiBase()}/acp/agents/${encodeURIComponent(id)}/install`, {
+    method: 'POST',
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || `Failed to install adapter: ${res.status}`);
+  return data;
 }
 
 export type ACPAgent = AcpAgentDescriptor & { available?: boolean };
@@ -849,6 +875,75 @@ export async function fetchAcpSessions(agentId: string): Promise<AcpAgentSession
     }))
     .filter((session) => !!session.id);
   return { saved, active: unwrapList<unknown>(payload, 'active').length };
+}
+
+export async function discoverAcpSessions(params: {
+  agentId?: string;
+  query?: string;
+  cwd?: string;
+  chatId?: string | null;
+  projectId?: string | null;
+  limit?: number;
+}): Promise<{
+  sessions: import('../types/api').DiscoveredExternalSession[];
+  cwd: string;
+}> {
+  const qs = new URLSearchParams();
+  if (params.agentId) qs.set('agent_id', params.agentId);
+  if (params.query) qs.set('query', params.query);
+  if (params.cwd) qs.set('cwd', params.cwd);
+  if (params.chatId) qs.set('chat_id', params.chatId);
+  if (params.projectId) qs.set('project_id', params.projectId);
+  if (params.limit) qs.set('limit', String(params.limit));
+  const res = await fetch(`${getApiBase()}/acp/sessions/discover?${qs.toString()}`);
+  if (!res.ok) return { sessions: [], cwd: '' };
+  const data = await res.json();
+  return {
+    sessions: Array.isArray(data?.sessions) ? data.sessions : [],
+    cwd: typeof data?.cwd === 'string' ? data.cwd : '',
+  };
+}
+
+export async function adoptAcpSession(params: {
+  agentId: string;
+  sessionId: string;
+  chatId?: string | null;
+  projectId?: string | null;
+  cwd?: string;
+  title?: string;
+  updatedAt?: string;
+  mtime?: number;
+}): Promise<{
+  chat_id: string;
+  agent_id: string;
+  session_id: string;
+  cwd: string;
+  title?: string;
+  imported_messages?: number;
+}> {
+  const res = await fetch(`${getApiBase()}/acp/sessions/adopt`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      agent_id: params.agentId,
+      session_id: params.sessionId,
+      chat_id: params.chatId || undefined,
+      project_id: params.projectId || undefined,
+      cwd: params.cwd || undefined,
+      title: params.title || undefined,
+      updated_at: params.updatedAt || undefined,
+      mtime: params.mtime || undefined,
+    }),
+  });
+  const payload = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(
+      typeof payload?.error === 'string' && payload.error
+        ? payload.error
+        : `Failed to adopt session: ${res.status}`
+    );
+  }
+  return payload;
 }
 
 // ─── Nodes / Devices ─────────────────────────────────────────────────

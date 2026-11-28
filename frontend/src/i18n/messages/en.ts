@@ -500,12 +500,8 @@ export const en = {
   },
   console: {
     nav: {
-      label: 'Console navigation',
-      title: 'Suzent',
       chat: 'Chat',
       ops: 'Operations',
-      collapse: 'Collapse sidebar',
-      expand: 'Expand sidebar',
     },
     ops: {
       title: 'Operations',
@@ -528,6 +524,9 @@ export const en = {
       cannotDisableSelf:
         'This service is serving the console. Turning it off here would leave no way to turn it back on remotely — run "suzent service uninstall" on the host instead.',
       unreachable: 'Could not reach this host. It may be restarting, or the connection is gone.',
+    },
+    offline: {
+      notice: "This host isn't answering. These pages still open while you find out why.",
     },
     health: {
       checking: 'Checking the connection',
@@ -563,6 +562,7 @@ export const en = {
   app: {
     title: 'Suzent',
     initializing: 'INITIALIZING',
+    openTroubleshooting: 'Open troubleshooting pages',
     connectingToCore: 'Connecting to Neural Core...',
     systemIdentity: 'SUZENT / SYSTEM',
     systemStartup: 'System startup',
@@ -1277,7 +1277,7 @@ export const en = {
       confirmBinaryQuestion: 'Install {name} now?',
     },
     acp: {
-      title: 'ACP Agents',
+      title: 'External Agents',
       subtitle: 'Connect editors to Suzent, or use other agents in Suzent.',
       registeredTitle: 'External agents',
       registeredDesc: 'Use other coding agents from Suzent.',
@@ -1286,7 +1286,7 @@ export const en = {
       probeHelp:
         'Sign in on this computer. Probe checks connectivity and available sign-in methods.',
       customHelp: 'Add custom agents in',
-      noAgents: 'No ACP agents registered.',
+      noAgents: 'No external agents registered.',
       ready: 'Installed',
       notInstalled: 'Not installed',
       probe: 'Probe',
@@ -1363,6 +1363,13 @@ export const en = {
       },
       loggingIn: 'Waiting for sign-in…',
       loginHint: 'Sign in using the agent’s CLI, then probe again.',
+      searchPlaceholder: 'Filter agents by name, ID, or description…',
+      installedSection: 'Installed & Ready',
+      catalogSection: 'Available in Agent Registry',
+      installAdapter: 'Enable',
+      installingAdapter: 'Enabling…',
+      adapterAutoHint: 'Adapter installs automatically on Enable or first run',
+      noMatchingAgents: 'No matching external agents.',
     },
     categories: {
       providers: 'Providers',
@@ -1374,7 +1381,7 @@ export const en = {
       mesh: 'Mesh',
       mcp: 'MCP Servers',
       services: 'Services',
-      acpAgents: 'ACP Agents',
+      acpAgents: 'External Agents',
       plugins: 'Plugins',
       automation: 'Automation',
       service: 'Background Service',
@@ -2142,7 +2149,44 @@ export const en = {
       navigation: 'Workspace',
       chats: 'Chats',
       projects: 'Projects',
+      agents: 'Agents',
       searchResults: 'Search results',
+      externalSessions: 'External CLI sessions',
+    },
+    globalSearch: {
+      placeholder: 'Search chats, artifacts, external CLI, memory, projects…',
+      tabs: {
+        all: 'All',
+        artifacts: 'Artifacts',
+        chats: 'Chats',
+        external: 'External CLI',
+        memory: 'Memory',
+        projects: 'Projects',
+        scheduled: 'Scheduled',
+      },
+      groups: {
+        recent: 'Recent',
+        chats: 'Chats',
+        external: 'External CLI Sessions',
+        artifacts: 'Artifacts',
+        memory: 'Memory',
+        projects: 'Projects',
+        scheduled: 'Scheduled Tasks',
+        actions: 'Actions',
+      },
+      actions: {
+        newChat: 'New chat',
+        openArtifacts: 'Browse all artifacts',
+        openMemory: 'Open memory workspace',
+        openScheduled: 'Manage scheduled tasks',
+      },
+      footer: {
+        close: 'Close',
+        switchTab: 'Switch type',
+        navigate: 'Navigate',
+        select: 'Open',
+      },
+      empty: 'No matching results',
     },
     automation: {
       scheduled: 'Scheduled tasks',
@@ -2179,6 +2223,7 @@ export const en = {
     organization: {
       title: 'Organize',
       byProject: 'By project',
+      byAgent: 'By agent',
       singleList: 'Single list',
     },
     kind: {
@@ -2246,11 +2291,11 @@ export const en = {
   chatInput: {
     engineGroups: {
       models: 'Models',
-      acp: 'ACP agents',
+      acp: 'External agents',
       starred: '★ Starred',
     },
     acpNotInstalled: 'Not installed',
-    acpInstallHint: 'Not installed — add it in Settings › ACP Agents',
+    acpInstallHint: 'Not installed — add it in Settings › External Agents',
     removeFile: 'Remove file',
     placeholderReady: 'How can I help you today?',
     placeholderWake: 'Type, or say “{phrase}”',
@@ -2439,6 +2484,13 @@ export const en = {
       noAgents: 'No ACP agents',
       createFailed: 'Could not create ACP session',
       resumeFailed: 'Could not resume ACP session',
+      discoveredTitle: 'Recent {agent} sessions in this workspace',
+      adoptAction: 'Take over',
+      adopting: 'Loading…',
+      manualAction: 'Enter Session ID',
+      manualPlaceholder: 'Paste external session ID…',
+      manualSubmit: 'Load',
+      cancel: 'Cancel',
     },
     greetings: {
       nightOwl: 'Night owl?',

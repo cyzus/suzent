@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import asyncio
+import os
+import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -94,6 +96,233 @@ class ACPManager:
             for item in self._sessions.values()
         ]
 
+    async def list_agent_sessions(
+        self,
+        agent_id: str | None = None,
+        cwd: str | None = None,
+        *,
+        spawn_if_needed: bool = False,
+    ) -> list[dict[str, Any]]:
+        """Query standard ACP ``session/list`` across running (or on-demand) agents.
+
+        Returns normalized ``{session_id, agent_id, title, cwd, updated_at, mtime}``
+        records matching ``discover_local_agent_sessions``.
+        """
+        results: list[dict[str, Any]] = []
+        seen_agents: set[str] = set()
+        seen_session_ids: set[str] = set()
+
+        def _supports_list(caps: dict[str, Any]) -> bool:
+            if not isinstance(caps, dict):
+                return False
+            sess_caps = caps.get("sessionCapabilities")
+            if isinstance(sess_caps, dict) and "list" in sess_caps:
+                return bool(sess_caps.get("list") is not False)
+            return bool(caps.get("listSessions"))
+
+        def _normalize_entries(aid: str, raw_sessions: Any) -> None:
+            if not isinstance(raw_sessions, list):
+                return
+            for entry in raw_sessions:
+                if not isinstance(entry, dict):
+                    continue
+                sid = str(
+                    entry.get("sessionId") or entry.get("session_id") or ""
+                ).strip()
+                if not sid or sid in seen_session_ids:
+                    continue
+                title = str(entry.get("title") or "").strip() or f"Session {sid[:8]}"
+                entry_cwd = str(entry.get("cwd") or cwd or "").strip()
+                updated_at = str(
+                    entry.get("updatedAt") or entry.get("updated_at") or ""
+                ).strip()
+                seen_session_ids.add(sid)
+                results.append(
+                    {
+                        "session_id": sid,
+                        "agent_id": aid,
+                        "title": title,
+                        "cwd": entry_cwd,
+                        "updated_at": updated_at,
+                        "mtime": 0.0,
+                    }
+                )
+
+        # 1. Query any already-running sessions for matching agent_id
+        for managed in list(self._sessions.values()):
+            if agent_id and managed.agent_id != agent_id:
+                continue
+            if managed.agent_id in seen_agents:
+                continue
+            if not managed.client.is_running or not _supports_list(
+                managed.capabilities
+            ):
+                continue
+            seen_agents.add(managed.agent_id)
+            try:
+                resp = await managed.client.list_sessions(cwd=cwd or None)
+                _normalize_entries(managed.agent_id, resp.get("sessions"))
+            except Exception as exc:
+                logger.debug(
+                    f"ACP session/list failed on active {managed.agent_id}: {exc}"
+                )
+
+        # 2. If explicitly requested for a specific agent not currently running,
+        # spawn a short-lived handshake to check sessionCapabilities.list.
+        if (
+            spawn_if_needed
+            and agent_id
+            and agent_id not in seen_agents
+            and agent_id
+            not in ("claude-code", "claude-code-api", "claude-acp", "codex")
+        ):
+            try:
+                agent = self.registry.get(agent_id)
+            except KeyError:
+                agent = None
+            if agent and agent.available:
+                from .dialects import get_dialect
+
+                dialect = get_dialect(agent_id)
+                client = ACPClient(
+                    agent.command,
+                    cwd=agent.cwd or cwd or None,
+                    env=agent.env,
+                    env_to_strip=dialect.env_to_strip,
+                )
+                try:
+                    await client.start()
+                    init = await client.initialize()
+                    caps = (
+                        init.get("agentCapabilities")
+                        if isinstance(init.get("agentCapabilities"), dict)
+                        else {}
+                    )
+                    if _supports_list(caps):
+                        resp = await client.list_sessions(cwd=cwd or None)
+                        _normalize_entries(agent_id, resp.get("sessions"))
+                except Exception as exc:
+                    logger.debug(
+                        f"On-demand ACP session/list failed for {agent_id}: {exc}"
+                    )
+                finally:
+                    await client.close()
+
+        return results
+
+    async def _install_agent_adapter(self, agent: Any) -> dict[str, Any]:
+        from . import registry as registry_mod
+
+        if not shutil.which(agent.command[0]) and not (
+            agent.requires_executable and shutil.which(agent.requires_executable)
+        ):
+            raise ValueError(f"Executable {agent.display_command!r} was not found")
+
+        package = agent.adapter_package
+        if not package:
+            return {"status": "ready", "package": None}
+        specifier = getattr(agent, "adapter_specifier", None) or package
+        _, requested_version = registry_mod._npx_specifier(agent.command)
+        already_installed = (
+            registry_mod._npm_package_installed(package, requested_version)
+            if requested_version
+            else registry_mod._npm_package_installed(package)
+        )
+        if already_installed:
+            return {"status": "ready", "package": package}
+
+        npm = shutil.which("npm")
+        if not npm:
+            raise ValueError("npm is not installed on this host")
+
+        suzent_dir = Path(os.environ.get("SUZENT_DATA_DIR", "~/.suzent")).expanduser()
+        adapter_dir = suzent_dir / "acp_adapters"
+        adapter_dir.mkdir(parents=True, exist_ok=True)
+        pkg_json = adapter_dir / "package.json"
+        if not pkg_json.exists():
+            pkg_json.write_text(
+                '{"name":"suzent-acp-adapters","private":true}\n',
+                encoding="utf-8",
+            )
+
+        extra: dict[str, Any] = {}
+        if os.name == "nt":
+            extra["creationflags"] = 0x08000000  # CREATE_NO_WINDOW
+        else:
+            extra["start_new_session"] = True
+
+        proc = await asyncio.create_subprocess_exec(
+            npm,
+            "install",
+            "--no-audit",
+            "--no-fund",
+            "--prefer-online",
+            specifier,
+            cwd=str(adapter_dir),
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            **extra,
+        )
+
+        async def _terminate_installer() -> None:
+            if proc.returncode is not None:
+                return
+            import signal
+
+            if os.name != "nt":
+                try:
+                    os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+                except (ProcessLookupError, OSError):
+                    try:
+                        proc.kill()
+                    except ProcessLookupError:
+                        pass
+            else:
+                try:
+                    kill_proc = await asyncio.create_subprocess_exec(
+                        "taskkill",
+                        "/F",
+                        "/T",
+                        "/PID",
+                        str(proc.pid),
+                        stdout=asyncio.subprocess.DEVNULL,
+                        stderr=asyncio.subprocess.DEVNULL,
+                        creationflags=0x08000000,
+                    )
+                    await kill_proc.wait()
+                except Exception:
+                    pass
+                try:
+                    proc.kill()
+                except ProcessLookupError:
+                    pass
+            await proc.wait()
+
+        try:
+            _, stderr = await asyncio.wait_for(proc.communicate(), timeout=180.0)
+        except asyncio.TimeoutError:
+            await _terminate_installer()
+            raise TimeoutError(f"Timed out installing {package}")
+        except BaseException:
+            await _terminate_installer()
+            raise
+        if proc.returncode != 0:
+            err_text = stderr.decode("utf-8", errors="replace").strip()
+            tail = (
+                err_text.splitlines()[-1]
+                if err_text
+                else f"exit code {proc.returncode}"
+            )
+            raise RuntimeError(f"Failed to install {package}: {tail}")
+
+        registry_mod._npm_cache.clear()
+        return {"status": "installed", "package": package}
+
+    async def install_adapter(self, agent_id: str) -> dict[str, Any]:
+        """Install the npm adapter package for an npx-launched ACP agent into ~/.suzent/acp_adapters."""
+        agent = self.registry.get(agent_id)
+        return await self._install_agent_adapter(agent)
+
     async def probe(
         self, agent_id: str, cwd: str, method_id: str | None = None
     ) -> dict[str, Any]:
@@ -101,6 +330,9 @@ class ACPManager:
         agent = self.registry.get(agent_id)
         if not agent.available:
             raise ValueError("Agent binary not found or unavailable")
+        from .dialects import get_dialect
+
+        dialect = get_dialect(agent_id)
         cached = self._authenticated.pop(agent_id, None) if method_id is None else None
         if cached and not cached[0].is_running:
             await cached[0].close()
@@ -108,7 +340,12 @@ class ACPManager:
         client = (
             cached[0]
             if cached
-            else ACPClient(agent.command, cwd=agent.cwd or cwd, env=agent.env)
+            else ACPClient(
+                agent.command,
+                cwd=agent.cwd or cwd,
+                env=agent.env,
+                env_to_strip=dialect.env_to_strip,
+            )
         )
         retained = False
         try:
@@ -271,9 +508,12 @@ class ACPManager:
     ) -> ManagedSession:
         agent = self.registry.get(agent_id)
         if not agent.available:
-            raise RuntimeError(
-                f"{agent.name} is not available: {agent.display_command} was not found"
-            )
+            if agent.adapter_package and shutil.which(agent.command[0]):
+                await self._install_agent_adapter(agent)
+            if not agent.available:
+                raise RuntimeError(
+                    f"{agent.name} is not available: {agent.display_command} was not found"
+                )
         queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue(maxsize=4096)
 
         async def on_notification(method: str, params: dict[str, Any]) -> None:
@@ -310,10 +550,13 @@ class ACPManager:
             client.notification_handler = on_notification
             client.permission_handler = on_permission
         else:
+            from .dialects import get_dialect
+
             client = ACPClient(
                 agent.command,
                 cwd=agent.cwd or cwd,
                 env=agent.env,
+                env_to_strip=get_dialect(agent_id).env_to_strip,
                 notification_handler=on_notification,
                 permission_handler=on_permission,
             )

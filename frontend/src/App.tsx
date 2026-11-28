@@ -3,6 +3,7 @@ import { WorkspacePanelHost, WorkspacePanelProvider } from './components/Workspa
 import { DesktopContextMenu } from './components/DesktopContextMenu';
 import { SetupGate } from './components/settings/SetupGate';
 import React, { useState } from 'react';
+import { isImeComposing } from './lib/ime';
 import { desktopShell, desktopWindow, invoke, listen, openDialog } from './lib/desktop';
 import {
   ArrowPathIcon,
@@ -11,6 +12,7 @@ import {
 } from '@heroicons/react/24/outline';
 
 import { ChatList } from './components/ChatList';
+import { GlobalSearchModal } from './components/GlobalSearchModal';
 import { ChatWindow, hasUnsentComposerWork } from './components/ChatWindow';
 import { BackendLoadingScreen } from './components/BackendLoadingScreen';
 import { ClosePrompt } from './components/ClosePrompt';
@@ -21,6 +23,7 @@ import { SuzentLogo } from './components/SuzentLogo';
 import { RobotShowcase } from './components/chat/RobotShowcase';
 import { MemoryView, type MemoryTab } from './components/memory/MemoryView';
 import { SettingsModal } from './components/settings/SettingsModal';
+import type { SettingsCategory } from './components/settings/SettingsNavigation';
 import { Sidebar } from './components/sidebar/Sidebar';
 import { SkillsView } from './components/skills/SkillsView';
 import { ArtifactsPage } from './components/artifacts/ArtifactsPage';
@@ -83,7 +86,14 @@ import { detectDesktopPlatform } from './lib/titleBarPlatform';
 import { useI18n, getInitialLocale, tForLocale } from './i18n';
 import { isWeb } from './lib/runtime';
 import { ALL_PROJECTS_KANBAN_ID, FOCAL_CHAT_ID, writeFocalBoardOpen } from './lib/focalAgent';
-import { consolePathForCategory } from './shells/webRoutes';
+import {
+  CHAT_PATH,
+  categoryForPath,
+  offlineCategoryForPath,
+  pathForCategory,
+} from './shells/webRoutes';
+import { OfflineConsole } from './shells/OfflineConsole';
+import { useLocation } from 'wouter';
 
 interface HeaderTitleProps {
   text?: string;
@@ -374,33 +384,35 @@ function AppInner(): React.ReactElement {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [settingsNavigationHost, setSettingsNavigationHost] = useState<HTMLDivElement | null>(null);
   const sidebarOpenBeforeSettings = React.useRef(false);
-  const [settingsInitialCategory, setSettingsInitialCategory] = useState<
-    | 'providers'
-    | 'roles'
-    | 'memory'
-    | 'security'
-    | 'social'
-    | 'mcp'
-    | 'automation'
-    | 'data'
-    | 'usage'
-    | 'appearance'
-  >('providers');
-  const openSettings = (category: typeof settingsInitialCategory = 'providers') => {
-    // The web console gives every settings category a route of its own.
-    const consolePath = isWeb() ? consolePathForCategory(category) : null;
-    if (consolePath) {
-      window.location.hash = `#${consolePath}`;
-      return;
-    }
+  const [settingsInitialCategory, setSettingsInitialCategory] =
+    useState<SettingsCategory>('providers');
+  // In a browser the address decides whether settings is open and which
+  // category it shows; on the desktop that is state here.
+  const [location, navigate] = useLocation();
+  const routeCategory = isWeb() ? categoryForPath(location) : null;
+  const openSettingsPanel = (category: SettingsCategory) => {
     setSettingsInitialCategory(category);
     if (!isSettingsOpen) sidebarOpenBeforeSettings.current = isLeftSidebarOpen;
     setIsSettingsOpen(true);
     setIsLeftSidebarOpen(window.innerWidth >= DESKTOP_BREAKPOINT_PX);
   };
-  const closeSettings = () => {
+  const closeSettingsPanel = () => {
     setIsSettingsOpen(false);
     setIsLeftSidebarOpen(sidebarOpenBeforeSettings.current);
+  };
+  const openSettings = (category: SettingsCategory = 'providers') => {
+    if (isWeb()) {
+      navigate(pathForCategory(category));
+      return;
+    }
+    openSettingsPanel(category);
+  };
+  const closeSettings = () => {
+    if (isWeb()) {
+      navigate(CHAT_PATH);
+      return;
+    }
+    closeSettingsPanel();
   };
   const [isLeftSidebarOpen, setIsLeftSidebarOpen] = useState(
     window.innerWidth >= DESKTOP_BREAKPOINT_PX
@@ -410,6 +422,15 @@ function AppInner(): React.ReactElement {
   const [preferredLeftWidth, setPreferredLeftWidth] = useState(LEFT_SIDEBAR_WIDTH_PX);
   const [rightSidebarWidth, setRightSidebarWidth] = useState<number | null>(null);
   const [viewportWidth, setViewportWidth] = useState(window.innerWidth);
+
+  // Follow the address: a link, the back button or a reload opens and closes
+  // settings in a browser, so the panel tracks the route rather than a click.
+  React.useEffect(() => {
+    if (!isWeb()) return;
+    if (routeCategory && !isSettingsOpen) openSettingsPanel(routeCategory);
+    else if (!routeCategory && isSettingsOpen) closeSettingsPanel();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [routeCategory]);
 
   const mobile = viewportWidth < DESKTOP_BREAKPOINT_PX;
   const mobileNavigation = useMobileNavigation(mobile);
@@ -464,6 +485,7 @@ function AppInner(): React.ReactElement {
     chats,
     currentChatProjectId,
     loadChat,
+    beginNewChat,
   } = useChatCoreStore();
   const setHeartbeatStatus = useHeartbeatRunning((s) => s.setStatus);
   const setChatHeartbeatStatus = useHeartbeatRunning((s) => s.setChatStatus);
@@ -815,6 +837,18 @@ function AppInner(): React.ReactElement {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
+  React.useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (isImeComposing(e)) return;
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setSidebarSearchOpen((prev) => !prev);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, []);
+
   return (
     <WorkspacePanelProvider navigationKey={`${currentChatId}:${mainView}`}>
       <div
@@ -1079,8 +1113,30 @@ function AppInner(): React.ReactElement {
           isOpen={isSettingsOpen}
           onClose={closeSettings}
           initialCategory={settingsInitialCategory}
+          category={routeCategory ?? undefined}
+          onCategoryChange={isWeb() ? (next) => navigate(pathForCategory(next)) : undefined}
           navigationHost={settingsNavigationHost}
           showInlineNavigation={!isLeftSidebarOpen || viewportWidth < DESKTOP_BREAKPOINT_PX}
+        />
+        <GlobalSearchModal
+          open={sidebarSearchOpen}
+          onClose={() => setSidebarSearchOpen(false)}
+          onOpenChat={(chatId) => {
+            void loadChat(chatId);
+            setMainView('chat');
+            mobileNavigation.open();
+          }}
+          onNewChat={() => {
+            beginNewChat();
+            setMainView('chat');
+            mobileNavigation.open();
+          }}
+          onOpenView={(view) => {
+            setMemoryInitialTab(undefined);
+            setMainView(view);
+            mobileNavigation.open();
+          }}
+          onOpenAutomation={() => openSettings('automation')}
         />
       </div>
     </WorkspacePanelProvider>
@@ -1441,16 +1497,11 @@ function StartupDecisionScreen(): React.ReactElement {
   return <BackendLoadingScreen />;
 }
 
-interface AppProps {
-  /**
-   * What to render once the backend is up and the providers are mounted.
-   * Defaults to the chat workspace. The web console passes its own subtree
-   * here for the pages that need chat's provider stack without being chat.
-   */
-  children?: React.ReactNode;
-}
+// A healthy host answers well inside this; one that has not is what the
+// troubleshooting pages are for, and the loading screen would hide them.
+const OFFLINE_PAGES_DELAY_MS = 3000;
 
-export default function App({ children }: AppProps = {}) {
+export default function App(): React.ReactElement {
   const locale = getInitialLocale();
   const t = (key: string, params?: Record<string, string>) => tForLocale(locale, key, params);
 
@@ -1676,9 +1727,24 @@ export default function App({ children }: AppProps = {}) {
     };
   }, [backendReady]);
 
+  const [location] = useLocation();
+  const offlineCategory = isWeb() ? offlineCategoryForPath(location) : null;
+  const backendUp = backendReady && backendCompatible && backendError === null;
+  const [slowToAnswer, setSlowToAnswer] = React.useState(false);
+  React.useEffect(() => {
+    setSlowToAnswer(false);
+    if (!isWeb() || backendUp) return;
+    const timer = window.setTimeout(() => setSlowToAnswer(true), OFFLINE_PAGES_DELAY_MS);
+    return () => window.clearTimeout(timer);
+  }, [backendUp]);
+  const showOfflinePage =
+    offlineCategory !== null && !backendUp && (slowToAnswer || backendError !== null);
+
   return (
     <ErrorBoundary>
-      {!bootstrapChecked ? (
+      {showOfflinePage && offlineCategory ? (
+        <OfflineConsole category={offlineCategory} />
+      ) : !bootstrapChecked ? (
         <StartupDecisionScreen />
       ) : bootstrapStatusState ? (
         <BootstrapInstallScreen
@@ -1694,6 +1760,7 @@ export default function App({ children }: AppProps = {}) {
           error={backendError.message}
           recoverable={backendError.recoverable}
           onRetry={isWeb() ? undefined : retryBackendStart}
+          troubleshootHref={isWeb() ? `#${pathForCategory('ops')}` : undefined}
         />
       ) : backendStartingAfterInstall || backendStartingAtStartup ? (
         <BackendLoadingScreen status={t('app.startingBackend')} progressHint={45} />
@@ -1705,7 +1772,9 @@ export default function App({ children }: AppProps = {}) {
         <ProjectProvider>
           <ChatProvider>
             <GoalTasksProvider>
-              <SetupGate>{children ?? <AppInner />}</SetupGate>
+              <SetupGate>
+                <AppInner />
+              </SetupGate>
             </GoalTasksProvider>
           </ChatProvider>
         </ProjectProvider>

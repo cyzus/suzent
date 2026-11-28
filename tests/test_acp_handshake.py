@@ -265,7 +265,7 @@ def test_user_override_keeps_builtin_install_metadata(tmp_path):
     overridden = agents["claude-code"]
     assert overridden.command == ["/opt/my/acp-adapter"]
     assert overridden.login_command == ["claude", "auth", "login"]
-    assert overridden.name == "Claude Code (CLI)"
+    assert overridden.name == "Claude Code"
     assert overridden.builtin is True
 
     # A genuinely new agent has no metadata to inherit.
