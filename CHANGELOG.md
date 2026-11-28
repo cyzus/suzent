@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v0.29.0] - 2026-11-28
+
+### Release notes
+- Support cross-engine conversation branching, history handoff snapshots, and standard ACP session config options.
+- Discover and adopt past external ACP agent sessions (Claude Code, Codex, etc.) with full transcript replay via session/load.
+- The built-in browser has tabs and an address bar, the agent follows the tab you pick and can open and close tabs, and you can choose whether it keeps sign-ins or clear its data in Settings → Browser.
+- Expand built-in external ACP agents with official registry catalog and SVG icons, unify Claude Code under the official adapter, add zero-wakeup on-disk state/auth inspection and seamless npm adapter installation, and streamline the External Agents settings tab.
+- Moving a Git install to the standard app now also removes the old desktop shortcut when the desktop folder has a non-English name, such as OneDrive\桌面.
+- After moving a Git install to the standard app, the app now opens only once the background service is ready, so it no longer starts a second backend beside it.
+- Opening Suzent from an editor over ACP, starting `suzent agent chat`, or a phone voice call that sends nothing no longer leaves an empty chat.
+- A voice call that never sends anything to Suzent no longer leaves an empty chat in the chat list.
+- The web UI now uses the desktop app's layout: one sidebar whose chat list switches to the settings list, with the connected host shown under the sidebar and troubleshooting pages that still open when the host is down.
+- Fix the web console failing to open voice, wake-word and browser preview sockets when the page address has a #/ route.
+
 ## [v0.28.2] - 2026-11-27
 
 ### Release notes
