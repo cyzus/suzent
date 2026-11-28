@@ -103,30 +103,34 @@ def agent_chat(
 
     chat_id = None if new else get_current_chat_id()
 
-    if not chat_id:
-        typer.echo("Creating new chat session...", err=True)
-        try:
-            init_title = (
-                message[:30] + "..."
-                if message and len(message) > 30
-                else (message or "CLI Session")
+    def _ensure_chat(first_message: str) -> bool:
+        """Create the session's chat on its first message, not when the REPL opens."""
+        nonlocal chat_id
+        if chat_id:
+            return True
+        title = "[CLI] " + (
+            first_message[:30] + "..." if len(first_message) > 30 else first_message
+        )
+
+        async def _create_chat():
+            client = get_client()
+            return await client.chat.create_chat(
+                {"title": title, "messages": [], "config": {}}
             )
-            title = f"[CLI] {init_title}"
 
-            async def _create_chat():
-                client = get_client()
-                return await client.chat.create_chat(
-                    {"title": title, "messages": [], "config": {}}
-                )
-
-            res = asyncio.run(_create_chat())
-            chat_id = res.get("id")
-            set_current_chat_id(chat_id)
+        try:
+            chat_id = asyncio.run(_create_chat()).get("id")
         except Exception as e:
             typer.secho(f"❌ Failed to create chat: {e}", fg=typer.colors.RED, err=True)
-            return
+            return False
+        set_current_chat_id(chat_id)
+        typer.echo(f"💬 Started session: {chat_id}", err=True)
+        return True
 
-    typer.echo(f"💬 Active Session: {chat_id}")
+    if chat_id:
+        typer.echo(f"💬 Active Session: {chat_id}")
+    else:
+        typer.echo("💬 New session (starts with your first message)")
     typer.echo("Type /help for commands. Use 'exit' to quit.\n")
 
     # Fetch commands for the completer
@@ -241,6 +245,8 @@ def agent_chat(
                 break
 
     def _turn(user_msg: str):
+        if not _ensure_chat(user_msg):
+            return
         try:
             asyncio.run(_turn_async(user_msg))
         except Exception as e:

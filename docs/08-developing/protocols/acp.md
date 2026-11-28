@@ -113,6 +113,12 @@ Implemented methods: `initialize`, `authenticate`, `session/new`,
 `loadSession: true`, text prompts with embedded context. Images and audio are
 declined at the handshake rather than silently dropped.
 
+`session/new` only hands out an id. The session's chat (titled
+`⇄ ACP <workspace folder>`) is created under that id by its first
+`session/prompt`, because clients open a session as soon as their agent panel
+shows, and a session that is never prompted should not leave an empty chat in
+the sidebar.
+
 ### Relayed prompts
 
 A client that relays someone else's words, such as a shared room, can keep its

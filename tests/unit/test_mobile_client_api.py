@@ -1749,6 +1749,88 @@ def test_voice_stream_reuses_bridge_and_revocation_releases_it(setup_client):
     assert released.wait(2)
 
 
+def _voice_new_chat_setup(client, monkeypatch, *, delegated: bool):
+    """Let the fake database create and delete chats, and fake a call."""
+    from suzent.api import resources
+
+    db = resources.get_database()
+    records = db.get_chat.__self__
+    created: list[dict] = []
+
+    def create_chat(*, title, config, project_id=None, **_):
+        chat_id = f"voice-{len(created) + 1}"
+        created.append({"id": chat_id, "project_id": project_id})
+        records[chat_id] = SimpleNamespace(
+            id=chat_id, title=title, config=config, messages=[], state_revision=0
+        )
+        return chat_id
+
+    db.create_chat = create_chat
+    db.delete_chat = lambda chat_id: records.pop(chat_id, None) is not None
+    monkeypatch.setattr("suzent.routes.voice_routes.get_database", lambda: db)
+
+    class Bridge:
+        def __init__(self, websocket, chat_id):
+            self.websocket = websocket
+            self.chat_id = chat_id
+            self.router = SimpleNamespace(delegated=delegated)
+
+        async def run(self):
+            await self.websocket.send_json({"type": "ready", "chat_id": self.chat_id})
+            await self.websocket.receive_json()
+
+    client.app.state.voice_bridge_factory = Bridge
+    return records, created
+
+
+@pytest.mark.parametrize("delegated", [False, True])
+def test_voice_without_a_chat_creates_one_and_drops_it_if_unused(
+    setup_client, monkeypatch, delegated
+):
+    client, store = setup_client
+    result = grant(store, chat_ids=["shared"], send=True, stop=True, create_chats=True)
+    records, created = _voice_new_chat_setup(client, monkeypatch, delegated=delegated)
+    with client.websocket_connect(
+        "/mobile/client/voice?project_id=p-shared",
+        headers={"Authorization": f"Bearer {result['token']}"},
+    ) as websocket:
+        ready = websocket.receive_json()
+        assert ready == {"type": "ready", "chat_id": "voice-1"}
+        assert "voice-1" in store.verify(result["token"]).permissions.chat_ids
+        websocket.send_json({"type": "stop"})
+    assert created == [{"id": "voice-1", "project_id": "p-shared"}]
+    assert ("voice-1" in records) is delegated
+
+
+def test_voice_new_chat_needs_create_permission_and_a_shared_project(
+    setup_client, monkeypatch
+):
+    from starlette.websockets import WebSocketDisconnect
+
+    client, store = setup_client
+    records, created = _voice_new_chat_setup(client, monkeypatch, delegated=False)
+    allowed = grant(store, chat_ids=["shared"], send=True, stop=True, create_chats=True)
+    for token, query in (
+        (grant(store, chat_ids=["shared"], send=True, stop=True)["token"], ""),
+        (allowed["token"], "?project_id=p-private"),
+    ):
+        with pytest.raises(WebSocketDisconnect) as failure:
+            with client.websocket_connect(
+                f"/mobile/client/voice{query}",
+                headers={"Authorization": f"Bearer {token}"},
+            ):
+                pytest.fail("Voice created a chat it was not allowed to")
+        assert failure.value.code == 1008
+    assert created == []
+
+
+def test_session_advertises_voice_new_chat(setup_client):
+    client, store = setup_client
+    result = grant(store, chat_ids=["shared"])
+    client.headers["Authorization"] = f"Bearer {result['token']}"
+    assert client.get("/mobile/client/session").json()["voice_new_chat"] == 1
+
+
 def test_voice_rejects_browser_origin(setup_client):
     from starlette.websockets import WebSocketDisconnect
 

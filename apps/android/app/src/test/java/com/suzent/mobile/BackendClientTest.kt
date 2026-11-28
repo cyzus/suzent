@@ -54,6 +54,30 @@ class BackendClientTest {
         } finally { socket.cancel(); client.close(); server.shutdown() }
     }
 
+    @Test(timeout = 5000) fun voiceSocketForANewChatNamesOnlyTheProject() {
+        val server = MockWebServer()
+        val received = java.util.concurrent.CountDownLatch(1)
+        server.enqueue(MockResponse().setBody("""{"chats":[]}"""))
+        server.enqueue(MockResponse().withWebSocketUpgrade(object : okhttp3.WebSocketListener() {
+            override fun onOpen(webSocket: okhttp3.WebSocket, response: okhttp3.Response) {
+                webSocket.send("ready")
+            }
+        }))
+        server.start()
+        val client = BackendClient(Backend.parse(server.url("/").toString(), true), "paired-token")
+        runBlocking { client.chats() }
+        server.takeRequest()
+        val socket = client.voiceSocket("", object : okhttp3.WebSocketListener() {
+            override fun onMessage(webSocket: okhttp3.WebSocket, text: String) { received.countDown() }
+        }, projectId = "work")
+        try {
+            assertTrue(received.await(2, TimeUnit.SECONDS))
+            val request = server.takeRequest(2, TimeUnit.SECONDS)!!
+            assertNull(request.requestUrl!!.queryParameter("chat_id"))
+            assertEquals("work", request.requestUrl!!.queryParameter("project_id"))
+        } finally { socket.cancel(); client.close(); server.shutdown() }
+    }
+
     @Test fun paginationCapabilityUsesBoundedEndpoints() = runBlocking {
         val server = MockWebServer()
         server.enqueue(MockResponse().setBody("""{"client_protocol":1,"stream_protocols":[1],"chat_pagination":1,"device":{"device_id":"phone","display_name":"Phone","permissions":{"chat_ids":[],"all_chats":true,"create_chats":true,"send":true,"stop":true}}}"""))

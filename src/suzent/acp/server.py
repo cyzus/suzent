@@ -89,6 +89,11 @@ _TOOL_KINDS: dict[str, str] = {
 }
 
 
+def _new_session_id() -> str:
+    """The id of a new session and of the chat its first prompt creates."""
+    return str(uuid.uuid4())
+
+
 def tool_kind(tool_name: str) -> str:
     """Return the ACP tool-call kind for a Suzent tool name."""
     return _TOOL_KINDS.get(tool_name, "other")
@@ -147,10 +152,13 @@ class SuzentBackend:
             return data["grant_id"] or None
         return None
 
-    async def create_chat(self, title: str, config: dict[str, Any]) -> str:
-        chat = await self._client.chat.create_chat(
-            {"title": title, "config": config, "messages": []}
-        )
+    async def create_chat(
+        self, title: str, config: dict[str, Any], chat_id: str | None = None
+    ) -> str:
+        payload: dict[str, Any] = {"title": title, "config": config, "messages": []}
+        if chat_id:
+            payload["id"] = chat_id
+        chat = await self._client.chat.create_chat(payload)
         chat_id = str(chat.get("id") or "")
         if not chat_id:
             raise ACPServerError("the backend returned a chat without an id")
@@ -425,6 +433,10 @@ class Session:
     chat_id: str
     cwd: str
     config: dict[str, Any]
+    # A new session's chat is created on its first prompt: clients open a
+    # session as soon as their agent panel shows, often without ever prompting.
+    title: str = ""
+    created: bool = True
     running: bool = False
     cancelled: bool = False
     seen_tool_calls: set[str] = field(default_factory=set)
@@ -631,9 +643,11 @@ class ACPAgentServer:
         cwd = self._require_cwd(params)
         config = await self._session_config(cwd)
         title = f"⇄ ACP {Path(cwd).name or cwd}"
-        chat_id = await self._backend.create_chat(title, config)
-        self._sessions[chat_id] = Session(chat_id=chat_id, cwd=cwd, config=config)
-        logger.info(f"[acp-server] session {chat_id} created (cwd={cwd})")
+        chat_id = _new_session_id()
+        self._sessions[chat_id] = Session(
+            chat_id=chat_id, cwd=cwd, config=config, title=title, created=False
+        )
+        logger.info(f"[acp-server] session {chat_id} opened (cwd={cwd})")
         return {"sessionId": chat_id}
 
     async def _load_session(self, params: dict[str, Any]) -> None:
@@ -641,6 +655,10 @@ class ACPAgentServer:
         session_id = str(params.get("sessionId") or "")
         if not session_id:
             raise ACPServerError("session/load requires a sessionId", INVALID_PARAMS)
+        opened = self._sessions.get(session_id)
+        if opened is not None and not opened.created:
+            # Opened in this process and never prompted: nothing to replay.
+            return None
         chat = await self._backend.get_chat(session_id)
         if chat is None:
             raise ACPServerError(f"no such session '{session_id}'", INVALID_PARAMS)
@@ -695,6 +713,13 @@ class ACPAgentServer:
         session.running = True
         session.cancelled = False
         try:
+            if not session.created:
+                await self._authorize(session)
+                await self._backend.create_chat(
+                    session.title, session.config, session.chat_id
+                )
+                session.created = True
+                logger.info(f"[acp-server] session {session.chat_id} created")
             stop_reason = await self._run_authorized_turn(session, prompt, author)
         except ACPServerError as exc:
             await self._error(message_id, exc.code, str(exc))

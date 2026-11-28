@@ -23,6 +23,15 @@ from suzent.acp.server import (
 )
 
 
+@pytest.fixture(autouse=True)
+def numbered_sessions(monkeypatch):
+    """Sessions are numbered chat-1, chat-2, ... so tests can name them."""
+    count = iter(range(1, 1000))
+    monkeypatch.setattr(
+        "suzent.acp.server._new_session_id", lambda: f"chat-{next(count)}"
+    )
+
+
 def sse(event: dict[str, Any]) -> bytes:
     return f"data: {json.dumps(event)}\n\n".encode()
 
@@ -41,8 +50,10 @@ class FakeBackend:
     async def sandbox_enabled(self) -> bool:
         return self._sandbox
 
-    async def create_chat(self, title: str, config: dict[str, Any]) -> str:
-        chat_id = f"chat-{len(self.created) + 1}"
+    async def create_chat(
+        self, title: str, config: dict[str, Any], chat_id: str | None = None
+    ) -> str:
+        chat_id = chat_id or f"chat-{len(self.created) + 1}"
         self.created.append((title, config))
         self.chats[chat_id] = {"id": chat_id, "config": config, "messages": []}
         return chat_id
@@ -121,6 +132,14 @@ async def test_session_new_binds_the_client_cwd_as_a_mount(tmp_path):
     await server.dispatch(request(2, "session/new", {"cwd": str(tmp_path)}))
 
     assert wire.result(2) == {"sessionId": "chat-1"}
+    await server.dispatch(
+        request(
+            3,
+            "session/prompt",
+            {"sessionId": "chat-1", "prompt": [{"type": "text", "text": "hi"}]},
+        )
+    )
+    await server.drain()
     _title, config = backend.created[0]
     assert config["sandbox_volumes"] == [f"{tmp_path.resolve()}:{WORKSPACE_MOUNT}"]
     # Sandbox turns run in the container, so the agent's cwd is the mount point.
@@ -135,9 +154,48 @@ async def test_host_mode_session_uses_the_real_directory_as_cwd(tmp_path):
 
     await server.dispatch(request(1, "initialize", {}))
     await server.dispatch(request(2, "session/new", {"cwd": str(tmp_path)}))
+    await server.dispatch(
+        request(
+            3,
+            "session/prompt",
+            {"sessionId": "chat-1", "prompt": [{"type": "text", "text": "hi"}]},
+        )
+    )
+    await server.drain()
 
     _title, config = backend.created[0]
     assert config["cwd"] == str(tmp_path.resolve())
+
+
+@pytest.mark.asyncio
+async def test_a_session_gets_its_chat_only_when_first_prompted(tmp_path):
+    backend = FakeBackend([[], []])
+    wire = Wire()
+    server = ACPAgentServer(backend, wire)
+
+    await server.dispatch(request(1, "initialize", {}))
+    await server.dispatch(request(2, "session/new", {"cwd": str(tmp_path)}))
+    await server.dispatch(
+        request(3, "session/load", {"sessionId": "chat-1", "cwd": str(tmp_path)})
+    )
+    # Opening (and reopening) a session that is never prompted leaves no chat.
+    assert backend.created == []
+    assert wire.error(3) is None
+
+    for message_id in (4, 5):
+        await server.dispatch(
+            request(
+                message_id,
+                "session/prompt",
+                {"sessionId": "chat-1", "prompt": [{"type": "text", "text": "hi"}]},
+            )
+        )
+        await server.drain()
+    assert [title for title, _config in backend.created] == [
+        f"⇄ ACP {tmp_path.resolve().name}"
+    ]
+    assert list(backend.chats) == ["chat-1"]
+    assert [payload["chat_id"] for payload in backend.payloads] == ["chat-1"] * 2
 
 
 @pytest.mark.asyncio
@@ -168,7 +226,11 @@ async def test_session_load_replays_history(tmp_path):
     wire = Wire()
     server = ACPAgentServer(backend, wire)
     await server.dispatch(request(1, "initialize", {}))
-    await server.dispatch(request(2, "session/new", {"cwd": str(tmp_path)}))
+    backend.chats["chat-1"] = {
+        "id": "chat-1",
+        "config": {SESSION_MARKER: {"cwd": str(tmp_path)}},
+        "messages": [],
+    }
     backend.chats["chat-1"]["messages"] = [
         {"role": "user", "content": "hi"},
         {"role": "assistant", "content": "hello"},

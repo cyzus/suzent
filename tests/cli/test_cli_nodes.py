@@ -481,6 +481,26 @@ class TestAgentSubcommand:
         assert result.exit_code == 0
         assert "Hello! I'm suzent" in result.output
 
+    @patch("suzent.cli.state.set_current_chat_id")
+    @patch("suzent.cli.agent.get_client")
+    @patch("prompt_toolkit.PromptSession")
+    def test_agent_chat_left_without_a_message_creates_no_chat(
+        self, mock_prompt_session, mock_get_client, mock_set_chat
+    ):
+        session_instance = MagicMock()
+        session_instance.prompt.side_effect = EOFError
+        mock_prompt_session.return_value = session_instance
+        client = MagicMock()
+        client.chat.create_chat = AsyncMock(return_value={"id": "unused"})
+        client.chat.commands = AsyncMock(return_value={"commands": []})
+        mock_get_client.return_value = client
+
+        result = runner.invoke(app, ["agent", "chat", "--new"])
+
+        assert result.exit_code == 0
+        client.chat.create_chat.assert_not_awaited()
+        mock_set_chat.assert_not_called()
+
     @patch("suzent.cli.agent.get_client")
     def test_agent_status_running(self, mock_get_client):
         client = MagicMock()
