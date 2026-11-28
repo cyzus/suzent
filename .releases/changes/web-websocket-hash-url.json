@@ -1,0 +1,1 @@
+{"products": {"desktop": "patch"}, "summary": "Fix the web console failing to open voice, wake-word and browser preview sockets when the page address has a #/ route."}

@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { getApiBase } from '../../lib/api';
+import { getApiBase, getWebSocketUrl } from '../../lib/api';
 import { connectBrowserPreview } from '../../lib/browserPreview';
 import { desktopShell } from '../../lib/desktop';
 import { AgentBrowserPane } from './AgentBrowserPane';
@@ -135,9 +135,7 @@ export function BrowserView({ onStreamActive, visible = true }: BrowserViewProps
     frameSize.current = null;
     setStatus('disconnected');
     if (!streaming) return;
-    const url = new URL(getApiBase());
-    url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
-    url.pathname = '/ws/browser';
+    const url = getWebSocketUrl('/ws/browser');
     url.searchParams.set('mode', details!.mode);
     return connectBrowserPreview(
       url.toString(),
