@@ -421,6 +421,9 @@ function groupedBlocksToAssistantContent(blocks: ContentBlock[]): string {
 // up and tears the stream down itself. Long enough for a tool call to unwind,
 // short enough that a wedged turn doesn't leave the composer disabled.
 const STOP_STREAM_END_TIMEOUT_MS = 10000;
+// After a call from the new-chat view ends, when to check whether the server
+// discarded its chat (it decides once the realtime session has shut down).
+const VOICE_DISCARD_CHECKS_MS = [500, 1500, 3000, 5000];
 
 // Run error codes the backend sends for a failed model request, each with a
 // localized explanation under chatWindow.modelErrors.
@@ -1001,7 +1004,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     pinnedChats,
     refreshChatListSilently,
     updateChatTitleLocally,
-    forgetChatLocally,
   } = useChatStore();
 
   const {
@@ -1964,27 +1966,44 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   );
   // A call from the new-chat view creates its chat in the picked project.
   const { currentProjectId } = useProjects();
-  // A call from the new-chat view creates its chat on the server. If nothing
-  // reached Suzent the server deletes it when the call ends; these track
-  // whether this call made the chat and whether anything was sent in it.
+  // A call from the new-chat view creates its chat on the server, which
+  // deletes it when the call ends if nothing reached Suzent.
   const voiceCreatedChatRef = useRef(false);
-  const voiceSentRef = useRef(false);
   const voice: typeof voiceSession = {
     ...voiceSession,
     start: (chatId: string | null) => {
       voiceChatIdRef.current = chatId;
       voiceCreatedChatRef.current = chatId === null;
-      voiceSentRef.current = false;
       voiceSession.start(chatId, chatId ? null : currentProjectId);
     },
   };
-  const voiceChatHasMessages =
-    currentChatId !== null && currentChatId === voiceChatIdRef.current && messages.length > 0;
-  useEffect(() => {
-    if (voiceSession.active && (voiceSession.working || voiceChatHasMessages)) {
-      voiceSentRef.current = true;
-    }
-  }, [voiceSession.active, voiceSession.working, voiceChatHasMessages]);
+  // Only the server knows whether the call handed anything over, and it
+  // decides after the socket is gone, so ask it rather than guess.
+  const reconcileVoiceChat = useCallback(
+    async (chatId: string) => {
+      for (const delayMs of VOICE_DISCARD_CHECKS_MS) {
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+        let res: Response;
+        try {
+          res = await fetch(`${getApiBase()}${resourcePaths.chat(chatId)}`);
+        } catch {
+          continue;
+        }
+        if (res.status === 404) {
+          if (activeChatIdRef.current === chatId && messagesRef.current.length === 0) {
+            beginNewChat();
+          }
+          // A forced refresh supersedes any list request still in flight.
+          void refreshChatListSilently(undefined, true);
+          return;
+        }
+        if (!res.ok) continue;
+        const chat = (await res.json()) as { messages?: unknown[] };
+        if (chat.messages?.length) return;
+      }
+    },
+    [beginNewChat, refreshChatListSilently]
+  );
   const voiceWasActiveRef = useRef(false);
   useEffect(() => {
     const wasActive = voiceWasActiveRef.current;
@@ -1992,9 +2011,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     if (!wasActive || voiceSession.active || !voiceCreatedChatRef.current) return;
     voiceCreatedChatRef.current = false;
     const chatId = voiceChatIdRef.current;
-    if (!chatId || voiceSentRef.current) return;
-    forgetChatLocally(chatId);
-    if (currentChatId === chatId && messages.length === 0) beginNewChat();
+    if (chatId) void reconcileVoiceChat(chatId);
     // Only the end of a call should run this.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [voiceSession.active]);
