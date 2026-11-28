@@ -131,6 +131,11 @@ import SuzentCore
     var attachments: [PendingAttachment] = []
     var attachmentsSupported = false
     var voiceSupported = false
+    var voiceNewChatSupported = false
+    // A call started from a new conversation: the composer it started from and
+    // the chat the desktop created for it once the call is ready.
+    @ObservationIgnored private var voiceComposer: Chat?
+    @ObservationIgnored private var voiceChatID: String?
     var overviewSupported = false
     var surfacesSupported = false
     var steerSupported = false
@@ -191,11 +196,20 @@ import SuzentCore
         error = nil
         voice.onError = { [weak self] message in self?.error = message }
         voice.onRefresh = { [weak self] in Task { await self?.refresh() } }
+        voice.onChatBound = { [weak self] id in self?.bindVoiceChat(id) }
+        voice.onEnded = { [weak self] in self?.settleVoiceChat() }
+        voiceComposer = nil; voiceChatID = nil
         voice.start { [weak self] in
             guard let self, self.generation == current else { throw CancellationError() }
             var id = chat.id
             if id.isEmpty {
                 guard self.device?.permissions.createChats == true else { throw CancellationError() }
+                if self.voiceNewChatSupported {
+                    // The desktop creates the chat and drops it again if the call
+                    // never hands anything to Suzent, so no empty chat is left behind.
+                    self.voiceComposer = chat
+                    return try client.voiceSocket(chatID: "", projectID: chat.projectId)
+                }
                 self.busy = true
                 defer { self.busy = false }
                 let created = try await client.createChat(title: String(localized: "Voice conversation"), projectID: chat.projectId)
@@ -206,6 +220,45 @@ import SuzentCore
                 id = created.id
             }
             return try client.voiceSocket(chatID: id)
+        }
+    }
+
+    private func bindVoiceChat(_ id: String) {
+        guard let composer = voiceComposer, selected?.id == composer.id,
+              selected?.projectId == composer.projectId else { return }
+        voiceChatID = id
+        var bound = Chat(id: id, title: String(localized: "Voice conversation"))
+        bound.messages = []
+        bound.projectId = composer.projectId
+        bound.projectName = composer.projectName
+        bound.model = composer.model
+        bound.models = composer.models
+        selected = bound
+        chats.removeAll { $0.id == id }
+        chats.insert(bound, at: 0)
+    }
+
+    /// Ask the desktop whether it kept the call's chat; if not, go back to the new conversation.
+    private func settleVoiceChat() {
+        guard let id = voiceChatID, let composer = voiceComposer,
+              let client = client as? SuzentClient else { return }
+        voiceChatID = nil; voiceComposer = nil
+        let current = generation
+        Task { [weak self] in
+            for wait in [0.5, 1.5, 3.0, 5.0] {
+                try? await Task.sleep(for: .seconds(wait))
+                guard let self, self.generation == current else { return }
+                do {
+                    let messages = try await client.chat(id, includeModels: false).messages ?? []
+                    if !messages.isEmpty { return }
+                } catch ClientError.http(let code) where code == 404 || code == 403 {
+                    self.chats.removeAll { $0.id == id }
+                    if self.selected?.id == id { self.selected = composer }
+                    return
+                } catch {
+                    continue
+                }
+            }
         }
     }
     var liveParts: [MessagePart] = []
@@ -560,6 +613,7 @@ import SuzentCore
             device = session.device
             attachmentsSupported = session.supportsAttachments
             voiceSupported = session.voice == 1
+            voiceNewChatSupported = session.supportsVoiceNewChat
             overviewSupported = session.supportsChatOverview
             surfacesSupported = session.supportsSurfaces
             steerSupported = session.supportsSteer
@@ -737,6 +791,7 @@ import SuzentCore
             device = session.device
             attachmentsSupported = session.supportsAttachments
             voiceSupported = session.voice == 1
+            voiceNewChatSupported = session.supportsVoiceNewChat
             overviewSupported = session.supportsChatOverview
             surfacesSupported = session.supportsSurfaces
             steerSupported = session.supportsSteer
@@ -1427,6 +1482,7 @@ import SuzentCore
         retiredClients = []
         voice.stop()
         voiceSupported = false
+        voiceNewChatSupported = false
         scheduledTasks = []
         mailbox = .empty; mailboxLoading = false; mailboxChats = [:]; mailboxSupported = false; mailboxOffset = 0; mailboxCategory = "all"
         mailboxBusy = false; mailboxError = nil; mailboxRevision = UUID(); mailboxMutation = UUID()

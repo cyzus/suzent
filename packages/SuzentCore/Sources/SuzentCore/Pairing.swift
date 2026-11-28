@@ -29,6 +29,8 @@ public struct ClientSession: Decodable, Sendable {
     public var chatPagination: Int? = nil
     public var resourceApi: Int? = nil
     public var voice: Int? = nil
+    /// The desktop creates a new call's chat itself and drops it if the call sends nothing.
+    public var voiceNewChat: Int? = nil
     public var chatOverview: Int? = nil
     public var surfaces: Int? = nil
     public var steer: Int? = nil
@@ -41,6 +43,7 @@ public struct ClientSession: Decodable, Sendable {
     public var supportsChatOverview: Bool { chatOverview == 1 }
     public var supportsSurfaces: Bool { surfaces == 1 }
     public var supportsSteer: Bool { steer == 1 }
+    public var supportsVoiceNewChat: Bool { voiceNewChat == 1 }
 
     public func validate() throws {
         guard clientProtocol == 1, streamProtocols.contains(1) else { throw PairingError.incompatible }

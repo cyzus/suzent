@@ -11,6 +11,7 @@ import asyncio
 from collections.abc import AsyncGenerator
 import json
 import traceback
+import uuid
 from typing import Annotated, Any, Callable, Literal
 
 from pydantic import (
@@ -1329,11 +1330,26 @@ async def create_chat(request: Request) -> JSONResponse:
             seed_default_permission_mode(config)
 
         db = get_database()
+        # A client that handed out the id before the chat existed (an ACP
+        # session opened before its first prompt) asks for it here.
+        requested_id = data.get("id")
+        if requested_id is not None:
+            try:
+                requested_id = str(uuid.UUID(str(requested_id)))
+            except ValueError:
+                return JSONResponse({"error": "Invalid chat id"}, status_code=400)
+            if await asyncio.to_thread(db.get_chat, requested_id) is not None:
+                return JSONResponse({"error": "Chat already exists"}, status_code=409)
         # Creating a chat waits for SQLite's write lock and fsyncs its log, which
         # can take seconds while a turn is writing; off the loop, that wait no
         # longer stalls every other request and stream.
         chat_id = await asyncio.to_thread(
-            db.create_chat, title, config, messages, project_id=project_id
+            db.create_chat,
+            title,
+            config,
+            messages,
+            chat_id=requested_id,
+            project_id=project_id,
         )
 
         if instructions is not None:

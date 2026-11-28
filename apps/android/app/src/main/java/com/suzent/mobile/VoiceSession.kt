@@ -16,8 +16,12 @@ import okio.ByteString
 import okio.ByteString.Companion.toByteString
 import org.json.JSONObject
 
+/** Where a call goes: an existing chat, or (empty [chatId]) a new one the desktop creates in [projectId]. */
+data class VoiceTarget(val client: BackendClient, val chatId: String, val projectId: String? = null)
+
 class VoiceSession(private val context: Context, private val scope: CoroutineScope, private val onError: (Int) -> Unit,
-                   private val onRefresh: () -> Unit) {
+                   private val onRefresh: () -> Unit, private val onChatBound: (String) -> Unit = {},
+                   private val onEnded: () -> Unit = {}) {
     var active by mutableStateOf(false)
         private set
     var animationState by mutableStateOf("idle")
@@ -33,7 +37,7 @@ class VoiceSession(private val context: Context, private val scope: CoroutineSco
     private var job: Job? = null
     private var socket: WebSocket? = null
 
-    fun start(prepare: suspend () -> Pair<BackendClient, String>) {
+    fun start(prepare: suspend () -> VoiceTarget) {
         if (active) return
         active = true
         animationState = "connecting"
@@ -44,9 +48,9 @@ class VoiceSession(private val context: Context, private val scope: CoroutineSco
         job = scope.launch {
             val frames = Channel<Any>(128)
             try {
-                val (client, chatId) = prepare()
+                val (client, chatId, projectId) = prepare()
                 ensureActive()
-                socket = client.voiceSocket(chatId, object : WebSocketListener() {
+                socket = client.voiceSocket(chatId, projectId = projectId, listener = object : WebSocketListener() {
                     override fun onMessage(webSocket: WebSocket, text: String) { offer(text) }
                     override fun onMessage(webSocket: WebSocket, bytes: ByteString) { offer(bytes) }
                     private fun offer(value: Any) {
@@ -65,6 +69,7 @@ class VoiceSession(private val context: Context, private val scope: CoroutineSco
                     val output = ready.getInt("output_sample_rate")
                     check(input in 8000..48000 && output in 8000..48000)
                     working = ready.optBoolean("working")
+                    ready.optString("chat_id").takeIf { it.isNotEmpty() }?.let(onChatBound)
                     startAudio(input, output, frames)
                 }
             } catch (_: TimeoutCancellationException) {
@@ -81,6 +86,7 @@ class VoiceSession(private val context: Context, private val scope: CoroutineSco
                 working = false
                 micLevel = 0.0
                 onRefresh()
+                onEnded()
             }
         }
     }

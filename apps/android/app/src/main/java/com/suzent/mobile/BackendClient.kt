@@ -139,8 +139,16 @@ class BackendClient(val backend: Backend, private val token: String, probeOnly: 
     var supportsVoice = false
         private set
 
-    fun voiceSocket(chatId: String, listener: WebSocketListener): WebSocket {
-        val url = backend.endpoint(ResourceRequests.voice().path(sharedResources)).newBuilder().addQueryParameter("chat_id", chatId).build()
+    /** The desktop creates a new call's chat itself and drops it if the call sends nothing. */
+    var supportsVoiceNewChat = false
+        private set
+
+    /** An empty [chatId] lets the desktop create the call's chat (in [projectId]) and name it in `ready`. */
+    fun voiceSocket(chatId: String, listener: WebSocketListener, projectId: String? = null): WebSocket {
+        val builder = backend.endpoint(ResourceRequests.voice().path(sharedResources)).newBuilder()
+        if (chatId.isNotEmpty()) builder.addQueryParameter("chat_id", chatId)
+        else if (!projectId.isNullOrEmpty()) builder.addQueryParameter("project_id", projectId)
+        val url = builder.build()
         val voice = request(ResourceRequests.voice()).newBuilder().url(url).build()
         return tunnel?.webSocket(voice, listener) ?: http.newWebSocket(voice, listener)
     }
@@ -160,6 +168,7 @@ class BackendClient(val backend: Backend, private val token: String, probeOnly: 
         supportsScheduledTasks = value.optInt("scheduled_tasks") == 1
         supportsPagination = value.optInt("chat_pagination") == 1
         supportsVoice = value.optInt("voice") == 1
+        supportsVoiceNewChat = value.optInt("voice_new_chat") == 1
         supportsChatOverview = value.optInt("chat_overview") == 1
         supportsSurfaces = value.optInt("surfaces") == 1
         supportsSteer = value.optInt("steer") == 1
