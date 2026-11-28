@@ -201,15 +201,7 @@ export const GlobalSearchModal: React.FC<GlobalSearchModalProps> = ({
     const result: SearchListItem[] = [];
 
     const chatSource = q ? searchedChats : chats;
-    const filteredChats = chatSource
-      .filter(
-        (c) =>
-          !q ||
-          (c.title || '').toLowerCase().includes(q) ||
-          (c.projectName || '').toLowerCase().includes(q) ||
-          (c.lastMessage || '').toLowerCase().includes(q)
-      )
-      .slice(0, activeTab === 'chats' ? 20 : q ? 6 : 5);
+    const filteredChats = chatSource.slice(0, activeTab === 'chats' ? 20 : q ? 6 : 5);
 
     const filteredExternal = externalSessions.slice(0, activeTab === 'external' ? 20 : q ? 5 : 3);
 

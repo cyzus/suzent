@@ -357,7 +357,7 @@ const ExternalSessionDiscoveryTray: React.FC<{
   const agentName = formatAcpAgentName(agentId);
 
   return (
-    <div className="mt-4 w-full text-left border-2 border-brutal-black dark:border-zinc-700 bg-white dark:bg-zinc-800/90 shadow-[2px_2px_0px_0px_#000] dark:shadow-none">
+    <div className="mt-4 w-full text-left border-2 border-brutal-black dark:border-zinc-700 bg-white dark:bg-zinc-800/90 shadow-brutal-sm dark:shadow-none">
       <div className="flex items-center justify-between gap-2 px-3 py-2 border-b border-neutral-200 dark:border-zinc-700 bg-neutral-50 dark:bg-zinc-900/60">
         <div className="flex items-center gap-2 min-w-0">
           <span className="inline-flex h-4 w-4 shrink-0 items-center justify-center text-brutal-black dark:text-neutral-100">

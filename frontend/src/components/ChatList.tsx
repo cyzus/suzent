@@ -2344,6 +2344,18 @@ export const ChatList: React.FC<ChatListProps> = ({
                         );
                       });
                     })()}
+                    {remaining > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => void handleLoadMore()}
+                        disabled={loadingMoreChats}
+                        className="w-full border-t border-neutral-200 py-2.5 text-[10px] font-extrabold uppercase text-neutral-500 hover:bg-neutral-50 hover:text-brutal-black disabled:opacity-50 dark:border-zinc-700 dark:hover:bg-zinc-700 dark:hover:text-white"
+                      >
+                        {loadingMoreChats
+                          ? t('chatList.loadingMore')
+                          : t('chatList.loadMore', { count: remaining })}
+                      </button>
+                    )}
                   </div>
                 ) : (
                   <div className="border-t border-neutral-200 dark:border-zinc-700">

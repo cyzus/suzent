@@ -1081,7 +1081,9 @@ class ChatOperationsMixin:
             if working_directory is not None:
                 chat.working_directory = working_directory
 
-            if should_update_timestamp:
+            if updated_at is not None:
+                chat.updated_at = updated_at
+            elif should_update_timestamp:
                 chat.updated_at = datetime.now()
 
             session.add(chat)
