@@ -1,5 +1,10 @@
 # Mobile changelog
 
+## [mobile-v0.10.3] - 2026-11-28
+
+### Release notes
+- A voice call started from a new conversation no longer leaves an empty chat when nothing is handed to Suzent.
+
 ## [mobile-v0.10.2] - 2026-11-18
 
 ### Release notes
