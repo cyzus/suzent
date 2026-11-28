@@ -11,6 +11,7 @@ import pytest
 
 from suzent.acp.server import ACPAgentServer, AUTH_REQUIRED, SESSION_MARKER
 from test_acp_server import FakeBackend, Wire, request
+from test_acp_server import numbered_sessions  # noqa: F401 (autouse fixture)
 
 
 def test_real_cli_registry_handshake_without_running_backend(tmp_path):
@@ -158,6 +159,14 @@ async def test_authorization_owns_history_and_revocation_blocks_prompts(tmp_path
     )
     await server.dispatch(request(1, "initialize", {}))
     await server.dispatch(request(2, "session/new", {"cwd": str(tmp_path)}))
+    await server.dispatch(
+        request(
+            6,
+            "session/prompt",
+            {"sessionId": "chat-1", "prompt": [{"type": "text", "text": "hi"}]},
+        )
+    )
+    await server.drain()
     assert backend.created[0][1][SESSION_MARKER]["grant_id"] == "grant-a"
     backend.chats["chat-1"]["messages"] = [{"role": "assistant", "content": "private"}]
     await server.dispatch(request(3, "session/load", {"sessionId": "chat-1"}))
@@ -180,7 +189,7 @@ async def test_authorization_owns_history_and_revocation_blocks_prompts(tmp_path
     )
     await server.drain()
     assert wire.error(5)["code"] == AUTH_REQUIRED
-    assert not backend.payloads
+    assert len(backend.payloads) == 1
 
 
 @pytest.mark.asyncio
