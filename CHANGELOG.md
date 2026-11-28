@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The built-in browser has tabs and an address bar, the agent follows the tab you pick and can open and close tabs, and you can choose whether it keeps sign-ins or clear its data in Settings → Browser.
 - Expand built-in external ACP agents with official registry catalog and SVG icons, unify Claude Code under the official adapter, add zero-wakeup on-disk state/auth inspection and seamless npm adapter installation, and streamline the External Agents settings tab.
 - Moving a Git install to the standard app now also removes the old desktop shortcut when the desktop folder has a non-English name, such as OneDrive\桌面.
+- A voice call that never sends anything to Suzent no longer leaves an empty chat in the chat list.
 - Fix the web console failing to open voice, wake-word and browser preview sockets when the page address has a #/ route.
 
 ## [v0.28.2] - 2026-11-27
