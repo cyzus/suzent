@@ -277,18 +277,13 @@ const ProjectPicker: React.FC = () => {
 
 // ... (other imports)
 
-function formatRelativeTime(isoOrMtime?: string | number): string {
+import { formatRelativeTime as formatLocalizedRelativeTime } from '../lib/chatUtils';
+
+function formatRelativeTime(isoOrMtime: string | number | undefined, locale: string): string {
   if (!isoOrMtime) return '';
-  const ts = typeof isoOrMtime === 'number' ? isoOrMtime * 1000 : new Date(isoOrMtime).getTime();
-  if (!Number.isFinite(ts) || ts <= 0) return '';
-  const diffSec = Math.max(0, Math.floor((Date.now() - ts) / 1000));
-  if (diffSec < 60) return 'just now';
-  const diffMin = Math.floor(diffSec / 60);
-  if (diffMin < 60) return `${diffMin}m ago`;
-  const diffHr = Math.floor(diffMin / 60);
-  if (diffHr < 24) return `${diffHr}h ago`;
-  const diffDay = Math.floor(diffHr / 24);
-  return `${diffDay}d ago`;
+  const iso =
+    typeof isoOrMtime === 'number' ? new Date(isoOrMtime * 1000).toISOString() : isoOrMtime;
+  return formatLocalizedRelativeTime(iso, locale);
 }
 
 const ExternalSessionDiscoveryTray: React.FC<{
@@ -297,7 +292,7 @@ const ExternalSessionDiscoveryTray: React.FC<{
   currentChatId?: string | null;
   onAdopted?: (chatId: string) => Promise<void> | void;
 }> = ({ agentId, cwd, currentChatId, onAdopted }) => {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const { currentProjectId } = useProjects();
   const [sessions, setSessions] = useState<DiscoveredExternalSession[]>([]);
   const [adoptingId, setAdoptingId] = useState<string | null>(null);
@@ -415,7 +410,7 @@ const ExternalSessionDiscoveryTray: React.FC<{
         <div className="divide-y divide-neutral-100 dark:divide-zinc-700/60">
           {sessions.map((item) => {
             const busy = adoptingId === item.session_id;
-            const rel = formatRelativeTime(item.updated_at || item.mtime);
+            const rel = formatRelativeTime(item.updated_at || item.mtime, locale);
             return (
               <div
                 key={item.session_id}

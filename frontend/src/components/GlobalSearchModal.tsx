@@ -215,16 +215,7 @@ export const GlobalSearchModal: React.FC<GlobalSearchModalProps> = ({
       )
       .slice(0, activeTab === 'artifacts' ? 20 : q ? 5 : 2);
 
-    const filteredMemories = memories
-      .filter(
-        (m) =>
-          !q ||
-          m.content.toLowerCase().includes(q) ||
-          String(m.metadata?.category || m.metadata?.kind || '')
-            .toLowerCase()
-            .includes(q)
-      )
-      .slice(0, activeTab === 'memory' ? 20 : q ? 4 : 0);
+    const filteredMemories = memories.slice(0, activeTab === 'memory' ? 20 : q ? 4 : 0);
 
     const filteredProjects = projects
       .filter(

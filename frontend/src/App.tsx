@@ -3,6 +3,7 @@ import { WorkspacePanelHost, WorkspacePanelProvider } from './components/Workspa
 import { DesktopContextMenu } from './components/DesktopContextMenu';
 import { SetupGate } from './components/settings/SetupGate';
 import React, { useState } from 'react';
+import { isImeComposing } from './lib/ime';
 import { desktopShell, desktopWindow, invoke, listen, openDialog } from './lib/desktop';
 import {
   ArrowPathIcon,
@@ -819,6 +820,7 @@ function AppInner(): React.ReactElement {
 
   React.useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
+      if (isImeComposing(e)) return;
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault();
         setSidebarSearchOpen((prev) => !prev);

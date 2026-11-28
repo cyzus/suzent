@@ -340,11 +340,20 @@ async def discover_acp_sessions(request: Request) -> JSONResponse:
     except ValueError:
         limit = 15
 
+    # Filter out sessions already adopted by an existing Suzent chat before applying limit
+    adopted_ids: set[str] = set()
+    for row in db.list_chats_by_config("runtime", "acp"):
+        cfg = row.get("config") or {}
+        sid = cfg.get("acp_session_id")
+        if isinstance(sid, str) and sid:
+            adopted_ids.add(sid)
+
     discovered = discover_local_agent_sessions(
         agent_id or None,
         cwd or None,
         query=query or None,
         limit=limit,
+        exclude_ids=adopted_ids,
     )
 
     # Supplement with standard ACP `session/list` from active (or explicitly
@@ -363,7 +372,7 @@ async def discover_acp_sessions(request: Request) -> JSONResponse:
         live_listed = []
 
     if live_listed:
-        seen_sids = {item.get("session_id") for item in discovered}
+        seen_sids = {item.get("session_id") for item in discovered} | adopted_ids
         q_norm = query.lower()
         for item in live_listed:
             sid = item.get("session_id")
@@ -380,17 +389,9 @@ async def discover_acp_sessions(request: Request) -> JSONResponse:
             discovered.append(item)
         discovered = discovered[:limit]
 
-    # Filter out sessions already adopted by an existing Suzent chat
-    adopted_ids: set[str] = set()
-    for row in db.list_chats_by_config("runtime", "acp"):
-        cfg = row.get("config") or {}
-        sid = cfg.get("acp_session_id")
-        if isinstance(sid, str) and sid:
-            adopted_ids.add(sid)
-
     available = [
         item for item in discovered if item.get("session_id") not in adopted_ids
-    ]
+    ][:limit]
     return JSONResponse({"sessions": available, "cwd": cwd})
 
 

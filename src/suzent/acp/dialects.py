@@ -307,6 +307,7 @@ def discover_local_agent_sessions(
     *,
     query: str | None = None,
     limit: int = 15,
+    exclude_ids: set[str] | None = None,
     home: Path | None = None,
 ) -> list[dict[str, Any]]:
     """Zero-wakeup local disk discovery of external CLI sessions (metadata only).
@@ -326,13 +327,25 @@ def discover_local_agent_sessions(
     if not aid or aid in ("all", "claude-code", "claude-code-api", "claude-acp"):
         items.extend(
             _discover_claude_sessions(
-                base_home, target_cwd_norm, cwd or "", limit=scan_limit
+                base_home,
+                target_cwd_norm,
+                cwd or "",
+                limit=scan_limit,
+                exclude_ids=exclude_ids,
             )
         )
     if not aid or aid in ("all", "codex"):
         items.extend(
-            _discover_codex_sessions(base_home, target_cwd_norm, limit=scan_limit)
+            _discover_codex_sessions(
+                base_home,
+                target_cwd_norm,
+                limit=scan_limit,
+                exclude_ids=exclude_ids,
+            )
         )
+
+    if exclude_ids:
+        items = [it for it in items if it.get("session_id") not in exclude_ids]
 
     if q_norm:
         items = [
@@ -354,6 +367,7 @@ def _discover_claude_sessions(
     raw_cwd: str,
     *,
     limit: int = 15,
+    exclude_ids: set[str] | None = None,
 ) -> list[dict[str, Any]]:
     projects_root = home / ".claude" / "projects"
     if not projects_root.is_dir():
@@ -394,7 +408,11 @@ def _discover_claude_sessions(
         if len(results) >= limit:
             break
         session_id = fpath.stem
-        if not session_id or session_id in seen_ids:
+        if (
+            not session_id
+            or session_id in seen_ids
+            or (exclude_ids and session_id in exclude_ids)
+        ):
             continue
         custom_title = ""
         first_user_title = ""
@@ -517,6 +535,7 @@ def _discover_codex_sessions(
     target_cwd_norm: str,
     *,
     limit: int = 15,
+    exclude_ids: set[str] | None = None,
 ) -> list[dict[str, Any]]:
     sessions_root = home / ".codex" / "sessions"
     if not sessions_root.is_dir():
@@ -627,7 +646,13 @@ def _discover_codex_sessions(
 
         if session_id and session_id in indexed_titles:
             title = indexed_titles[session_id]
-        if is_subagent or not session_id or not title or session_id in seen_ids:
+        if (
+            is_subagent
+            or not session_id
+            or not title
+            or session_id in seen_ids
+            or (exclude_ids and session_id in exclude_ids)
+        ):
             continue
         if (
             target_cwd_norm
