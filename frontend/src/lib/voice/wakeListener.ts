@@ -1,4 +1,4 @@
-import { getApiBase } from '../api';
+import { getWebSocketUrl } from '../api';
 import { withAuthQuery } from '../authToken';
 import { float32ToInt16, StreamingLinearResampler } from './pcm';
 
@@ -86,10 +86,7 @@ export class WakeListener {
   ) {}
 
   start(): void {
-    const url = new URL(getApiBase() || window.location.href);
-    url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
-    url.pathname = WAKE_SOCKET_PATH;
-    url.search = '';
+    const url = getWebSocketUrl(WAKE_SOCKET_PATH);
     const socket = new this.Socket(withAuthQuery(url.toString()));
     this.socket = socket;
     let failed = false;

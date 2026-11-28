@@ -1,4 +1,4 @@
-import { getApiBase } from '../api';
+import { getWebSocketUrl } from '../api';
 import { withAuthQuery } from '../authToken';
 import { parseVoiceServerMessage, type VoiceServerMessage } from './types';
 
@@ -24,10 +24,7 @@ export class VoiceClient {
   /** ``projectId`` only places a new chat; an existing chat keeps its project. */
   connect(chatId: string | null, projectId: string | null = null): void {
     this.stopping = false;
-    const url = new URL(getApiBase() || window.location.href);
-    url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
-    url.pathname = '/ws/voice';
-    url.search = '';
+    const url = getWebSocketUrl('/ws/voice');
     if (chatId) url.searchParams.set('chat_id', chatId);
     else if (projectId) url.searchParams.set('project_id', projectId);
     const socket = new this.Socket(withAuthQuery(url.toString()));

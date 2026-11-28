@@ -2,7 +2,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { VoiceClient } from './voiceClient';
 import type { VoiceServerMessage } from './types';
 
-vi.mock('../api', () => ({ getApiBase: () => 'http://127.0.0.1:8000' }));
+vi.mock('../api', () => ({
+  getWebSocketUrl: (path: string) => new URL(path, 'ws://127.0.0.1:8000'),
+}));
 
 class FakeSocket {
   static instances: FakeSocket[] = [];
