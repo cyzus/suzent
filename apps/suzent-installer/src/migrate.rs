@@ -357,14 +357,32 @@ fn install_service(app: &Path) -> Result<(), String> {
             .join("bin")
             .join("python3")
     };
-    run_checked(
-        background_command(&python)
-            .args(["-m", "suzent.cli", "service", "install"])
+    let cli = |args: &[&str]| {
+        let mut command = background_command(&python);
+        command
+            .args(["-m", "suzent.cli", "service"])
+            .args(args)
             .env("PYTHONNOUSERSITE", "1")
-            .env("PYTHONDONTWRITEBYTECODE", "1"),
-        "install the background service",
-    )
+            .env("PYTHONDONTWRITEBYTECODE", "1");
+        command
+    };
+    run_checked(&mut cli(&["install"]), "install the background service")?;
+    // The caller opens the app next. Opened before the service answers, the
+    // app finds no backend and starts its own, so two would share ~/.suzent.
+    let deadline = Instant::now() + SERVICE_READY_TIMEOUT;
+    while Instant::now() < deadline {
+        if cli(&["doctor"])
+            .output()
+            .is_ok_and(|output| output.status.success())
+        {
+            return Ok(());
+        }
+        thread::sleep(Duration::from_secs(2));
+    }
+    Err("the background service did not become ready in time".into())
 }
+
+const SERVICE_READY_TIMEOUT: Duration = Duration::from_secs(120);
 
 #[cfg(test)]
 mod tests {
