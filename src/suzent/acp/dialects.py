@@ -273,3 +273,330 @@ def _extract_dir_usage_summary(agent_id: str, state_path: Path) -> str | None:
             except Exception:
                 pass
     return None
+
+
+def _normalize_cwd_for_match(cwd: str) -> str:
+    """Normalize a path string for case-insensitive workspace comparison."""
+    cleaned = str(cwd or "").strip()
+    if cleaned.lower().startswith("file:///"):
+        cleaned = cleaned[8:]
+    elif cleaned.lower().startswith("file://"):
+        cleaned = cleaned[7:]
+    cleaned = cleaned.replace("\\", "/").rstrip("/")
+    return cleaned.lower()
+
+
+def _encode_claude_project_slug(cwd: str) -> str:
+    """Encode a filesystem path the way Claude Code names ``~/.claude/projects/<slug>``."""
+    import re
+
+    cleaned = str(cwd or "").strip().rstrip("\\/")
+    return re.sub(r"[^a-zA-Z0-9]", "-", cleaned).lower()
+
+
+def _clean_session_title(raw: str, max_len: int = 120) -> str:
+    text = " ".join(str(raw or "").split())
+    if not text:
+        return ""
+    return text[: max_len - 1] + "…" if len(text) > max_len else text
+
+
+def discover_local_agent_sessions(
+    agent_id: str | None = None,
+    cwd: str | None = None,
+    *,
+    query: str | None = None,
+    limit: int = 15,
+    home: Path | None = None,
+) -> list[dict[str, Any]]:
+    """Zero-wakeup local disk discovery of external CLI sessions (metadata only).
+
+    Scans on-disk session files for ``agent_id`` (or all supported agents when
+    omitted/``"all"``) without spawning any subprocess. Returns a list of
+    ``{session_id, agent_id, title, cwd, updated_at, mtime}`` sorted
+    newest-first, optionally filtered by ``query``.
+    """
+    base_home = home or Path.home()
+    target_cwd_norm = _normalize_cwd_for_match(cwd) if cwd else ""
+    aid = (agent_id or "").strip().lower()
+    q_norm = (query or "").strip().lower()
+    scan_limit = max(limit * 4, 60) if q_norm else limit
+
+    items: list[dict[str, Any]] = []
+    if not aid or aid in ("all", "claude-code", "claude-code-api", "claude-acp"):
+        items.extend(
+            _discover_claude_sessions(
+                base_home, target_cwd_norm, cwd or "", limit=scan_limit
+            )
+        )
+    if not aid or aid in ("all", "codex"):
+        items.extend(
+            _discover_codex_sessions(base_home, target_cwd_norm, limit=scan_limit)
+        )
+
+    if q_norm:
+        items = [
+            it
+            for it in items
+            if q_norm in str(it.get("title") or "").lower()
+            or q_norm in str(it.get("session_id") or "").lower()
+            or q_norm in str(it.get("cwd") or "").lower()
+            or q_norm in str(it.get("agent_id") or "").lower()
+        ]
+
+    items.sort(key=lambda it: float(it.get("mtime") or 0.0), reverse=True)
+    return items[:limit]
+
+
+def _discover_claude_sessions(
+    home: Path,
+    target_cwd_norm: str,
+    raw_cwd: str,
+    *,
+    limit: int = 15,
+) -> list[dict[str, Any]]:
+    projects_root = home / ".claude" / "projects"
+    if not projects_root.is_dir():
+        return []
+
+    target_slug = _encode_claude_project_slug(raw_cwd) if raw_cwd else ""
+    candidate_dirs: list[Path] = []
+    try:
+        for entry in projects_root.iterdir():
+            if not entry.is_dir():
+                continue
+            name_lower = entry.name.lower()
+            if target_slug and name_lower == target_slug:
+                candidate_dirs.insert(0, entry)
+            elif not target_slug or name_lower.startswith(target_slug):
+                candidate_dirs.append(entry)
+    except OSError:
+        return []
+
+    files: list[tuple[float, Path]] = []
+    for d in candidate_dirs:
+        try:
+            for f in d.glob("*.jsonl"):
+                try:
+                    st = f.stat()
+                    if st.st_size > 0:
+                        files.append((st.st_mtime, f))
+                except OSError:
+                    continue
+        except OSError:
+            continue
+
+    files.sort(key=lambda item: item[0], reverse=True)
+    results: list[dict[str, Any]] = []
+    seen_ids: set[str] = set()
+
+    for mtime, fpath in files:
+        if len(results) >= limit:
+            break
+        session_id = fpath.stem
+        if not session_id or session_id in seen_ids:
+            continue
+        title = ""
+        session_cwd = ""
+        updated_iso = ""
+        is_sidechain = False
+        try:
+            with fpath.open("r", encoding="utf-8", errors="replace") as fh:
+                for idx, line in enumerate(fh):
+                    if idx > 40:
+                        break
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        obj = json.loads(line)
+                    except Exception:
+                        continue
+                    if not isinstance(obj, dict):
+                        continue
+                    if obj.get("isSidechain") is True:
+                        is_sidechain = True
+                        break
+                    if not session_cwd and isinstance(obj.get("cwd"), str):
+                        session_cwd = obj["cwd"]
+                    if isinstance(obj.get("timestamp"), str):
+                        updated_iso = obj["timestamp"]
+                    if not title:
+                        if obj.get("type") == "queue-operation" and isinstance(
+                            obj.get("content"), str
+                        ):
+                            title = _clean_session_title(obj["content"])
+                        elif obj.get("type") == "user":
+                            msg = obj.get("message")
+                            if isinstance(msg, dict):
+                                content = msg.get("content")
+                                if isinstance(content, str):
+                                    title = _clean_session_title(content)
+                                elif isinstance(content, list):
+                                    for blk in content:
+                                        if isinstance(blk, dict) and isinstance(
+                                            blk.get("text"), str
+                                        ):
+                                            title = _clean_session_title(blk["text"])
+                                            if title:
+                                                break
+                    if title and session_cwd:
+                        break
+        except OSError:
+            continue
+
+        if is_sidechain or not title:
+            continue
+        if (
+            target_cwd_norm
+            and session_cwd
+            and _normalize_cwd_for_match(session_cwd) != target_cwd_norm
+        ):
+            continue
+
+        seen_ids.add(session_id)
+        results.append(
+            {
+                "session_id": session_id,
+                "agent_id": "claude-code",
+                "title": title,
+                "cwd": session_cwd or raw_cwd,
+                "updated_at": updated_iso,
+                "mtime": mtime,
+            }
+        )
+    return results
+
+
+def _discover_codex_sessions(
+    home: Path,
+    target_cwd_norm: str,
+    *,
+    limit: int = 15,
+) -> list[dict[str, Any]]:
+    sessions_root = home / ".codex" / "sessions"
+    if not sessions_root.is_dir():
+        return []
+
+    files: list[tuple[float, Path]] = []
+    try:
+        for f in sessions_root.rglob("rollout-*.jsonl"):
+            try:
+                st = f.stat()
+                if st.st_size > 0:
+                    files.append((st.st_mtime, f))
+            except OSError:
+                continue
+    except OSError:
+        return []
+
+    files.sort(key=lambda item: item[0], reverse=True)
+    results: list[dict[str, Any]] = []
+    seen_ids: set[str] = set()
+
+    for mtime, fpath in files:
+        if len(results) >= limit:
+            break
+        session_id = ""
+        session_cwd = ""
+        updated_iso = ""
+        title = ""
+        is_subagent = False
+
+        try:
+            with fpath.open("r", encoding="utf-8", errors="replace") as fh:
+                for idx, line in enumerate(fh):
+                    if idx > 50:
+                        break
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        obj = json.loads(line)
+                    except Exception:
+                        continue
+                    if not isinstance(obj, dict):
+                        continue
+                    ltype = obj.get("type")
+                    payload = (
+                        obj.get("payload")
+                        if isinstance(obj.get("payload"), dict)
+                        else {}
+                    )
+                    if isinstance(obj.get("timestamp"), str):
+                        updated_iso = obj["timestamp"]
+
+                    if ltype == "session_meta":
+                        if payload.get(
+                            "thread_source"
+                        ) == "guardian_review" or isinstance(
+                            payload.get("source"), dict
+                        ):
+                            is_subagent = True
+                            break
+                        session_id = str(
+                            payload.get("id") or payload.get("session_id") or ""
+                        ).strip()
+                        if isinstance(payload.get("cwd"), str):
+                            session_cwd = payload["cwd"]
+                        if (
+                            target_cwd_norm
+                            and session_cwd
+                            and _normalize_cwd_for_match(session_cwd) != target_cwd_norm
+                        ):
+                            is_subagent = True
+                            break
+                    elif (
+                        ltype == "response_item"
+                        and payload.get("type") == "message"
+                        and payload.get("role") == "user"
+                    ):
+                        content = payload.get("content")
+                        if isinstance(content, list):
+                            for blk in content:
+                                if isinstance(blk, dict) and isinstance(
+                                    blk.get("text"), str
+                                ):
+                                    txt = blk["text"].strip()
+                                    if txt and not txt.startswith("<"):
+                                        title = _clean_session_title(txt)
+                                        break
+                    elif (
+                        ltype == "event_msg" and payload.get("type") == "item_completed"
+                    ):
+                        item = payload.get("item")
+                        if isinstance(item, dict) and item.get("type") == "UserMessage":
+                            for blk in item.get("content") or []:
+                                if isinstance(blk, dict) and isinstance(
+                                    blk.get("text"), str
+                                ):
+                                    txt = blk["text"].strip()
+                                    if txt and not txt.startswith("<"):
+                                        title = _clean_session_title(txt)
+                                        break
+                    if session_id and title:
+                        break
+        except OSError:
+            continue
+
+        if is_subagent or not session_id or not title or session_id in seen_ids:
+            continue
+        if (
+            target_cwd_norm
+            and session_cwd
+            and _normalize_cwd_for_match(session_cwd) != target_cwd_norm
+        ):
+            continue
+
+        seen_ids.add(session_id)
+        results.append(
+            {
+                "session_id": session_id,
+                "agent_id": "codex",
+                "title": title,
+                "cwd": session_cwd,
+                "updated_at": updated_iso,
+                "mtime": mtime,
+            }
+        )
+    return results

@@ -207,3 +207,170 @@ async def test_sessions_without_an_agent_id_still_list_everything(temp_db):
     body = _body(response)
     assert len(body["sessions"]) == 3
     assert len(body["active"]) == 1
+
+
+def test_discover_local_agent_sessions_scans_claude_and_codex(tmp_path):
+    from suzent.acp.dialects import discover_local_agent_sessions
+
+    # 1. Claude Code session in ~/.claude/projects/d--workspace-suzent
+    claude_dir = tmp_path / ".claude" / "projects" / "d--workspace-suzent"
+    claude_dir.mkdir(parents=True)
+    claude_file = claude_dir / "sess-claude-1.jsonl"
+    claude_file.write_text(
+        "\n".join(
+            [
+                json.dumps(
+                    {
+                        "type": "user",
+                        "cwd": "D:\\workspace\\suzent",
+                        "timestamp": "2026-11-27T12:00:00Z",
+                        "message": {
+                            "role": "user",
+                            "content": "Fix ACP streaming and session discovery",
+                        },
+                    }
+                )
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    found_claude = discover_local_agent_sessions(
+        "claude-code", "D:\\workspace\\suzent", home=tmp_path
+    )
+    assert len(found_claude) == 1
+    assert found_claude[0]["session_id"] == "sess-claude-1"
+    assert "Fix ACP streaming" in found_claude[0]["title"]
+
+    # 2. Codex session in ~/.codex/sessions/2026/11/27/rollout-*.jsonl
+    codex_dir = tmp_path / ".codex" / "sessions" / "2026" / "11" / "27"
+    codex_dir.mkdir(parents=True)
+    codex_file = codex_dir / "rollout-2026-11-27-sess-codex-1.jsonl"
+    codex_file.write_text(
+        "\n".join(
+            [
+                json.dumps(
+                    {
+                        "type": "session_meta",
+                        "timestamp": "2026-11-27T13:00:00Z",
+                        "payload": {
+                            "id": "sess-codex-1",
+                            "cwd": "D:\\workspace\\suzent",
+                            "thread_source": "user",
+                        },
+                    }
+                ),
+                json.dumps(
+                    {
+                        "type": "response_item",
+                        "timestamp": "2026-11-27T13:00:01Z",
+                        "payload": {
+                            "type": "message",
+                            "role": "user",
+                            "content": [
+                                {
+                                    "type": "input_text",
+                                    "text": "Audit sidebar consistency across desktop and mobile",
+                                }
+                            ],
+                        },
+                    }
+                ),
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    found_codex = discover_local_agent_sessions(
+        "codex", "D:\\workspace\\suzent", home=tmp_path
+    )
+    assert len(found_codex) == 1
+    assert found_codex[0]["session_id"] == "sess-codex-1"
+    assert "Audit sidebar consistency" in found_codex[0]["title"]
+
+    # 3. Cross-agent search without agent_id or cwd filters by query
+    searched = discover_local_agent_sessions(None, None, query="sidebar", home=tmp_path)
+    assert [s["session_id"] for s in searched] == ["sess-codex-1"]
+
+
+@pytest.mark.asyncio
+async def test_adopt_acp_session_replays_history_via_session_load(temp_db):
+    import asyncio
+
+    queue: asyncio.Queue = asyncio.Queue()
+    for update in [
+        {
+            "sessionId": "ext-123",
+            "update": {
+                "sessionUpdate": "user_message_chunk",
+                "content": {"type": "text", "text": "Inspect pyproject.toml"},
+            },
+        },
+        {
+            "sessionId": "ext-123",
+            "update": {
+                "sessionUpdate": "agent_thought_chunk",
+                "content": {"type": "text", "text": "Reading pyproject.toml..."},
+            },
+        },
+        {
+            "sessionId": "ext-123",
+            "update": {
+                "sessionUpdate": "tool_call",
+                "toolCallId": "tc-read-1",
+                "kind": "read",
+                "rawInput": {"file_path": "pyproject.toml"},
+                "rawOutput": "[project]\nname = 'suzent'",
+                "status": "completed",
+            },
+        },
+        {
+            "sessionId": "ext-123",
+            "update": {
+                "sessionUpdate": "agent_message_chunk",
+                "content": {"type": "text", "text": "The project name is suzent."},
+            },
+        },
+    ]:
+        queue.put_nowait(update)
+
+    managed = MagicMock()
+    managed.session_id = "ext-123"
+    managed.agent_id = "claude-code"
+    managed.resumed = True
+    managed.updates = queue
+
+    manager = MagicMock()
+    manager.resume = AsyncMock(return_value=managed)
+
+    with (
+        patch.object(acp_routes, "get_database", return_value=temp_db),
+        patch.object(acp_routes, "get_acp_manager", return_value=manager),
+    ):
+        response = await acp_routes.adopt_acp_session(
+            _Request(
+                {
+                    "agent_id": "claude-code",
+                    "session_id": "ext-123",
+                    "cwd": "D:\\workspace\\suzent",
+                }
+            )
+        )
+
+    assert response.status_code == 201, _body(response)
+    body = _body(response)
+    assert body["session_id"] == "ext-123"
+    assert body["imported_messages"] == 2
+    assert body["title"] == "Inspect pyproject.toml"
+
+    chat = temp_db.get_chat(body["chat_id"])
+    assert chat is not None
+    assert chat.title == "Inspect pyproject.toml"
+    assert len(chat.messages) == 2
+    assert chat.messages[0]["role"] == "user"
+    assert chat.messages[0]["content"] == "Inspect pyproject.toml"
+    assert chat.messages[1]["role"] == "assistant"
+    assert chat.messages[1]["content"] == "The project name is suzent."
+    parts = chat.messages[1]["parts"]
+    assert [p["type"] for p in parts] == ["reasoning", "tool", "text"]
+    assert parts[1]["toolName"] == "read_file"

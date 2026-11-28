@@ -937,6 +937,69 @@ export async function resumeAcpSession(
   return unwrapAcpSession(await res.json());
 }
 
+export async function discoverAcpSessions(params: {
+  agentId?: string;
+  query?: string;
+  cwd?: string;
+  chatId?: string | null;
+  projectId?: string | null;
+}): Promise<{
+  sessions: import('../types/api').DiscoveredExternalSession[];
+  cwd: string;
+}> {
+  const qs = new URLSearchParams();
+  if (params.agentId) qs.set('agent_id', params.agentId);
+  if (params.query) qs.set('query', params.query);
+  if (params.cwd) qs.set('cwd', params.cwd);
+  if (params.chatId) qs.set('chat_id', params.chatId);
+  if (params.projectId) qs.set('project_id', params.projectId);
+  const res = await fetch(`${getApiBase()}/acp/sessions/discover?${qs.toString()}`);
+  if (!res.ok) return { sessions: [], cwd: '' };
+  const data = await res.json();
+  return {
+    sessions: Array.isArray(data?.sessions) ? data.sessions : [],
+    cwd: typeof data?.cwd === 'string' ? data.cwd : '',
+  };
+}
+
+export async function adoptAcpSession(params: {
+  agentId: string;
+  sessionId: string;
+  chatId?: string | null;
+  projectId?: string | null;
+  cwd?: string;
+  title?: string;
+}): Promise<{
+  chat_id: string;
+  agent_id: string;
+  session_id: string;
+  cwd: string;
+  title?: string;
+  imported_messages?: number;
+}> {
+  const res = await fetch(`${getApiBase()}/acp/sessions/adopt`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      agent_id: params.agentId,
+      session_id: params.sessionId,
+      chat_id: params.chatId || undefined,
+      project_id: params.projectId || undefined,
+      cwd: params.cwd || undefined,
+      title: params.title || undefined,
+    }),
+  });
+  const payload = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(
+      typeof payload?.error === 'string' && payload.error
+        ? payload.error
+        : `Failed to adopt session: ${res.status}`
+    );
+  }
+  return payload;
+}
+
 // ─── Nodes / Devices ─────────────────────────────────────────────────
 
 export interface NodeCapabilityInfo {

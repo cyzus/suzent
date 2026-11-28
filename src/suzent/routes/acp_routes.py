@@ -225,6 +225,56 @@ async def resume_acp_session(request: Request) -> JSONResponse:
             or default_acp_cwd(chat_id)
         )
         managed = await get_acp_manager().resume(chat_id, agent_id, session_id, cwd)
+        if not managed.resumed:
+            detail = getattr(managed, "load_error", "") or (
+                f"{agent_id} does not support loading session {session_id}"
+            )
+            return JSONResponse({"error": detail}, status_code=422)
+
+        from suzent.acp.runtime import drain_replayed_updates_to_messages
+
+        replayed_messages = drain_replayed_updates_to_messages(managed)
+        existing_chat = db.get_chat(chat_id)
+        existing_messages = list(existing_chat.messages or []) if existing_chat else []
+
+        requested_title = str(data.get("title") or "").strip()
+        if not requested_title and replayed_messages:
+            first_user = next(
+                (
+                    str(m.get("content") or "").strip()
+                    for m in replayed_messages
+                    if m.get("role") == "user"
+                ),
+                "",
+            )
+            if first_user:
+                requested_title = (
+                    first_user[:79] + "…" if len(first_user) > 80 else first_user
+                )
+        new_title = (
+            requested_title
+            if (
+                requested_title
+                and existing_chat
+                and (
+                    not existing_chat.title
+                    or existing_chat.title in ("New Chat", "ACP Session", "新对话")
+                )
+            )
+            else None
+        )
+        imported_count = (
+            len(replayed_messages)
+            if (not existing_messages and replayed_messages)
+            else 0
+        )
+        if imported_count or new_title:
+            db.update_chat(
+                chat_id,
+                title=new_title,
+                messages=replayed_messages if imported_count else None,
+            )
+
         db.merge_chat_config(
             chat_id,
             {
@@ -240,7 +290,165 @@ async def resume_acp_session(request: Request) -> JSONResponse:
                 "agent_id": agent_id,
                 "session_id": managed.session_id,
                 "cwd": cwd,
+                "imported_messages": imported_count,
             }
+        )
+    except Exception as exc:
+        return JSONResponse({"error": str(exc)}, status_code=500)
+
+
+async def discover_acp_sessions(request: Request) -> JSONResponse:
+    """Zero-wakeup discovery of external CLI sessions for an agent and workspace."""
+    agent_id = (
+        request.query_params.get("agent_id")
+        or request.query_params.get("agentId")
+        or ""
+    ).strip()
+    query = (
+        request.query_params.get("query") or request.query_params.get("q") or ""
+    ).strip()
+
+    cwd = (request.query_params.get("cwd") or "").strip()
+    chat_id = (
+        request.query_params.get("chat_id") or request.query_params.get("chatId") or ""
+    ).strip()
+    project_id = (
+        request.query_params.get("project_id")
+        or request.query_params.get("projectId")
+        or ""
+    ).strip()
+    db = get_database()
+    if not cwd and chat_id:
+        cwd = default_acp_cwd(chat_id)
+    if not cwd and project_id:
+        project = db.get_project(project_id)
+        if project and project.working_directory:
+            cwd = project.working_directory
+
+    from suzent.acp.dialects import discover_local_agent_sessions
+
+    discovered = discover_local_agent_sessions(
+        agent_id or None,
+        cwd or None,
+        query=query or None,
+        limit=15,
+    )
+
+    # Filter out sessions already adopted by an existing Suzent chat
+    adopted_ids: set[str] = set()
+    for row in db.list_chats_by_config("runtime", "acp"):
+        cfg = row.get("config") or {}
+        sid = cfg.get("acp_session_id")
+        if isinstance(sid, str) and sid:
+            adopted_ids.add(sid)
+
+    available = [
+        item for item in discovered if item.get("session_id") not in adopted_ids
+    ]
+    return JSONResponse({"sessions": available, "cwd": cwd})
+
+
+async def adopt_acp_session(request: Request) -> JSONResponse:
+    """Adopt an external ACP session into a Suzent chat via ACP ``session/load``."""
+    try:
+        data = await request.json()
+        agent_id = str(data.get("agent_id") or data.get("agentId") or "").strip()
+        session_id = str(data.get("session_id") or data.get("sessionId") or "").strip()
+        if not agent_id or not session_id:
+            return JSONResponse(
+                {"error": "agent_id and session_id are required"}, status_code=400
+            )
+
+        db = get_database()
+        chat_id = str(data.get("chat_id") or data.get("chatId") or "").strip()
+        project_id = (
+            str(data.get("project_id") or data.get("projectId") or "").strip() or None
+        )
+        explicit_cwd = str(data.get("cwd") or "").strip()
+        requested_title = str(data.get("title") or "").strip()
+
+        created_chat = False
+        previous_config: dict[str, Any] | None = None
+        if chat_id:
+            existing = db.get_chat(chat_id)
+            if existing is None:
+                return JSONResponse({"error": "Chat not found"}, status_code=404)
+            previous_config = dict(existing.config or {})
+        else:
+            chat_id = db.create_chat(
+                requested_title or "ACP Session",
+                {"runtime": "acp", "acp_agent_id": agent_id},
+                project_id=project_id,
+            )
+            created_chat = True
+
+        cwd = explicit_cwd or default_acp_cwd(chat_id)
+        try:
+            managed = await get_acp_manager().resume(chat_id, agent_id, session_id, cwd)
+            if not managed.resumed:
+                await get_acp_manager().close(chat_id)
+                if created_chat:
+                    db.delete_chat(chat_id)
+                detail = getattr(managed, "load_error", "") or (
+                    f"{agent_id} could not load session {session_id}"
+                )
+                return JSONResponse({"error": detail}, status_code=422)
+        except Exception:
+            if created_chat:
+                db.delete_chat(chat_id)
+            elif previous_config is not None:
+                db.update_chat(chat_id, config=previous_config)
+            raise
+
+        from suzent.acp.runtime import drain_replayed_updates_to_messages
+
+        replayed_messages = drain_replayed_updates_to_messages(managed)
+        existing_chat = db.get_chat(chat_id)
+        existing_messages = list(existing_chat.messages or []) if existing_chat else []
+        if not requested_title and replayed_messages:
+            first_user = next(
+                (
+                    str(m.get("content") or "").strip()
+                    for m in replayed_messages
+                    if m.get("role") == "user"
+                ),
+                "",
+            )
+            if first_user:
+                requested_title = (
+                    first_user[:79] + "…" if len(first_user) > 80 else first_user
+                )
+        imported_count = (
+            len(replayed_messages)
+            if (not existing_messages and replayed_messages)
+            else 0
+        )
+        if imported_count or requested_title:
+            db.update_chat(
+                chat_id,
+                title=requested_title or None,
+                messages=replayed_messages if imported_count else None,
+            )
+
+        db.merge_chat_config(
+            chat_id,
+            {
+                "runtime": "acp",
+                "acp_agent_id": agent_id,
+                "acp_session_id": managed.session_id,
+                "acp_cwd": cwd,
+            },
+        )
+        return JSONResponse(
+            {
+                "chat_id": chat_id,
+                "agent_id": agent_id,
+                "session_id": managed.session_id,
+                "cwd": cwd,
+                "title": requested_title or "ACP Session",
+                "imported_messages": imported_count,
+            },
+            status_code=201 if created_chat else 200,
         )
     except Exception as exc:
         return JSONResponse({"error": str(exc)}, status_code=500)

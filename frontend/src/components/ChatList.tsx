@@ -20,7 +20,7 @@ import {
 import { useChatStore } from '../hooks/useChatStore';
 import { useProjects } from '../hooks/useProjects';
 import { useEventBus } from '../hooks/useEventBus';
-import type { ChatKindCounts, ChatSummary, Project } from '../types/api';
+import type { ChatKindCounts, ChatSummary, DiscoveredExternalSession, Project } from '../types/api';
 import { RobotAvatar } from './chat/RobotAvatar';
 import { FocalAgentCardView } from './FocalAgentCard';
 import { RegentQueue } from './sidebar/RegentQueue';
@@ -28,7 +28,16 @@ import { refreshFocalStatus, useFocalStatus } from '../hooks/useFocalStatus';
 import { FOCAL_CHAT_ID } from '../lib/focalAgent';
 import { markOpenedFromRegent, openBesideRegent } from '../lib/regentReturn';
 import { useI18n } from '../i18n';
-import { getApiBase, markChatRead, fetchMailboxUnread, MAILBOX_UNREAD_EVENT } from '../lib/api';
+import {
+  getApiBase,
+  markChatRead,
+  fetchMailboxUnread,
+  MAILBOX_UNREAD_EVENT,
+  discoverAcpSessions,
+  adoptAcpSession,
+} from '../lib/api';
+import { AcpAgentIcon } from './AcpAgentIcon';
+import { formatAcpAgentName } from './chat/AssistantMessage';
 import { detectDesktopPlatform } from '../lib/titleBarPlatform';
 import {
   applySelection,
@@ -533,13 +542,51 @@ export const ChatList: React.FC<ChatListProps> = ({
     setLocalSearchQuery(searchQuery);
   }, []);
 
+  const [externalSearchSessions, setExternalSearchSessions] = useState<DiscoveredExternalSession[]>(
+    []
+  );
+  const [adoptingExternalId, setAdoptingExternalId] = useState<string | null>(null);
+
   useEffect(() => {
+    const q = localSearchQuery.trim();
     const timeout = setTimeout(() => {
       setSearchQuery(localSearchQuery);
       refreshChatList(localSearchQuery, true);
+      if (q) {
+        discoverAcpSessions({ query: q })
+          .then((res) => setExternalSearchSessions(res.sessions.slice(0, 8)))
+          .catch(() => setExternalSearchSessions([]));
+      } else {
+        setExternalSearchSessions([]);
+      }
     }, 300);
     return () => clearTimeout(timeout);
   }, [localSearchQuery]);
+
+  const handleAdoptFromSearch = useCallback(
+    async (item: DiscoveredExternalSession) => {
+      if (adoptingExternalId) return;
+      setAdoptingExternalId(item.session_id);
+      try {
+        const res = await adoptAcpSession({
+          agentId: item.agent_id,
+          sessionId: item.session_id,
+          cwd: item.cwd,
+          title: item.title,
+        });
+        setExternalSearchSessions((prev) => prev.filter((s) => s.session_id !== item.session_id));
+        await refreshChatList(localSearchQuery, true);
+        if (switchToView) switchToView('chat');
+        onOpenChat?.();
+        await loadChat(res.chat_id, { force: true });
+      } catch {
+        // Ignore transient adopt errors in sidebar search
+      } finally {
+        setAdoptingExternalId(null);
+      }
+    },
+    [adoptingExternalId, localSearchQuery, loadChat, onOpenChat, refreshChatList, switchToView]
+  );
 
   useEffect(() => {
     let timeout: NodeJS.Timeout | null = null;
@@ -1283,8 +1330,11 @@ export const ChatList: React.FC<ChatListProps> = ({
         </svg>
       </span>
     ) : acpAgent ? (
-      <span title={`ACP · ${acpAgent}`} className="shrink-0 text-neutral-400 dark:text-neutral-500">
-        <CommandLineIcon className="h-3.5 w-3.5" aria-hidden="true" />
+      <span
+        title={`External · ${acpAgent}`}
+        className="inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center text-neutral-500 dark:text-neutral-400"
+      >
+        <AcpAgentIcon id={chat.acpAgentId || acpAgent} className="h-3.5 w-3.5 shrink-0" />
       </span>
     ) : chat.platform ? (
       <span
@@ -1588,7 +1638,7 @@ export const ChatList: React.FC<ChatListProps> = ({
                 the input keeps focus as the first keystroke turns searching on. */}
           {/* On Regent's queue both live in the icon row below; only an open search stays here. */}
           <div
-            className={`chat-list-actions order-0 border-t border-neutral-200 px-1.5 py-1 dark:border-zinc-700 ${regentConsole && !searchOpen && !localSearchQuery ? 'hidden' : ''}`}
+            className={`chat-list-actions order-0 border-t border-neutral-200 px-1.5 py-1 dark:border-zinc-700 ${regentConsole ? 'hidden' : ''}`}
           >
             <button
               type="button"
@@ -1601,56 +1651,16 @@ export const ChatList: React.FC<ChatListProps> = ({
             <button
               type="button"
               onClick={() => onSearchOpenChange?.(true)}
-              className={
-                mobile || regentConsole
-                  ? 'hidden'
-                  : sidebarNavRowClass(searchOpen || Boolean(localSearchQuery))
-              }
+              className={regentConsole ? 'hidden' : sidebarNavRowClass(searchOpen)}
             >
               <MagnifyingGlassIcon className="h-4 w-4 shrink-0" aria-hidden="true" />
               <span className="flex-1 truncate">{t('chatList.search')}</span>
+              {!mobile && (
+                <kbd className="text-[10px] font-mono text-neutral-400 dark:text-neutral-500">
+                  Ctrl+K
+                </kbd>
+              )}
             </button>
-            {(mobile || searchOpen || localSearchQuery) && (
-              <div className="px-0.5 pt-1 pb-1">
-                <div className="relative">
-                  <input
-                    type="text"
-                    autoFocus={!mobile}
-                    value={localSearchQuery}
-                    onChange={(e) => setLocalSearchQuery(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (isImeComposing(e)) return;
-                      if (e.key === 'Escape') {
-                        setLocalSearchQuery('');
-                        onSearchOpenChange?.(false);
-                      }
-                    }}
-                    onBlur={() => {
-                      if (!localSearchQuery.trim()) onSearchOpenChange?.(false);
-                    }}
-                    placeholder={t('chatList.searchChatsPlaceholder')}
-                    className="h-9 w-full px-3 pl-9 pr-8 bg-white dark:bg-zinc-700 dark:text-white dark:placeholder-neutral-500 border border-brutal-black dark:border-neutral-300 font-medium text-xs placeholder-neutral-400 focus:outline-none transition-colors"
-                  />
-                  <MagnifyingGlassIcon
-                    className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-brutal-black dark:text-neutral-400 pointer-events-none"
-                    aria-hidden="true"
-                  />
-                  <button
-                    type="button"
-                    onMouseDown={(e) => e.preventDefault()}
-                    onClick={() => {
-                      setLocalSearchQuery('');
-                      onSearchOpenChange?.(false);
-                    }}
-                    className="absolute right-1.5 top-1/2 -translate-y-1/2 p-1 hover:bg-neutral-100 dark:hover:bg-zinc-600 transition-colors"
-                    title={t('chatList.clearSearch')}
-                    aria-label={t('chatList.clearSearch')}
-                  >
-                    <XMarkIcon className="w-3.5 h-3.5 text-brutal-black dark:text-white" />
-                  </button>
-                </div>
-              </div>
-            )}
           </div>
         </div>
         <div
@@ -1667,7 +1677,7 @@ export const ChatList: React.FC<ChatListProps> = ({
                   {chatTotal}
                 </span>
               </div>
-              {chats.length === 0 ? (
+              {chats.length === 0 && externalSearchSessions.length === 0 ? (
                 <div className="px-6 py-10 text-center">
                   <RobotAvatar variant="ghost" />
                   <p className="mt-3 text-xs font-extrabold uppercase text-brutal-black dark:text-white">
@@ -1691,6 +1701,55 @@ export const ChatList: React.FC<ChatListProps> = ({
                     ? t('chatList.loadingMore')
                     : t('chatList.loadMore', { count: chatTotal - chats.length })}
                 </button>
+              )}
+              {externalSearchSessions.length > 0 && (
+                <div className="mt-1">
+                  <div className="flex items-center justify-between px-3 py-1.5 border-y border-neutral-200 dark:border-zinc-700 bg-neutral-50 dark:bg-zinc-800/80">
+                    <h3 className="text-[10px] font-extrabold uppercase tracking-[0.14em] text-neutral-400 dark:text-neutral-500">
+                      {t('chatList.sections.externalSessions')}
+                    </h3>
+                    <span className="text-[10px] font-bold tabular-nums text-neutral-500 dark:text-neutral-400">
+                      {externalSearchSessions.length}
+                    </span>
+                  </div>
+                  <div className="divide-y divide-neutral-200/70 dark:divide-zinc-700/70">
+                    {externalSearchSessions.map((ext) => {
+                      const busy = adoptingExternalId === ext.session_id;
+                      const folderName = ext.cwd
+                        ? ext.cwd
+                            .replace(/[\\/]+$/, '')
+                            .split(/[\\/]/)
+                            .pop() || ext.cwd
+                        : '';
+                      return (
+                        <button
+                          key={`${ext.agent_id}:${ext.session_id}`}
+                          type="button"
+                          disabled={Boolean(adoptingExternalId)}
+                          onClick={() => void handleAdoptFromSearch(ext)}
+                          className="w-full text-left px-3.5 py-2.5 hover:bg-neutral-100 dark:hover:bg-zinc-700/60 transition-colors disabled:opacity-50"
+                        >
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <span className="inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center text-neutral-500 dark:text-neutral-400">
+                              <AcpAgentIcon id={ext.agent_id} className="w-3.5 h-3.5 shrink-0" />
+                            </span>
+                            <span className="min-w-0 flex-1 truncate text-xs font-medium text-neutral-800 dark:text-neutral-100">
+                              {ext.title}
+                            </span>
+                            <span className="shrink-0 px-1.5 py-0.5 text-[9px] font-extrabold uppercase tracking-wider border border-brutal-black dark:border-zinc-500 bg-white dark:bg-zinc-800 text-brutal-black dark:text-neutral-200">
+                              {busy ? t('newChat.acp.adopting') : t('newChat.acp.adoptAction')}
+                            </span>
+                          </div>
+                          <div className="mt-1 flex items-center gap-1.5 text-[10px] font-mono text-neutral-400 dark:text-neutral-500 truncate">
+                            <span>{formatAcpAgentName(ext.agent_id)}</span>
+                            <span>· {ext.session_id.slice(0, 8)}</span>
+                            {folderName && <span className="truncate">· {folderName}</span>}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
               )}
             </section>
           ) : (
