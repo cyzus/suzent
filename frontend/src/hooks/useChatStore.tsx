@@ -165,6 +165,8 @@ interface ChatCoreContextValue {
   refreshChatListSilently: (searchQuery?: string, force?: boolean) => Promise<void>;
   loadMoreChats: () => Promise<void>;
   updateChatTitleLocally: (chatId: string, title: string) => void;
+  /** Drop a chat the server already removed from the list, without a request. */
+  forgetChatLocally: (chatId: string) => void;
   updateMessage: (index: number, update: Partial<Message>, chatId?: string | null) => void;
   truncateMessagesFrom: (fromIndex: number, chatId?: string | null) => void;
   markChatRollbackExpected: (chatId?: string | null) => void;
@@ -899,6 +901,16 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
       if (chatId === currentChatId) setCurrentChatTitle(title);
     },
     [currentChatId]
+  );
+
+  const forgetChatLocally = useCallback(
+    (chatId: string) => {
+      if (!chats.some((c) => c.id === chatId)) return;
+      setChats((prev) => prev.filter((c) => c.id !== chatId));
+      setPinnedChats((prev) => prev.filter((c) => c.id !== chatId));
+      setChatTotal((total) => Math.max(0, total - 1));
+    },
+    [chats]
   );
 
   // Load chat list on mount (and when refreshChatList reference changes)
@@ -2004,6 +2016,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
       refreshChatListSilently,
       loadMoreChats,
       updateChatTitleLocally,
+      forgetChatLocally,
       updateMessage,
       truncateMessagesFrom,
       markChatRollbackExpected,
@@ -2054,6 +2067,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
       refreshChatListSilently,
       loadMoreChats,
       updateChatTitleLocally,
+      forgetChatLocally,
       updateMessage,
       truncateMessagesFrom,
       markChatRollbackExpected,

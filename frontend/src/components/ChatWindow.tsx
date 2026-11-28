@@ -993,6 +993,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     currentChatMessagesLoaded,
     currentChatLoadFailed,
     createNewChat,
+    beginNewChat,
     loadChat,
     isStreaming,
     activeStreamingChatId,
@@ -1000,6 +1001,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     pinnedChats,
     refreshChatListSilently,
     updateChatTitleLocally,
+    forgetChatLocally,
   } = useChatStore();
 
   const {
@@ -1962,13 +1964,40 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   );
   // A call from the new-chat view creates its chat in the picked project.
   const { currentProjectId } = useProjects();
+  // A call from the new-chat view creates its chat on the server. If nothing
+  // reached Suzent the server deletes it when the call ends; these track
+  // whether this call made the chat and whether anything was sent in it.
+  const voiceCreatedChatRef = useRef(false);
+  const voiceSentRef = useRef(false);
   const voice: typeof voiceSession = {
     ...voiceSession,
     start: (chatId: string | null) => {
       voiceChatIdRef.current = chatId;
+      voiceCreatedChatRef.current = chatId === null;
+      voiceSentRef.current = false;
       voiceSession.start(chatId, chatId ? null : currentProjectId);
     },
   };
+  const voiceChatHasMessages =
+    currentChatId !== null && currentChatId === voiceChatIdRef.current && messages.length > 0;
+  useEffect(() => {
+    if (voiceSession.active && (voiceSession.working || voiceChatHasMessages)) {
+      voiceSentRef.current = true;
+    }
+  }, [voiceSession.active, voiceSession.working, voiceChatHasMessages]);
+  const voiceWasActiveRef = useRef(false);
+  useEffect(() => {
+    const wasActive = voiceWasActiveRef.current;
+    voiceWasActiveRef.current = voiceSession.active;
+    if (!wasActive || voiceSession.active || !voiceCreatedChatRef.current) return;
+    voiceCreatedChatRef.current = false;
+    const chatId = voiceChatIdRef.current;
+    if (!chatId || voiceSentRef.current) return;
+    forgetChatLocally(chatId);
+    if (currentChatId === chatId && messages.length === 0) beginNewChat();
+    // Only the end of a call should run this.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [voiceSession.active]);
   // Voice is bound to one chat; leaving it ends the session, including while
   // it is still connecting (otherwise binding would pull the user back).
   useEffect(() => {
