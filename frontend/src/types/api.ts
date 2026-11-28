@@ -79,6 +79,7 @@ export interface ChatConfig {
   acp_agent_id?: string;
   acp_agent_name?: string;
   acp_session_id?: string;
+  acp_cwd?: string;
   runtime?: 'native' | 'acp';
 }
 
@@ -291,6 +292,15 @@ export interface AcpAgentDescriptor {
   auth_status?: string;
   /** Non-secret on-disk usage/plan summary (e.g. subscription tier or local session count). */
   usage_summary?: string | null;
+}
+
+export interface DiscoveredExternalSession {
+  session_id: string;
+  agent_id: string;
+  title: string;
+  cwd?: string;
+  updated_at?: string;
+  mtime?: number;
 }
 
 export interface ChatGPTStatusResponse {

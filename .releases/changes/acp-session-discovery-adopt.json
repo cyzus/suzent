@@ -1,0 +1,6 @@
+{
+  "products": {
+    "desktop": "minor"
+  },
+  "summary": "Discover and adopt past external ACP agent sessions (Claude Code, Codex, etc.) with full transcript replay via session/load."
+}

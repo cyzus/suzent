@@ -3877,6 +3877,10 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                         currentChatId={currentChatId}
                         briefing={currentChatId === FOCAL_CHAT_ID ? <FocalBriefing /> : undefined}
                         voice={voice}
+                        onAdoptSession={async (adoptedChatId) => {
+                          await refreshChatListSilently(undefined, true);
+                          await loadChat(adoptedChatId, { force: true });
+                        }}
                         onFileMentionSelected={(mention) =>
                           setFileMentions((prev) => [
                             ...prev.filter((item) => item.name !== mention.name),
