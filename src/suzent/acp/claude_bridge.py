@@ -56,7 +56,15 @@ class _TurnResult:
 class _Session:
     """State for one ACP session backed by the Claude CLI."""
 
-    __slots__ = ("id", "cwd", "claude_conversation_id", "cancelled", "proc")
+    __slots__ = (
+        "id",
+        "cwd",
+        "claude_conversation_id",
+        "cancelled",
+        "proc",
+        "model",
+        "effort",
+    )
 
     def __init__(self, session_id: str, cwd: str) -> None:
         self.id = session_id
@@ -69,6 +77,40 @@ class _Session:
         # ``--resume`` the same conversation and keep full context.
         self.claude_conversation_id: str | None = None
         self.cancelled = False
+        self.model = "default"
+        self.effort = "auto"
+
+
+def _session_config_options(session: _Session) -> list[dict[str, Any]]:
+    return [
+        {
+            "id": "model",
+            "name": "Model",
+            "category": "model",
+            "type": "select",
+            "currentValue": session.model,
+            "options": [
+                {"value": "default", "name": "Default"},
+                {"value": "sonnet", "name": "Claude Sonnet"},
+                {"value": "opus", "name": "Claude Opus"},
+                {"value": "haiku", "name": "Claude Haiku"},
+            ],
+        },
+        {
+            "id": "effort",
+            "name": "Thinking Effort",
+            "category": "thought_level",
+            "type": "select",
+            "currentValue": session.effort,
+            "options": [
+                {"value": "auto", "name": "Auto"},
+                {"value": "low", "name": "Low"},
+                {"value": "medium", "name": "Medium"},
+                {"value": "high", "name": "High"},
+                {"value": "max", "name": "Max"},
+            ],
+        },
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -218,6 +260,10 @@ class ClaudeACPBridge:
             # Emits `stream_event` deltas so text streams token-by-token
             # instead of arriving as one block at the end of the turn.
             cmd.append("--include-partial-messages")
+        if session.model and session.model != "default":
+            cmd.extend(["--model", session.model])
+        if session.effort and session.effort != "auto":
+            cmd.extend(["--effort", session.effort])
         if session.claude_conversation_id:
             cmd.extend(["--resume", session.claude_conversation_id])
         cmd.append("--")
@@ -381,6 +427,8 @@ class ClaudeACPBridge:
                 await self.handle_initialize(req_id, params)
             elif method == "session/new":
                 await self.handle_session_new(req_id, params)
+            elif method == "session/set_config_option":
+                await self.handle_session_set_config_option(req_id, params)
             elif method == "session/prompt":
                 # Run concurrently so cancel messages can still be received.
                 task = asyncio.create_task(self.handle_session_prompt(req_id, params))

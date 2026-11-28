@@ -256,6 +256,17 @@ class ACPClient:
         result = await self.request("session/list", params, timeout=15.0)
         return result if isinstance(result, dict) else {}
 
+    async def set_config_option(
+        self, session_id: str, config_id: str, value: str
+    ) -> dict[str, Any]:
+        """Update an ACP session configuration option via ``session/set_config_option``."""
+        result = await self.request(
+            "session/set_config_option",
+            {"sessionId": session_id, "configId": config_id, "value": value},
+            timeout=15.0,
+        )
+        return result if isinstance(result, dict) else {}
+
     async def prompt(
         self,
         session_id: str,

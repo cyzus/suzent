@@ -324,6 +324,7 @@ from suzent.routes.acp_routes import (
     list_acp_sessions,
     resolve_acp_permission,
     resume_acp_session,
+    set_acp_session_config_option,
     probe_acp_agent,
     authenticate_acp_agent,
 )
@@ -1324,6 +1325,11 @@ app = Starlette(
         Route("/acp/sessions/discover", discover_acp_sessions, methods=["GET"]),
         Route("/acp/sessions/adopt", adopt_acp_session, methods=["POST"]),
         Route("/acp/sessions/resume", resume_acp_session, methods=["POST"]),
+        Route(
+            "/acp/sessions/config",
+            set_acp_session_config_option,
+            methods=["POST"],
+        ),
         Route("/acp/permissions", list_acp_permissions, methods=["GET"]),
         Route(
             "/acp/permissions/{request_id}",

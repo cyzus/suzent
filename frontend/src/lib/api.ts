@@ -978,6 +978,36 @@ export async function discoverAcpSessions(params: {
   };
 }
 
+export async function setAcpSessionConfigOption(params: {
+  chatId: string;
+  configId: string;
+  value: string;
+}): Promise<{
+  chat_id: string;
+  config_id: string;
+  value: string;
+  config_options: import('../types/api').AcpSessionConfigOption[];
+}> {
+  const res = await fetch(`${getApiBase()}/acp/sessions/config`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      chat_id: params.chatId,
+      config_id: params.configId,
+      value: params.value,
+    }),
+  });
+  const payload = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(
+      typeof payload?.error === 'string' && payload.error
+        ? payload.error
+        : `Failed to update ACP session config (${res.status})`
+    );
+  }
+  return payload;
+}
+
 export async function adoptAcpSession(params: {
   agentId: string;
   sessionId: string;
@@ -2180,11 +2210,36 @@ export interface ForkChatResponse {
   restored_files_count: number;
 }
 
-export async function forkChat(chatId: string, messageIndex?: number): Promise<ForkChatResponse> {
+export interface ForkChatOptions {
+  messageIndex?: number;
+  title?: string;
+  targetRuntime?: 'native' | 'acp';
+  targetModel?: string;
+  targetAcpAgentId?: string;
+  targetAcpAgentName?: string;
+}
+
+export async function forkChat(
+  chatId: string,
+  messageIndexOrOptions?: number | ForkChatOptions
+): Promise<ForkChatResponse> {
+  const opts: ForkChatOptions =
+    typeof messageIndexOrOptions === 'number'
+      ? { messageIndex: messageIndexOrOptions }
+      : messageIndexOrOptions || {};
+  const payload: Record<string, unknown> = {};
+  if (opts.messageIndex !== undefined) payload.message_index = opts.messageIndex;
+  if (opts.title !== undefined) payload.title = opts.title;
+  if (opts.targetRuntime !== undefined) payload.target_runtime = opts.targetRuntime;
+  if (opts.targetModel !== undefined) payload.target_model = opts.targetModel;
+  if (opts.targetAcpAgentId !== undefined) payload.target_acp_agent_id = opts.targetAcpAgentId;
+  if (opts.targetAcpAgentName !== undefined) {
+    payload.target_acp_agent_name = opts.targetAcpAgentName;
+  }
   const response = await fetch(`${getApiBase()}${resourcePaths.forkChat(chatId)}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(messageIndex === undefined ? {} : { message_index: messageIndex }),
+    body: JSON.stringify(payload),
   });
   const body = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(body.error || 'Failed to fork conversation');

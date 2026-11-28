@@ -7,13 +7,27 @@ def _display_message_text(message: dict[str, Any]) -> str:
     """Return the agent-visible text from a persisted display message."""
     parts = message.get("parts")
     if isinstance(parts, list):
-        text_parts = [
-            str(part.get("text") or "")
-            for part in parts
-            if isinstance(part, dict) and part.get("type") == "text"
-        ]
-        if any(text_parts):
-            return "".join(text_parts)
+        segments: list[str] = []
+        for part in parts:
+            if not isinstance(part, dict):
+                continue
+            ptype = part.get("type")
+            if ptype == "text":
+                txt = str(part.get("text") or "")
+                if txt:
+                    segments.append(txt)
+            elif ptype == "tool":
+                tname = str(part.get("toolName") or "tool")
+                targs = str(part.get("args") or "").strip()
+                tout = str(part.get("output") or "").strip()
+                summary = f"\n[Tool: {tname}]"
+                if targs:
+                    summary += f" {targs[:240]}"
+                if tout:
+                    summary += f"\nResult: {tout[:600]}"
+                segments.append(summary)
+        if any(s.strip() for s in segments):
+            return "\n".join(s for s in segments if s.strip())
 
     content = message.get("content")
     if isinstance(content, str):
@@ -213,6 +227,10 @@ def fork_chat(
     *,
     title: str | None = None,
     message_index: int | None = None,
+    target_runtime: str | None = None,
+    target_model: str | None = None,
+    target_acp_agent_id: str | None = None,
+    target_acp_agent_name: str | None = None,
 ) -> tuple[str, list[str]]:
     """Create an independent conversation branch without changing workspace files."""
     from suzent.database import get_database
@@ -222,14 +240,17 @@ def fork_chat(
     if source is None:
         raise ValueError(f"Chat not found: {source_chat_id}")
 
+    source_messages = list(source.messages or [])
     branch_agent_state = source.agent_state
     if message_index is not None:
-        _validate_assistant_message_boundary(list(source.messages or []), message_index)
+        _validate_assistant_message_boundary(source_messages, message_index)
         branch_agent_state = _agent_state_at_display_point(
             source.agent_state,
-            list(source.messages or []),
+            source_messages,
             message_index,
         )
+    elif branch_agent_state is None and source_messages:
+        branch_agent_state = _state_from_display_messages(source_messages)
 
     new_chat_id = db.clone_chat_to_point(
         source_chat_id,
@@ -244,12 +265,32 @@ def fork_chat(
             "forked_from_chat_title": source.title,
             "forked_from_message_index": message_index
             if message_index is not None
-            else len(source.messages or []),
+            else len(source_messages),
         }
     )
+    if target_runtime == "native":
+        branch_config["runtime"] = "native"
+        branch_config.pop("acp_agent_id", None)
+        branch_config.pop("acp_agent_name", None)
+        branch_config.pop("acp_session_id", None)
+        if target_model:
+            branch_config["model"] = target_model
+    elif target_runtime == "acp":
+        branch_config["runtime"] = "acp"
+        if target_acp_agent_id:
+            branch_config["acp_agent_id"] = target_acp_agent_id
+            branch_config["acp_agent_name"] = (
+                target_acp_agent_name or target_acp_agent_id
+            )
+        branch_config.pop("acp_session_id", None)
+    elif target_model:
+        branch_config["model"] = target_model
+
     db.update_chat(new_chat_id, config=branch_config)
 
-    if message_index is not None:
+    if message_index is not None or (
+        source.agent_state is None and branch_agent_state is not None
+    ):
         branch = db.get_chat(new_chat_id)
         db.rewrite_chat_messages(
             new_chat_id,
