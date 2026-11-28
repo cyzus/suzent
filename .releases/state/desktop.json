@@ -8,6 +8,7 @@
     ".releases/changes/acp-discovery-guidance.json",
     ".releases/changes/acp-registry-pairing.json",
     ".releases/changes/acp-relayed-prompt-display.json",
+    ".releases/changes/acp-session-discovery-adopt.json",
     ".releases/changes/acp-settings-clarity.json",
     ".releases/changes/acp-stdio-utf8.json",
     ".releases/changes/acp-system-reminder-triggers.json",
