@@ -61,16 +61,6 @@ describe('settings navigation in a browser', () => {
     expect([...listed].sort()).toEqual([...expected].sort());
   });
 
-  it('gathers the pages about the host into one group', () => {
-    const host = visibleCategoryGroups().find((group) => group.id === 'host');
-    expect(host?.categories.map((category) => category.id)).toEqual([
-      'devices',
-      'mesh',
-      'ops',
-      'usage',
-    ]);
-  });
-
   it('labels every group and category in every locale', () => {
     // A missing key falls back to the key itself, which would ship a sidebar of
     // dotted identifiers rather than words.

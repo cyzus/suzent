@@ -1129,7 +1129,6 @@ export const zhCN = {
     groups: {
       agent: '智能体',
       connections: '连接',
-      host: '主机',
       application: '应用',
     },
     memoryConfig: {

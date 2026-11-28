@@ -34,10 +34,9 @@ What a browser adds:
   route opens and closes the panel, so back, reload and bookmarks work. The
   retired `#/settings` redirects to `#/providers`. The desktop keeps settings
   in state.
-- **A Host group** in the settings list (`visibleCategoryGroups()`): Devices,
-  Mesh, Operations and Usage. A browser is usually reaching a host somewhere
-  else, so the pages about that machine sit together. Operations (`#/ops`) is
-  the browser's answer to the desktop-only Background Service category.
+- **Operations** (`#/ops`) in place of the desktop-only Background Service
+  category: the same questions, asked of the host over HTTP. The settings
+  groups are otherwise the desktop's.
 - **The host under the sidebar** (`HostStatus`): which host this browser talks
   to and whether it answers, since a stopped server, a dropped tunnel and a
   revoked token look the same until a request fails.

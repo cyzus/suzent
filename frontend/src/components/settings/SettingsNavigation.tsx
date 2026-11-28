@@ -85,7 +85,7 @@ type CategoryDefinition = {
 };
 
 type CategoryGroup = {
-  id: 'agent' | 'connections' | 'host' | 'application';
+  id: 'agent' | 'connections' | 'application';
   labelKey: string;
   categories: CategoryDefinition[];
 };
@@ -146,16 +146,6 @@ const ALL_CATEGORY_GROUPS: CategoryGroup[] = [
   },
 ];
 
-/**
- * What a browser groups under the host.
- *
- * A browser is usually reaching a Suzent running somewhere else, so the pages
- * about that machine -- who can reach it, what it is running, what it has
- * spent -- are gathered where someone checking on it will look first. The
- * desktop is that machine, and keeps them with the rest.
- */
-const WEB_HOST_CATEGORIES: readonly SettingsCategory[] = ['devices', 'mesh', 'ops', 'usage'];
-
 function isAvailable(category: CategoryDefinition, web: boolean): boolean {
   return web ? !category.desktopOnly : !category.webOnly;
 }
@@ -179,26 +169,10 @@ export function categoryDefinition(id: SettingsCategory): CategoryDefinition | u
 // which does not exist when a test or a build tool merely imports this file.
 export function visibleCategoryGroups(): CategoryGroup[] {
   const web = isWeb();
-  const groups = ALL_CATEGORY_GROUPS.map((group) => ({
+  return ALL_CATEGORY_GROUPS.map((group) => ({
     ...group,
     categories: group.categories.filter((category) => isAvailable(category, web)),
-  }));
-
-  if (!web) return groups.filter((group) => group.categories.length > 0);
-
-  const all = groups.flatMap((group) => group.categories);
-  const host: CategoryGroup = {
-    id: 'host',
-    labelKey: 'settings.groups.host',
-    categories: WEB_HOST_CATEGORIES.flatMap((id) => all.filter((category) => category.id === id)),
-  };
-  const rest = groups.map((group) => ({
-    ...group,
-    categories: group.categories.filter((category) => !WEB_HOST_CATEGORIES.includes(category.id)),
-  }));
-  const applicationIndex = rest.findIndex((group) => group.id === 'application');
-  rest.splice(applicationIndex, 0, host);
-  return rest.filter((group) => group.categories.length > 0);
+  })).filter((group) => group.categories.length > 0);
 }
 
 interface SettingsNavigationProps {

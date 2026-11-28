@@ -1037,7 +1037,6 @@ export const en = {
     groups: {
       agent: 'Agent',
       connections: 'Connections',
-      host: 'Host',
       application: 'Application',
     },
     memoryConfig: {
