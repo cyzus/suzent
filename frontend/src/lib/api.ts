@@ -978,6 +978,36 @@ export async function discoverAcpSessions(params: {
   };
 }
 
+export async function setAcpSessionConfigOption(params: {
+  chatId: string;
+  configId: string;
+  value: string;
+}): Promise<{
+  chat_id: string;
+  config_id: string;
+  value: string;
+  config_options: import('../types/api').AcpSessionConfigOption[];
+}> {
+  const res = await fetch(`${getApiBase()}/acp/sessions/config`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      chat_id: params.chatId,
+      config_id: params.configId,
+      value: params.value,
+    }),
+  });
+  const payload = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(
+      typeof payload?.error === 'string' && payload.error
+        ? payload.error
+        : `Failed to update ACP session config (${res.status})`
+    );
+  }
+  return payload;
+}
+
 export async function adoptAcpSession(params: {
   agentId: string;
   sessionId: string;

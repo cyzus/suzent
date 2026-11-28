@@ -108,13 +108,18 @@ async def create_acp_session(request: Request) -> JSONResponse:
             elif previous_config is not None:
                 db.update_chat(chat_id, config=previous_config)
             raise
-        db.merge_chat_config(chat_id, {"acp_session_id": managed.session_id})
+        merged_create_cfg: dict[str, Any] = {"acp_session_id": managed.session_id}
+        create_opts = getattr(managed, "config_options", None)
+        if isinstance(create_opts, list) and create_opts:
+            merged_create_cfg["acp_config_options"] = create_opts
+        db.merge_chat_config(chat_id, merged_create_cfg)
         return JSONResponse(
             {
                 "chat_id": chat_id,
                 "agent_id": agent_id,
                 "session_id": managed.session_id,
                 "cwd": cwd,
+                "config_options": create_opts if isinstance(create_opts, list) else [],
             },
             status_code=201,
         )
@@ -283,15 +288,16 @@ async def resume_acp_session(request: Request) -> JSONResponse:
                 messages=replayed_messages if imported_count else None,
             )
 
-        db.merge_chat_config(
-            chat_id,
-            {
-                "runtime": "acp",
-                "acp_agent_id": agent_id,
-                "acp_session_id": managed.session_id,
-                "acp_cwd": cwd,
-            },
-        )
+        merged_resume_cfg: dict[str, Any] = {
+            "runtime": "acp",
+            "acp_agent_id": agent_id,
+            "acp_session_id": managed.session_id,
+            "acp_cwd": cwd,
+        }
+        resume_opts = getattr(managed, "config_options", None)
+        if isinstance(resume_opts, list) and resume_opts:
+            merged_resume_cfg["acp_config_options"] = resume_opts
+        db.merge_chat_config(chat_id, merged_resume_cfg)
         return JSONResponse(
             {
                 "chat_id": chat_id,
@@ -299,6 +305,7 @@ async def resume_acp_session(request: Request) -> JSONResponse:
                 "session_id": managed.session_id,
                 "cwd": cwd,
                 "imported_messages": imported_count,
+                "config_options": resume_opts if isinstance(resume_opts, list) else [],
             }
         )
     except Exception as exc:
@@ -512,15 +519,16 @@ async def adopt_acp_session(request: Request) -> JSONResponse:
                 updated_at=preserved_dt,
             )
 
-        db.merge_chat_config(
-            chat_id,
-            {
-                "runtime": "acp",
-                "acp_agent_id": agent_id,
-                "acp_session_id": managed.session_id,
-                "acp_cwd": cwd,
-            },
-        )
+        merged_adopt_cfg: dict[str, Any] = {
+            "runtime": "acp",
+            "acp_agent_id": agent_id,
+            "acp_session_id": managed.session_id,
+            "acp_cwd": cwd,
+        }
+        adopt_opts = getattr(managed, "config_options", None)
+        if isinstance(adopt_opts, list) and adopt_opts:
+            merged_adopt_cfg["acp_config_options"] = adopt_opts
+        db.merge_chat_config(chat_id, merged_adopt_cfg)
         return JSONResponse(
             {
                 "chat_id": chat_id,
@@ -529,9 +537,45 @@ async def adopt_acp_session(request: Request) -> JSONResponse:
                 "cwd": cwd,
                 "title": requested_title or "ACP Session",
                 "imported_messages": imported_count,
+                "config_options": adopt_opts if isinstance(adopt_opts, list) else [],
             },
             status_code=201 if created_chat else 200,
         )
+    except Exception as exc:
+        return JSONResponse({"error": str(exc)}, status_code=500)
+
+
+async def set_acp_session_config_option(request: Request) -> JSONResponse:
+    """Update a standard ACP session config option via ``session/set_config_option``."""
+    try:
+        data = await request.json()
+        chat_id = str(data.get("chat_id") or data.get("chatId") or "").strip()
+        config_id = str(data.get("config_id") or data.get("configId") or "").strip()
+        value = str(data.get("value") if data.get("value") is not None else "").strip()
+        if not chat_id or not config_id or not value:
+            return JSONResponse(
+                {"error": "chat_id, config_id, and value are required"}, status_code=400
+            )
+        db = get_database()
+        chat = db.get_chat(chat_id)
+        if chat is None:
+            return JSONResponse({"error": "Chat not found"}, status_code=404)
+        chat_cfg = dict(chat.config or {})
+        updated_options = await get_acp_manager().set_config_option(
+            chat_id, config_id, value, chat_config=chat_cfg
+        )
+        if isinstance(updated_options, list) and updated_options:
+            db.merge_chat_config(chat_id, {"acp_config_options": updated_options})
+        return JSONResponse(
+            {
+                "chat_id": chat_id,
+                "config_id": config_id,
+                "value": value,
+                "config_options": updated_options,
+            }
+        )
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
     except Exception as exc:
         return JSONResponse({"error": str(exc)}, status_code=500)
 

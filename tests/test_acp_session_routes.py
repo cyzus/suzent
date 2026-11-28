@@ -459,3 +459,55 @@ def test_fork_chat_from_acp_to_native_synthesizes_agent_state(temp_db):
     state = deserialize_state(forked_chat.agent_state)
     assert state is not None
     assert len(state["message_history"]) == 2
+
+
+@pytest.mark.asyncio
+async def test_set_acp_session_config_option_persists_updated_options(temp_db):
+    chat_id = temp_db.create_chat(
+        title="ACP Config Test",
+        config={
+            "runtime": "acp",
+            "acp_agent_id": "claude-code",
+            "acp_session_id": "sess-cfg-1",
+            "acp_cwd": "D:\\workspace\\suzent",
+        },
+        messages=[],
+    )
+
+    updated_opts = [
+        {
+            "id": "model",
+            "name": "Model",
+            "category": "model",
+            "type": "select",
+            "currentValue": "opus",
+            "options": [
+                {"value": "sonnet", "name": "Claude Sonnet"},
+                {"value": "opus", "name": "Claude Opus"},
+            ],
+        }
+    ]
+    manager = MagicMock()
+    manager.set_config_option = AsyncMock(return_value=updated_opts)
+
+    with (
+        patch.object(acp_routes, "get_database", return_value=temp_db),
+        patch.object(acp_routes, "get_acp_manager", return_value=manager),
+    ):
+        response = await acp_routes.set_acp_session_config_option(
+            _Request(
+                {
+                    "chat_id": chat_id,
+                    "config_id": "model",
+                    "value": "opus",
+                }
+            )
+        )
+
+    assert response.status_code == 200, _body(response)
+    body = _body(response)
+    assert body["config_id"] == "model"
+    assert body["value"] == "opus"
+    assert body["config_options"] == updated_opts
+    stored = temp_db.get_chat(chat_id)
+    assert stored.config["acp_config_options"] == updated_opts

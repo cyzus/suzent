@@ -27,6 +27,7 @@ import { useSlashCommands } from '../hooks/useSlashCommands';
 import {
   getApiBase,
   type RefreshProviderModelsResponse,
+  setAcpSessionConfigOption,
   setChatPermissionMode,
   setDefaultPermissionMode,
   toggleStarredModel,
@@ -1218,15 +1219,75 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
           </span>
         )}
 
-        {/* Reasoning effort. Only the native runtime owns model settings — an
-            ACP agent picks its own. Models that cannot think ignore the setting,
-            so it stays selectable rather than guessing which model reasons. */}
-        {!isAcpRuntime && (
+        {/* Reasoning effort. Native runtime uses ThinkingSlider; ACP agents
+            render their own advertised SessionConfigOption selectors (model,
+            thought_level, mode) via ACP session/set_config_option. */}
+        {!isAcpRuntime ? (
           <ThinkingSlider
             value={thinkingEffort}
             onChange={changeThinkingEffort}
             disabled={!configReady || streamingForCurrentChat}
           />
+        ) : (
+          Array.isArray(config.acp_config_options) &&
+          config.acp_config_options.length > 0 && (
+            <div className="flex flex-wrap items-center gap-2 ml-auto">
+              {config.acp_config_options
+                .filter((opt) => Array.isArray(opt.options) && opt.options.length > 0)
+                .map((opt) => (
+                  <div
+                    key={opt.id}
+                    title={opt.description || opt.name}
+                    className="inline-flex items-center gap-1"
+                  >
+                    <span className="text-[10px] font-mono font-bold uppercase text-neutral-400 dark:text-neutral-500">
+                      {opt.name}:
+                    </span>
+                    <BrutalSelect
+                      value={opt.currentValue}
+                      onChange={(nextVal) => {
+                        if (!currentChatId || nextVal === opt.currentValue) return;
+                        setConfig((prev) => ({
+                          ...prev,
+                          acp_config_options: (prev.acp_config_options || []).map((o) =>
+                            o.id === opt.id ? { ...o, currentValue: nextVal } : o
+                          ),
+                        }));
+                        void setAcpSessionConfigOption({
+                          chatId: currentChatId,
+                          configId: opt.id,
+                          value: nextVal,
+                        })
+                          .then((res) => {
+                            if (
+                              Array.isArray(res.config_options) &&
+                              res.config_options.length > 0
+                            ) {
+                              setConfig((prev) => ({
+                                ...prev,
+                                acp_config_options: res.config_options,
+                              }));
+                            }
+                          })
+                          .catch(() => {});
+                      }}
+                      options={opt.options.map((choice) => ({
+                        value: choice.value,
+                        label: choice.name || choice.value,
+                        hint: choice.description || undefined,
+                      }))}
+                      dropUp={true}
+                      hideChevron={true}
+                      variant="ghost"
+                      disabled={!configReady || streamingForCurrentChat || !currentChatId}
+                      className="inline-block w-auto"
+                      buttonClassName={FOOTER_SELECT_BUTTON_CLASS}
+                      dropdownClassName="!w-[196px] border-2 shadow-brutal-overlay [&_button]:px-2.5 [&_button]:py-1 [&_button]:text-xs [&_button]:font-semibold [&_button]:normal-case [&_button]:border-b [&_button:last-child]:border-b-0"
+                    />
+                  </div>
+                ))}
+            </div>
+          )
         )}
       </div>
 
