@@ -46,6 +46,9 @@ private enum VoiceFailure: Error { case audio, permission, connection }
     private(set) var transcript = ""
     var onError: ((String) -> Void)?
     var onRefresh: (() -> Void)?
+    /// The chat the desktop bound the call to (it names it when it created one).
+    var onChatBound: ((String) -> Void)?
+    var onEnded: (() -> Void)?
     @ObservationIgnored private var task: Task<Void, Never>?
     @ObservationIgnored private var handshake: Task<Void, Never>?
     @ObservationIgnored private var tapInstalled = false
@@ -95,6 +98,7 @@ private enum VoiceFailure: Error { case audio, permission, connection }
                             animationState = "listening"
                             working = message["working"] as? Bool ?? false
                             status = String(localized: "Listening…")
+                            if let chatID = message["chat_id"] as? String, !chatID.isEmpty { onChatBound?(chatID) }
                         case "state":
                             let next = message["state"] as? String ?? "listening"
                             animationState = ["listening", "user_speaking", "thinking", "speaking"].contains(next) ? next : "listening"
@@ -216,5 +220,6 @@ private enum VoiceFailure: Error { case audio, permission, connection }
         interruption = nil
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
         onRefresh?()
+        onEnded?()
     }
 }

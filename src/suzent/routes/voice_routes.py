@@ -50,7 +50,13 @@ async def voice_websocket_endpoint(websocket: WebSocket) -> None:
     bridge_factory = getattr(websocket.app.state, "voice_bridge_factory", VoiceBridge)
     bridge = bridge_factory(websocket, chat_id)
     await bridge.run()
-    if created and not bridge.router.delegated:
+    if created:
+        await discard_unused_voice_chat(bridge, chat_id)
+
+
+async def discard_unused_voice_chat(bridge: VoiceBridge, chat_id: str) -> None:
+    """After a call that created its chat, drop that chat if nothing reached Suzent."""
+    if not bridge.router.delegated:
         await asyncio.to_thread(_discard_if_empty, chat_id)
 
 

@@ -1,0 +1,1 @@
+{"products": {"mobile": "patch"}, "summary": "A voice call started from a new conversation no longer leaves an empty chat when nothing is handed to Suzent."}

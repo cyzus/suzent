@@ -188,7 +188,12 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
     private val connectionUpgrade = ConnectionUpgrade<BackendClient>(viewModelScope)
     // Previously captured clients may still serve polling requests or the device socket.
     private val retiredClients = mutableListOf<MobileClient>()
-    val voice = VoiceSession(application, viewModelScope, { error = text(it) }, { refresh() })
+    val voice = VoiceSession(application, viewModelScope, { error = text(it) }, { refresh() },
+        onChatBound = { bindVoiceChat(it) }, onEnded = { settleVoiceChat() })
+    // A call started from a new conversation: the composer it started from and
+    // the chat the desktop created for it once the call is ready.
+    private var voiceComposer: Chat? = null
+    private var voiceChatId: String? = null
     val voiceSupported: Boolean get() = (client as? BackendClient)?.supportsVoice == true
     val overviewSupported: Boolean get() = client?.supportsChatOverview == true
 
@@ -237,10 +242,18 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
         if (!voiceSupported || busy || streaming || device?.permissions?.send != true || device?.permissions?.stop != true) return
         error = null
         val current = generation
+        voiceComposer = null; voiceChatId = null
         voice.start {
             var id = chat.id
             if (id.isEmpty()) {
                 check(device?.permissions?.createChats == true)
+                if (api.supportsVoiceNewChat) {
+                    // The desktop creates the chat and drops it again if the call
+                    // never hands anything to Suzent, so no empty chat is left behind.
+                    check(current == generation)
+                    voiceComposer = chat
+                    return@start VoiceTarget(api, "", chat.projectId)
+                }
                 busy = true
                 val created = try { api.create(text(R.string.voice_conversation), chat.projectId) } finally { busy = false }
                 currentCoroutineContext().ensureActive()
@@ -249,7 +262,40 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
                 chats = listOf(created) + chats
                 id = created.id
             }
-            api to id
+            VoiceTarget(api, id)
+        }
+    }
+
+    private fun bindVoiceChat(id: String) {
+        val composer = voiceComposer ?: return
+        if (selected?.id != composer.id || selected?.projectId != composer.projectId) return
+        voiceChatId = id
+        val bound = composer.copy(id = id, title = text(R.string.voice_conversation), messages = emptyList())
+        selected = bound
+        chats = listOf(bound) + chats.filterNot { it.id == id }
+    }
+
+    /** Ask the desktop whether it kept the call's chat; if not, go back to the new conversation. */
+    private fun settleVoiceChat() {
+        val id = voiceChatId ?: return
+        val composer = voiceComposer ?: return
+        voiceChatId = null; voiceComposer = null
+        val api = client ?: return
+        val current = generation
+        viewModelScope.launch {
+            for (wait in longArrayOf(500, 1_500, 3_000, 5_000)) {
+                delay(wait)
+                if (current != generation) return@launch
+                try {
+                    if (api.chat(id, includeModels = false).messages.isNotEmpty()) return@launch
+                } catch (failure: CancellationException) { throw failure }
+                catch (failure: BackendClient.HttpFailure) {
+                    if (failure.code != 404 && failure.code != 403) continue
+                    chats = chats.filterNot { it.id == id }
+                    if (selected?.id == id) selected = composer
+                    return@launch
+                } catch (_: Exception) { continue }
+            }
         }
     }
 

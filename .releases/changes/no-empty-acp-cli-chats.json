@@ -1,1 +1,1 @@
-{"products": {"desktop": "patch"}, "summary": "Opening Suzent from an editor over ACP, or starting `suzent agent chat`, no longer leaves an empty chat when nothing is sent."}
+{"products": {"desktop": "patch"}, "summary": "Opening Suzent from an editor over ACP, starting `suzent agent chat`, or a phone voice call that sends nothing no longer leaves an empty chat."}

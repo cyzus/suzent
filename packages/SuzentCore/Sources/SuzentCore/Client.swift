@@ -116,11 +116,16 @@ public final class SuzentClient: Sendable {
         _ = try await data(ResourceRequests.decideApprovals(body: .init(chatId: id, decisions: decisions)))
     }
 
-    public func voiceSocket(chatID: String) throws -> any MobileSocket {
+    /// An empty `chatID` lets the desktop create the call's chat (in `projectID`) and name it in `ready`.
+    public func voiceSocket(chatID: String, projectID: String? = nil) throws -> any MobileSocket {
         var request = try request(ResourceRequests.voice())
         var url = URLComponents(url: request.url!, resolvingAgainstBaseURL: false)!
         url.scheme = url.scheme == "https" ? "wss" : "ws"
-        url.queryItems = [URLQueryItem(name: "chat_id", value: chatID)]
+        if !chatID.isEmpty {
+            url.queryItems = [URLQueryItem(name: "chat_id", value: chatID)]
+        } else if let projectID, !projectID.isEmpty {
+            url.queryItems = [URLQueryItem(name: "project_id", value: projectID)]
+        }
         request.url = url.url
         return webSocket(request)
     }

@@ -114,3 +114,13 @@ import Testing
     #expect(active.workQueue?.first?.waitingReason == "Need access")
     #expect(active.workQueue?.first?.id == "shared")
 }
+
+@Test func voiceNewChatIsAdvertisedOnlyByNewerDesktops() throws {
+    let decoder = JSONDecoder()
+    decoder.keyDecodingStrategy = .convertFromSnakeCase
+    let base = #""device":{"device_id":"phone","display_name":"Phone","platform":"ios","permissions":{"chat_ids":[],"all_chats":true,"create_chats":true,"send":true,"stop":true}},"client_protocol":1,"stream_protocols":[1],"voice":1"#
+    let legacy = try decoder.decode(ClientSession.self, from: Data("{\(base)}".utf8))
+    let current = try decoder.decode(ClientSession.self, from: Data("{\(base),\"voice_new_chat\":1}".utf8))
+    #expect(!legacy.supportsVoiceNewChat)
+    #expect(current.supportsVoiceNewChat)
+}

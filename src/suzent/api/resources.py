@@ -51,11 +51,18 @@ MAX_UPLOAD_BYTES = 200 * 1024 * 1024
 
 
 async def voice(websocket: WebSocket) -> None:
-    """Use paired-device grants, never the host-only voice endpoint."""
+    """Use paired-device grants, never the host-only voice endpoint.
+
+    Without ``chat_id`` the call starts a new conversation (``create_chats``
+    permission): the chat is created here, shared with the device and named in
+    ``ready``, and dropped again when the call ends if nothing reached Suzent.
+    """
     from suzent.auth_boundary import voice_origin_allowed
+    from suzent.routes.voice_routes import discard_unused_voice_chat
     from suzent.voice.realtime import VoiceBridge
 
     chat_id = websocket.query_params.get("chat_id", "")
+    created = False
 
     def check_access() -> None:
         authorize(websocket, chat_id, "send")
@@ -63,24 +70,34 @@ async def voice(websocket: WebSocket) -> None:
         authorize(websocket, chat_id, "stop")
 
     try:
+        if not voice_origin_allowed(
+            websocket.headers.get("origin"), websocket.headers.get("host", "")
+        ):
+            raise HTTPException(403)
+        if not chat_id:
+            chat_id = await asyncio.to_thread(
+                _create_voice_chat,
+                websocket,
+                websocket.query_params.get("project_id") or None,
+            )
+            created = True
         check_access()
         if (
-            not chat_id
-            or len(chat_id) > 200
+            len(chat_id) > 200
             or "/" in chat_id
             or get_database().get_chat(chat_id) is None
-            or not voice_origin_allowed(
-                websocket.headers.get("origin"), websocket.headers.get("host", "")
-            )
         ):
             raise HTTPException(403)
     except HTTPException:
+        if created:
+            await asyncio.to_thread(get_database().delete_chat, chat_id)
         await websocket.close(code=1008)
         return
 
     await websocket.accept()
     factory = getattr(websocket.app.state, "voice_bridge_factory", VoiceBridge)
-    bridge = asyncio.create_task(factory(websocket, chat_id).run())
+    call = factory(websocket, chat_id)
+    bridge = asyncio.create_task(call.run())
     try:
         while not bridge.done():
             done, _ = await asyncio.wait({bridge}, timeout=0.5)
@@ -96,6 +113,32 @@ async def voice(websocket: WebSocket) -> None:
         bridge.cancel()
         with contextlib.suppress(asyncio.CancelledError):
             await bridge
+        if created:
+            await discard_unused_voice_chat(call, chat_id)
+
+
+def _create_voice_chat(websocket: WebSocket, project_id: str | None) -> str:
+    """A new conversation for a call, shared with the calling device."""
+    grant = authorize(websocket, action="create_chats")
+    authorize(websocket, action="send")
+    authorize(websocket, action="stop")
+    if project_id is not None and project_id not in {
+        project["id"] for project in allowed_projects(grant)
+    }:
+        raise HTTPException(403, "Project not shared with this device")
+    from suzent.permissions.context import seed_default_permission_mode
+
+    config: dict = {}
+    seed_default_permission_mode(config)
+    db = get_database()
+    chat_id = db.create_chat(
+        title="Voice conversation", config=config, project_id=project_id
+    )
+    store = get_mobile_store(websocket) if not is_host(websocket) else None
+    if store is not None and not store.add_chat(grant.device_id, chat_id):
+        db.delete_chat(chat_id)
+        raise HTTPException(401, "Mobile credential revoked")
+    return chat_id
 
 
 async def session(request: Request) -> JSONResponse:
@@ -113,6 +156,8 @@ async def session(request: Request) -> JSONResponse:
             "chat_overview": 1,
             "surfaces": 1,
             "voice": 1,
+            # /voice without chat_id creates the call's chat and drops it if unused.
+            "voice_new_chat": 1,
             "steer": 1,
             "media": 1,
             **relay_field(request),
