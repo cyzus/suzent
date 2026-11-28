@@ -9956,7 +9956,12 @@ independent pins, duplicate merges and access-scoped counts have regression test
 ### Voice composer and shared animation
 
 The paired-device `/mobile/client/voice` WebSocket reuses `VoiceBridge` and checks
-conversation access plus send/stop permissions. Native audio capture and playback
+conversation access plus send/stop permissions. A call from a new conversation
+omits `chat_id` (session capability `voice_new_chat: 1`, `project_id` optional):
+the desktop creates the chat, shares it with the device, names it in `ready`,
+and deletes it when the call ends if nothing was handed to Suzent. The app then
+asks for the chat and returns to the new conversation on 404; with an older
+desktop it still creates the chat first. Native audio capture and playback
 remain in each app's `VoiceSession`; the server's state and working events and the
 microphone level drive the animation.
 
@@ -13669,6 +13674,12 @@ Implemented methods: `initialize`, `authenticate`, `session/new`,
 `session/load`, `session/prompt`, `session/cancel`. Advertised capabilities:
 `loadSession: true`, text prompts with embedded context. Images and audio are
 declined at the handshake rather than silently dropped.
+
+`session/new` only hands out an id. The session's chat (titled
+`⇄ ACP <workspace folder>`) is created under that id by its first
+`session/prompt`, because clients open a session as soon as their agent panel
+shows, and a session that is never prompted should not leave an empty chat in
+the sidebar.
 
 ### Relayed prompts
 
