@@ -59,6 +59,20 @@ export function getApiBase(): string {
   return import.meta.env.VITE_SUZENT_BACKEND || 'http://127.0.0.1:8000';
 }
 
+/**
+ * A `ws:`/`wss:` URL for a backend socket path. Built from the origin, not the
+ * page address: the console routes with `#/...`, and a WebSocket URL that keeps
+ * the fragment makes the constructor throw.
+ */
+export function getWebSocketUrl(path: string): URL {
+  const url = new URL(getApiBase() || window.location.origin);
+  url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
+  url.pathname = path;
+  url.search = '';
+  url.hash = '';
+  return url;
+}
+
 export interface ServiceRuntimeStatus {
   ready: boolean;
   schedulerRunning: boolean;
