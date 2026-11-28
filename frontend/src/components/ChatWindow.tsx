@@ -1063,7 +1063,14 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     name: string;
     anchor?: DOMRect;
   } | null>(null);
-  const [pendingFork, setPendingFork] = useState<{ messageIndex?: number } | null>(null);
+  const [pendingFork, setPendingFork] = useState<{
+    messageIndex?: number;
+    targetRuntime?: 'native' | 'acp';
+    targetModel?: string;
+    targetAcpAgentId?: string;
+    targetAcpAgentName?: string;
+    targetLabel?: string;
+  } | null>(null);
   const [forkBusy, setForkBusy] = useState(false);
   const [forkError, setForkError] = useState<string | null>(null);
   // `nonce` bumps on every click so re-selecting the *same* file re-triggers the
@@ -3338,7 +3345,13 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     setForkBusy(true);
     setForkError(null);
     try {
-      const result = await forkChat(currentChatId, pendingFork.messageIndex);
+      const result = await forkChat(currentChatId, {
+        messageIndex: pendingFork.messageIndex,
+        targetRuntime: pendingFork.targetRuntime,
+        targetModel: pendingFork.targetModel,
+        targetAcpAgentId: pendingFork.targetAcpAgentId,
+        targetAcpAgentName: pendingFork.targetAcpAgentName,
+      });
       await refreshChatListSilently(undefined, true);
       await loadChat(result.new_chat_id, { force: true });
       setPendingFork(null);
@@ -3798,8 +3811,19 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
             {isDragging && <DragOverlay />}
             <BrutalDialog
               open={pendingFork !== null}
-              title={forkError ? t('conversationFork.errorTitle') : t('conversationFork.title')}
-              message={forkError || t('conversationFork.message')}
+              title={
+                forkError
+                  ? t('conversationFork.errorTitle')
+                  : pendingFork?.targetLabel
+                    ? t('conversationFork.switchEngineTitle', { target: pendingFork.targetLabel })
+                    : t('conversationFork.title')
+              }
+              message={
+                forkError ||
+                (pendingFork?.targetLabel
+                  ? t('conversationFork.switchEngineMessage', { target: pendingFork.targetLabel })
+                  : t('conversationFork.message'))
+              }
               onClose={() => {
                 if (!forkBusy) {
                   setPendingFork(null);
@@ -3995,6 +4019,16 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                         modelSelectDropUp={true}
                         modelValue={safeConfig.model}
                         onModelChange={handleInputModelChange}
+                        onRequestForkToEngine={(sel) => {
+                          setForkError(null);
+                          setPendingFork({
+                            targetRuntime: sel.targetRuntime,
+                            targetModel: sel.targetModel,
+                            targetAcpAgentId: sel.targetAcpAgentId,
+                            targetAcpAgentName: sel.targetAcpAgentName,
+                            targetLabel: sel.targetLabel,
+                          });
+                        }}
                         onPaste={handlePaste}
                         onImageClick={setViewingImage}
                         currentChatId={currentChatId}

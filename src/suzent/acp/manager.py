@@ -73,6 +73,47 @@ class ManagedSession:
     permission_mode: str = ""
     # Why session/load failed, when a resume fell back to a fresh session.
     load_error: str = ""
+    # Standard ACP SessionConfigOption list advertised by session/new or session/load.
+    config_options: list[dict[str, Any]] = field(default_factory=list)
+
+
+def _extract_config_options(result: dict[str, Any] | None) -> list[dict[str, Any]]:
+    """Normalize ``configOptions`` (or legacy ``models``) from an ACP session response."""
+    if not isinstance(result, dict):
+        return []
+    raw = result.get("configOptions")
+    if isinstance(raw, list):
+        return [opt for opt in raw if isinstance(opt, dict) and opt.get("id")]
+    # Fallback: if an agent returns legacy `models` (`{currentModelId, availableModels}`),
+    # synthesize a standard `model` SessionConfigOption so the UI handles both uniformly.
+    models_state = result.get("models")
+    if isinstance(models_state, dict):
+        avail = models_state.get("availableModels")
+        if isinstance(avail, list) and avail:
+            choices = []
+            for m in avail:
+                if isinstance(m, dict) and m.get("modelId"):
+                    mid = str(m["modelId"])
+                    choices.append(
+                        {
+                            "value": mid,
+                            "name": str(m.get("name") or mid),
+                            "description": str(m.get("description") or ""),
+                        }
+                    )
+            if choices:
+                cur = str(models_state.get("currentModelId") or choices[0]["value"])
+                return [
+                    {
+                        "id": "model",
+                        "name": "Model",
+                        "category": "model",
+                        "type": "select",
+                        "currentValue": cur,
+                        "options": choices,
+                    }
+                ]
+    return []
 
 
 class ACPManager:
@@ -475,6 +516,31 @@ class ACPManager:
         await current.client.cancel(current.session_id)
         return True
 
+    async def set_config_option(
+        self,
+        chat_id: str,
+        config_id: str,
+        value: str,
+        chat_config: dict[str, Any] | None = None,
+    ) -> list[dict[str, Any]]:
+        """Set a session configuration option on an active or resumable ACP session."""
+        current = self._sessions.get(chat_id)
+        if (current is None or not current.client.is_running) and chat_config:
+            current = await self.ensure(chat_id, chat_config)
+        if current is None or not current.client.is_running:
+            raise ValueError("No active ACP session for this chat")
+        result = await current.client.set_config_option(
+            current.session_id, config_id, value
+        )
+        updated = _extract_config_options(result)
+        if updated:
+            current.config_options = updated
+        else:
+            for opt in current.config_options:
+                if isinstance(opt, dict) and opt.get("id") == config_id:
+                    opt["currentValue"] = value
+        return current.config_options
+
     async def close(self, chat_id: str) -> None:
         async with self._lock:
             await self._close_unlocked(chat_id)
@@ -627,6 +693,7 @@ class ACPManager:
             restored=restored,
             permission_mode=permission_mode,
             load_error=load_error,
+            config_options=_extract_config_options(result),
         )
 
     async def _close_unlocked(self, chat_id: str) -> None:

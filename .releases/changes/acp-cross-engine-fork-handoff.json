@@ -1,0 +1,6 @@
+{
+  "products": {
+    "desktop": "minor"
+  },
+  "summary": "Support cross-engine conversation branching, history handoff snapshots, and standard ACP session config options."
+}

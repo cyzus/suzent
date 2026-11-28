@@ -774,6 +774,20 @@ class ChatProcessor:
                             logger.debug(
                                 f"Restored {len(message_history)} messages for chat {chat_id}"
                             )
+                    elif _messages_before:
+                        from suzent.core.fork import _state_from_display_messages
+
+                        synthesized = _state_from_display_messages(_messages_before)
+                        if synthesized:
+                            state = deserialize_state(synthesized)
+                            if state and state.get("message_history"):
+                                message_history = _drop_unanswered_scheduled_triggers(
+                                    state["message_history"]
+                                )
+                                deps.last_messages = message_history
+                                logger.debug(
+                                    f"Synthesized {len(message_history)} messages from display rows for chat {chat_id}"
+                                )
             except Exception as e:
                 logger.error(f"Error restoring message history: {e}")
 

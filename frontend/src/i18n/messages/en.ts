@@ -2085,6 +2085,9 @@ export const en = {
     title: 'Branch conversation?',
     message:
       'A new independent conversation will start from this message. The original conversation and your current workspace files will stay unchanged.',
+    switchEngineTitle: 'Branch and switch to {target}?',
+    switchEngineMessage:
+      'To keep the original session intact, a new conversation branch will be created with the full message history handed off to {target}.',
     cancel: 'Cancel',
     confirm: 'Create branch',
     creating: 'Creating…',
