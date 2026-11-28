@@ -1024,6 +1024,7 @@ class ChatOperationsMixin:
         reindex: bool = True,
         pinned: bool | None = None,
         archived: bool | None = None,
+        updated_at: datetime | None = None,
     ) -> bool:
         """Update an existing chat.
 
@@ -1866,6 +1867,15 @@ class ChatOperationsMixin:
                         forkedFromChatId=config.get("forked_from_chat_id"),
                         forkedFromChatTitle=config.get("forked_from_chat_title"),
                         forkedFromMessageIndex=config.get("forked_from_message_index"),
+                        acpAgentId=config.get("acp_agent_id")
+                        if config.get("runtime") == "acp"
+                        else None,
+                        acpAgentName=config.get("acp_agent_name")
+                        if config.get("runtime") == "acp"
+                        else None,
+                        acpSessionId=config.get("acp_session_id")
+                        if config.get("runtime") == "acp"
+                        else None,
                     )
                 )
 
@@ -1940,7 +1950,7 @@ class ChatOperationsMixin:
             )
             you_filter = text(
                 "(json_extract(config, '$.platform') IS NULL "
-                "OR lower(json_extract(config, '$.platform')) != 'cron')"
+                "OR lower(json_extract(config, '$.platform')) NOT IN ('cron', 'subagent'))"
             )
             total = count()
             scheduled = count(scheduled_filter)

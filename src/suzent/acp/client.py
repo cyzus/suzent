@@ -244,6 +244,18 @@ class ACPClient:
         )
         return result if isinstance(result, dict) else {}
 
+    async def list_sessions(
+        self, cwd: str | None = None, cursor: str | None = None
+    ) -> dict[str, Any]:
+        """List existing sessions known to the agent via ACP ``session/list``."""
+        params: dict[str, Any] = {}
+        if cwd:
+            params["cwd"] = cwd
+        if cursor:
+            params["cursor"] = cursor
+        result = await self.request("session/list", params, timeout=15.0)
+        return result if isinstance(result, dict) else {}
+
     async def prompt(
         self,
         session_id: str,

@@ -63,7 +63,7 @@ const PROJECT_PREFETCH_LIMIT = 30;
 const ORGANIZATION_STORAGE_KEY = 'suzent-chat-organization';
 const EMPTY_SELECTION: SelectionState = { selected: new Set(), anchor: null };
 type ChatKind = 'you' | 'subagent' | 'scheduled';
-type ChatOrganization = 'projects' | 'list';
+type ChatOrganization = 'projects' | 'agents' | 'list';
 
 const MoreActionsIcon = (): React.ReactElement => (
   <EllipsisVerticalIcon className="h-4 w-4 stroke-[2.5]" />
@@ -169,6 +169,7 @@ export const ChatList: React.FC<ChatListProps> = ({
     pinnedChats,
     archivedCount,
     chatTotal,
+    chatKindTotals,
     loadingChats,
     loadingMoreChats,
     refreshingChats,
@@ -256,11 +257,13 @@ export const ChatList: React.FC<ChatListProps> = ({
   const organizationMenuRef = useRef<HTMLDivElement | null>(null);
   const [organization, setOrganization] = useState<ChatOrganization>(() => {
     try {
-      return localStorage.getItem(ORGANIZATION_STORAGE_KEY) === 'list' ? 'list' : 'projects';
+      const saved = localStorage.getItem(ORGANIZATION_STORAGE_KEY);
+      return saved === 'list' || saved === 'agents' ? saved : 'projects';
     } catch {
       return 'projects';
     }
   });
+  const [expandedAgentId, setExpandedAgentId] = useState<string>('claude-code');
 
   // Dialog state — replaces window.alert / window.confirm so we keep
   // brutalist styling and never get blocked by browser dialog rendering.
@@ -425,7 +428,7 @@ export const ChatList: React.FC<ChatListProps> = ({
   const selectOrganization = (next: ChatOrganization): void => {
     setOrganization(next);
     setOrganizationMenuOpen(false);
-    if (next === 'list') setFilterId(ALL_PROJECTS_FILTER);
+    if (next !== 'projects') setFilterId(ALL_PROJECTS_FILTER);
     try {
       localStorage.setItem(ORGANIZATION_STORAGE_KEY, next);
     } catch {
@@ -545,7 +548,54 @@ export const ChatList: React.FC<ChatListProps> = ({
   const [externalSearchSessions, setExternalSearchSessions] = useState<DiscoveredExternalSession[]>(
     []
   );
+  const [allExternalSessions, setAllExternalSessions] = useState<DiscoveredExternalSession[]>([]);
   const [adoptingExternalId, setAdoptingExternalId] = useState<string | null>(null);
+  const [expandedProjectCli, setExpandedProjectCli] = useState<Set<string>>(() => new Set());
+  const [unassignedCliOpen, setUnassignedCliOpen] = useState(false);
+
+  const refreshExternalSessions = useCallback(() => {
+    discoverAcpSessions({ limit: 50 })
+      .then((res) => setAllExternalSessions(res.sessions))
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    refreshExternalSessions();
+  }, [refreshExternalSessions, chats.length]);
+
+  const normalizeCwd = (p?: string | null): string =>
+    (p || '').trim().replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
+
+  const { externalByProject, unassignedExternalSessions } = useMemo(() => {
+    const byProj = new Map<string, DiscoveredExternalSession[]>();
+    const unassigned: DiscoveredExternalSession[] = [];
+    const projDirs = projects
+      .map((p) => ({ id: p.id, dir: normalizeCwd(p.workingDirectory) }))
+      .filter((p) => Boolean(p.dir))
+      // Match the most specific (longest) project directory first
+      .sort((a, b) => b.dir.length - a.dir.length);
+
+    for (const ext of allExternalSessions) {
+      const extDir = normalizeCwd(ext.cwd);
+      let matchedProjectId: string | null = null;
+      if (extDir) {
+        for (const p of projDirs) {
+          if (extDir === p.dir || extDir.startsWith(`${p.dir}/`)) {
+            matchedProjectId = p.id;
+            break;
+          }
+        }
+      }
+      if (matchedProjectId) {
+        const list = byProj.get(matchedProjectId) ?? [];
+        list.push(ext);
+        byProj.set(matchedProjectId, list);
+      } else {
+        unassigned.push(ext);
+      }
+    }
+    return { externalByProject: byProj, unassignedExternalSessions: unassigned };
+  }, [allExternalSessions, projects]);
 
   useEffect(() => {
     const q = localSearchQuery.trim();
@@ -564,23 +614,30 @@ export const ChatList: React.FC<ChatListProps> = ({
   }, [localSearchQuery]);
 
   const handleAdoptFromSearch = useCallback(
-    async (item: DiscoveredExternalSession) => {
+    async (item: DiscoveredExternalSession, targetProjectId?: string | null) => {
       if (adoptingExternalId) return;
       setAdoptingExternalId(item.session_id);
       try {
         const res = await adoptAcpSession({
           agentId: item.agent_id,
           sessionId: item.session_id,
+          projectId: targetProjectId || undefined,
           cwd: item.cwd,
           title: item.title,
+          updatedAt: item.updated_at,
+          mtime: item.mtime,
         });
         setExternalSearchSessions((prev) => prev.filter((s) => s.session_id !== item.session_id));
-        await refreshChatList(localSearchQuery, true);
+        setAllExternalSessions((prev) => prev.filter((s) => s.session_id !== item.session_id));
+        await Promise.all([
+          refreshChatList(localSearchQuery, true),
+          targetProjectId ? fetchProjectChats(targetProjectId) : Promise.resolve(),
+        ]);
         if (switchToView) switchToView('chat');
         onOpenChat?.();
         await loadChat(res.chat_id, { force: true });
       } catch {
-        // Ignore transient adopt errors in sidebar search
+        // Ignore transient adopt errors in sidebar
       } finally {
         setAdoptingExternalId(null);
       }
@@ -602,29 +659,38 @@ export const ChatList: React.FC<ChatListProps> = ({
 
   // Reopening a project shows its last list at once while a fresh one loads.
   const projectChatCacheRef = useRef(
-    new Map<string, { chats: ChatSummary[]; totals: ChatKindCounts }>()
+    new Map<string, { chats: ChatSummary[]; totals: ChatKindCounts; hasMore?: boolean }>()
   );
   const projectChatRequestRef = useRef<string | null>(null);
+  const projectChatOffsetRef = useRef(0);
+  const [projectHasMore, setProjectHasMore] = useState(false);
   // Which project projectChats holds; until it matches the open one, that project is still loading.
   const [projectChatsFor, setProjectChatsFor] = useState<string | null>(null);
   const fetchProjectChats = useCallback(
-    async (projectId: string, options?: { offset?: number; append?: boolean }) => {
+    async (
+      projectId: string,
+      options?: { offset?: number; append?: boolean; keepWindow?: boolean }
+    ) => {
       const offset = options?.offset ?? 0;
       const append = !!options?.append;
+      const keepWindow = !!options?.keepWindow;
+      const pageLimit = keepWindow ? Math.max(50, projectChatOffsetRef.current + 50) : 50;
       if (append) setLoadingMoreProjectChats(true);
-      else {
+      else if (!keepWindow) {
         projectChatRequestRef.current = projectId;
         const cached = projectChatCacheRef.current.get(projectId);
         setLoadingProjectChats(!cached);
         setProjectChatsFor(cached ? projectId : null);
         setProjectChats(cached?.chats ?? []);
         setProjectChatKindTotals(cached?.totals ?? { you: 0, scheduled: 0, all: 0 });
+        setProjectHasMore(cached?.hasMore ?? false);
+        projectChatOffsetRef.current = 0;
         setProjectChatOffset(0);
       }
 
       try {
         const params = new URLSearchParams({
-          limit: '50',
+          limit: String(pageLimit),
           offset: String(offset),
           project_id: projectId,
         });
@@ -637,14 +703,28 @@ export const ChatList: React.FC<ChatListProps> = ({
         if (projectChatRequestRef.current !== projectId) return;
         const nextChats: ChatSummary[] = data.chats || [];
         const totals: ChatKindCounts = data.kindCounts ?? {
-          you: nextChats.filter((chat) => (chat.platform || '').toLowerCase() !== 'cron').length,
+          you: nextChats.filter(
+            (chat) => !['cron', 'subagent'].includes((chat.platform || '').toLowerCase())
+          ).length,
           scheduled: nextChats.filter((chat) => (chat.platform || '').toLowerCase() === 'cron')
             .length,
           all: data.total ?? nextChats.length,
         };
-        if (!append) projectChatCacheRef.current.set(projectId, { chats: nextChats, totals });
+        const rawTotal = data.total ?? totals.all;
+        const more = nextChats.length === pageLimit && offset + nextChats.length < rawTotal;
+        if (!append) {
+          projectChatCacheRef.current.set(projectId, {
+            chats: nextChats,
+            totals,
+            hasMore: more,
+          });
+        }
         setProjectChatKindTotals(totals);
-        setProjectChatOffset(offset);
+        setProjectHasMore(more);
+        if (!keepWindow) {
+          projectChatOffsetRef.current = offset;
+          setProjectChatOffset(offset);
+        }
         setProjectChatsFor(projectId);
         setProjectChats((prev) => {
           if (!append) return nextChats;
@@ -654,10 +734,12 @@ export const ChatList: React.FC<ChatListProps> = ({
         });
       } catch (error) {
         console.error('Error fetching project chats:', error);
-        if (!append && projectChatRequestRef.current === projectId) {
+        if (!append && !keepWindow && projectChatRequestRef.current === projectId) {
           setProjectChatsFor(projectId);
           setProjectChats([]);
           setProjectChatKindTotals({ you: 0, scheduled: 0, all: 0 });
+          setProjectHasMore(false);
+          projectChatOffsetRef.current = 0;
           setProjectChatOffset(0);
         }
       } finally {
@@ -710,11 +792,20 @@ export const ChatList: React.FC<ChatListProps> = ({
       setProjectChatsFor(null);
       setProjectChats([]);
       setProjectChatKindTotals({ you: 0, scheduled: 0, all: 0 });
+      setProjectHasMore(false);
+      projectChatOffsetRef.current = 0;
       setProjectChatOffset(0);
       return;
     }
     void fetchProjectChats(filterId);
-  }, [filterId, fetchProjectChats, chatTotal]);
+  }, [filterId, fetchProjectChats]);
+
+  useEffect(() => {
+    if (filterId === ALL_PROJECTS_FILTER) return;
+    if (projectChatRequestRef.current === filterId) {
+      void fetchProjectChats(filterId, { keepWindow: true });
+    }
+  }, [chatTotal, filterId, fetchProjectChats]);
 
   const fetchArchivedChats = useCallback(async () => {
     setLoadingArchived(true);
@@ -1472,6 +1563,53 @@ export const ChatList: React.FC<ChatListProps> = ({
     );
   };
 
+  const renderExternalSessionRow = (
+    ext: DiscoveredExternalSession,
+    targetProjectId?: string | null,
+    nested = true
+  ) => {
+    const busy = adoptingExternalId === ext.session_id;
+    const folder = ext.cwd
+      ? ext.cwd
+          .replace(/[\\/]+$/, '')
+          .split(/[\\/]/)
+          .pop() || ext.cwd
+      : '';
+    return (
+      <button
+        key={`ext:${ext.agent_id}:${ext.session_id}`}
+        type="button"
+        disabled={Boolean(adoptingExternalId)}
+        onClick={() => void handleAdoptFromSearch(ext, targetProjectId)}
+        title={`${formatAcpAgentName(ext.agent_id)} · ${ext.title}${ext.cwd ? `\n${ext.cwd}` : ''}`}
+        className={`group relative w-full text-left transition-colors hover:bg-neutral-100 dark:hover:bg-zinc-700/80 disabled:opacity-50 ${
+          nested
+            ? 'pl-7 pr-2 py-2 rounded-sm border-transparent'
+            : 'px-3.5 py-2 border-b border-neutral-200 dark:border-zinc-700 last:border-b-0'
+        }`}
+      >
+        <div className="flex items-center gap-1.5 min-w-0">
+          <span
+            className={`${nested ? '-ml-5 ' : ''}inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center text-neutral-400 dark:text-neutral-500`}
+          >
+            <AcpAgentIcon id={ext.agent_id} className="h-3.5 w-3.5 shrink-0" />
+          </span>
+          <span className="min-w-0 flex-1 truncate text-xs leading-snug font-medium text-neutral-700 dark:text-neutral-200 group-hover:text-brutal-black dark:group-hover:text-white">
+            {ext.title}
+          </span>
+          {!targetProjectId && folder && (
+            <span className="max-w-[4.5rem] truncate text-[9px] font-medium text-neutral-400 dark:text-neutral-500">
+              {folder}
+            </span>
+          )}
+          <span className="shrink-0 text-[10px] font-medium uppercase tabular-nums text-neutral-400 dark:text-neutral-500">
+            {busy ? '…' : ext.updated_at ? formatDate(ext.updated_at) : 'CLI'}
+          </span>
+        </div>
+      </button>
+    );
+  };
+
   const renderListSkeleton = () => (
     <div
       className="h-full bg-white dark:bg-zinc-800"
@@ -1497,8 +1635,15 @@ export const ChatList: React.FC<ChatListProps> = ({
     return renderListSkeleton();
   }
 
-  const filteredTotal = filterId === ALL_PROJECTS_FILTER ? chatTotal : projectChatKindTotals.all;
-  const remaining = Math.max(0, filteredTotal - filteredChats.length);
+  const filteredTotal =
+    filterId === ALL_PROJECTS_FILTER ? chatKindTotals.you || chatTotal : projectChatKindTotals.you;
+  const loadedYouCount = filteredChats.filter((c) => getChatKind(c) === 'you').length;
+  const remaining =
+    filterId === ALL_PROJECTS_FILTER
+      ? Math.max(0, filteredTotal - loadedYouCount)
+      : projectHasMore
+        ? Math.max(0, filteredTotal - loadedYouCount)
+        : 0;
   const isSearching = localSearchQuery.trim().length > 0;
   const projectUnread = (project: Project): number =>
     Object.entries(project.unreadChatCounts ?? {}).reduce(
@@ -1808,11 +1953,15 @@ export const ChatList: React.FC<ChatListProps> = ({
                       >
                         {organization === 'projects'
                           ? t('chatList.sections.projects')
-                          : t('chatList.sections.chats')}
+                          : organization === 'agents'
+                            ? t('chatList.sections.agents')
+                            : t('chatList.sections.chats')}
                         <ChevronRightIcon className="h-3 w-3 rotate-90" aria-hidden="true" />
                       </button>
                     ) : organization === 'projects' ? (
                       t('chatList.sections.projects')
+                    ) : organization === 'agents' ? (
+                      t('chatList.sections.agents')
                     ) : (
                       t('chatList.sections.chats')
                     )}
@@ -1833,7 +1982,7 @@ export const ChatList: React.FC<ChatListProps> = ({
                     <button
                       type="button"
                       onClick={() => {
-                        if (organization === 'list') {
+                        if (organization !== 'projects') {
                           beginNewChat();
                           if (switchToView) switchToView('chat');
                           onOpenChat?.();
@@ -1843,10 +1992,14 @@ export const ChatList: React.FC<ChatListProps> = ({
                       }}
                       className="w-6 h-6 flex items-center justify-center text-neutral-500 hover:bg-brutal-yellow hover:text-brutal-black dark:text-neutral-400"
                       title={
-                        organization === 'list' ? t('chatList.newChat') : t('chatList.newProject')
+                        organization !== 'projects'
+                          ? t('chatList.newChat')
+                          : t('chatList.newProject')
                       }
                       aria-label={
-                        organization === 'list' ? t('chatList.newChat') : t('chatList.newProject')
+                        organization !== 'projects'
+                          ? t('chatList.newChat')
+                          : t('chatList.newProject')
                       }
                     >
                       <PlusIcon className="w-4 h-4 stroke-[3]" />
@@ -1860,7 +2013,7 @@ export const ChatList: React.FC<ChatListProps> = ({
                       <div className="px-3 py-1.5 text-[9px] font-extrabold uppercase tracking-[0.14em] text-neutral-400 dark:text-neutral-500">
                         {t('chatList.organization.title')}
                       </div>
-                      {(['projects', 'list'] as const).map((mode) => (
+                      {(['projects', 'agents', 'list'] as const).map((mode) => (
                         <button
                           key={mode}
                           type="button"
@@ -1876,7 +2029,9 @@ export const ChatList: React.FC<ChatListProps> = ({
                           </span>
                           {mode === 'projects'
                             ? t('chatList.organization.byProject')
-                            : t('chatList.organization.singleList')}
+                            : mode === 'agents'
+                              ? t('chatList.organization.byAgent')
+                              : t('chatList.organization.singleList')}
                         </button>
                       ))}
                       <div role="separator" className="my-1 h-px bg-neutral-200 dark:bg-zinc-700" />
@@ -2034,7 +2189,8 @@ export const ChatList: React.FC<ChatListProps> = ({
                                 (projectListPending &&
                                   !projectChatCacheRef.current.has(project.id)) ? (
                                   renderListSkeleton()
-                                ) : visibleChats.length === 0 ? (
+                                ) : visibleChats.length === 0 &&
+                                  (externalByProject.get(project.id)?.length ?? 0) === 0 ? (
                                   <div className="px-4 py-6 text-center">
                                     <p className="text-[10px] font-bold uppercase text-neutral-400">
                                       {t('chatList.empty.noChatsTitle')}
@@ -2053,9 +2209,25 @@ export const ChatList: React.FC<ChatListProps> = ({
                                   </div>
                                 ) : (
                                   <>
-                                    {visibleChats
-                                      .filter((chat) => getChatKind(chat) !== 'scheduled')
-                                      .map((chat) => renderChatRow(chat, false, true))}
+                                    {[
+                                      ...visibleChats
+                                        .filter((chat) => getChatKind(chat) !== 'scheduled')
+                                        .map((chat) => ({
+                                          kind: 'chat' as const,
+                                          time: Date.parse(chat.updatedAt) || 0,
+                                          node: renderChatRow(chat, false, true),
+                                        })),
+                                      ...(externalByProject.get(project.id) ?? []).map((ext) => ({
+                                        kind: 'ext' as const,
+                                        time:
+                                          (ext.mtime ? ext.mtime * 1000 : 0) ||
+                                          Date.parse(ext.updated_at || '') ||
+                                          0,
+                                        node: renderExternalSessionRow(ext, project.id, true),
+                                      })),
+                                    ]
+                                      .sort((a, b) => b.time - a.time)
+                                      .map((entry) => entry.node)}
                                     {remaining > 0 && (
                                       <button
                                         type="button"
@@ -2079,11 +2251,119 @@ export const ChatList: React.FC<ChatListProps> = ({
                       })}
                     </div>
                   </>
+                ) : organization === 'agents' ? (
+                  <div className="space-y-0.5 px-2 pb-2">
+                    {(() => {
+                      const nonScheduled = visibleChats.filter(
+                        (chat) => getChatKind(chat) !== 'scheduled'
+                      );
+                      const normalizeAgentBucket = (id?: string | null): string => {
+                        const raw = (id || '').trim().toLowerCase();
+                        if (!raw) return 'suzent';
+                        if (raw.startsWith('claude')) return 'claude-code';
+                        return raw;
+                      };
+                      const bucketMap = new Map<
+                        string,
+                        { chats: ChatSummary[]; external: DiscoveredExternalSession[] }
+                      >();
+                      const ensureBucket = (id: string) => {
+                        let b = bucketMap.get(id);
+                        if (!b) {
+                          b = { chats: [], external: [] };
+                          bucketMap.set(id, b);
+                        }
+                        return b;
+                      };
+                      ensureBucket('suzent');
+                      ensureBucket('claude-code');
+                      ensureBucket('codex');
+                      for (const c of nonScheduled) {
+                        ensureBucket(normalizeAgentBucket(c.acpAgentId)).chats.push(c);
+                      }
+                      for (const ext of allExternalSessions) {
+                        ensureBucket(normalizeAgentBucket(ext.agent_id)).external.push(ext);
+                      }
+                      const bucketOrder = Array.from(bucketMap.entries()).filter(
+                        ([, b]) => b.chats.length > 0 || b.external.length > 0
+                      );
+                      return bucketOrder.map(([agentKey, bucket]) => {
+                        const isOpen = expandedAgentId === agentKey;
+                        const label =
+                          agentKey === 'suzent' ? 'Suzent' : formatAcpAgentName(agentKey);
+                        const totalCount = bucket.chats.length + bucket.external.length;
+                        return (
+                          <div key={agentKey}>
+                            <button
+                              type="button"
+                              aria-expanded={isOpen}
+                              onClick={() =>
+                                setExpandedAgentId((prev) => (prev === agentKey ? '' : agentKey))
+                              }
+                              className="w-full flex items-center justify-between gap-1.5 px-2 py-1.5 text-left transition-colors hover:bg-neutral-100 dark:hover:bg-zinc-700"
+                            >
+                              <span className="min-w-0 flex items-center gap-1.5">
+                                {agentKey === 'suzent' ? (
+                                  <SparklesIcon className="h-3.5 w-3.5 shrink-0 text-neutral-500 dark:text-neutral-400" />
+                                ) : (
+                                  <span className="inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center text-neutral-500 dark:text-neutral-400">
+                                    <AcpAgentIcon id={agentKey} className="h-3.5 w-3.5 shrink-0" />
+                                  </span>
+                                )}
+                                <span className="truncate text-[11px] font-medium text-neutral-600 dark:text-neutral-300">
+                                  {label}
+                                </span>
+                              </span>
+                              <span className="flex items-center gap-1 text-[10px] font-bold tabular-nums text-neutral-400 dark:text-neutral-500">
+                                {totalCount}
+                                <ChevronRightIcon
+                                  className={`h-3 w-3 transition-transform ${isOpen ? 'rotate-90' : ''}`}
+                                />
+                              </span>
+                            </button>
+                            {isOpen && (
+                              <div>
+                                {[
+                                  ...bucket.chats.map((chat) => ({
+                                    time: Date.parse(chat.updatedAt) || 0,
+                                    node: renderChatRow(chat, true, true),
+                                  })),
+                                  ...bucket.external.map((ext) => ({
+                                    time:
+                                      (ext.mtime ? ext.mtime * 1000 : 0) ||
+                                      Date.parse(ext.updated_at || '') ||
+                                      0,
+                                    node: renderExternalSessionRow(ext, null, true),
+                                  })),
+                                ]
+                                  .sort((a, b) => b.time - a.time)
+                                  .map((entry) => entry.node)}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      });
+                    })()}
+                  </div>
                 ) : (
                   <div className="border-t border-neutral-200 dark:border-zinc-700">
-                    {visibleChats
-                      .filter((chat) => getChatKind(chat) !== 'scheduled')
-                      .map((chat) => renderChatRow(chat, true))}
+                    {[
+                      ...visibleChats
+                        .filter((chat) => getChatKind(chat) !== 'scheduled')
+                        .map((chat) => ({
+                          time: Date.parse(chat.updatedAt) || 0,
+                          node: renderChatRow(chat, true),
+                        })),
+                      ...allExternalSessions.map((ext) => ({
+                        time:
+                          (ext.mtime ? ext.mtime * 1000 : 0) ||
+                          Date.parse(ext.updated_at || '') ||
+                          0,
+                        node: renderExternalSessionRow(ext, null, false),
+                      })),
+                    ]
+                      .sort((a, b) => b.time - a.time)
+                      .map((entry) => entry.node)}
                     {remaining > 0 && (
                       <button
                         type="button"
@@ -2099,6 +2379,36 @@ export const ChatList: React.FC<ChatListProps> = ({
                   </div>
                 )}
               </section>
+              {organization === 'projects' && unassignedExternalSessions.length > 0 && (
+                <section
+                  className={`order-2 border-t border-neutral-200 dark:border-zinc-700 ${regentRestClass}`}
+                >
+                  <button
+                    type="button"
+                    aria-expanded={unassignedCliOpen}
+                    onClick={() => setUnassignedCliOpen((v) => !v)}
+                    className="flex w-full items-center justify-between px-3 py-2 text-left hover:bg-neutral-100 dark:hover:bg-zinc-700"
+                  >
+                    <span className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-neutral-400 dark:text-neutral-500">
+                      {t('chatList.sections.externalSessions')}
+                    </span>
+                    <span className="flex items-center gap-1.5 text-[10px] font-bold tabular-nums text-neutral-500 dark:text-neutral-400">
+                      {unassignedExternalSessions.length}
+                      <ChevronRightIcon
+                        className={`h-3 w-3 transition-transform ${unassignedCliOpen ? 'rotate-90' : ''}`}
+                        aria-hidden="true"
+                      />
+                    </span>
+                  </button>
+                  {unassignedCliOpen && (
+                    <div className="px-1.5 pb-2">
+                      {unassignedExternalSessions.map((ext) =>
+                        renderExternalSessionRow(ext, null, true)
+                      )}
+                    </div>
+                  )}
+                </section>
+              )}
               {archivedOpen && (
                 <section
                   className={`order-2 border-t border-neutral-200 dark:border-zinc-700 ${regentRestClass}`}

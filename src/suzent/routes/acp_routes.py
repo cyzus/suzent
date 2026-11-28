@@ -234,10 +234,18 @@ async def resume_acp_session(request: Request) -> JSONResponse:
         from suzent.acp.runtime import drain_replayed_updates_to_messages
 
         replayed_messages = drain_replayed_updates_to_messages(managed)
+        raw_replayed_title = getattr(managed, "replayed_title", None)
+        replayed_title = (
+            raw_replayed_title.strip() if isinstance(raw_replayed_title, str) else ""
+        )
         existing_chat = db.get_chat(chat_id)
         existing_messages = list(existing_chat.messages or []) if existing_chat else []
 
         requested_title = str(data.get("title") or "").strip()
+        if replayed_title and (
+            not requested_title or requested_title.startswith("Session ")
+        ):
+            requested_title = replayed_title
         if not requested_title and replayed_messages:
             first_user = next(
                 (
@@ -327,12 +335,50 @@ async def discover_acp_sessions(request: Request) -> JSONResponse:
 
     from suzent.acp.dialects import discover_local_agent_sessions
 
+    try:
+        limit = max(1, min(100, int(request.query_params.get("limit") or "15")))
+    except ValueError:
+        limit = 15
+
     discovered = discover_local_agent_sessions(
         agent_id or None,
         cwd or None,
         query=query or None,
-        limit=15,
+        limit=limit,
     )
+
+    # Supplement with standard ACP `session/list` from active (or explicitly
+    # requested non-Claude/Codex) ACP agents that advertise sessionCapabilities.list.
+    try:
+        live_listed = await get_acp_manager().list_agent_sessions(
+            agent_id or None,
+            cwd or None,
+            spawn_if_needed=bool(
+                agent_id
+                and agent_id.lower()
+                not in ("all", "claude-code", "claude-code-api", "claude-acp", "codex")
+            ),
+        )
+    except Exception:
+        live_listed = []
+
+    if live_listed:
+        seen_sids = {item.get("session_id") for item in discovered}
+        q_norm = query.lower()
+        for item in live_listed:
+            sid = item.get("session_id")
+            if not sid or sid in seen_sids:
+                continue
+            if q_norm and not (
+                q_norm in str(item.get("title") or "").lower()
+                or q_norm in str(sid).lower()
+                or q_norm in str(item.get("cwd") or "").lower()
+                or q_norm in str(item.get("agent_id") or "").lower()
+            ):
+                continue
+            seen_sids.add(sid)
+            discovered.append(item)
+        discovered = discovered[:limit]
 
     # Filter out sessions already adopted by an existing Suzent chat
     adopted_ids: set[str] = set()
@@ -366,6 +412,32 @@ async def adopt_acp_session(request: Request) -> JSONResponse:
         )
         explicit_cwd = str(data.get("cwd") or "").strip()
         requested_title = str(data.get("title") or "").strip()
+        raw_updated_at = str(
+            data.get("updated_at") or data.get("updatedAt") or ""
+        ).strip()
+        raw_mtime = data.get("mtime")
+        preserved_dt = None
+        if raw_updated_at:
+            from datetime import datetime
+
+            try:
+                parsed = datetime.fromisoformat(raw_updated_at.replace("Z", "+00:00"))
+                if parsed.tzinfo is not None:
+                    parsed = parsed.astimezone().replace(tzinfo=None)
+                preserved_dt = parsed
+            except ValueError:
+                preserved_dt = None
+        if (
+            preserved_dt is None
+            and isinstance(raw_mtime, (int, float))
+            and raw_mtime > 0
+        ):
+            from datetime import datetime
+
+            try:
+                preserved_dt = datetime.fromtimestamp(float(raw_mtime))
+            except (OSError, ValueError):
+                preserved_dt = None
 
         created_chat = False
         previous_config: dict[str, Any] | None = None
@@ -403,6 +475,14 @@ async def adopt_acp_session(request: Request) -> JSONResponse:
         from suzent.acp.runtime import drain_replayed_updates_to_messages
 
         replayed_messages = drain_replayed_updates_to_messages(managed)
+        raw_replayed_title = getattr(managed, "replayed_title", None)
+        replayed_title = (
+            raw_replayed_title.strip() if isinstance(raw_replayed_title, str) else ""
+        )
+        if replayed_title and (
+            not requested_title or requested_title.startswith("Session ")
+        ):
+            requested_title = replayed_title
         existing_chat = db.get_chat(chat_id)
         existing_messages = list(existing_chat.messages or []) if existing_chat else []
         if not requested_title and replayed_messages:
@@ -423,11 +503,12 @@ async def adopt_acp_session(request: Request) -> JSONResponse:
             if (not existing_messages and replayed_messages)
             else 0
         )
-        if imported_count or requested_title:
+        if imported_count or requested_title or preserved_dt is not None:
             db.update_chat(
                 chat_id,
                 title=requested_title or None,
                 messages=replayed_messages if imported_count else None,
+                updated_at=preserved_dt,
             )
 
         db.merge_chat_config(

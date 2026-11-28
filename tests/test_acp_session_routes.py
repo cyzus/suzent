@@ -292,6 +292,23 @@ def test_discover_local_agent_sessions_scans_claude_and_codex(tmp_path):
     searched = discover_local_agent_sessions(None, None, query="sidebar", home=tmp_path)
     assert [s["session_id"] for s in searched] == ["sess-codex-1"]
 
+    # 4. Codex session_index.jsonl thread_name overrides raw first user prompt
+    (tmp_path / ".codex" / "session_index.jsonl").write_text(
+        json.dumps(
+            {
+                "id": "sess-codex-1",
+                "thread_name": "侧边栏三端一致性审计",
+                "updated_at": "2026-11-27T13:05:00Z",
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    found_codex_titled = discover_local_agent_sessions(
+        "codex", "D:\\workspace\\suzent", home=tmp_path
+    )
+    assert found_codex_titled[0]["title"] == "侧边栏三端一致性审计"
+
 
 @pytest.mark.asyncio
 async def test_adopt_acp_session_replays_history_via_session_load(temp_db):
@@ -331,6 +348,14 @@ async def test_adopt_acp_session_replays_history_via_session_load(temp_db):
                 "content": {"type": "text", "text": "The project name is suzent."},
             },
         },
+        {
+            "sessionId": "ext-123",
+            "update": {
+                "sessionUpdate": "session_info_update",
+                "title": "ACP Replayed Session Title",
+                "updatedAt": "2026-11-28T10:00:00Z",
+            },
+        },
     ]:
         queue.put_nowait(update)
 
@@ -361,11 +386,11 @@ async def test_adopt_acp_session_replays_history_via_session_load(temp_db):
     body = _body(response)
     assert body["session_id"] == "ext-123"
     assert body["imported_messages"] == 2
-    assert body["title"] == "Inspect pyproject.toml"
+    assert body["title"] == "ACP Replayed Session Title"
 
     chat = temp_db.get_chat(body["chat_id"])
     assert chat is not None
-    assert chat.title == "Inspect pyproject.toml"
+    assert chat.title == "ACP Replayed Session Title"
     assert len(chat.messages) == 2
     assert chat.messages[0]["role"] == "user"
     assert chat.messages[0]["content"] == "Inspect pyproject.toml"

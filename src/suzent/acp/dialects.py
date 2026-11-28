@@ -396,14 +396,15 @@ def _discover_claude_sessions(
         session_id = fpath.stem
         if not session_id or session_id in seen_ids:
             continue
-        title = ""
+        custom_title = ""
+        first_user_title = ""
         session_cwd = ""
         updated_iso = ""
         is_sidechain = False
         try:
             with fpath.open("r", encoding="utf-8", errors="replace") as fh:
                 for idx, line in enumerate(fh):
-                    if idx > 40:
+                    if idx > 80:
                         break
                     line = line.strip()
                     if not line:
@@ -421,30 +422,44 @@ def _discover_claude_sessions(
                         session_cwd = obj["cwd"]
                     if isinstance(obj.get("timestamp"), str):
                         updated_iso = obj["timestamp"]
-                    if not title:
-                        if obj.get("type") == "queue-operation" and isinstance(
+                    ltype = obj.get("type")
+                    if ltype == "custom-title" and isinstance(
+                        obj.get("customTitle"), str
+                    ):
+                        ct = obj["customTitle"].strip()
+                        if ct and ct.lower() != "new session":
+                            custom_title = _clean_session_title(ct)
+                    elif ltype == "summary" and isinstance(obj.get("summary"), str):
+                        st_txt = obj["summary"].strip()
+                        if st_txt and not custom_title:
+                            custom_title = _clean_session_title(st_txt)
+                    elif not first_user_title:
+                        if ltype == "queue-operation" and isinstance(
                             obj.get("content"), str
                         ):
-                            title = _clean_session_title(obj["content"])
-                        elif obj.get("type") == "user":
+                            first_user_title = _clean_session_title(obj["content"])
+                        elif ltype == "user":
                             msg = obj.get("message")
                             if isinstance(msg, dict):
                                 content = msg.get("content")
                                 if isinstance(content, str):
-                                    title = _clean_session_title(content)
+                                    first_user_title = _clean_session_title(content)
                                 elif isinstance(content, list):
                                     for blk in content:
                                         if isinstance(blk, dict) and isinstance(
                                             blk.get("text"), str
                                         ):
-                                            title = _clean_session_title(blk["text"])
-                                            if title:
+                                            first_user_title = _clean_session_title(
+                                                blk["text"]
+                                            )
+                                            if first_user_title:
                                                 break
-                    if title and session_cwd:
+                    if custom_title and session_cwd:
                         break
         except OSError:
             continue
 
+        title = custom_title or first_user_title
         if is_sidechain or not title:
             continue
         if (
@@ -468,6 +483,35 @@ def _discover_claude_sessions(
     return results
 
 
+def _load_codex_session_titles(home: Path) -> dict[str, str]:
+    """Read AI-generated thread titles from ``~/.codex/session_index.jsonl``."""
+    index_file = home / ".codex" / "session_index.jsonl"
+    if not index_file.is_file():
+        return {}
+    titles: dict[str, str] = {}
+    try:
+        with index_file.open("r", encoding="utf-8", errors="replace") as fh:
+            for line in fh:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    obj = json.loads(line)
+                except Exception:
+                    continue
+                if not isinstance(obj, dict):
+                    continue
+                sid = str(obj.get("id") or "").strip()
+                tname = str(obj.get("thread_name") or "").strip()
+                if sid and tname and not tname.startswith("<"):
+                    cleaned = _clean_session_title(tname)
+                    if cleaned:
+                        titles[sid] = cleaned
+    except OSError:
+        return {}
+    return titles
+
+
 def _discover_codex_sessions(
     home: Path,
     target_cwd_norm: str,
@@ -477,6 +521,8 @@ def _discover_codex_sessions(
     sessions_root = home / ".codex" / "sessions"
     if not sessions_root.is_dir():
         return []
+
+    indexed_titles = _load_codex_session_titles(home)
 
     files: list[tuple[float, Path]] = []
     try:
@@ -579,6 +625,8 @@ def _discover_codex_sessions(
         except OSError:
             continue
 
+        if session_id and session_id in indexed_titles:
+            title = indexed_titles[session_id]
         if is_subagent or not session_id or not title or session_id in seen_ids:
             continue
         if (

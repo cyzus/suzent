@@ -943,6 +943,7 @@ export async function discoverAcpSessions(params: {
   cwd?: string;
   chatId?: string | null;
   projectId?: string | null;
+  limit?: number;
 }): Promise<{
   sessions: import('../types/api').DiscoveredExternalSession[];
   cwd: string;
@@ -953,6 +954,7 @@ export async function discoverAcpSessions(params: {
   if (params.cwd) qs.set('cwd', params.cwd);
   if (params.chatId) qs.set('chat_id', params.chatId);
   if (params.projectId) qs.set('project_id', params.projectId);
+  if (params.limit) qs.set('limit', String(params.limit));
   const res = await fetch(`${getApiBase()}/acp/sessions/discover?${qs.toString()}`);
   if (!res.ok) return { sessions: [], cwd: '' };
   const data = await res.json();
@@ -969,6 +971,8 @@ export async function adoptAcpSession(params: {
   projectId?: string | null;
   cwd?: string;
   title?: string;
+  updatedAt?: string;
+  mtime?: number;
 }): Promise<{
   chat_id: string;
   agent_id: string;
@@ -987,6 +991,8 @@ export async function adoptAcpSession(params: {
       project_id: params.projectId || undefined,
       cwd: params.cwd || undefined,
       title: params.title || undefined,
+      updated_at: params.updatedAt || undefined,
+      mtime: params.mtime || undefined,
     }),
   });
   const payload = await res.json().catch(() => ({}));

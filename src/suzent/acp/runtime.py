@@ -423,6 +423,11 @@ def drain_replayed_updates_to_messages(
             update.get("update") if isinstance(update.get("update"), dict) else update
         )
         kind = str(inner.get("sessionUpdate") or inner.get("type") or "")
+        if kind == "session_info_update":
+            new_title = inner.get("title")
+            if isinstance(new_title, str) and new_title.strip():
+                setattr(managed, "replayed_title", new_title.strip())
+            continue
         if kind in {"tool_call", "toolCall", "tool_call_update", "toolCallUpdate"}:
             tool_call_id = str(
                 inner.get("toolCallId")
@@ -591,6 +596,24 @@ async def _stream_prompt(
                 else update
             )
             kind = str(inner.get("sessionUpdate") or inner.get("type") or "")
+
+            if kind == "session_info_update":
+                new_title = inner.get("title")
+                if isinstance(new_title, str) and new_title.strip():
+                    clean_title = new_title.strip()
+                    state["session_title"] = clean_title
+                    try:
+                        get_database().update_chat(managed.chat_id, title=clean_title)
+                    except Exception:
+                        pass
+                    yield _sse(
+                        {
+                            "type": "CUSTOM",
+                            "name": "chat_title_updated",
+                            "value": {"chat_id": managed.chat_id, "title": clean_title},
+                        }
+                    )
+                continue
 
             if kind in {"tool_call", "toolCall", "tool_call_update", "toolCallUpdate"}:
                 tool_call_id = str(

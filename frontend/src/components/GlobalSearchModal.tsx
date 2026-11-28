@@ -181,6 +181,8 @@ export const GlobalSearchModal: React.FC<GlobalSearchModalProps> = ({
           sessionId: ext.session_id,
           cwd: ext.cwd,
           title: ext.title,
+          updatedAt: ext.updated_at,
+          mtime: ext.mtime,
         });
         await refreshChatList(undefined, true);
         onClose();

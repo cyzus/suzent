@@ -326,7 +326,7 @@ const ExternalSessionDiscoveryTray: React.FC<{
   }, [agentId, cwd, currentChatId, currentProjectId]);
 
   const handleAdopt = useCallback(
-    async (sessionId: string, title?: string) => {
+    async (sessionId: string, title?: string, updatedAt?: string, mtime?: number) => {
       const trimmed = sessionId.trim();
       if (!trimmed || adoptingId) return;
       setAdoptingId(trimmed);
@@ -339,6 +339,8 @@ const ExternalSessionDiscoveryTray: React.FC<{
           projectId: currentProjectId,
           cwd,
           title,
+          updatedAt,
+          mtime,
         });
         setManualOpen(false);
         setManualId('');
@@ -431,7 +433,9 @@ const ExternalSessionDiscoveryTray: React.FC<{
                 <button
                   type="button"
                   disabled={Boolean(adoptingId)}
-                  onClick={() => void handleAdopt(item.session_id, item.title)}
+                  onClick={() =>
+                    void handleAdopt(item.session_id, item.title, item.updated_at, item.mtime)
+                  }
                   className="shrink-0 px-2.5 py-1 text-[11px] font-extrabold uppercase tracking-wider border border-brutal-black dark:border-zinc-500 bg-white dark:bg-zinc-800 text-brutal-black dark:text-neutral-100 hover:bg-brutal-yellow dark:hover:bg-zinc-700 disabled:opacity-50 transition-colors"
                 >
                   {busy ? t('newChat.acp.adopting') : t('newChat.acp.adoptAction')}

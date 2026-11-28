@@ -2149,6 +2149,7 @@ export const en = {
       navigation: 'Workspace',
       chats: 'Chats',
       projects: 'Projects',
+      agents: 'Agents',
       searchResults: 'Search results',
       externalSessions: 'External CLI sessions',
     },
@@ -2222,6 +2223,7 @@ export const en = {
     organization: {
       title: 'Organize',
       byProject: 'By project',
+      byAgent: 'By agent',
       singleList: 'Single list',
     },
     kind: {

@@ -2070,6 +2070,7 @@ export const zhCN = {
       tasks: '任务',
       chats: '会话',
       projects: '项目',
+      agents: '智能体',
       searchResults: '搜索结果',
       externalSessions: '外部 CLI 会话',
     },
