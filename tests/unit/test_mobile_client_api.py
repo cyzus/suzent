@@ -1,6 +1,7 @@
 import asyncio
 import json
 import socket
+import time
 from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
@@ -1799,6 +1800,11 @@ def test_voice_without_a_chat_creates_one_and_drops_it_if_unused(
         assert "voice-1" in store.verify(result["token"]).permissions.chat_ids
         websocket.send_json({"type": "stop"})
     assert created == [{"id": "voice-1", "project_id": "p-shared"}]
+    # The server drops the unused chat after the socket closes, on its own
+    # thread, so it may not have run yet when the client context exits.
+    deadline = time.monotonic() + 2
+    while ("voice-1" in records) is not delegated and time.monotonic() < deadline:
+        time.sleep(0.01)
     assert ("voice-1" in records) is delegated
 
 
