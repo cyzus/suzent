@@ -222,6 +222,11 @@ class HandoffRouter:
             self._observer_task is not None and not self._observer_task.done()
         )
 
+    @property
+    def delegated(self) -> bool:
+        """Whether this call handed anything to Suzent (started or steered a turn)."""
+        return self._delegating or self._last_request is not None
+
     def attach_if_busy(
         self, *, notify_start: bool = False, allow_completed: bool = False
     ) -> None:
