@@ -62,6 +62,7 @@ class FakeSession:
 class FakeDatabase:
     def __init__(self):
         self.chats = {}
+        self.created = []
         self.projects = {"work"}
 
     def get_chat(self, chat_id):
@@ -71,7 +72,11 @@ class FakeDatabase:
         return project_id if project_id in self.projects else None
 
     def create_chat(self, *, chat_id, **kwargs):
-        self.chats[chat_id] = kwargs
+        self.chats[chat_id] = SimpleNamespace(messages=[], **kwargs)
+        self.created.append(kwargs)
+
+    def delete_chat(self, chat_id):
+        return self.chats.pop(chat_id, None) is not None
 
 
 def _app(monkeypatch, session):
@@ -83,7 +88,7 @@ def _app(monkeypatch, session):
         yield session
 
     def bridge_factory(websocket, chat_id):
-        return VoiceBridge(
+        app.state.bridge = VoiceBridge(
             websocket,
             chat_id,
             session_factory=factory,
@@ -91,6 +96,7 @@ def _app(monkeypatch, session):
             startup_messages=[],
             persist=lambda _entries: None,
         )
+        return app.state.bridge
 
     app = Starlette(routes=[WebSocketRoute("/ws/voice", voice_websocket_endpoint)])
     app.state.voice_bridge_factory = bridge_factory
@@ -176,8 +182,61 @@ def test_voice_websocket_new_chat_project(monkeypatch, query, expected):
         assert websocket.receive_json()["type"] == "ready"
         websocket.send_json({"type": "stop"})
         _drain(websocket, lambda f: isinstance(f, dict) and f.get("type") == "closed")
-    [created] = app.state.fake_db.chats.values()
+    [created] = app.state.fake_db.created
     assert created["project_id"] == expected
+
+
+def _call(app, query=""):
+    """Open a call, let *app.state.during* act on the live bridge, then hang up."""
+    with (
+        TestClient(app) as client,
+        client.websocket_connect(
+            f"/ws/voice{query}", headers={"origin": "tauri://localhost"}
+        ) as websocket,
+    ):
+        assert websocket.receive_json()["type"] == "ready"
+        getattr(app.state, "during", lambda _bridge, _db: None)(
+            app.state.bridge, app.state.fake_db
+        )
+        websocket.send_json({"type": "stop"})
+        _drain(websocket, lambda f: isinstance(f, dict) and f.get("type") == "closed")
+
+
+def test_voice_call_that_sent_nothing_leaves_no_chat(monkeypatch):
+    app = _app(monkeypatch, FakeSession())
+    _call(app)
+    assert len(app.state.fake_db.created) == 1
+    assert app.state.fake_db.chats == {}
+
+
+def test_voice_call_that_delegated_keeps_its_chat(monkeypatch):
+    app = _app(monkeypatch, FakeSession())
+
+    def delegated(bridge, _db):
+        bridge.router._last_request = "book a table"
+
+    app.state.during = delegated
+    _call(app)
+    assert len(app.state.fake_db.chats) == 1
+
+
+def test_voice_call_keeps_a_chat_that_got_messages(monkeypatch):
+    app = _app(monkeypatch, FakeSession())
+
+    def typed(bridge, db):
+        db.chats[bridge.chat_id].messages.append({"role": "user", "content": "hi"})
+
+    app.state.during = typed
+    _call(app)
+    assert len(app.state.fake_db.chats) == 1
+
+
+def test_voice_call_never_deletes_an_existing_chat(monkeypatch):
+    app = _app(monkeypatch, FakeSession())
+    app.state.fake_db.chats["old"] = SimpleNamespace(messages=[])
+    _call(app, "?chat_id=old")
+    assert "old" in app.state.fake_db.chats
+    assert app.state.fake_db.created == []
 
 
 @pytest.mark.parametrize(
