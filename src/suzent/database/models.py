@@ -47,6 +47,9 @@ class ChatSummaryModel(BaseModel):
     forkedFromChatId: Optional[str] = None
     forkedFromChatTitle: Optional[str] = None
     forkedFromMessageIndex: Optional[int] = None
+    acpAgentId: Optional[str] = None
+    acpAgentName: Optional[str] = None
+    acpSessionId: Optional[str] = None
 
 
 class ProjectModel(SQLModel, table=True):

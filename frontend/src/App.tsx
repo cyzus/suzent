@@ -3,6 +3,7 @@ import { WorkspacePanelHost, WorkspacePanelProvider } from './components/Workspa
 import { DesktopContextMenu } from './components/DesktopContextMenu';
 import { SetupGate } from './components/settings/SetupGate';
 import React, { useState } from 'react';
+import { isImeComposing } from './lib/ime';
 import { desktopShell, desktopWindow, invoke, listen, openDialog } from './lib/desktop';
 import {
   ArrowPathIcon,
@@ -11,6 +12,7 @@ import {
 } from '@heroicons/react/24/outline';
 
 import { ChatList } from './components/ChatList';
+import { GlobalSearchModal } from './components/GlobalSearchModal';
 import { ChatWindow, hasUnsentComposerWork } from './components/ChatWindow';
 import { BackendLoadingScreen } from './components/BackendLoadingScreen';
 import { ClosePrompt } from './components/ClosePrompt';
@@ -483,6 +485,7 @@ function AppInner(): React.ReactElement {
     chats,
     currentChatProjectId,
     loadChat,
+    beginNewChat,
   } = useChatCoreStore();
   const setHeartbeatStatus = useHeartbeatRunning((s) => s.setStatus);
   const setChatHeartbeatStatus = useHeartbeatRunning((s) => s.setChatStatus);
@@ -834,6 +837,18 @@ function AppInner(): React.ReactElement {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
+  React.useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (isImeComposing(e)) return;
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setSidebarSearchOpen((prev) => !prev);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, []);
+
   return (
     <WorkspacePanelProvider navigationKey={`${currentChatId}:${mainView}`}>
       <div
@@ -1102,6 +1117,26 @@ function AppInner(): React.ReactElement {
           onCategoryChange={isWeb() ? (next) => navigate(pathForCategory(next)) : undefined}
           navigationHost={settingsNavigationHost}
           showInlineNavigation={!isLeftSidebarOpen || viewportWidth < DESKTOP_BREAKPOINT_PX}
+        />
+        <GlobalSearchModal
+          open={sidebarSearchOpen}
+          onClose={() => setSidebarSearchOpen(false)}
+          onOpenChat={(chatId) => {
+            void loadChat(chatId);
+            setMainView('chat');
+            mobileNavigation.open();
+          }}
+          onNewChat={() => {
+            beginNewChat();
+            setMainView('chat');
+            mobileNavigation.open();
+          }}
+          onOpenView={(view) => {
+            setMemoryInitialTab(undefined);
+            setMainView(view);
+            mobileNavigation.open();
+          }}
+          onOpenAutomation={() => openSettings('automation')}
         />
       </div>
     </WorkspacePanelProvider>

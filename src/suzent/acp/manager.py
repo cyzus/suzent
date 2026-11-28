@@ -96,6 +96,120 @@ class ACPManager:
             for item in self._sessions.values()
         ]
 
+    async def list_agent_sessions(
+        self,
+        agent_id: str | None = None,
+        cwd: str | None = None,
+        *,
+        spawn_if_needed: bool = False,
+    ) -> list[dict[str, Any]]:
+        """Query standard ACP ``session/list`` across running (or on-demand) agents.
+
+        Returns normalized ``{session_id, agent_id, title, cwd, updated_at, mtime}``
+        records matching ``discover_local_agent_sessions``.
+        """
+        results: list[dict[str, Any]] = []
+        seen_agents: set[str] = set()
+        seen_session_ids: set[str] = set()
+
+        def _supports_list(caps: dict[str, Any]) -> bool:
+            if not isinstance(caps, dict):
+                return False
+            sess_caps = caps.get("sessionCapabilities")
+            if isinstance(sess_caps, dict) and "list" in sess_caps:
+                return bool(sess_caps.get("list") is not False)
+            return bool(caps.get("listSessions"))
+
+        def _normalize_entries(aid: str, raw_sessions: Any) -> None:
+            if not isinstance(raw_sessions, list):
+                return
+            for entry in raw_sessions:
+                if not isinstance(entry, dict):
+                    continue
+                sid = str(
+                    entry.get("sessionId") or entry.get("session_id") or ""
+                ).strip()
+                if not sid or sid in seen_session_ids:
+                    continue
+                title = str(entry.get("title") or "").strip() or f"Session {sid[:8]}"
+                entry_cwd = str(entry.get("cwd") or cwd or "").strip()
+                updated_at = str(
+                    entry.get("updatedAt") or entry.get("updated_at") or ""
+                ).strip()
+                seen_session_ids.add(sid)
+                results.append(
+                    {
+                        "session_id": sid,
+                        "agent_id": aid,
+                        "title": title,
+                        "cwd": entry_cwd,
+                        "updated_at": updated_at,
+                        "mtime": 0.0,
+                    }
+                )
+
+        # 1. Query any already-running sessions for matching agent_id
+        for managed in list(self._sessions.values()):
+            if agent_id and managed.agent_id != agent_id:
+                continue
+            if managed.agent_id in seen_agents:
+                continue
+            if not managed.client.is_running or not _supports_list(
+                managed.capabilities
+            ):
+                continue
+            seen_agents.add(managed.agent_id)
+            try:
+                resp = await managed.client.list_sessions(cwd=cwd or None)
+                _normalize_entries(managed.agent_id, resp.get("sessions"))
+            except Exception as exc:
+                logger.debug(
+                    f"ACP session/list failed on active {managed.agent_id}: {exc}"
+                )
+
+        # 2. If explicitly requested for a specific agent not currently running,
+        # spawn a short-lived handshake to check sessionCapabilities.list.
+        if (
+            spawn_if_needed
+            and agent_id
+            and agent_id not in seen_agents
+            and agent_id
+            not in ("claude-code", "claude-code-api", "claude-acp", "codex")
+        ):
+            try:
+                agent = self.registry.get(agent_id)
+            except KeyError:
+                agent = None
+            if agent and agent.available:
+                from .dialects import get_dialect
+
+                dialect = get_dialect(agent_id)
+                client = ACPClient(
+                    agent.command,
+                    cwd=agent.cwd or cwd or None,
+                    env=agent.env,
+                    env_to_strip=dialect.env_to_strip,
+                )
+                try:
+                    await client.start()
+                    init = await client.initialize()
+                    caps = (
+                        init.get("agentCapabilities")
+                        if isinstance(init.get("agentCapabilities"), dict)
+                        else {}
+                    )
+                    if _supports_list(caps):
+                        resp = await client.list_sessions(cwd=cwd or None)
+                        _normalize_entries(agent_id, resp.get("sessions"))
+                except Exception as exc:
+                    logger.debug(
+                        f"On-demand ACP session/list failed for {agent_id}: {exc}"
+                    )
+                finally:
+                    await client.close()
+
+        return results
+
     async def _install_agent_adapter(self, agent: Any) -> dict[str, Any]:
         from . import registry as registry_mod
 

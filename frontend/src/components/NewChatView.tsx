@@ -1,13 +1,16 @@
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ChatInputPanel, type FileMentionSelection } from './ChatInputPanel';
-import { ConfigOptions, ChatConfig } from '../types/api';
+import { ConfigOptions, ChatConfig, type DiscoveredExternalSession } from '../types/api';
 import { GreetingCube } from './chat/GreetingCube';
 import { useI18n } from '../i18n';
 import { useProjects } from '../hooks/useProjects';
 import { resolveProjectMenuPosition, type ProjectMenuGeometry } from '../lib/projectMenuPosition';
 import { isImeComposing } from '../lib/ime';
 import type { VoiceSession } from '../hooks/useVoiceSession';
+import { AcpAgentIcon } from './AcpAgentIcon';
+import { formatAcpAgentName } from './chat/AssistantMessage';
+import { adoptAcpSession, discoverAcpSessions } from '../lib/api';
 
 interface NewChatViewProps {
   input: string;
@@ -30,6 +33,7 @@ interface NewChatViewProps {
   onImageClick?: (src: string) => void;
   currentChatId?: string | null;
   onFileMentionSelected?: (mention: FileMentionSelection) => void;
+  onAdoptSession?: (chatId: string) => Promise<void> | void;
   voice: VoiceSession;
   /** Replaces the greeting and project picker, for chats that already have a home. */
   briefing?: React.ReactNode;
@@ -273,6 +277,185 @@ const ProjectPicker: React.FC = () => {
 
 // ... (other imports)
 
+import { formatRelativeTime as formatLocalizedRelativeTime } from '../lib/chatUtils';
+
+function formatRelativeTime(isoOrMtime: string | number | undefined, locale: string): string {
+  if (!isoOrMtime) return '';
+  const iso =
+    typeof isoOrMtime === 'number' ? new Date(isoOrMtime * 1000).toISOString() : isoOrMtime;
+  return formatLocalizedRelativeTime(iso, locale);
+}
+
+const ExternalSessionDiscoveryTray: React.FC<{
+  agentId: string;
+  cwd?: string;
+  currentChatId?: string | null;
+  onAdopted?: (chatId: string) => Promise<void> | void;
+}> = ({ agentId, cwd, currentChatId, onAdopted }) => {
+  const { t, locale } = useI18n();
+  const { currentProjectId } = useProjects();
+  const [sessions, setSessions] = useState<DiscoveredExternalSession[]>([]);
+  const [adoptingId, setAdoptingId] = useState<string | null>(null);
+  const [manualOpen, setManualOpen] = useState(false);
+  const [manualId, setManualId] = useState('');
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setError(null);
+    discoverAcpSessions({
+      agentId,
+      cwd,
+      chatId: currentChatId,
+      projectId: currentProjectId,
+    })
+      .then((res) => {
+        if (!cancelled) setSessions(res.sessions.slice(0, 5));
+      })
+      .catch(() => {
+        if (!cancelled) setSessions([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [agentId, cwd, currentChatId, currentProjectId]);
+
+  const handleAdopt = useCallback(
+    async (
+      sessionId: string,
+      title?: string,
+      updatedAt?: string,
+      mtime?: number,
+      sessionCwd?: string
+    ) => {
+      const trimmed = sessionId.trim();
+      if (!trimmed || adoptingId) return;
+      setAdoptingId(trimmed);
+      setError(null);
+      try {
+        const res = await adoptAcpSession({
+          agentId,
+          sessionId: trimmed,
+          chatId: currentChatId,
+          projectId: currentProjectId,
+          cwd: sessionCwd || cwd,
+          title,
+          updatedAt,
+          mtime,
+        });
+        setManualOpen(false);
+        setManualId('');
+        await onAdopted?.(res.chat_id);
+      } catch (err) {
+        setError((err as Error).message || t('newChat.acp.resumeFailed'));
+      } finally {
+        setAdoptingId(null);
+      }
+    },
+    [adoptingId, agentId, currentChatId, currentProjectId, cwd, onAdopted, t]
+  );
+
+  const agentName = formatAcpAgentName(agentId);
+
+  return (
+    <div className="mt-4 w-full text-left border-2 border-brutal-black dark:border-zinc-700 bg-white dark:bg-zinc-800/90 shadow-brutal-sm dark:shadow-none">
+      <div className="flex items-center justify-between gap-2 px-3 py-2 border-b border-neutral-200 dark:border-zinc-700 bg-neutral-50 dark:bg-zinc-900/60">
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="inline-flex h-4 w-4 shrink-0 items-center justify-center text-brutal-black dark:text-neutral-100">
+            <AcpAgentIcon id={agentId} className="w-3.5 h-3.5 shrink-0" />
+          </span>
+          <span className="text-[11px] font-bold uppercase tracking-wider text-neutral-600 dark:text-neutral-300 truncate">
+            {t('newChat.acp.discoveredTitle', { agent: agentName })}
+          </span>
+        </div>
+        <button
+          type="button"
+          onClick={() => setManualOpen((prev) => !prev)}
+          className="shrink-0 text-[11px] font-mono font-bold text-neutral-500 hover:text-brutal-black dark:text-neutral-400 dark:hover:text-white underline underline-offset-2"
+        >
+          {manualOpen ? t('newChat.acp.cancel') : t('newChat.acp.manualAction')}
+        </button>
+      </div>
+
+      {manualOpen && (
+        <div className="flex items-center gap-2 px-3 py-2 border-b border-neutral-200 dark:border-zinc-700 bg-neutral-50/50 dark:bg-zinc-900/30">
+          <input
+            type="text"
+            value={manualId}
+            onChange={(e) => setManualId(e.target.value)}
+            onKeyDown={(e) => {
+              if (isImeComposing(e)) return;
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                void handleAdopt(manualId);
+              }
+            }}
+            placeholder={t('newChat.acp.manualPlaceholder')}
+            className="flex-1 min-w-0 px-2 py-1 text-xs font-mono border border-brutal-black dark:border-zinc-600 bg-white dark:bg-zinc-800 text-brutal-black dark:text-white focus:outline-none"
+          />
+          <button
+            type="button"
+            disabled={!manualId.trim() || Boolean(adoptingId)}
+            onClick={() => void handleAdopt(manualId)}
+            className="px-2.5 py-1 text-[11px] font-extrabold uppercase tracking-wider border border-brutal-black bg-brutal-yellow text-brutal-black disabled:opacity-50"
+          >
+            {adoptingId === manualId.trim()
+              ? t('newChat.acp.adopting')
+              : t('newChat.acp.manualSubmit')}
+          </button>
+        </div>
+      )}
+
+      {error && (
+        <div className="px-3 py-1.5 text-xs font-mono text-red-600 dark:text-red-400 border-b border-neutral-200 dark:border-zinc-700">
+          {error}
+        </div>
+      )}
+
+      {sessions.length > 0 && (
+        <div className="divide-y divide-neutral-100 dark:divide-zinc-700/60">
+          {sessions.map((item) => {
+            const busy = adoptingId === item.session_id;
+            const rel = formatRelativeTime(item.updated_at || item.mtime, locale);
+            return (
+              <div
+                key={item.session_id}
+                className="flex items-center justify-between gap-3 px-3 py-2 hover:bg-neutral-50 dark:hover:bg-zinc-700/40 transition-colors"
+              >
+                <div className="min-w-0 flex-1">
+                  <div className="text-xs font-medium text-brutal-black dark:text-neutral-100 truncate">
+                    {item.title}
+                  </div>
+                  <div className="flex items-center gap-2 text-[10px] font-mono text-neutral-400 dark:text-neutral-500">
+                    <span>{item.session_id.slice(0, 8)}</span>
+                    {rel && <span>· {rel}</span>}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  disabled={Boolean(adoptingId)}
+                  onClick={() =>
+                    void handleAdopt(
+                      item.session_id,
+                      item.title,
+                      item.updated_at,
+                      item.mtime,
+                      item.cwd
+                    )
+                  }
+                  className="shrink-0 px-2.5 py-1 text-[11px] font-extrabold uppercase tracking-wider border border-brutal-black dark:border-zinc-500 bg-white dark:bg-zinc-800 text-brutal-black dark:text-neutral-100 hover:bg-brutal-yellow dark:hover:bg-zinc-700 disabled:opacity-50 transition-colors"
+                >
+                  {busy ? t('newChat.acp.adopting') : t('newChat.acp.adoptAction')}
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+};
+
 export const NewChatView: React.FC<NewChatViewProps> = ({
   input,
   setInput,
@@ -294,12 +477,15 @@ export const NewChatView: React.FC<NewChatViewProps> = ({
   onImageClick,
   currentChatId,
   onFileMentionSelected,
+  onAdoptSession,
   voice,
   briefing,
 }) => {
   const [isInputHovered, setIsInputHovered] = useState(false);
   const [isInputFocused, setIsInputFocused] = useState(false);
   const isInputEngaged = isInputHovered || isInputFocused;
+  const activeAcpAgentId =
+    config.runtime === 'acp' && config.acp_agent_id ? config.acp_agent_id : null;
   return (
     <div className="new-chat-view flex flex-col items-center justify-center min-h-full text-center animate-brutal-drop">
       {briefing ?? <GreetingPresence engaged={isInputEngaged} hideCube={voice.status !== 'idle'} />}
@@ -341,6 +527,14 @@ export const NewChatView: React.FC<NewChatViewProps> = ({
             voice={voice}
           />
         </div>
+        {!briefing && activeAcpAgentId && (
+          <ExternalSessionDiscoveryTray
+            agentId={activeAcpAgentId}
+            cwd={config.acp_cwd}
+            currentChatId={currentChatId}
+            onAdopted={onAdoptSession}
+          />
+        )}
       </div>
     </div>
   );

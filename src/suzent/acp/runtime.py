@@ -93,6 +93,21 @@ def _thought_from_update(params: dict[str, Any]) -> str:
     return str(update.get("text") or content or "")
 
 
+def _user_text_from_update(params: dict[str, Any]) -> str:
+    update = params.get("update") if isinstance(params.get("update"), dict) else params
+    kind = str(update.get("sessionUpdate") or update.get("type") or "")
+    if kind not in {"user_message_chunk", "userMessageChunk"}:
+        return ""
+    content = update.get("content")
+    if isinstance(content, dict):
+        return (
+            str(content.get("text") or "")
+            if content.get("type") in (None, "text")
+            else ""
+        )
+    return str(update.get("text") or content or "")
+
+
 def _infer_acp_tool_name(update: dict[str, Any]) -> str:
     for key in ("name", "toolName", "tool_name"):
         val = update.get(key)
@@ -325,6 +340,147 @@ def _turn_error_from_update(params: dict[str, Any]) -> str:
     return "the agent reported a failed turn"
 
 
+def drain_replayed_updates_to_messages(
+    managed: Any,
+) -> list[dict[str, Any]]:
+    """Drain ``session/update`` notifications replayed during ``session/load`` into Suzent chat rows.
+
+    According to the ACP ``session/load`` specification, the agent replays the
+    conversation history via ``session/update`` notifications
+    (``user_message_chunk``, ``agent_message_chunk``, ``agent_thought_chunk``,
+    ``tool_call``, ``tool_call_update``) before returning the ``session/load``
+    response. This function drains ``managed.updates`` and builds a list of
+    Suzent message dicts ready for ``db.append_chat_message``.
+    """
+    messages: list[dict[str, Any]] = []
+    cur_role: str | None = None
+    user_chunks: list[str] = []
+    assistant_text: list[str] = []
+    display_parts: list[dict[str, Any]] = []
+    started_tools: set[str] = set()
+    authoritative_tool_args: set[str] = set()
+    last_tool_output: dict[str, str] = {}
+
+    def _flush() -> None:
+        nonlocal cur_role
+        if cur_role == "user":
+            text = "".join(user_chunks).strip()
+            if text:
+                messages.append({"role": "user", "content": text})
+            user_chunks.clear()
+        elif cur_role == "assistant":
+            text = "".join(assistant_text)
+            if text.strip() or display_parts:
+                row: dict[str, Any] = {
+                    "role": "assistant",
+                    "content": text,
+                    "model": f"acp/{managed.agent_id}",
+                }
+                if display_parts:
+                    row["parts"] = list(display_parts)
+                messages.append(row)
+            assistant_text.clear()
+            display_parts.clear()
+            started_tools.clear()
+            authoritative_tool_args.clear()
+            last_tool_output.clear()
+        cur_role = None
+
+    while not managed.updates.empty():
+        try:
+            update = managed.updates.get_nowait()
+        except asyncio.QueueEmpty:
+            break
+        if not isinstance(update, dict) or PERMISSION_QUEUE_KEY in update:
+            continue
+
+        user_delta = _user_text_from_update(update)
+        if user_delta:
+            if cur_role != "user":
+                _flush()
+                cur_role = "user"
+            user_chunks.append(user_delta)
+            continue
+
+        agent_delta = _text_from_update(update)
+        if agent_delta:
+            if cur_role != "assistant":
+                _flush()
+                cur_role = "assistant"
+            assistant_text.append(agent_delta)
+            _record_display_text(display_parts, agent_delta)
+            continue
+
+        thought_delta = _thought_from_update(update)
+        if thought_delta:
+            if cur_role != "assistant":
+                _flush()
+                cur_role = "assistant"
+            _record_display_reasoning(display_parts, thought_delta)
+            continue
+
+        inner = (
+            update.get("update") if isinstance(update.get("update"), dict) else update
+        )
+        kind = str(inner.get("sessionUpdate") or inner.get("type") or "")
+        if kind == "session_info_update":
+            new_title = inner.get("title")
+            if isinstance(new_title, str) and new_title.strip():
+                setattr(managed, "replayed_title", new_title.strip())
+            continue
+        if kind in {"tool_call", "toolCall", "tool_call_update", "toolCallUpdate"}:
+            tool_call_id = str(
+                inner.get("toolCallId")
+                or inner.get("tool_call_id")
+                or inner.get("id")
+                or ""
+            ).strip()
+            if not tool_call_id:
+                continue
+            if cur_role != "assistant":
+                _flush()
+                cur_role = "assistant"
+            has_explicit_name = any(
+                isinstance(inner.get(k), str) and inner.get(k).strip()
+                for k in ("name", "toolName", "tool_name", "kind")
+            )
+            tool_name = (
+                _infer_acp_tool_name(inner)
+                if (tool_call_id not in started_tools or has_explicit_name)
+                else None
+            )
+            started_tools.add(tool_call_id)
+            args_str, is_auth = _extract_acp_tool_args(inner)
+            if args_str and not is_auth and tool_call_id in authoritative_tool_args:
+                args_str = ""
+            if args_str and is_auth:
+                authoritative_tool_args.add(tool_call_id)
+            out_str = _extract_acp_tool_output(inner)
+            status = str(inner.get("status") or "").strip().lower()
+            is_done = status in ("completed", "done", "succeeded", "success")
+            is_failed = status in ("failed", "error", "cancelled", "rejected")
+            tool_state = (
+                "completed" if (is_done or is_failed or not status) else "running"
+            )
+            outcome = "failed" if is_failed else None
+            prev_out = last_tool_output.get(tool_call_id)
+            if out_str is not None:
+                last_tool_output[tool_call_id] = out_str
+            effective_out = out_str if out_str is not None else prev_out
+            _upsert_display_tool(
+                display_parts,
+                tool_call_id,
+                tool_name=tool_name,
+                args=args_str or None,
+                output=effective_out,
+                state=tool_state,
+                outcome=outcome,
+            )
+
+    _flush()
+    return messages
+
+
 async def _stream_prompt(
     managed: Any,
     message: str,
@@ -440,6 +596,24 @@ async def _stream_prompt(
                 else update
             )
             kind = str(inner.get("sessionUpdate") or inner.get("type") or "")
+
+            if kind == "session_info_update":
+                new_title = inner.get("title")
+                if isinstance(new_title, str) and new_title.strip():
+                    clean_title = new_title.strip()
+                    state["session_title"] = clean_title
+                    try:
+                        get_database().update_chat(managed.chat_id, title=clean_title)
+                    except Exception:
+                        pass
+                    yield _sse(
+                        {
+                            "type": "CUSTOM",
+                            "name": "chat_title_updated",
+                            "value": {"chat_id": managed.chat_id, "title": clean_title},
+                        }
+                    )
+                continue
 
             if kind in {"tool_call", "toolCall", "tool_call_update", "toolCallUpdate"}:
                 tool_call_id = str(
@@ -1119,6 +1293,15 @@ async def _run_acp_turn(
     try:
         requested_session = str(config.get("acp_session_id") or "").strip()
         managed = await get_acp_manager().ensure(chat_id, config)
+        if getattr(managed, "restored", False):
+            # session/load replays prior turns into managed.updates; drain them
+            # before _stream_prompt runs so prior history is never concatenated
+            # into the new assistant turn.
+            while not managed.updates.empty():
+                try:
+                    managed.updates.get_nowait()
+                except asyncio.QueueEmpty:
+                    break
         load_error = str(getattr(managed, "load_error", "") or "")
         if requested_session and not managed.resumed:
             # The agent could not load the prior session, so history is gone.
