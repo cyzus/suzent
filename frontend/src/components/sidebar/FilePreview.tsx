@@ -1,6 +1,8 @@
 import { useSidebarExpansion } from './SidebarExpansionContext';
 import React, { useMemo } from 'react';
-import { MarkdownRenderer, CodeBlock, MermaidDiagram } from '../';
+import { MarkdownRenderer } from '../chat/MarkdownRenderer';
+import { CodeBlock } from '../CodeBlock';
+import { MermaidDiagram } from '../MermaidDiagram';
 import {
   isImageFile,
   isPdfFile,

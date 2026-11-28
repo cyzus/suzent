@@ -161,21 +161,6 @@ class PathResolver:
         return host_part, container_part
 
     @staticmethod
-    def to_linux_path(path: str) -> str:
-        """
-        Convert Windows path to Linux/WSL path if applicable.
-        E.g. D:\\workspace -> /mnt/d/workspace
-        """
-        if os.name != "nt":
-            return path
-
-        path = path.replace("\\", "/")
-        if ":" in path:
-            drive, rest = path.split(":", 1)
-            return f"/mnt/{drive.lower()}{rest}"
-        return path
-
-    @staticmethod
     def get_skill_virtual_path(skill_name: str) -> str:
         """
         Get the virtual path for a skill's definition file.
@@ -481,22 +466,6 @@ class PathResolver:
             for _label, root in self.granted_roots(include_workspace=True)
         )
 
-    def is_path_allowed(self, path: Path) -> bool:
-        """
-        Check if a path is within allowed boundaries.
-
-        Args:
-            path: Path to check
-
-        Returns:
-            True if path is allowed, False otherwise
-        """
-        try:
-            self._validate_path(path.resolve())
-            return True
-        except ValueError:
-            return False
-
     def get_virtual_roots(self) -> List[Tuple[str, Path]]:
         """
         Get all top-level virtual roots and their host paths.
@@ -520,17 +489,6 @@ class PathResolver:
             roots.append((v_path, h_path))
 
         return roots
-
-    def is_shadowed(self, virtual_path: str) -> bool:
-        """
-        Check if a file at this virtual path would be hidden by a mount.
-
-        Note: This is a stub implementation that returns False.
-        Complex mount shadowing detection is not yet implemented.
-        """
-        # TODO: Implement robust shadowing check if complex nesting is needed.
-        # For now, strict mount lists in get_virtual_roots + standard resolution is safe.
-        return False
 
     def to_virtual_path(self, host_path: Path) -> Optional[str]:
         """

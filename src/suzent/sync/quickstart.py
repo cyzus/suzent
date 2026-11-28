@@ -50,14 +50,6 @@ def _resolve_quickstart_target(repo_path: Path | None) -> Path:
     return resolved
 
 
-def _remote_exists(path: Path, name: str = DEFAULT_REMOTE) -> bool:
-    try:
-        _git_in(path, "remote", "get-url", name)
-        return True
-    except RuntimeError:
-        return False
-
-
 def normalize_repo_name(name: str) -> str:
     cleaned = name.strip().lower() or DEFAULT_REPO_NAME
     if not REPO_NAME_RE.fullmatch(cleaned):
@@ -66,22 +58,6 @@ def normalize_repo_name(name: str) -> str:
             "and underscores."
         )
     return cleaned
-
-
-def normalize_github_remote(value: str) -> str:
-    raw = value.strip()
-    if not raw:
-        return ""
-    if raw.startswith("git@"):
-        return raw
-    if raw.startswith("http://") or raw.startswith("https://"):
-        cleaned = raw.rstrip("/")
-        return cleaned if cleaned.endswith(".git") else f"{cleaned}.git"
-    if re.fullmatch(r"[\w.-]+/[\w.-]+", raw):
-        return f"https://github.com/{raw}.git"
-    raise ValueError(
-        "GitHub repo must be owner/name, a github.com URL, or a git@github.com URL"
-    )
 
 
 def quickstart_github_sync(

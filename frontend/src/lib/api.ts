@@ -5,7 +5,6 @@ import {
   AcpAgentDescriptor,
   ChatGPTLoginResponse,
   ChatGPTStatusResponse,
-  ConfigOptions,
   PermissionMode,
   ThinkingEffort,
 } from '../types/api';
@@ -280,18 +279,6 @@ export async function setDefaultPermissionMode(
   });
   if (!response.ok) {
     throw new Error(`Failed to set default permission mode: ${response.status}`);
-  }
-  return response.json();
-}
-
-export async function restoreChatPermissionMode(chatId: string): Promise<PermissionModeState> {
-  const response = await fetch(`${getApiBase()}${resourcePaths.permissionMode(chatId)}`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ restorePrevious: true }),
-  });
-  if (!response.ok) {
-    throw new Error(`Failed to restore permission mode: ${response.status}`);
   }
   return response.json();
 }
@@ -609,12 +596,6 @@ export async function fetchMailProviders(): Promise<MailProvider[]> {
   return (await res.json()).providers;
 }
 
-export async function fetchMailAccounts(): Promise<MailAccount[]> {
-  const res = await fetch(`${getApiBase()}/plugins/email/api/accounts`);
-  if (!res.ok) throw new Error('Failed to fetch mail accounts');
-  return (await res.json()).accounts;
-}
-
 export async function fetchMailState(): Promise<{
   accounts: MailAccount[];
   oauthSignIn?: MailOAuthSignIn | null;
@@ -654,20 +635,6 @@ export async function testMailAccount(id: string): Promise<MailProbeResult> {
 
 export async function removeMailAccount(id: string): Promise<void> {
   await postMail('accounts/remove', { id });
-}
-
-// -----------------------------------------------------------------------------
-// Configuration
-// -----------------------------------------------------------------------------
-
-export async function fetchBackendConfig(): Promise<ConfigOptions | null> {
-  try {
-    const res = await fetch(`${getApiBase()}/config`);
-    if (!res.ok) return null;
-    return await res.json();
-  } catch {
-    return null;
-  }
 }
 
 // ─── Agent Client Protocol (ACP) ─────────────────────────────────────
@@ -865,23 +832,6 @@ function unwrapList<T>(payload: unknown, key: string): T[] {
   return [];
 }
 
-function unwrapAcpSession(payload: unknown): ACPSession {
-  const record = payload && typeof payload === 'object' ? (payload as Record<string, unknown>) : {};
-  const nested =
-    record.session && typeof record.session === 'object'
-      ? (record.session as Record<string, unknown>)
-      : record;
-  const id = nested.id ?? nested.session_id;
-  if (typeof id !== 'string' || !id)
-    throw new Error('ACP session response did not include a session id');
-  return {
-    ...(nested as unknown as ACPSession),
-    id,
-    agent_id: String(nested.agent_id ?? ''),
-    chat_id: typeof nested.chat_id === 'string' ? nested.chat_id : null,
-  };
-}
-
 export interface AcpProbeResult {
   status: 'ready' | 'auth_required';
   authMethods: { id: string; name: string; type: string }[];
@@ -925,30 +875,6 @@ export async function fetchAcpSessions(agentId: string): Promise<AcpAgentSession
     }))
     .filter((session) => !!session.id);
   return { saved, active: unwrapList<unknown>(payload, 'active').length };
-}
-
-export async function createAcpSession(agentId: string, chatId: string): Promise<ACPSession> {
-  const res = await fetch(`${getApiBase()}/acp/sessions`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ agent_id: agentId, chat_id: chatId }),
-  });
-  if (!res.ok) throw new Error((await res.text()) || `Failed to create ACP session: ${res.status}`);
-  return unwrapAcpSession(await res.json());
-}
-
-export async function resumeAcpSession(
-  agentId: string,
-  sessionId: string,
-  chatId: string
-): Promise<ACPSession> {
-  const res = await fetch(`${getApiBase()}/acp/sessions/resume`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ agent_id: agentId, session_id: sessionId, chat_id: chatId }),
-  });
-  if (!res.ok) throw new Error((await res.text()) || `Failed to resume ACP session: ${res.status}`);
-  return unwrapAcpSession(await res.json());
 }
 
 export async function discoverAcpSessions(params: {
@@ -1181,31 +1107,6 @@ export async function discoverNodes(
   return await res.json();
 }
 
-export async function connectNode(gateway_url: string, name = ''): Promise<void> {
-  const res = await fetch(`${getApiBase()}/nodes/connect`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ gateway_url, name }),
-  });
-  if (!res.ok) throw new Error((await res.text()) || 'Failed to connect');
-}
-
-export async function fetchConnections(): Promise<OutboundConnection[]> {
-  const res = await fetch(`${getApiBase()}/nodes/connections`);
-  if (!res.ok) return [];
-  const data = await res.json();
-  return data.connections || [];
-}
-
-export async function disconnectNode(gateway_url: string): Promise<void> {
-  const res = await fetch(`${getApiBase()}/nodes/connect/stop`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ gateway_url }),
-  });
-  if (!res.ok) throw new Error((await res.text()) || 'Failed to disconnect');
-}
-
 // ─── Control-grant (peer agent control) ──────────────────────────────
 
 export interface ControlRequest {
@@ -1251,15 +1152,6 @@ export async function fetchPeers(): Promise<ControlledPeer[]> {
   const res = await fetch(`${getApiBase()}/nodes/peers`);
   if (!res.ok) return [];
   return (await res.json()).peers || [];
-}
-
-export async function setPeerMode(peerId: string, mode: string): Promise<void> {
-  const res = await fetch(`${getApiBase()}/nodes/peers/${peerId}/mode`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ mode }),
-  });
-  if (!res.ok) throw new Error((await res.text()) || 'Failed to set mode');
 }
 
 /** Enable/disable the inbound direction: let this peer trigger our agent. */
@@ -1319,22 +1211,6 @@ export async function saveNodeConfig(updates: {
   return await res.json();
 }
 
-export async function saveGlobalSandboxConfig(sandbox_volumes: string[]): Promise<string[]> {
-  const res = await fetch(`${getApiBase()}/config/sandbox-global`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ sandbox_volumes }),
-  });
-
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(text || 'Failed to save global sandbox configuration');
-  }
-
-  const data = await res.json();
-  return data.globalSandboxVolumes || sandbox_volumes;
-}
-
 export async function saveUserPreferences(preferences: {
   model?: string;
   agent?: string;
@@ -1361,18 +1237,6 @@ export async function saveUserPreferences(preferences: {
   } catch (error) {
     console.error('Error saving preferences:', error);
     return false;
-  }
-}
-
-export async function fetchEmbeddingModels(): Promise<string[]> {
-  try {
-    const res = await fetch(`${getApiBase()}/config/embedding-models`);
-    if (!res.ok) return [];
-    const data = await res.json();
-    return data.models || [];
-  } catch (e) {
-    console.error('Error fetching embedding models:', e);
-    return [];
   }
 }
 
@@ -1502,20 +1366,6 @@ export async function deleteCustomProvider(
     const res = await fetch(`${getApiBase()}/config/providers/custom/${providerId}`, {
       method: 'DELETE',
     });
-    return await res.json();
-  } catch (e) {
-    return { success: false, error: String(e) };
-  }
-}
-
-export async function syncCapabilities(): Promise<{
-  success: boolean;
-  providers?: number;
-  models?: number;
-  error?: string;
-}> {
-  try {
-    const res = await fetch(`${getApiBase()}/config/capabilities/sync`, { method: 'POST' });
     return await res.json();
   } catch (e) {
     return { success: false, error: String(e) };
@@ -2367,12 +2217,6 @@ export async function fetchDailyCost(days = 30): Promise<CostDaily[]> {
   return res.json();
 }
 
-export async function fetchHourlyCost(days = 30): Promise<CostDaily[]> {
-  const res = await fetch(`${getApiBase()}/config/cost/hourly?days=${days}`);
-  if (!res.ok) throw new Error('Failed to fetch hourly cost');
-  return res.json();
-}
-
 export async function fetchActivityGrid(range: string): Promise<CostDaily[]> {
   const res = await fetch(`${getApiBase()}/config/cost/activity-grid?range=${range}`);
   if (!res.ok) throw new Error('Failed to fetch activity grid');
@@ -2437,14 +2281,6 @@ export async function resolveAcpPermission(
       (detail as { error?: string }).error || `Failed to resolve permission: ${res.status}`
     );
   }
-}
-
-export async function fetchAcpPermissions(chatId?: string): Promise<unknown[]> {
-  const query = chatId ? `?chat_id=${encodeURIComponent(chatId)}` : '';
-  const res = await fetch(`${getApiBase()}/acp/permissions${query}`);
-  if (!res.ok) throw new Error(`Failed to fetch permissions: ${res.status}`);
-  const data = await res.json();
-  return (data.pending as unknown[]) || [];
 }
 
 // ─── A2A (Agent2Agent) ───────────────────────────────────────────────
