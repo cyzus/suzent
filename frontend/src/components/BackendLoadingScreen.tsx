@@ -13,6 +13,8 @@ interface BackendLoadingScreenProps {
   onRetry?: () => void | Promise<void>;
   status?: string;
   progressHint?: number;
+  /** In a browser, the pages that still work without the host. */
+  troubleshootHref?: string;
 }
 
 // Map each setup step message to a progress percentage.
@@ -33,6 +35,7 @@ export function BackendLoadingScreen({
   onRetry,
   status,
   progressHint = 0,
+  troubleshootHref,
 }: BackendLoadingScreenProps): React.ReactElement {
   const locale = getInitialLocale();
   const t = (key: string, params?: Record<string, string>) => tForLocale(locale, key, params);
@@ -285,6 +288,14 @@ export function BackendLoadingScreen({
                 </p>
               )}
             </div>
+          )}
+          {error && troubleshootHref && (
+            <a
+              href={troubleshootHref}
+              className="mt-4 text-xs font-bold text-neutral-600 underline underline-offset-4 hover:text-black"
+            >
+              {t('app.openTroubleshooting')}
+            </a>
           )}
         </main>
       </div>

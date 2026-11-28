@@ -500,12 +500,8 @@ export const en = {
   },
   console: {
     nav: {
-      label: 'Console navigation',
-      title: 'Suzent',
       chat: 'Chat',
       ops: 'Operations',
-      collapse: 'Collapse sidebar',
-      expand: 'Expand sidebar',
     },
     ops: {
       title: 'Operations',
@@ -528,6 +524,9 @@ export const en = {
       cannotDisableSelf:
         'This service is serving the console. Turning it off here would leave no way to turn it back on remotely — run "suzent service uninstall" on the host instead.',
       unreachable: 'Could not reach this host. It may be restarting, or the connection is gone.',
+    },
+    offline: {
+      notice: "This host isn't answering. These pages still open while you find out why.",
     },
     health: {
       checking: 'Checking the connection',
@@ -563,6 +562,7 @@ export const en = {
   app: {
     title: 'Suzent',
     initializing: 'INITIALIZING',
+    openTroubleshooting: 'Open troubleshooting pages',
     connectingToCore: 'Connecting to Neural Core...',
     systemIdentity: 'SUZENT / SYSTEM',
     systemStartup: 'System startup',
@@ -1037,6 +1037,7 @@ export const en = {
     groups: {
       agent: 'Agent',
       connections: 'Connections',
+      host: 'Host',
       application: 'Application',
     },
     memoryConfig: {

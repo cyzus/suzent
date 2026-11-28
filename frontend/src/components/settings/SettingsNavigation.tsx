@@ -47,6 +47,7 @@ export type SettingsCategory =
   | 'security'
   | 'data'
   | 'usage'
+  | 'ops'
   | 'about';
 
 /** Every category id, for tests that check the console's list against it. */
@@ -69,6 +70,7 @@ export const SETTINGS_CATEGORY_IDS: readonly SettingsCategory[] = [
   'security',
   'data',
   'usage',
+  'ops',
   'about',
 ];
 
@@ -78,10 +80,12 @@ type CategoryDefinition = {
   icon: React.ComponentType<React.SVGProps<SVGSVGElement>>;
   /** Driven by Tauri commands, so it has nothing to show in a browser. */
   desktopOnly?: boolean;
+  /** The browser's answer to a desktop-only category, read over HTTP instead. */
+  webOnly?: boolean;
 };
 
 type CategoryGroup = {
-  id: 'agent' | 'connections' | 'application';
+  id: 'agent' | 'connections' | 'host' | 'application';
   labelKey: string;
   categories: CategoryDefinition[];
 };
@@ -131,6 +135,9 @@ const ALL_CATEGORY_GROUPS: CategoryGroup[] = [
         icon: CpuChipIcon,
         desktopOnly: true,
       },
+      // The background service tab drives Tauri commands; a browser asks the
+      // same questions of the host over /ops/*.
+      { id: 'ops', labelKey: 'console.nav.ops', icon: CpuChipIcon, webOnly: true },
       { id: 'security', labelKey: 'settings.categories.security', icon: ShieldCheckIcon },
       { id: 'data', labelKey: 'settings.categories.data', icon: CloudArrowUpIcon },
       { id: 'usage', labelKey: 'settings.categories.usage', icon: ChartBarIcon },
@@ -139,17 +146,59 @@ const ALL_CATEGORY_GROUPS: CategoryGroup[] = [
   },
 ];
 
-// Desktop settings use the global sidebar; the web console has its own navigation.
-// The browser filter is left in as a guard rather than a feature: a desktop-only
-// category rendered there could only report failure.
-//
+/**
+ * What a browser groups under the host.
+ *
+ * A browser is usually reaching a Suzent running somewhere else, so the pages
+ * about that machine -- who can reach it, what it is running, what it has
+ * spent -- are gathered where someone checking on it will look first. The
+ * desktop is that machine, and keeps them with the rest.
+ */
+const WEB_HOST_CATEGORIES: readonly SettingsCategory[] = ['devices', 'mesh', 'ops', 'usage'];
+
+function isAvailable(category: CategoryDefinition, web: boolean): boolean {
+  return web ? !category.desktopOnly : !category.webOnly;
+}
+
+/** Whether this shell has a page for the category. */
+export function isCategoryAvailable(id: SettingsCategory): boolean {
+  const category = ALL_CATEGORY_GROUPS.flatMap((group) => group.categories).find(
+    (candidate) => candidate.id === id
+  );
+  return category !== undefined && isAvailable(category, isWeb());
+}
+
+/** The label and icon a category is listed with. */
+export function categoryDefinition(id: SettingsCategory): CategoryDefinition | undefined {
+  return ALL_CATEGORY_GROUPS.flatMap((group) => group.categories).find(
+    (candidate) => candidate.id === id
+  );
+}
+
 // Computed per render rather than at module load: `isWeb()` reads `window`,
 // which does not exist when a test or a build tool merely imports this file.
-function visibleCategoryGroups(): CategoryGroup[] {
-  return ALL_CATEGORY_GROUPS.map((group) => ({
+export function visibleCategoryGroups(): CategoryGroup[] {
+  const web = isWeb();
+  const groups = ALL_CATEGORY_GROUPS.map((group) => ({
     ...group,
-    categories: group.categories.filter((category) => !isWeb() || !category.desktopOnly),
-  })).filter((group) => group.categories.length > 0);
+    categories: group.categories.filter((category) => isAvailable(category, web)),
+  }));
+
+  if (!web) return groups.filter((group) => group.categories.length > 0);
+
+  const all = groups.flatMap((group) => group.categories);
+  const host: CategoryGroup = {
+    id: 'host',
+    labelKey: 'settings.groups.host',
+    categories: WEB_HOST_CATEGORIES.flatMap((id) => all.filter((category) => category.id === id)),
+  };
+  const rest = groups.map((group) => ({
+    ...group,
+    categories: group.categories.filter((category) => !WEB_HOST_CATEGORIES.includes(category.id)),
+  }));
+  const applicationIndex = rest.findIndex((group) => group.id === 'application');
+  rest.splice(applicationIndex, 0, host);
+  return rest.filter((group) => group.categories.length > 0);
 }
 
 interface SettingsNavigationProps {

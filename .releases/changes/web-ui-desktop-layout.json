@@ -1,0 +1,1 @@
+{"products": {"desktop": "minor"}, "summary": "The web UI now uses the desktop app's layout: one sidebar whose chat list switches to a grouped settings list, with a Host group, the connected host shown under the sidebar, and troubleshooting pages that still open when the host is down."}

@@ -17,57 +17,45 @@ ordinary backend, so whatever already serves the API serves the UI too, from one
 origin — which is what lets the frontend use relative URLs and keep working
 behind a reverse proxy or a tunnel.
 
-## The browser gets a console, not the desktop window
+## The browser lays out like the desktop
 
-The desktop app is a chat window that keeps its operational surfaces folded
-into a settings modal. That is the right shape when the machine is in front of
-you. A browser session is the opposite case -- a headless host, reached from
-somewhere else -- so the same bundle renders a different shell there:
-`frontend/src/shells/WebShell.tsx`, chosen in `main.tsx` by `isWeb()`.
+A browser renders the same window as the desktop app: one left sidebar, whose
+chat list gives way to the settings list when settings opens. The shell is
+`frontend/src/shells/WebShell.tsx`, chosen in `main.tsx` by `isWeb()`. It used
+to be a separate console with its own nav listing every settings category as a
+top-level destination; beside the chat list that read as two sidebars, so it
+was folded back into the desktop layout.
 
-The console is a single left nav over a hash router (`wouter`): every page it
-can reach is one grouped list of destinations, with chat at the top and each
-settings category a route of its own (`#/providers`, `#/devices`, ...). The
-retired `#/settings` redirects to `#/providers`. Collapsed it is an icon rail;
-expanded it shows labels and group headings, and that choice is remembered.
+What a browser adds:
 
-Chat is the exception, because it is the one destination that brings a column of
-its own. There the nav is the rail and nothing but the rail (`railOnly`): no
-labels, no toggle, and a hairline instead of the heavy outer border, so the rail
-and the conversation list beside it read as one navigation with a list in it
-rather than as two sidebars. Two labelled columns before the conversation even
-starts was the shape this replaced.
-
-Destinations live in `frontend/src/shells/webRoutes.ts` -- one list, read by the
-nav, the router and the tests.
-
-The nav's footer carries the host it is talking to and its reachability. The
-theme -- light, dark, or the machine's own setting -- is a setting like any
-other and lives on the Appearance page (`#/appearance`) in both shells. The
-toggle the chat header used to carry is gone: it could not express "follow the
-machine", and it was drawn on one route of one shell.
-
-The console page replaces `<App>`'s own window rather than sitting beside it:
-`ConsoleRoute` renders one `<App>` for chat and for the settings routes and
-varies only its children, so moving between them keeps the tree -- the open
-conversation and the providers under it -- instead of mounting a second copy of
-the app. Chat's settings button navigates (`consolePathForCategory`) instead of
-opening the desktop's modal; `ChatWindow` unmounts on the way, so the composer's
-unsent text is held outside it and restored on return.
+- **An address for every settings category.** A hash router (`wouter`) maps
+  `#/providers`, `#/devices`, ... to categories (`shells/webRoutes.ts`). In a
+  browser `AppInner` follows the route: opening settings navigates, and the
+  route opens and closes the panel, so back, reload and bookmarks work. The
+  retired `#/settings` redirects to `#/providers`. The desktop keeps settings
+  in state.
+- **A Host group** in the settings list (`visibleCategoryGroups()`): Devices,
+  Mesh, Operations and Usage. A browser is usually reaching a host somewhere
+  else, so the pages about that machine sit together. Operations (`#/ops`) is
+  the browser's answer to the desktop-only Background Service category.
+- **The host under the sidebar** (`HostStatus`): which host this browser talks
+  to and whether it answers, since a stopped server, a dropped tunnel and a
+  revoked token look the same until a request fails.
 
 Two details are load-bearing:
 
 - **Hash routing** (`#/devices`), not paths. The server only ever sees `/`, so
   no pre-auth route has to be exempted from the device-token check in
-  `is_public_asset()`, and console navigation stays out of access logs.
-- **Operations, Devices, Mesh, Usage and About mount outside `<App>`**, so they
-  do not wait on its backend-readiness gate. A console opened against a
-  struggling host still shows the pages you opened it to look at. Chat and the
-  other settings categories do sit inside `<App>`: they need its provider stack,
-  which needs the backend.
+  `is_public_asset()`, and navigation stays out of access logs.
+- **Devices, Mesh, Operations, Usage and About still open without the host.**
+  When the backend has not answered within a few seconds, or has failed, `App`
+  renders these routes in `OfflineConsole` instead of the loading screen; the
+  loading screen's error state links to them. They take no props and read no
+  shared settings state. Everything else waits for the backend, as on the
+  desktop.
 
 Everything under `components/`, `hooks/`, `lib/` and `i18n/` is shared by both
-shells. The console reuses the settings tabs verbatim rather than restating
+shells. The browser reuses the settings tabs verbatim rather than restating
 them.
 
 ## Operations over HTTP
@@ -190,7 +178,7 @@ the same Vite server before opening the Electron window) serves the UI on
 
 - the **Electron window** gets the desktop shell, because its preload exposes the
   desktop bridge
-- a **browser tab** at `http://127.0.0.1:18080` gets the console
+- a **browser tab** at `http://127.0.0.1:18080` gets the browser layout
 
 You can keep both open against the same Vite process and watch a change land in
 each at once, which is the cheapest way to see where the two shells differ.
