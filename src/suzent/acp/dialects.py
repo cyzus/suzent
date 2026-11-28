@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import os
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -321,7 +322,6 @@ def discover_local_agent_sessions(
     target_cwd_norm = _normalize_cwd_for_match(cwd) if cwd else ""
     aid = (agent_id or "").strip().lower()
     q_norm = (query or "").strip().lower()
-    scan_limit = max(limit * 4, 60) if q_norm else limit
 
     items: list[dict[str, Any]] = []
     if not aid or aid in ("all", "claude-code", "claude-code-api", "claude-acp"):
@@ -330,7 +330,8 @@ def discover_local_agent_sessions(
                 base_home,
                 target_cwd_norm,
                 cwd or "",
-                limit=scan_limit,
+                limit=limit,
+                query_norm=q_norm,
                 exclude_ids=exclude_ids,
             )
         )
@@ -339,23 +340,14 @@ def discover_local_agent_sessions(
             _discover_codex_sessions(
                 base_home,
                 target_cwd_norm,
-                limit=scan_limit,
+                limit=limit,
+                query_norm=q_norm,
                 exclude_ids=exclude_ids,
             )
         )
 
     if exclude_ids:
         items = [it for it in items if it.get("session_id") not in exclude_ids]
-
-    if q_norm:
-        items = [
-            it
-            for it in items
-            if q_norm in str(it.get("title") or "").lower()
-            or q_norm in str(it.get("session_id") or "").lower()
-            or q_norm in str(it.get("cwd") or "").lower()
-            or q_norm in str(it.get("agent_id") or "").lower()
-        ]
 
     items.sort(key=lambda it: float(it.get("mtime") or 0.0), reverse=True)
     return items[:limit]
@@ -367,6 +359,7 @@ def _discover_claude_sessions(
     raw_cwd: str,
     *,
     limit: int = 15,
+    query_norm: str = "",
     exclude_ids: set[str] | None = None,
 ) -> list[dict[str, Any]]:
     projects_root = home / ".claude" / "projects"
@@ -486,6 +479,19 @@ def _discover_claude_sessions(
             and _normalize_cwd_for_match(session_cwd) != target_cwd_norm
         ):
             continue
+        effective_cwd = session_cwd or raw_cwd
+        if query_norm and not (
+            query_norm in title.lower()
+            or query_norm in session_id.lower()
+            or query_norm in effective_cwd.lower()
+            or query_norm in "claude-code"
+        ):
+            continue
+        latest_iso = (
+            datetime.fromtimestamp(mtime, tz=timezone.utc).isoformat()
+            if mtime > 0
+            else updated_iso
+        )
 
         seen_ids.add(session_id)
         results.append(
@@ -493,8 +499,8 @@ def _discover_claude_sessions(
                 "session_id": session_id,
                 "agent_id": "claude-code",
                 "title": title,
-                "cwd": session_cwd or raw_cwd,
-                "updated_at": updated_iso,
+                "cwd": effective_cwd,
+                "updated_at": latest_iso or updated_iso,
                 "mtime": mtime,
             }
         )
@@ -535,6 +541,7 @@ def _discover_codex_sessions(
     target_cwd_norm: str,
     *,
     limit: int = 15,
+    query_norm: str = "",
     exclude_ids: set[str] | None = None,
 ) -> list[dict[str, Any]]:
     sessions_root = home / ".codex" / "sessions"
@@ -660,6 +667,18 @@ def _discover_codex_sessions(
             and _normalize_cwd_for_match(session_cwd) != target_cwd_norm
         ):
             continue
+        if query_norm and not (
+            query_norm in title.lower()
+            or query_norm in session_id.lower()
+            or query_norm in session_cwd.lower()
+            or query_norm in "codex"
+        ):
+            continue
+        latest_iso = (
+            datetime.fromtimestamp(mtime, tz=timezone.utc).isoformat()
+            if mtime > 0
+            else updated_iso
+        )
 
         seen_ids.add(session_id)
         results.append(
@@ -668,7 +687,7 @@ def _discover_codex_sessions(
                 "agent_id": "codex",
                 "title": title,
                 "cwd": session_cwd,
-                "updated_at": updated_iso,
+                "updated_at": latest_iso or updated_iso,
                 "mtime": mtime,
             }
         )

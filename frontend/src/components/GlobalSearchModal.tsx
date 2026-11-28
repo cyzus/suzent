@@ -109,10 +109,11 @@ export const GlobalSearchModal: React.FC<GlobalSearchModalProps> = ({
     setTimeout(() => inputRef.current?.focus(), 10);
 
     // Fetch artifacts snapshot
+    let cancelled = false;
     fetch(`${getApiBase()}/artifacts`)
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
-        if (data && Array.isArray(data.items)) {
+        if (!cancelled && data && Array.isArray(data.items)) {
           setArtifacts(data.items);
         }
       })
@@ -120,24 +121,20 @@ export const GlobalSearchModal: React.FC<GlobalSearchModalProps> = ({
 
     // Fetch scheduled tasks
     fetchCronJobs()
-      .then((jobs) => setCronJobs(jobs))
+      .then((jobs) => {
+        if (!cancelled) setCronJobs(jobs);
+      })
       .catch(() => {});
 
-    // Discover recent external CLI sessions (Claude Code / Codex) with zero wakeup
-    discoverAcpSessions({})
-      .then((res) => setExternalSessions(res.sessions))
-      .catch(() => {});
-
-    // Load recent archival memories
-    memoryApi
-      .searchArchivalMemory('', 'default-user', 12, 0)
-      .then((res) => setMemories(res.memories || []))
-      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
   }, [open]);
 
   // Debounced live search when query changes
   useEffect(() => {
     if (!open) return;
+    let cancelled = false;
     const trimmed = query.trim();
     const timer = setTimeout(() => {
       // 1. Search chats from backend without mutating sidebar store
@@ -147,7 +144,7 @@ export const GlobalSearchModal: React.FC<GlobalSearchModalProps> = ({
         )
           .then((res) => (res.ok ? res.json() : null))
           .then((data) => {
-            if (data && Array.isArray(data.chats)) {
+            if (!cancelled && data && Array.isArray(data.chats)) {
               setSearchedChats(data.chats);
             }
           })
@@ -158,17 +155,24 @@ export const GlobalSearchModal: React.FC<GlobalSearchModalProps> = ({
 
       // 2. Discover external CLI sessions filtered by query
       discoverAcpSessions({ query: trimmed || undefined })
-        .then((res) => setExternalSessions(res.sessions))
+        .then((res) => {
+          if (!cancelled) setExternalSessions(res.sessions);
+        })
         .catch(() => {});
 
       // 3. Search archival memories
       memoryApi
         .searchArchivalMemory(trimmed, 'default-user', 12, 0)
-        .then((res) => setMemories(res.memories || []))
+        .then((res) => {
+          if (!cancelled) setMemories(res.memories || []);
+        })
         .catch(() => {});
     }, 180);
 
-    return () => clearTimeout(timer);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
   }, [open, query]);
 
   const handleAdoptExternal = useCallback(
