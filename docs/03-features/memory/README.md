@@ -158,6 +158,9 @@ uses **Memory Extraction**, and memory search uses **Embedding** (see
 How often the organizer runs, where the notebook lives, and other tuning are in
 [Advanced memory settings](./configuration.md).
 
+Claude Code, Codex and other agents on your computer can search this memory too, and
+save to it if you allow it. See [Share memory with other agents](./other-agents.md).
+
 ## Checking and tidying your memory files
 
 Two commands help when memory has grown untidy:

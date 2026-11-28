@@ -153,6 +153,9 @@ class ConfigModel(BaseModel):
     # ordinary ingest.
     memory_consolidation_min_confirmations: int = 25
     memory_map_max_lines: int = 30
+    # Lets other agents on this computer (Claude Code, Codex, ...) write memories
+    # through `suzent mcp serve`. Reading is always allowed from loopback.
+    memory_external_write: bool = False
     memory_consolidation_model: Optional[str] = None
     memory_dream_tools: List[str] = [
         "ReadFileTool",

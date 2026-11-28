@@ -8,6 +8,8 @@ Usage:
     suzent mcp remove sqlite
     suzent mcp enable sqlite
     suzent mcp disable sqlite
+    suzent mcp serve            # serve Suzent's memory to other agents over stdio
+    suzent mcp skill --dir ~/.claude/skills   # install the matching agent skill
 
 Backend routes (see src/suzent/routes/mcp_routes.py):
     GET  /mcp_servers           -> {urls, stdio, headers, enabled} parallel dicts
@@ -17,6 +19,7 @@ Backend routes (see src/suzent/routes/mcp_routes.py):
 """
 
 import asyncio
+from pathlib import Path
 from typing import Optional
 
 import typer
@@ -24,7 +27,59 @@ import typer
 from suzent.client import get_client
 from suzent.client.base import ClientError
 
-mcp_app = typer.Typer(help="Manage MCP (Model Context Protocol) servers.")
+mcp_app = typer.Typer(
+    help="Manage MCP (Model Context Protocol) servers, or serve memory to other agents."
+)
+
+
+@mcp_app.command("serve")
+def serve(
+    agent: Optional[str] = typer.Option(
+        None,
+        "--agent",
+        help="Name memories are tagged with (default: the MCP client's own name)",
+    ),
+    server_url: Optional[str] = typer.Option(
+        None,
+        "--server-url",
+        help="Local backend URL (default: the running local backend)",
+    ),
+    log_level: str = typer.Option(
+        "WARNING",
+        "--log-level",
+        help="Log level for diagnostics on stderr (stdout carries the protocol)",
+    ),
+):
+    """Serve Suzent's memory as an MCP server on stdin/stdout.
+
+    Add it to another agent, e.g. `claude mcp add suzent -- suzent mcp serve`.
+    """
+    from suzent.acp.server import redirect_logs_to_stderr
+    from suzent.memory.mcp_server import serve_stdio
+
+    redirect_logs_to_stderr(log_level)
+    raise typer.Exit(code=asyncio.run(serve_stdio(base_url=server_url, agent=agent)))
+
+
+@mcp_app.command("skill")
+def skill(
+    directory: Optional[Path] = typer.Option(
+        None,
+        "--dir",
+        help="Skills folder to install into, e.g. ~/.claude/skills (default: print it)",
+    ),
+):
+    """Print or install the skill that teaches other agents to use Suzent's memory."""
+    from suzent.memory.mcp_server import SKILL_PATH
+
+    text = SKILL_PATH.read_text(encoding="utf-8")
+    if directory is None:
+        typer.echo(text, nl=False)
+        return
+    target = directory.expanduser() / "suzent-memory" / "SKILL.md"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(text, encoding="utf-8")
+    typer.echo(f"Installed {target}")
 
 
 def _parse_kv_list(items: list[str], what: str) -> dict[str, str]:

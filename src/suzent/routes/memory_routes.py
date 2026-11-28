@@ -8,9 +8,12 @@ This module handles all memory endpoints including:
 """
 
 import json
+import re
 import traceback
 from datetime import datetime, timedelta, timezone
-from typing import Any, Optional
+from typing import Any, Literal, Optional
+
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from starlette.concurrency import run_in_threadpool
 from starlette.requests import Request
 from starlette.responses import JSONResponse
@@ -805,3 +808,100 @@ async def get_dream_status(request: Request) -> JSONResponse:
     except Exception as e:
         logger.error(f"Error getting dream status: {traceback.format_exc()}")
         return JSONResponse({"error": str(e)}, status_code=500)
+
+
+class ExternalRememberRequest(BaseModel):
+    """A memory written by another agent through `suzent mcp serve`."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    fact: str = Field(min_length=1, max_length=1000)
+    kind: Literal["user", "experience", "world"] = "user"
+    category: Literal["personal", "preference", "goal", "context", "technical"] = (
+        "context"
+    )
+    horizon: Literal["durable", "dated"] = "durable"
+    evidence: str = Field(default="", max_length=300)
+    agent: str = Field(default="", max_length=80)
+
+
+def agent_slug(name: str) -> str:
+    """A tag-safe name for the agent that wrote a memory, `agent` when unknown."""
+    slug = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")[:40].strip("-")
+    return slug or "agent"
+
+
+async def get_external_access(request: Request) -> JSONResponse:
+    """GET /memory/external-access — whether other agents may write memories."""
+    return JSONResponse({"write_enabled": bool(CONFIG.memory_external_write)})
+
+
+async def save_external_access(request: Request) -> JSONResponse:
+    """POST /memory/external-access — switch writes from other agents on or off."""
+    from suzent.routes.config_routes import (
+        _load_local_config_file,
+        _save_local_config_file,
+    )
+
+    try:
+        payload = await request.json()
+    except Exception:
+        return JSONResponse({"error": "Invalid JSON body"}, status_code=400)
+    value = payload.get("write_enabled") if isinstance(payload, dict) else None
+    if not isinstance(value, bool):
+        return JSONResponse(
+            {"error": "write_enabled must be a boolean"}, status_code=400
+        )
+
+    cfg = _load_local_config_file()
+    cfg["memory_external_write"] = value
+    _save_local_config_file(cfg)
+    CONFIG.memory_external_write = value
+    logger.info(f"Memory writes from other agents {'enabled' if value else 'disabled'}")
+    return JSONResponse({"write_enabled": value})
+
+
+async def remember_from_external_agent(request: Request) -> JSONResponse:
+    """POST /memory/remember — another agent records a memory.
+
+    Off until the user enables it in Settings > Memory. The fact goes to today's
+    log tagged with the writing agent, and the dream files it like any other
+    candidate; nothing here can retract or edit an existing memory.
+    """
+    if not CONFIG.memory_external_write:
+        return JSONResponse(
+            {
+                "error": (
+                    "Writing memories from other agents is off. Turn on "
+                    "Settings > Memory System > Other agents in Suzent to allow it."
+                ),
+                "reasonCode": "external_write_disabled",
+            },
+            status_code=403,
+        )
+    try:
+        body = ExternalRememberRequest.model_validate(await request.json())
+    except (ValidationError, ValueError) as e:
+        return JSONResponse({"error": f"Invalid request: {e}"}, status_code=400)
+    fact = " ".join(body.fact.split())
+    if not fact:
+        return JSONResponse({"error": "fact is empty"}, status_code=400)
+
+    manager = await _get_or_initialize_memory_manager()
+    if not manager:
+        return JSONResponse({"error": "Memory system not initialized"}, status_code=503)
+    try:
+        result = await manager.apply_memory_update(
+            user_id=CONFIG.user_id,
+            chat_id="",
+            fact=fact,
+            kind=body.kind,
+            category=body.category,
+            horizon=body.horizon,
+            evidence=" ".join(body.evidence.split()),
+            via=agent_slug(body.agent),
+        )
+    except Exception:
+        logger.error(f"External memory write failed: {traceback.format_exc()}")
+        return JSONResponse({"error": "Could not write the memory"}, status_code=500)
+    return JSONResponse({"written": result["written"]})

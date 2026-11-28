@@ -159,6 +159,8 @@ To install or write a skill, ask the agent. See [Skills](../03-features/skills.m
 | `suzent mcp enable <name>` | Enable a server. | |
 | `suzent mcp disable <name>` | Disable a server. | |
 | `suzent mcp remove <name>` | Remove a server. | |
+| `suzent mcp serve` | Let another agent, such as Claude Code or Codex, use your memory. You don't run this yourself: add it to that app as an MCP server. See [Share memory with other agents](../03-features/memory/other-agents.md). | `--agent` |
+| `suzent mcp skill` | Print the skill that teaches other agents when to use your memory, or install it. | `--dir` |
 
 For example:
 

@@ -71,6 +71,8 @@ Everything the Memory panel does is available over HTTP, on the same port as the
 | `/memory/dream/status` | GET | Consolidation progress and pending work |
 | `/memory/consolidate` | POST | Run consolidation now |
 | `/memory/lint` | POST | Run the notebook audit now |
+| `/memory/external-access` | GET/POST | Whether other agents may write memories (`write_enabled`) |
+| `/memory/remember` | POST | Another agent records a fact; 403 `external_write_disabled` until allowed |
 
 Editing a core block through `PUT /memory/core` writes its file as-is; `MEMORY.md` is
 a curated map, not a fact store — see

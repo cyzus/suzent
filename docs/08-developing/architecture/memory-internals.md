@@ -190,6 +190,30 @@ An adjacent session route belongs to the session layer rather than memory:
 |----------|--------|-------------|
 | `/session/{id}/state` | GET | Get agent state snapshot |
 
+## Memory MCP server
+
+`suzent mcp serve` (`src/suzent/memory/mcp_server.py`) serves memory to other agents
+over stdio MCP. Like `suzent acp` it is a translator: each tool is one loopback call,
+so the running backend stays the only owner of the files and index, and it refuses a
+non-loopback `--server-url`.
+
+| Tool | Route |
+|------|-------|
+| `memory_search` | `GET /memory/archival?query=` (with `kinds` when `kind` is given) |
+| `memory_profile` | `GET /memory/core`, keeping the `user` and `facts` blocks and dropping `persona` |
+| `memory_remember` | `POST /memory/remember` |
+
+`/memory/remember` is refused until `memory_external_write` is on (Settings → Memory
+System → Other agents). It calls `MemoryManager.apply_memory_update` with `via`, the
+slug of the MCP client's `clientInfo.name` or `--agent`. A fact written that way is
+tagged `source:external_agent via:<agent>` for `kind:user` (never `explicit`), and keeps
+the usual source tag plus `via:` for the other kinds. The dream brief tells the dream it
+never wins over the user's own words. Retraction is not exposed.
+
+The skill that teaches agents when to call these tools ships in the package at
+`src/suzent/memory/agent_skill/SKILL.md`; `suzent mcp skill` prints or installs it.
+Both commands keep stdout free of log lines (`_stdout_is_reserved` in the CLI callback).
+
 ## Tombstones do not change a file's mtime
 
 The indexer is delete-then-add keyed on mtime, so appending a tombstone does not cause the
