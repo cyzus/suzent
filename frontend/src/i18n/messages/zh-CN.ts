@@ -471,12 +471,8 @@ export const zhCN = {
   },
   console: {
     nav: {
-      label: '控制台导航',
-      title: 'Suzent',
       chat: '对话',
       ops: '运维',
-      collapse: '收起侧边栏',
-      expand: '展开侧边栏',
     },
     ops: {
       title: '运维',
@@ -497,6 +493,9 @@ export const zhCN = {
       cannotDisableSelf:
         '该服务正在提供本控制台。在此关闭它将无法再远程开启 —— 请在主机上执行 “suzent service uninstall”。',
       unreachable: '无法连接到该主机。它可能正在重启，或者连接已断开。',
+    },
+    offline: {
+      notice: '暂时连不上这台主机。下面这些页面仍然可以打开，方便排查。',
     },
     health: {
       checking: '正在检查连接',
@@ -532,6 +531,7 @@ export const zhCN = {
   app: {
     title: 'Suzent',
     initializing: '初始化中',
+    openTroubleshooting: '打开排查页面',
     connectingToCore: '正在连接核心服务...',
     systemIdentity: 'SUZENT / 系统',
     systemStartup: '系统启动',

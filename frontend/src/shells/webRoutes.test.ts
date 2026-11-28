@@ -1,70 +1,78 @@
 import { describe, expect, it } from 'vitest';
 
 import { tForLocale, type Locale } from '../i18n';
-import { LEGACY_SETTINGS_TARGET, WEB_DESTINATIONS, WEB_DESTINATION_GROUPS } from './webRoutes';
-import { SETTINGS_CATEGORY_IDS } from '../components/settings/SettingsNavigation';
+import {
+  CHAT_PATH,
+  LEGACY_SETTINGS_TARGET,
+  OFFLINE_CATEGORIES,
+  categoryForPath,
+  offlineCategoryForPath,
+  pathForCategory,
+} from './webRoutes';
+import {
+  SETTINGS_CATEGORY_IDS,
+  isCategoryAvailable,
+  visibleCategoryGroups,
+} from '../components/settings/SettingsNavigation';
 
 const LOCALES: Locale[] = ['en', 'zh-CN'];
 
 /** Categories a browser cannot show: both drive Tauri commands. */
 const DESKTOP_ONLY = ['browser', 'service'];
 
-describe('WEB_DESTINATIONS', () => {
-  it('has chat at the root, since that is also the fallback route', () => {
-    expect(WEB_DESTINATIONS[0]?.path).toBe('/');
+describe('web routes', () => {
+  it('round-trips every category a browser can show', () => {
+    for (const id of SETTINGS_CATEGORY_IDS) {
+      if (DESKTOP_ONLY.includes(id)) continue;
+      expect(categoryForPath(pathForCategory(id)), id).toBe(id);
+    }
   });
 
-  it('gives every destination a distinct path', () => {
-    const paths = WEB_DESTINATIONS.map((d) => d.path);
-    expect(new Set(paths).size).toBe(paths.length);
+  it('keeps desktop-only categories unroutable', () => {
+    for (const id of DESKTOP_ONLY) {
+      expect(categoryForPath(`/${id}`), id).toBeNull();
+    }
   });
 
-  it('labels every destination in every locale', () => {
+  it('treats chat and unknown paths as chat', () => {
+    expect(categoryForPath(CHAT_PATH)).toBeNull();
+    expect(categoryForPath('/no-such-page')).toBeNull();
+  });
+
+  it('sends the retired settings route at a category that exists', () => {
+    expect(categoryForPath(LEGACY_SETTINGS_TARGET)).not.toBeNull();
+  });
+
+  it('opens only the troubleshooting pages without the host', () => {
+    expect(offlineCategoryForPath('/devices')).toBe('devices');
+    expect(offlineCategoryForPath('/ops')).toBe('ops');
+    expect(offlineCategoryForPath('/providers')).toBeNull();
+    for (const id of OFFLINE_CATEGORIES) expect(isCategoryAvailable(id), id).toBe(true);
+  });
+});
+
+describe('settings navigation in a browser', () => {
+  it('lists every category a browser can show exactly once', () => {
+    const listed = visibleCategoryGroups().flatMap((group) =>
+      group.categories.map((category) => category.id)
+    );
+    expect(new Set(listed).size).toBe(listed.length);
+    const expected = SETTINGS_CATEGORY_IDS.filter((id) => !DESKTOP_ONLY.includes(id));
+    expect([...listed].sort()).toEqual([...expected].sort());
+  });
+
+  it('labels every group and category in every locale', () => {
     // A missing key falls back to the key itself, which would ship a sidebar of
     // dotted identifiers rather than words.
     for (const locale of LOCALES) {
-      for (const { labelKey } of WEB_DESTINATIONS) {
-        expect(tForLocale(locale, labelKey), `${locale}:${labelKey}`).not.toBe(labelKey);
+      for (const group of visibleCategoryGroups()) {
+        expect(tForLocale(locale, group.labelKey), `${locale}:${group.labelKey}`).not.toBe(
+          group.labelKey
+        );
+        for (const { labelKey } of group.categories) {
+          expect(tForLocale(locale, labelKey), `${locale}:${labelKey}`).not.toBe(labelKey);
+        }
       }
     }
-  });
-
-  it('labels every group heading in every locale', () => {
-    for (const locale of LOCALES) {
-      for (const { labelKey } of WEB_DESTINATION_GROUPS) {
-        if (!labelKey) continue;
-        expect(tForLocale(locale, labelKey), `${locale}:${labelKey}`).not.toBe(labelKey);
-      }
-    }
-  });
-
-  it('names only settings categories that actually exist', () => {
-    // A typo here would render an empty page: the panel switch matches on this
-    // string and has no branch that reports not recognising one.
-    for (const { category } of WEB_DESTINATIONS) {
-      if (category === undefined) continue;
-      expect(SETTINGS_CATEGORY_IDS, category).toContain(category);
-    }
-  });
-
-  it('gives every category a distinct destination', () => {
-    // Two routes onto one category is the duplication the old rail-plus-sidebar
-    // split had to be policed for.
-    const categories = WEB_DESTINATIONS.flatMap((d) => (d.category ? [d.category] : []));
-    expect(new Set(categories).size).toBe(categories.length);
-  });
-
-  it('reaches every category a browser can show', () => {
-    // The point of merging the two navigations: nothing is left behind in a
-    // list that no longer exists.
-    const reachable = new Set(WEB_DESTINATIONS.map((d) => d.category));
-    const missing = SETTINGS_CATEGORY_IDS.filter(
-      (id) => !DESKTOP_ONLY.includes(id) && !reachable.has(id)
-    );
-    expect(missing).toEqual([]);
-  });
-
-  it('sends the retired settings route at a destination that exists', () => {
-    expect(WEB_DESTINATIONS.map((d) => d.path)).toContain(LEGACY_SETTINGS_TARGET);
   });
 });

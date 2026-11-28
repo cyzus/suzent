@@ -5,6 +5,8 @@ import { detectDesktopPlatform } from '../../lib/titleBarPlatform';
 import { PanelResizeHandle } from '../PanelResizeHandle';
 import { LEFT_SIDEBAR_WIDTH_PX, MIN_LEFT_SIDEBAR_WIDTH_PX } from '../../lib/layout';
 import { SidebarToggleIcon } from '../SidebarToggleIcon';
+import { isWeb } from '../../lib/runtime';
+import { HostStatus } from './HostStatus';
 
 interface SidebarProps {
   chatsContent: React.ReactNode;
@@ -68,8 +70,7 @@ export function Sidebar({
         style={{
           width: isDesktop ? width : '100%',
           marginLeft: isDesktop && !isOpen ? -width : 0,
-          // The web console adds a navigation rail before this panel. Anchor the
-          // drawer to the viewport so translating it out cannot leave that rail's width visible.
+          // Anchor the mobile drawer to the viewport so translating it out leaves nothing visible.
           left: isDesktop ? undefined : 0,
           visibility: isOpen ? 'visible' : 'hidden',
         }}
@@ -152,6 +153,7 @@ export function Sidebar({
               </svg>
             </button>
           )}
+          {isWeb() && <HostStatus />}
         </div>
       </aside>
     </>
