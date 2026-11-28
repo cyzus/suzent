@@ -26,7 +26,9 @@
       "supports_function_calling": true,
       "supports_reasoning": true,
       "supports_response_schema": true,
-      "supports_video": true
+      "supports_video": true,
+      "input_cost_per_token": 6e-07,
+      "output_cost_per_token": 3e-06
     },
     "moonshot/kimi-k2.6": {
       "mode": "chat",
@@ -36,7 +38,9 @@
       "supports_function_calling": true,
       "supports_reasoning": true,
       "supports_response_schema": true,
-      "supports_video": true
+      "supports_video": true,
+      "input_cost_per_token": 9.5e-07,
+      "output_cost_per_token": 4e-06
     },
     "moonshot/kimi-latest": {
       "mode": "chat",
@@ -91,7 +95,9 @@
       "max_input_tokens": 131072,
       "max_output_tokens": 131072,
       "supports_function_calling": true,
-      "supports_response_schema": true
+      "supports_response_schema": true,
+      "input_cost_per_token": 2e-06,
+      "output_cost_per_token": 5e-06
     },
     "moonshot/moonshot-v1-128k-0430": {
       "mode": "chat",
@@ -105,14 +111,18 @@
       "max_output_tokens": 131072,
       "supports_vision": true,
       "supports_function_calling": true,
-      "supports_response_schema": true
+      "supports_response_schema": true,
+      "input_cost_per_token": 2e-06,
+      "output_cost_per_token": 5e-06
     },
     "moonshot/moonshot-v1-32k": {
       "mode": "chat",
       "max_input_tokens": 32768,
       "max_output_tokens": 32768,
       "supports_function_calling": true,
-      "supports_response_schema": true
+      "supports_response_schema": true,
+      "input_cost_per_token": 1e-06,
+      "output_cost_per_token": 3e-06
     },
     "moonshot/moonshot-v1-32k-0430": {
       "mode": "chat",
@@ -126,14 +136,18 @@
       "max_output_tokens": 32768,
       "supports_vision": true,
       "supports_function_calling": true,
-      "supports_response_schema": true
+      "supports_response_schema": true,
+      "input_cost_per_token": 1e-06,
+      "output_cost_per_token": 3e-06
     },
     "moonshot/moonshot-v1-8k": {
       "mode": "chat",
       "max_input_tokens": 8192,
       "max_output_tokens": 8192,
       "supports_function_calling": true,
-      "supports_response_schema": true
+      "supports_response_schema": true,
+      "input_cost_per_token": 2e-07,
+      "output_cost_per_token": 2e-06
     },
     "moonshot/moonshot-v1-8k-0430": {
       "mode": "chat",
@@ -147,14 +161,18 @@
       "max_output_tokens": 8192,
       "supports_vision": true,
       "supports_function_calling": true,
-      "supports_response_schema": true
+      "supports_response_schema": true,
+      "input_cost_per_token": 2e-07,
+      "output_cost_per_token": 2e-06
     },
     "moonshot/moonshot-v1-auto": {
       "mode": "chat",
       "max_input_tokens": 131072,
       "max_output_tokens": 131072,
       "supports_function_calling": true,
-      "supports_response_schema": true
+      "supports_response_schema": true,
+      "input_cost_per_token": 2e-06,
+      "output_cost_per_token": 5e-06
     },
     "moonshot/kimi-k3": {
       "mode": "chat",
@@ -165,7 +183,9 @@
       "supports_response_schema": true,
       "supports_reasoning": true,
       "supports_video": true,
-      "supports_prompt_caching": true
+      "supports_prompt_caching": true,
+      "input_cost_per_token": 3e-06,
+      "output_cost_per_token": 1.5e-05
     },
     "moonshot/kimi-k2.7-code": {
       "mode": "chat",
@@ -176,7 +196,9 @@
       "supports_response_schema": true,
       "supports_reasoning": true,
       "supports_prompt_caching": true,
-      "supports_video": true
+      "supports_video": true,
+      "input_cost_per_token": 9.5e-07,
+      "output_cost_per_token": 4e-06
     },
     "moonshot/kimi-k2.7-code-highspeed": {
       "mode": "chat"
@@ -189,7 +211,9 @@
       "supports_function_calling": true,
       "supports_response_schema": true,
       "supports_reasoning": true,
-      "supports_prompt_caching": true
+      "supports_prompt_caching": true,
+      "input_cost_per_token": 2e-06,
+      "output_cost_per_token": 1e-05
     },
     "moonshot/kimi-k3.1-pro-highspeed": {
       "mode": "chat",
@@ -199,7 +223,9 @@
       "supports_function_calling": true,
       "supports_response_schema": true,
       "supports_reasoning": true,
-      "supports_prompt_caching": true
+      "supports_prompt_caching": true,
+      "input_cost_per_token": 4e-06,
+      "output_cost_per_token": 2e-05
     }
   }
 }

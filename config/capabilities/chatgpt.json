@@ -35,7 +35,7 @@
     },
     "chatgpt/gpt-5.3-codex": {
       "mode": "chat",
-      "max_input_tokens": 128000,
+      "max_input_tokens": 272000,
       "max_output_tokens": 128000,
       "supports_vision": true,
       "supports_function_calling": true,
@@ -47,7 +47,7 @@
     },
     "chatgpt/gpt-5.2": {
       "mode": "chat",
-      "max_input_tokens": 128000,
+      "max_input_tokens": 272000,
       "max_output_tokens": 64000,
       "supports_vision": true,
       "supports_function_calling": true,
@@ -113,7 +113,7 @@
     },
     "chatgpt/gpt-5.2-codex": {
       "mode": "chat",
-      "max_input_tokens": 128000,
+      "max_input_tokens": 272000,
       "max_output_tokens": 128000,
       "supports_vision": true,
       "supports_function_calling": true,
@@ -125,7 +125,7 @@
     },
     "chatgpt/gpt-5.1-codex-max": {
       "mode": "chat",
-      "max_input_tokens": 128000,
+      "max_input_tokens": 272000,
       "max_output_tokens": 128000,
       "supports_vision": true,
       "supports_function_calling": true,
@@ -137,7 +137,7 @@
     },
     "chatgpt/gpt-5.1-codex-mini": {
       "mode": "chat",
-      "max_input_tokens": 128000,
+      "max_input_tokens": 272000,
       "max_output_tokens": 64000,
       "supports_vision": true,
       "supports_function_calling": true,
@@ -149,7 +149,7 @@
     },
     "chatgpt/gpt-5.6-luna": {
       "mode": "chat",
-      "max_input_tokens": 1050000,
+      "max_input_tokens": 922000,
       "max_output_tokens": 128000,
       "supports_vision": true,
       "supports_function_calling": true,
@@ -162,7 +162,7 @@
     },
     "chatgpt/gpt-5.6-sol": {
       "mode": "chat",
-      "max_input_tokens": 1050000,
+      "max_input_tokens": 922000,
       "max_output_tokens": 128000,
       "supports_vision": true,
       "supports_function_calling": true,
@@ -175,7 +175,7 @@
     },
     "chatgpt/gpt-5.6-terra": {
       "mode": "chat",
-      "max_input_tokens": 1050000,
+      "max_input_tokens": 922000,
       "max_output_tokens": 128000,
       "supports_vision": true,
       "supports_function_calling": true,
@@ -270,6 +270,45 @@
       "supports_reasoning": true
     },
     "chatgpt/gpt-6-astra-law": {
+      "mode": "chat",
+      "supported_endpoints": [
+        "/v1/chat/completions",
+        "/v1/responses"
+      ],
+      "max_input_tokens": 922000,
+      "max_output_tokens": 128000,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true
+    },
+    "chatgpt/gpt-6.2-astra": {
+      "mode": "chat",
+      "supported_endpoints": [
+        "/v1/chat/completions",
+        "/v1/responses"
+      ],
+      "max_input_tokens": 922000,
+      "max_output_tokens": 128000,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true
+    },
+    "chatgpt/gpt-6.2-sol": {
+      "mode": "chat",
+      "supported_endpoints": [
+        "/v1/chat/completions",
+        "/v1/responses"
+      ],
+      "max_input_tokens": 922000,
+      "max_output_tokens": 128000,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true
+    },
+    "chatgpt/gpt-6.2-astra-law": {
       "mode": "chat",
       "supported_endpoints": [
         "/v1/chat/completions",
